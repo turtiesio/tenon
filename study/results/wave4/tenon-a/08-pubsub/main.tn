@@ -1,0 +1,143 @@
+// pubsub: in-memory topic broker driven by a line protocol on stdin/stdout.
+
+const MAILBOX: Int = 3
+
+enum Cmd { Sub(Str, Str), Unsub(Str, Str), Pub(Str, Str), Poll(Str, Int), Stats(Str) }
+
+struct Client { subs: List[Str], mailbox: List[Str], dropped: Int }
+
+fn chars_ok(s: Str, min: Int, max: Int, ok: fn(Int) -> Bool) -> Bool {
+    if s.len() < min or s.len() > max { return false }
+    for i in 0..s.len() {
+        if not ok(s.byte(i)) { return false }
+    }
+    true
+}
+
+fn is_seg_char(c: Int) -> Bool { c.is_lower() or c.is_digit() }
+
+fn is_client(s: Str) -> Bool { not s.is_empty() and s.byte(0).is_lower() and chars_ok(s, 1, 16, is_seg_char) }
+
+fn is_segment(s: Str) -> Bool { chars_ok(s, 1, 16, is_seg_char) }
+
+fn is_topic(s: Str) -> Bool {
+    let segs = s.split(".")
+    segs.len() <= 8 and segs.all(is_segment)
+}
+
+fn is_pattern(s: Str) -> Bool {
+    let segs = s.split(".")
+    if segs.len() > 8 { return false }
+    for (i, seg) in segs.enumerate() {
+        let ok = is_segment(seg) or seg == "*" or (seg == "#" and i == segs.len() - 1)
+        if not ok { return false }
+    }
+    true
+}
+
+fn is_text_char(c: Int) -> Bool {
+    c.is_alnum() or c == '_' or c == '.' or c == '!' or c == '?' or c == '-'
+}
+
+fn parse_max(s: Str) -> Option[Int] {
+    if s.len() > 3 or not s.is_digits() or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+fn parse(line: Str) -> Option[Cmd] {
+    let w = line.split(" ")
+    if w.len() == 2 and w[0] == "STATS" and is_client(w[1]) { return Some(Stats(w[1])) }
+    if w.len() != 3 { return None }
+    match w[0] {
+        "SUB" => if is_client(w[1]) and is_pattern(w[2]) { Some(Sub(w[1], w[2])) } else { None },
+        "UNSUB" => if is_client(w[1]) and is_pattern(w[2]) { Some(Unsub(w[1], w[2])) } else { None },
+        "PUB" => if is_topic(w[1]) and chars_ok(w[2], 1, 32, is_text_char) { Some(Pub(w[1], w[2])) } else { None },
+        "POLL" => if is_client(w[1]) { Some(Poll(w[1], parse_max(w[2])?)) } else { None },
+        _ => None,
+    }
+}
+
+fn matches(pattern: Str, topic: Str) -> Bool {
+    let p = pattern.split(".")
+    let t = topic.split(".")
+    var k = p.len()
+    if p[k - 1] == "#" {
+        k -= 1
+        if t.len() < k { return false }
+    } else if t.len() != k {
+        return false
+    }
+    for i in 0..k {
+        if p[i] != "*" and p[i] != t[i] { return false }
+    }
+    true
+}
+
+struct Broker { clients: Map[Str, Client] }
+
+fn Broker.touch(mut self, name: Str) {
+    self.clients.or_insert(name, Client { subs: [], mailbox: [], dropped: 0 })
+}
+
+fn Broker.handle(mut self, cmd: Cmd) -> Str {
+    match cmd {
+        Sub(name, pattern) => {
+            self.touch(name)
+            if self.clients[name].subs.contains(pattern) { return "ERR already subscribed" }
+            self.clients[name].subs.push(pattern)
+            "OK"
+        }
+        Unsub(name, pattern) => {
+            self.touch(name)
+            let Some(i) = self.clients[name].subs.index_of(pattern) else { return "ERR not subscribed" }
+            let _ = self.clients[name].subs.remove(i)
+            "OK"
+        }
+        Pub(topic, text) => {
+            var n = 0
+            for name in self.clients.keys() {
+                if not self.clients[name].subs.any(fn(p) => matches(p, topic)) { continue }
+                if self.clients[name].mailbox.len() >= MAILBOX {
+                    let _ = self.clients[name].mailbox.remove(0)
+                    self.clients[name].dropped += 1
+                }
+                self.clients[name].mailbox.push("{topic}={text}")
+                n += 1
+            }
+            "DELIVERED {n}"
+        }
+        Poll(name, max) => {
+            self.touch(name)
+            let box = self.clients[name].mailbox
+            let k = max.min(box.len())
+            var reply = "MSGS {k}"
+            for m in box.slice(0, k) { reply += " {m}" }
+            self.clients[name].mailbox = box.slice(k, box.len())
+            reply
+        }
+        Stats(name) => {
+            self.touch(name)
+            let c = self.clients[name]
+            "subs={c.subs.len()} queued={c.mailbox.len()} dropped={c.dropped}"
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: pubsub < commands")
+        return 2
+    }
+    var broker = Broker { clients: [:] }
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let reply = match parse(line) {
+            Some(cmd) => broker.handle(cmd),
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

@@ -1,0 +1,179 @@
+// shorten DIR: persistent URL shortener with a numbered journal in DIR/journal.
+
+const JOURNAL: Str = "journal"
+
+enum Cmd { Put(Str), Get(Str), Hits(Str), Del(Str), Info }
+
+struct Link { url: Str, hits: Int }
+
+struct State {
+    links: Map[Int, Link],
+    next_id: Int,
+    records: Int,
+}
+
+fn is_url(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 200 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if c < '!' or c > '~' { return false }
+    }
+    true
+}
+
+fn is_code(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 8 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_digit() or c.is_lower()) { return false }
+    }
+    true
+}
+
+fn code_of(id: Int) -> Str { id.to_str_radix(36) }
+
+// The id a syntactically valid code names, if it is written canonically.
+fn id_of(code: Str) -> Option[Int] {
+    let id = code.to_int_radix(36)?
+    if code_of(id) == code { Some(id) } else { None }
+}
+
+fn parse_cmd(line: Str) -> Option[Cmd] {
+    let w = line.split(" ")
+    if w.len() == 1 and w[0] == "INFO" { return Some(Info) }
+    if w.len() != 2 { return None }
+    let arg = w[1]
+    match w[0] {
+        "PUT" => if is_url(arg) { Some(Put(arg)) } else { None },
+        "GET" => if is_code(arg) { Some(Get(arg)) } else { None },
+        "HITS" => if is_code(arg) { Some(Hits(arg)) } else { None },
+        "DEL" => if is_code(arg) { Some(Del(arg)) } else { None },
+        _ => None,
+    }
+}
+
+fn State.existing(self, code: Str) -> Option[Int] {
+    let id = id_of(code)?
+    if self.links.contains(id) { Some(id) } else { None }
+}
+
+// Applies one journal record (without its `\n`) if it is valid as record
+// number self.records + 1; returns false otherwise.
+fn State.replay(mut self, line: Str) -> Bool {
+    let w = line.split(" ")
+    if w.len() != 3 { return false }
+    let seq = w[0]
+    if seq.len() > 9 or not seq.is_digits() or seq.byte(0) == '0' { return false }
+    if seq.to_int() != Some(self.records + 1) { return false }
+    match w[1] {
+        "P" => {
+            if not is_url(w[2]) { return false }
+            self.links[self.next_id] = Link { url: w[2], hits: 0 }
+            self.next_id += 1
+        }
+        "H" | "D" => {
+            if not is_code(w[2]) { return false }
+            let Some(id) = self.existing(w[2]) else { return false }
+            if w[1] == "H" {
+                self.links[id].hits += 1
+            } else {
+                let _ = self.links.remove(id)
+            }
+        }
+        _ => return false,
+    }
+    self.records += 1
+    true
+}
+
+// Loads the journal's valid prefix, rewriting the file if anything follows it.
+fn recover(fs: Fs) -> Result[State, IoError] {
+    var st = State { links: [:], next_id: 1, records: 0 }
+    let text = match fs.read(JOURNAL) {
+        Ok(t) => t,
+        Err(NotFound(_)) => return Ok(st),
+        Err(e) => return Err(e),
+    }
+    var valid_end = 0
+    while true {
+        let Some(nl) = text.find_from("\n", valid_end) else { break }
+        if not st.replay(text.slice(valid_end, nl)) { break }
+        valid_end = nl + 1
+    }
+    if valid_end < text.len() { fs.write(JOURNAL, text.slice(0, valid_end))? }
+    Ok(st)
+}
+
+fn State.record(mut self, fs: Fs, kind: Str, arg: Str) -> Result[Unit, IoError] {
+    fs.append(JOURNAL, "{self.records + 1} {kind} {arg}\n")?
+    self.records += 1
+    Ok(())
+}
+
+fn State.handle(mut self, fs: Fs, cmd: Cmd) -> Result[Str, IoError] {
+    match cmd {
+        Put(url) => {
+            self.record(fs, "P", url)?
+            let id = self.next_id
+            self.links[id] = Link { url: url, hits: 0 }
+            self.next_id += 1
+            Ok("CODE {code_of(id)}")
+        }
+        Get(code) => {
+            let Some(id) = self.existing(code) else { return Ok("ERR not found") }
+            self.record(fs, "H", code)?
+            self.links[id].hits += 1
+            Ok("URL {self.links[id].url}")
+        }
+        Hits(code) => match self.existing(code) {
+            Some(id) => Ok("HITS {self.links[id].hits}"),
+            None => Ok("ERR not found"),
+        },
+        Del(code) => {
+            let Some(id) = self.existing(code) else { return Ok("ERR not found") }
+            self.record(fs, "D", code)?
+            let _ = self.links.remove(id)
+            Ok("OK")
+        }
+        Info => Ok("links={self.links.len()} next={code_of(self.next_id)} records={self.records}"),
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: shorten DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    if not sys.fs.is_dir(dir) {
+        if let Err(e) = sys.fs.mkdir_one(dir) {
+            con.eprintln("shorten: cannot use {dir}: {e}")
+            return 1
+        }
+    }
+    let fs = sys.fs.within(dir)
+    var st = match recover(fs) {
+        Ok(s) => s,
+        Err(e) => {
+            con.eprintln("shorten: cannot read journal: {e}")
+            return 1
+        }
+    }
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let reply = match parse_cmd(line) {
+            Some(cmd) => match st.handle(fs, cmd) {
+                Ok(r) => r,
+                Err(e) => {
+                    con.eprintln("shorten: cannot write journal: {e}")
+                    return 1
+                }
+            },
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

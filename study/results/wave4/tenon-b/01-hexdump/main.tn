@@ -1,0 +1,128 @@
+// hexdump [-s SKIP] [-n LENGTH] [-w WIDTH] [FILE]
+
+struct Opts { skip: Int, length: Option[Int], width: Int, file: Option[Str] }
+
+fn all_digits(s: Str) -> Bool { s.is_digits() }
+
+fn parse_num(s: Str, max_digits: Int) -> Option[Int] {
+    if s.len() > max_digits or not all_digits(s) { return None }
+    s.to_int()
+}
+
+fn parse_args(args: List[Str]) -> Result[Opts, Str] {
+    var skip = 0
+    var length: Option[Int] = None
+    var width = 16
+    var file: Option[Str] = None
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-s" or a == "-n" or a == "-w" {
+            if i + 1 >= args.len() { return Err("option {a} needs a value") }
+            let v = args[i + 1]
+            i += 2
+            if a == "-s" {
+                let Some(n) = parse_num(v, 9) else { return Err("bad value for -s: {v}") }
+                skip = n
+            } else if a == "-n" {
+                let Some(n) = parse_num(v, 9) else { return Err("bad value for -n: {v}") }
+                length = Some(n)
+            } else {
+                let Some(n) = parse_num(v, 2) else { return Err("bad value for -w: {v}") }
+                if n < 1 or n > 32 { return Err("width out of range: {v}") }
+                width = n
+            }
+        } else if a != "-" and a.starts_with("-") {
+            return Err("unknown option {a}")
+        } else {
+            if file.is_some() { return Err("more than one FILE") }
+            file = Some(a)
+            i += 1
+        }
+    }
+    Ok(Opts { skip: skip, length: length, width: width, file: file })
+}
+
+fn hex2(b: Int) -> Str { b.to_str_radix(16).pad_left(2, "0") }
+
+// The console decodes stdin as UTF-8 and turns every invalid byte into U+FFFD
+// (EF BF BD). The original byte is lost; assume 0xFF for each replacement.
+fn stdin_bytes(text: Str) -> List[Int] {
+    var out: List[Int] = []
+    let n = text.len()
+    var i = 0
+    while i < n {
+        let b = text.byte(i)
+        if b == 0xEF and i + 2 < n and text.byte(i + 1) == 0xBF and text.byte(i + 2) == 0xBD {
+            out.push(0xFF)
+            i += 3
+        } else {
+            out.push(b)
+            i += 1
+        }
+    }
+    out
+}
+
+fn file_bytes(text: Str) -> List[Int] {
+    var out: List[Int] = []
+    for i in 0..text.len() { out.push(text.byte(i)) }
+    out
+}
+
+fn dump(bytes: List[Int], opts: Opts) -> Str {
+    let total = bytes.len()
+    let start = opts.skip.min(total)
+    var stop = total
+    if let Some(l) = opts.length { stop = (start + l).min(total) }
+    var out = ""
+    var pos = start
+    while pos < stop {
+        let end = (pos + opts.width).min(stop)
+        var hex: List[Str] = []
+        var ascii = ""
+        for k in 0..opts.width {
+            if pos + k < end {
+                let b = bytes[pos + k]
+                hex.push(hex2(b))
+                ascii += if b >= 0x20 and b <= 0x7E { b.char() } else { "." }
+            } else {
+                hex.push("  ")
+            }
+        }
+        out += "{pos.to_str_radix(16).pad_left(8, "0")}  {hex.join(" ")}  |{ascii}|\n"
+        pos = end
+    }
+    out += "{(opts.skip + (stop - start)).to_str_radix(16).pad_left(8, "0")}\n"
+    out
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(msg) => {
+            con.eprintln("hexdump: {msg}")
+            return 2
+        }
+    }
+    var bytes: List[Int] = []
+    match opts.file {
+        Some(path) => {
+            if path == "-" {
+                bytes = stdin_bytes(con.read_all())
+            } else {
+                match sys.fs.read(path) {
+                    Ok(text) => { bytes = file_bytes(text) }
+                    Err(e) => {
+                        con.eprintln("hexdump: cannot read {path}: {e}")
+                        return 1
+                    }
+                }
+            }
+        }
+        None => { bytes = stdin_bytes(con.read_all()) }
+    }
+    con.print(dump(bytes, opts))
+    0
+}

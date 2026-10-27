@@ -1,0 +1,105 @@
+struct Client { subscriptions: List[Str], mailbox: List[Str], dropped: Int }
+enum Command { Subscribe(Str, Str), Unsubscribe(Str, Str), Publish(Str, Str), Poll(Str, Int), Stats(Str) }
+fn valid_client(name: Str) -> Bool {
+    if name.is_empty() or name.len() > 16 or not name.byte(0).is_lower() { return false }
+    for c in name.chars() { if not (c.byte(0).is_lower() or c.byte(0).is_digit()) { return false } }
+    true
+}
+fn valid_path(path: Str, pattern: Bool) -> Bool {
+    let segments = path.split(".")
+    if segments.len() > 8 { return false }
+    for (index, segment) in segments.enumerate() {
+        if pattern and (segment == "*" or (segment == "#" and index == segments.len() - 1)) { continue }
+        if segment.is_empty() or segment.len() > 16 { return false }
+        for c in segment.chars() { if not (c.byte(0).is_lower() or c.byte(0).is_digit()) { return false } }
+    }
+    true
+}
+fn valid_text(text: Str) -> Bool {
+    if text.is_empty() or text.len() > 32 { return false }
+    for c in text.chars() { if not c.byte(0).is_alnum() and not "_.!?-".contains(c) { return false } }
+    true
+}
+fn parse(line: Str) -> Option[Command] {
+    let parts = line.split(" ")
+    if parts.len() == 2 and parts[0] == "STATS" and valid_client(parts[1]) { return Some(Stats(parts[1])) }
+    if parts.len() != 3 { return None }
+    if parts[0] == "PUB" {
+        if valid_path(parts[1], false) and valid_text(parts[2]) { return Some(Publish(parts[1], parts[2])) }
+        return None
+    }
+    if not valid_client(parts[1]) { return None }
+    if parts[0] == "POLL" {
+        let amount = parts[2]
+        if not amount.is_digits() or amount.len() > 3 or amount.starts_with("0") { return None }
+        return Some(Poll(parts[1], amount.to_int()?))
+    }
+    if not valid_path(parts[2], true) { return None }
+    match parts[0] {
+        "SUB" => Some(Subscribe(parts[1], parts[2])),
+        "UNSUB" => Some(Unsubscribe(parts[1], parts[2])),
+        _ => None,
+    }
+}
+fn matches(pattern: Str, topic: Str) -> Bool {
+    let p = pattern.split(".")
+    let t = topic.split(".")
+    let multi = p[p.len() - 1] == "#"
+    let fixed = p.len() - if multi { 1 } else { 0 }
+    if (multi and t.len() < fixed) or (not multi and t.len() != fixed) { return false }
+    for i in 0..fixed { if p[i] != "*" and p[i] != t[i] { return false } }
+    true
+}
+fn empty_client() -> Client { Client { subscriptions: [], mailbox: [], dropped: 0 } }
+fn execute(clients: mut Map[Str, Client], command: Command) -> Str {
+    match command {
+        Subscribe(sub_client, pattern) => {
+            clients.or_insert(sub_client, empty_client())
+            if clients[sub_client].subscriptions.contains(pattern) { return "ERR already subscribed" }
+            clients[sub_client].subscriptions.push(pattern)
+            "OK"
+        }
+        Unsubscribe(unsub_client, unsub_pattern) => {
+            clients.or_insert(unsub_client, empty_client())
+            let Some(index) = clients[unsub_client].subscriptions.index_of(unsub_pattern) else { return "ERR not subscribed" }
+            let _ = clients[unsub_client].subscriptions.remove(index)
+            "OK"
+        }
+        Publish(topic, text) => {
+            var delivered = 0
+            for name in clients.keys() {
+                if clients[name].subscriptions.any(fn(pat) => matches(pat, topic)) {
+                    if clients[name].mailbox.len() == 3 {
+                        let _ = clients[name].mailbox.remove(0)
+                        clients[name].dropped += 1
+                    }
+                    clients[name].mailbox.push("{topic}={text}")
+                    delivered += 1
+                }
+            }
+            "DELIVERED {delivered}"
+        }
+        Poll(poll_client, maximum) => {
+            clients.or_insert(poll_client, empty_client())
+            let count = maximum.min(clients[poll_client].mailbox.len())
+            var result = "MSGS {count}"
+            for _ in 0..count { result += " {clients[poll_client].mailbox.remove(0)}" }
+            result
+        }
+        Stats(stats_client) => {
+            let state = clients.get_or(stats_client, empty_client())
+            "subs={state.subscriptions.len()} queued={state.mailbox.len()} dropped={state.dropped}"
+        }
+    }
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments allowed"); return 2 }
+    var clients: Map[Str, Client] = [:]
+    while let Some(raw) = sys.console.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let response = match parse(line) { Some(command) => execute(mut clients, command), None => "ERR bad command" }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

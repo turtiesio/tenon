@@ -1,0 +1,52 @@
+fn main(sys: Sys) -> Int {
+    var skip = 0
+    var limit = 1048576
+    var width = 16
+    var file: Option[Str] = None
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg == "-s" or arg == "-n" or arg == "-w" {
+            i += 1
+            if i == sys.args.len() { sys.console.eprintln("missing value"); return 2 }
+            let value = sys.args[i]
+            let max_digits = if arg == "-w" { 2 } else { 9 }
+            if not value.is_digits() or value.len() > max_digits { sys.console.eprintln("invalid value"); return 2 }
+            let number = value.to_int().unwrap()
+            if arg == "-w" {
+                if number < 1 or number > 32 { sys.console.eprintln("invalid width"); return 2 }
+                width = number
+            } else if arg == "-s" { skip = number } else { limit = number }
+        } else {
+            if (arg.starts_with("-") and arg != "-") or file.is_some() { sys.console.eprintln("invalid argument"); return 2 }
+            file = Some(arg)
+        }
+        i += 1
+    }
+    let path = file.unwrap_or("-")
+    let input = if path == "-" { sys.console.read_all() } else {
+        match sys.fs.read(path) {
+            Ok(data) => data,
+            Err(error) => { sys.console.eprintln("{error}"); return 1 },
+        }
+    }
+    let count = (input.len() - skip).max(0).min(limit)
+    var offset = skip
+    let end = skip + count
+    while offset < end {
+        let size = width.min(end - offset)
+        var fields: List[Str] = []
+        var ascii = ""
+        for k in 0..width {
+            if k < size {
+                let byte = input.byte(offset + k)
+                fields.push(byte.to_str_radix(16).pad_left(2, "0"))
+                ascii += if byte >= 32 and byte <= 126 { byte.char() } else { "." }
+            } else { fields.push("  ") }
+        }
+        sys.console.println("{offset.to_str_radix(16).pad_left(8, "0")}  {fields.join(" ")}  |{ascii}|")
+        offset += size
+    }
+    sys.console.println(end.to_str_radix(16).pad_left(8, "0"))
+    0
+}

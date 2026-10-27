@@ -1,0 +1,64 @@
+enum Command { Enter(Str, Int), Leave(Str, Int), Where(Str), Status }
+struct Stay { spot: Int, start: Int }
+struct Garage { capacity: Int, clock: Int, revenue: Int, cars: Map[Str, Stay], occupied: List[Bool] }
+fn valid_plate(plate: Str) -> Bool {
+    if plate.is_empty() or plate.len() > 8 { return false }
+    for c in plate.chars() { if not (c.byte(0).is_upper() or c.byte(0).is_digit()) { return false } }
+    true
+}
+fn parse(line: Str) -> Option[Command] {
+    let parts = line.split(" ")
+    if parts.len() == 1 and parts[0] == "STATUS" { return Some(Status) }
+    if parts.len() == 2 and parts[0] == "WHERE" and valid_plate(parts[1]) { return Some(Where(parts[1])) }
+    if parts.len() != 3 or not valid_plate(parts[1]) { return None }
+    if not parts[2].is_digits() or parts[2].len() > 7 { return None }
+    let time = parts[2].to_int()?
+    match parts[0] { "IN" => Some(Enter(parts[1], time)), "OUT" => Some(Leave(parts[1], time)), _ => None }
+}
+fn fee(duration: Int) -> Int {
+    if duration <= 15 { 0 } else { duration / 1440 * 2000 + (250 * ((duration % 1440 + 59) / 60)).min(2000) }
+}
+fn Garage.execute(mut self, command: Command) -> Str {
+    match command {
+        Status => "free={self.capacity - self.cars.len()} parked={self.cars.len()} revenue={self.revenue.fmt_fixed(2)}",
+        Where(plate) => match self.cars.get(plate) { Some(stay) => "SPOT {stay.spot}", None => "ERR not parked" },
+        Enter(enter_plate, enter_time) => {
+            if enter_time < self.clock { return "ERR bad time" }
+            self.clock = enter_time
+            if self.cars.contains(enter_plate) { return "ERR already parked" }
+            if self.cars.len() == self.capacity { return "FULL" }
+            for index in 0..self.capacity {
+                if not self.occupied[index] {
+                    self.occupied[index] = true
+                    self.cars[enter_plate] = Stay { spot: index + 1, start: enter_time }
+                    return "OK {index + 1}"
+                }
+            }
+            panic("no free spot")
+        }
+        Leave(exit_plate, exit_time) => {
+            if exit_time < self.clock { return "ERR bad time" }
+            self.clock = exit_time
+            let Some(departure) = self.cars.remove(exit_plate) else { return "ERR not parked" }
+            self.occupied[departure.spot - 1] = false
+            let amount = fee(exit_time - departure.start)
+            self.revenue += amount
+            "FEE {amount.fmt_fixed(2)}"
+        }
+    }
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("expected capacity"); return 2 }
+    let arg = sys.args[0]
+    if not arg.is_digits() or arg.len() > 4 { sys.console.eprintln("invalid capacity"); return 2 }
+    let capacity = arg.to_int().unwrap()
+    if capacity < 1 or capacity > 1000 { sys.console.eprintln("invalid capacity"); return 2 }
+    var garage = Garage { capacity: capacity, clock: 0, revenue: 0, cars: [:], occupied: List.filled(capacity, false) }
+    while let Some(raw) = sys.console.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let response = match parse(line) { Some(command) => garage.execute(command), None => "ERR bad command" }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

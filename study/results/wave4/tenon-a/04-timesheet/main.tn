@@ -1,0 +1,93 @@
+// timesheet: weekly hours from clock-in/clock-out punches on stdin.
+
+const DAYS: List[Str] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+struct Punch { name: Str, day: Int, minute: Int, is_in: Bool }
+
+fn two_digits(s: Str, max: Int) -> Option[Int] {
+    if s.len() != 2 or not s.is_digits() { return None }
+    let n = s.to_int()?
+    if n > max { None } else { Some(n) }
+}
+
+fn parse_punch(line: Str) -> Option[Punch] {
+    let parts = line.split(" ")
+    if parts.len() != 4 { return None }
+    let name = parts[0]
+    if name.is_empty() or name.len() > 16 { return None }
+    for i in 0..name.len() {
+        if not name.byte(i).is_lower() { return None }
+    }
+    let day = DAYS.index_of(parts[1])?
+    let (hh, mm) = parts[2].split_once(":")?
+    let minute = two_digits(hh, 23)? * 60 + two_digits(mm, 59)?
+    let is_in = match parts[3] {
+        "IN" => true,
+        "OUT" => false,
+        _ => return None,
+    }
+    Some(Punch { name: name, day: day, minute: minute, is_in: is_in })
+}
+
+fn fmt_time(m: Int) -> Str { "{m / 60}:" + "{m % 60}".pad_left(2, "0") }
+
+// Pairs one day's punches; returns (minutes, anomalies).
+fn pair_day(punches: List[(Int, Bool)]) -> (Int, Int) {
+    var sorted = punches
+    sorted.sort_by(fn(p) => p.0)
+    var open: Option[Int] = None
+    var minutes = 0
+    var anomalies = 0
+    for (t, is_in) in sorted {
+        if is_in {
+            if open.is_some() { anomalies += 1 }
+            open = Some(t)
+        } else if let Some(start) = open {
+            minutes += t - start
+            open = None
+        } else {
+            anomalies += 1
+        }
+    }
+    if open.is_some() { anomalies += 1 }
+    (minutes, anomalies)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: timesheet < punches")
+        return 2
+    }
+    // name -> 7 days of (minute, is_in) in input order
+    var week: Map[Str, List[List[(Int, Bool)]]] = [:]
+    var skipped = 0
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() { continue }
+        let Some(p) = parse_punch(line) else {
+            skipped += 1
+            continue
+        }
+        week.or_insert(p.name, List.filled(7, []))
+        week[p.name][p.day].push((p.minute, p.is_in))
+    }
+    var names = week.keys()
+    names.sort()
+    for name in names {
+        var line = name
+        var total = 0
+        var overtime = 0
+        var anomalies = 0
+        for d in 0..7 {
+            let (m, a) = pair_day(week[name][d])
+            anomalies += a
+            total += m
+            overtime += (m - 480).max(0)
+            if m > 0 { line += " {DAYS[d]}={fmt_time(m)}" }
+        }
+        con.println("{line} total={fmt_time(total)} overtime={fmt_time(overtime)} anomalies={anomalies}")
+    }
+    con.println("skipped={skipped}")
+    0
+}

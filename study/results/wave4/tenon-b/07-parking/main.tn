@@ -1,0 +1,101 @@
+// parking CAPACITY: parking garage line protocol
+
+struct Stay { spot: Int, entry: Int }
+
+struct Garage {
+    free_spots: Heap[Int],
+    parked: Map[Str, Stay],
+    clock: Int,
+    revenue: Int,
+}
+
+fn valid_plate(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 8 { return false }
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        if not (b.is_upper() or b.is_digit()) { return false }
+    }
+    true
+}
+
+fn parse_time(s: Str) -> Option[Int] {
+    if s.len() > 7 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+fn fee(d: Int) -> Int {
+    if d <= 15 { return 0 }
+    let days = d / 1440
+    let rest = d % 1440
+    let hours = (rest + 59) / 60
+    days * 2000 + (250 * hours).min(2000)
+}
+
+fn money(cents: Int) -> Str { cents.fmt_fixed(2) }
+
+fn Garage.enter(mut self, plate: Str, time: Int) -> Str {
+    if time < self.clock { return "ERR bad time" }
+    self.clock = time
+    if self.parked.contains(plate) { return "ERR already parked" }
+    let Some(spot) = self.free_spots.pop() else { return "FULL" }
+    self.parked[plate] = Stay { spot: spot, entry: time }
+    "OK {spot}"
+}
+
+fn Garage.leave(mut self, plate: Str, time: Int) -> Str {
+    if time < self.clock { return "ERR bad time" }
+    self.clock = time
+    let Some(stay) = self.parked.remove(plate) else { return "ERR not parked" }
+    self.free_spots.push(stay.spot)
+    let charge = fee(time - stay.entry)
+    self.revenue += charge
+    "FEE {money(charge)}"
+}
+
+fn Garage.handle(mut self, line: Str, capacity: Int) -> Str {
+    let t = line.split(" ")
+    let bad = "ERR bad command"
+    if t[0] == "IN" or t[0] == "OUT" {
+        if t.len() != 3 or not valid_plate(t[1]) { return bad }
+        let Some(time) = parse_time(t[2]) else { return bad }
+        return if t[0] == "IN" { self.enter(t[1], time) } else { self.leave(t[1], time) }
+    }
+    if t[0] == "WHERE" {
+        if t.len() != 2 or not valid_plate(t[1]) { return bad }
+        return match self.parked.get(t[1]) {
+            Some(stay) => "SPOT {stay.spot}",
+            None => "ERR not parked",
+        }
+    }
+    if t[0] == "STATUS" and t.len() == 1 {
+        let p = self.parked.len()
+        return "free={capacity - p} parked={p} revenue={money(self.revenue)}"
+    }
+    bad
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: parking CAPACITY")
+        return 2
+    }
+    let arg = sys.args[0]
+    if arg.len() > 4 or not arg.is_digits() {
+        con.eprintln("parking: bad capacity '{arg}'")
+        return 2
+    }
+    let capacity = arg.to_int().unwrap()
+    if capacity < 1 or capacity > 1000 {
+        con.eprintln("parking: capacity must be 1..1000")
+        return 2
+    }
+    var g = Garage { free_spots: Heap.new(), parked: [:], clock: 0, revenue: 0 }
+    for s in 1..capacity + 1 { g.free_spots.push(s) }
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        con.println(g.handle(line, capacity))
+        con.flush()
+    }
+    0
+}

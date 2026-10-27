@@ -1,0 +1,136 @@
+// elevator FLOORS: tick-by-tick simulation of one elevator.
+
+struct Req { time: Int, from: Int, to: Int }
+
+enum Dir { Up, Down, Idle }
+
+fn parse_num(s: Str, max_digits: Int) -> Option[Int] {
+    if s.len() > max_digits or not s.is_digits() { return None }
+    s.to_int()
+}
+
+fn parse_requests(text: Str, floors: Int) -> Result[List[Req], Str] {
+    var reqs: List[Req] = []
+    for (i, raw) in text.lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() { continue }
+        let w = line.split(" ")
+        let bad = "line {i + 1}: expected '<time> <from> <to>'"
+        if w.len() != 3 { return Err(bad) }
+        let Some(time) = parse_num(w[0], 6) else { return Err(bad) }
+        let Some(from) = parse_num(w[1], 3) else { return Err(bad) }
+        let Some(to) = parse_num(w[2], 3) else { return Err(bad) }
+        if from >= floors or to >= floors { return Err("line {i + 1}: no such floor") }
+        if from == to { return Err("line {i + 1}: from equals to") }
+        if let Some(prev) = reqs.last() {
+            if time < prev.time { return Err("line {i + 1}: time goes backwards") }
+        }
+        reqs.push(Req { time: time, from: from, to: to })
+    }
+    Ok(reqs)
+}
+
+struct Report { board: List[Int], arrive: List[Int], moves: Int, stops: Int, finish: Int }
+
+fn simulate(reqs: List[Req], floors: Int) -> Report {
+    let n = reqs.len()
+    var r = Report { board: List.filled(n, 0), arrive: List.filled(n, 0), moves: 0, stops: 0, finish: 0 }
+    var waiting: List[List[Int]] = List.filled(floors, [])  // passenger ids by floor
+    var riding: List[List[Int]] = List.filled(floors, [])   // passenger ids by destination
+    var targets = List.filled(floors, 0)                    // waiting + riding counts per floor
+    var total_targets = 0
+    var next = 0
+    var arrived = 0
+    var floor = 0
+    var dir = Idle
+    var t = 0
+    while arrived < n {
+        if total_targets == 0 and next < n and reqs[next].time > t {
+            // Nothing to do until the next passenger appears: idle ticks.
+            dir = Idle
+            t = reqs[next].time
+        }
+        while next < n and reqs[next].time == t {
+            waiting[reqs[next].from].push(next)
+            targets[reqs[next].from] += 1
+            total_targets += 1
+            next += 1
+        }
+        if not riding[floor].is_empty() or not waiting[floor].is_empty() {
+            r.stops += 1
+            for p in riding[floor] {
+                r.arrive[p] = t
+                arrived += 1
+            }
+            targets[floor] -= riding[floor].len()
+            total_targets -= riding[floor].len()
+            riding[floor].clear()
+            for p in waiting[floor] {
+                r.board[p] = t
+                riding[reqs[p].to].push(p)
+                targets[reqs[p].to] += 1
+            }
+            targets[floor] -= waiting[floor].len()
+            waiting[floor].clear()
+            if arrived == n { r.finish = t }
+        } else if total_targets == 0 {
+            dir = Idle
+        } else {
+            var above = false
+            var below = false
+            for f in 0..floors {
+                if targets[f] > 0 {
+                    if f > floor { above = true }
+                    if f < floor { below = true }
+                }
+            }
+            dir = match dir {
+                Up => if above { Up } else { Down },
+                Down => if below { Down } else { Up },
+                Idle => {
+                    var best = floors
+                    var best_dir = Idle
+                    for f in 0..floors {
+                        let d = (f - floor).abs()
+                        if targets[f] > 0 and (d < best or (d == best and f > floor)) {
+                            best = d
+                            best_dir = if f > floor { Up } else { Down }
+                        }
+                    }
+                    best_dir
+                }
+            }
+            floor += if dir == Up { 1 } else { -1 }
+            r.moves += 1
+        }
+        t += 1
+    }
+    r
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    let floors = if args.len() == 1 { parse_num(args[0], 3).unwrap_or(0) } else { 0 }
+    if floors < 2 or floors > 100 {
+        con.eprintln("usage: elevator FLOORS   (2-100)")
+        return 2
+    }
+    let reqs = match parse_requests(con.read_all(), floors) {
+        Ok(rs) => rs,
+        Err(msg) => {
+            con.eprintln("elevator: {msg}")
+            return 1
+        }
+    }
+    let r = simulate(reqs, floors)
+    var out = ""
+    var total_wait = 0
+    for (i, req) in reqs.enumerate() {
+        total_wait += r.board[i] - req.time
+        out += "{i + 1} board={r.board[i]} arrive={r.arrive[i]}\n"
+    }
+    out += "moves={r.moves} stops={r.stops} finish={r.finish} total_wait={total_wait}\n"
+    con.print(out)
+    0
+}

@@ -1,0 +1,90 @@
+// hexdump [-s SKIP] [-n LENGTH] [-w WIDTH] [FILE]
+
+struct Opts { skip: Int, length: Option[Int], width: Int, file: Option[Str] }
+
+fn parse_count(v: Str, max_digits: Int) -> Option[Int] {
+    if not v.is_digits() or v.len() > max_digits { return None }
+    v.to_int()
+}
+
+fn parse_args(args: List[Str]) -> Result[Opts, Str] {
+    var opts = Opts { skip: 0, length: None, width: 16, file: None }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-s" or a == "-n" or a == "-w" {
+            if i + 1 >= args.len() { return Err("option {a} needs a value") }
+            let v = args[i + 1]
+            i += 2
+            if a == "-w" {
+                let Some(w) = parse_count(v, 2) else { return Err("bad width '{v}'") }
+                if w < 1 or w > 32 { return Err("width must be 1 to 32") }
+                opts.width = w
+            } else {
+                let Some(n) = parse_count(v, 9) else { return Err("bad value '{v}' for {a}") }
+                if a == "-s" { opts.skip = n } else { opts.length = Some(n) }
+            }
+            continue
+        }
+        if a.starts_with("-") and a != "-" { return Err("unknown option '{a}'") }
+        if opts.file.is_some() { return Err("more than one FILE") }
+        opts.file = Some(a)
+        i += 1
+    }
+    Ok(opts)
+}
+
+fn hex2(b: Int) -> Str { b.to_str_radix(16).pad_left(2, "0") }
+
+fn offset(n: Int) -> Str { n.to_str_radix(16).pad_left(8, "0") }
+
+fn dump(out: mut Str, data: Str, opts: Opts) {
+    let start = opts.skip.min(data.len())
+    var end = data.len()
+    if let Some(n) = opts.length { end = (start + n).min(data.len()) }
+    var pos = start
+    while pos < end {
+        let stop = (pos + opts.width).min(end)
+        var fields: List[Str] = []
+        var ascii = ""
+        for k in 0..opts.width {
+            if pos + k < stop {
+                let b = data.byte(pos + k)
+                fields.push(hex2(b))
+                ascii += if b >= 0x20 and b <= 0x7e { b.char() } else { "." }
+            } else {
+                fields.push("  ")
+            }
+        }
+        out += "{offset(pos)}  {fields.join(" ")}  |{ascii}|\n"
+        pos = stop
+    }
+    out += "{offset(opts.skip + (end - start))}\n"
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(msg) => {
+            con.eprintln("hexdump: {msg}")
+            con.eprintln("usage: hexdump [-s SKIP] [-n LENGTH] [-w WIDTH] [FILE]")
+            return 2
+        }
+    }
+    var data = ""
+    match opts.file {
+        Some(path) if path != "-" => match sys.fs.read(path) {
+            Ok(text) => data = text,
+            Err(e) => {
+                con.eprintln("hexdump: cannot read {path}: {e}")
+                return 1
+            }
+        },
+        _ => data = con.read_all(),
+    }
+    var out = ""
+    dump(mut out, data, opts)
+    con.print(out)
+    0
+}

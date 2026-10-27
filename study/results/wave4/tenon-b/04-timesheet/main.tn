@@ -1,0 +1,110 @@
+// timesheet: weekly hours from clock-in/clock-out punches on stdin
+
+struct Punch { day: Int, time: Int, is_in: Bool }
+
+const DAYS: List[Str] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+fn two_digits(s: Str, lo: Int, hi: Int) -> Option[Int] {
+    if s.len() != 2 or not s.is_digits() { return None }
+    let n = s.to_int()?
+    if n < lo or n > hi { None } else { Some(n) }
+}
+
+fn valid_name(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 16 { return false }
+    for i in 0..s.len() {
+        if not s.byte(i).is_lower() { return false }
+    }
+    true
+}
+
+// Some((name, punch)) for a well-formed punch line.
+fn parse_punch(line: Str) -> Option[(Str, Punch)] {
+    let t = line.split(" ")
+    if t.len() != 4 { return None }
+    if not valid_name(t[0]) { return None }
+    let day = t[1].index_of_day()?
+    let hm = t[2].split(":")
+    if hm.len() != 2 { return None }
+    let h = two_digits(hm[0], 0, 23)?
+    let m = two_digits(hm[1], 0, 59)?
+    let is_in = if t[3] == "IN" { true } else if t[3] == "OUT" { false } else { return None }
+    Some((t[0], Punch { day: day, time: h * 60 + m, is_in: is_in }))
+}
+
+fn Str.index_of_day(self) -> Option[Int] { DAYS.index_of(self) }
+
+fn fmt_time(m: Int) -> Str {
+    "{m / 60}:{(m % 60).to_str().pad_left(2, "0")}"
+}
+
+struct Summary { day_minutes: List[Int], anomalies: Int }
+
+// Pair the punches of one employee (already sorted by day, then time).
+fn summarize(punches: List[Punch]) -> Summary {
+    var mins = List.filled(7, 0)
+    var anomalies = 0
+    var open: Option[Int] = None
+    var cur_day = -1
+    for p in punches {
+        if p.day != cur_day {
+            if open.is_some() { anomalies += 1 }
+            open = None
+            cur_day = p.day
+        }
+        if p.is_in {
+            if open.is_some() { anomalies += 1 }
+            open = Some(p.time)
+        } else {
+            match open {
+                Some(start) => {
+                    mins[p.day] += p.time - start
+                    open = None
+                }
+                None => { anomalies += 1 }
+            }
+        }
+    }
+    if open.is_some() { anomalies += 1 }
+    Summary { day_minutes: mins, anomalies: anomalies }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 0 {
+        con.eprintln("timesheet: no arguments expected")
+        return 2
+    }
+    var by_name: Map[Str, List[Punch]] = [:]
+    var skipped = 0
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() { continue }
+        match parse_punch(line) {
+            Some((name, p)) => {
+                by_name.or_insert(name, [])
+                by_name[name].push(p)
+            }
+            None => { skipped += 1 }
+        }
+    }
+    var out = ""
+    for name in by_name.keys().sorted() {
+        var punches = by_name[name]
+        punches.sort_by(fn(p) => (p.day, p.time))
+        let s = summarize(punches)
+        var total = 0
+        var overtime = 0
+        out += name
+        for d in 0..7 {
+            let m = s.day_minutes[d]
+            if m > 0 { out += " {DAYS[d]}={fmt_time(m)}" }
+            total += m
+            overtime += (m - 480).max(0)
+        }
+        out += " total={fmt_time(total)} overtime={fmt_time(overtime)} anomalies={s.anomalies}\n"
+    }
+    out += "skipped={skipped}\n"
+    con.print(out)
+    0
+}

@@ -1,0 +1,90 @@
+// uniqx [-c] [-d] [-u] [-i] [-f N] [-s N]
+
+struct Opts { count: Bool, only_dup: Bool, only_uniq: Bool, fold: Bool, fields: Int, chars: Int }
+
+fn parse_count(s: Str) -> Option[Int] {
+    if s.len() > 4 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+fn parse_args(args: List[Str]) -> Result[Opts, Str] {
+    var o = Opts { count: false, only_dup: false, only_uniq: false, fold: false, fields: 0, chars: 0 }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        i += 1
+        if a == "-c" {
+            o.count = true
+        } else if a == "-d" {
+            o.only_dup = true
+        } else if a == "-u" {
+            o.only_uniq = true
+        } else if a == "-i" {
+            o.fold = true
+        } else if a == "-f" or a == "-s" {
+            if i >= args.len() { return Err("option {a} needs a value") }
+            let v = args[i]
+            i += 1
+            let Some(n) = parse_count(v) else { return Err("bad value for {a}: {v}") }
+            if a == "-f" { o.fields = n } else { o.chars = n }
+        } else {
+            return Err("unexpected argument {a}")
+        }
+    }
+    Ok(o)
+}
+
+fn is_blank(b: Int) -> Bool { b == ' ' or b == '\t' }
+
+fn key_of(line: Str, o: Opts) -> Str {
+    let n = line.len()
+    var pos = 0
+    for _ in 0..o.fields {
+        while pos < n and is_blank(line.byte(pos)) { pos += 1 }
+        while pos < n and not is_blank(line.byte(pos)) { pos += 1 }
+    }
+    let start = (pos + o.chars).min(n)
+    let rest = line.slice(start, n)
+    if o.fold { rest.lower() } else { rest }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let o = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(msg) => {
+            con.eprintln("uniqx: {msg}")
+            return 2
+        }
+    }
+    var out = ""
+    var cur: Option[Str] = None   // representative line of the current group
+    var cur_key = ""
+    var size = 0
+    let lines = con.read_all().lines()
+    // A sentinel pass: flush the group when a different key (or the end) arrives.
+    for i in 0..lines.len() + 1 {
+        var line = ""
+        var key = ""
+        if i < lines.len() {
+            line = lines[i].strip_suffix("\r").unwrap_or(lines[i])
+            key = key_of(line, o)
+            if cur.is_some() and key == cur_key {
+                size += 1
+                continue
+            }
+        }
+        if let Some(rep) = cur {
+            let show = if size >= 2 { not o.only_uniq } else { not o.only_dup }
+            if show {
+                if o.count { out += size.to_str().pad_left(7, " ") + " " }
+                out += rep + "\n"
+            }
+        }
+        cur = Some(line)
+        cur_key = key
+        size = 1
+    }
+    con.print(out)
+    0
+}

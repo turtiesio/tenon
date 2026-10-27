@@ -1,0 +1,71 @@
+fn candidates(line: Str) -> Option[List[Str]] {
+    let parts = line.split(" ")
+    if parts[0] != "candidates:" or parts.len() < 2 or parts.len() > 21 { return None }
+    var names: List[Str] = []
+    for name in parts.slice(1, parts.len()) {
+        if name.is_empty() or name.len() > 20 or not name.byte(0).is_alpha() or names.contains(name) { return None }
+        for char in name.chars() {
+            let c = char.byte(0)
+            if not (c.is_alnum() or c == '_') { return None }
+        }
+        names.push(name)
+    }
+    Some(names)
+}
+fn ballot(line: Str, names: List[Str]) -> Option[List[Int]] {
+    var ranking: List[Int] = []
+    for item in line.split(">") {
+        let index = names.index_of(item)?
+        if ranking.contains(index) { return None }
+        ranking.push(index)
+    }
+    Some(ranking)
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments allowed"); return 2 }
+    var header: Option[List[Str]] = None
+    var ballots: List[List[Int]] = []
+    var invalid = 0
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() or line.starts_with("#") { continue }
+        if header.is_none() {
+            header = candidates(line)
+            if header.is_none() { sys.console.eprintln("invalid header"); return 1 }
+        } else {
+            match ballot(line, header.unwrap()) {
+                Some(ranking) => ballots.push(ranking),
+                None => invalid += 1,
+            }
+        }
+    }
+    let Some(names) = header else { sys.console.eprintln("missing header"); return 1 }
+    sys.console.println("ballots={ballots.len()} invalid={invalid}")
+    var continuing: List[Bool] = List.filled(names.len(), true)
+    var remaining = names.len()
+    var round = 1
+    while true {
+        var votes: List[Int] = List.filled(names.len(), 0)
+        var exhausted = 0
+        for ranking in ballots {
+            var chosen: Option[Int] = None
+            for index in ranking { if continuing[index] { chosen = Some(index); break } }
+            if let Some(candidate) = chosen { votes[candidate] += 1 } else { exhausted += 1 }
+        }
+        var output = "round {round}:"
+        var winner: Option[Int] = None
+        var weakest = -1
+        for index in 0..names.len() {
+            if not continuing[index] { continue }
+            output += " {names[index]}={votes[index]}"
+            if votes[index] * 2 > ballots.len() - exhausted or remaining == 1 { winner = Some(index) }
+            if weakest == -1 or votes[index] <= votes[weakest] { weakest = index }
+        }
+        sys.console.println("{output} exhausted={exhausted}")
+        if let Some(victor) = winner { sys.console.println("winner: {names[victor]}"); return 0 }
+        sys.console.println("eliminated: {names[weakest]}")
+        continuing[weakest] = false
+        remaining -= 1
+        round += 1
+    }
+}
