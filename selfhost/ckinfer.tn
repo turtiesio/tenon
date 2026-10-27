@@ -1,0 +1,1018 @@
+// module (imported by the self-hosted checker)
+// Function bodies: name resolution, type inference, methods, places and
+// patterns. A port of src/check.rs (functions, statements, places, patterns)
+// and src/check_expr.rs, decision for decision and message for message.
+
+import ckast
+import cktypes
+import ckenv
+import ckexh
+
+pub struct Local { pub name: Str, pub ty: cktypes.Ty, pub mutable: Bool, pub depth: Int }
+pub struct Ctx { pub ret: cktypes.Ty, pub loops: Int }
+
+pub struct Ck {
+    pub env: ckenv.Env,
+    pub sub: cktypes.Subst,
+    pub scopes: List[List[Local]],
+    pub ctx: List[Ctx],
+    pub ptypes: Map[Int, cktypes.Ty],              // pending types of the current function
+    pub pres: Map[Int, ckenv.Res],                 // pending resolutions
+    pub pcaps: Map[Int, List[(Str, cktypes.Ty)]],  // pending captures
+    pub lambdas: List[(Int, Int)],                 // (lambda id, scope index where it starts)
+    pub tparams: List[Str],
+    pub self_mut: Bool,
+    pub in_callee: Bool, // checking the callee of a call (functions with `mut` params allowed)
+    pub types: Map[Int, cktypes.Ty],
+    pub res: Map[Int, ckenv.Res],
+    pub captures: Map[Int, List[(Str, cktypes.Ty)]],
+}
+
+pub fn new_ck(env: ckenv.Env) -> Ck {
+    Ck {
+        env, sub: cktypes.new_subst(), scopes: [], ctx: [], ptypes: [:], pres: [:], pcaps: [:], lambdas: [],
+        tparams: [], self_mut: false, in_callee: false, types: [:], res: [:], captures: [:],
+    }
+}
+
+fn is_var(t: cktypes.Ty) -> Bool {
+    match t {
+        TVar(_) => true,
+        _ => false,
+    }
+}
+
+fn irrefutable(p: ckast.Pat) -> Bool {
+    match p.k {
+        QWild | QBind(_) => true,
+        QTuple(ps) => ps.all(irrefutable),
+        _ => false,
+    }
+}
+
+// ---- functions ----
+
+pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Diag] {
+    let body = match f.body {
+        Some(b) => b,
+        None => return Ok(()),
+    }
+    self.env.cur = f.sp.file
+    self.sub = cktypes.new_subst()
+    let info = self.env.fns[idx]
+    self.tparams = info.tparams
+    self.self_mut = f.self_kind == MutSelf
+    var params: List[Local] = []
+    let mutp = f.params.filter(fn(p) => p.by_mut).map(fn(p) => p.name)
+    for p in info.params { params.push(Local { name: p.0, ty: p.1, mutable: mutp.contains(p.0), depth: 0 }) }
+    self.scopes = [params]
+    self.ctx = [Ctx { ret: info.ret, loops: 0 }]
+    self.lambdas = []
+    let _ = self.block(body, info.ret, true)?
+    self.flush()
+    Ok(())
+}
+
+fn finish_all(sub: cktypes.Subst, ts: List[cktypes.Ty]) -> List[cktypes.Ty] { ts.map(fn(t) => sub.finish(t)) }
+
+fn Ck.flush(mut self) {
+    let sub = self.sub
+    let pt = self.ptypes
+    self.ptypes = [:]
+    for (id, t) in pt { self.types[id] = sub.finish(t) }
+    let pr = self.pres
+    self.pres = [:]
+    for (id, r) in pr {
+        self.res[id] = match r {
+            RFn(i, ts) => RFn(i, finish_all(sub, ts)),
+            RVariant(e, v, ts) => RVariant(e, v, finish_all(sub, ts)),
+            RMethod(i, ts) => RMethod(i, finish_all(sub, ts)),
+            other => other,
+        }
+    }
+    let pc = self.pcaps
+    self.pcaps = [:]
+    for (id, caps) in pc { self.captures[id] = caps.map(fn(c) => (c.0, sub.finish(c.1))) }
+}
+
+fn Ck.record(mut self, id: Int, t: cktypes.Ty) { self.ptypes[id] = t }
+
+fn Ck.show(self, t: cktypes.Ty) -> Str { self.sub.resolve(t).show() }
+
+fn Ck.unify_at(mut self, sp: ckast.Span, expected: cktypes.Ty, found: cktypes.Ty) -> Result[Unit, ckast.Diag] {
+    if self.sub.unify(expected, found) { return Ok(()) }
+    ckast.fail(sp, "type mismatch: expected " + self.show(expected) + ", found " + self.show(found))
+}
+
+fn Ck.known(self, t: cktypes.Ty, sp: ckast.Span, what: Str) -> Result[cktypes.Ty, ckast.Diag] {
+    let s = self.sub.shallow(t)
+    if is_var(s) { return ckast.fail(sp, "the type of " + what + " must be known here; add a type annotation") }
+    Ok(s)
+}
+
+fn Ck.ret_ty(self) -> cktypes.Ty { self.ctx[self.ctx.len() - 1].ret }
+
+fn Ck.add_loops(mut self, d: Int) { self.ctx[self.ctx.len() - 1].loops += d }
+
+// ---- scopes ----
+
+fn Ck.lookup(self, n: Str) -> Option[(Int, Local)] {
+    var i = self.scopes.len() - 1
+    while i >= 0 {
+        let sc = self.scopes[i]
+        var j = sc.len() - 1
+        while j >= 0 {
+            if sc[j].name == n { return Some((i, sc[j])) }
+            j -= 1
+        }
+        i -= 1
+    }
+    None
+}
+
+fn Ck.bind(mut self, n: Str, ty: cktypes.Ty, mutable: Bool, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    if n == "_" { return Ok(()) }
+    if self.lookup(n).is_some() {
+        return ckast.fail(sp, "'" + n + "' is already defined in this function (shadowing is not allowed)")
+    }
+    if self.env.imported(n) { return ckast.fail(sp, "'" + n + "' is the name of an imported module") }
+    let depth = self.lambdas.len()
+    self.scopes[self.scopes.len() - 1].push(Local { name: n, ty, mutable, depth })
+    Ok(())
+}
+
+// Record captures for every lambda between the use and the definition.
+fn Ck.note_use(mut self, n: Str, si: Int, ty: cktypes.Ty) {
+    let lams = self.lambdas
+    for l in lams {
+        if si < l.1 {
+            var caps = self.pcaps.get(l.0).unwrap_or([])
+            if not caps.any(fn(c) => c.0 == n) {
+                caps.push((n, ty))
+                self.pcaps[l.0] = caps
+            }
+        }
+    }
+}
+
+// ---- statements ----
+
+// Checks a block; the value is the trailing expression statement, if any.
+pub fn Ck.block(mut self, b: ckast.Block, exp: cktypes.Ty, value_used: Bool) -> Result[cktypes.Ty, ckast.Diag] {
+    self.scopes.push([])
+    let n = b.stmts.len()
+    var result: Option[cktypes.Ty] = None
+    for i in 0..n {
+        let s = b.stmts[i]
+        if i + 1 == n {
+            match s.k {
+                KExpr(e) if value_used and not self.sub.shallow(exp).is("Unit") => result = Some(self.expr(e, exp)?),
+                KReturn(_) | KBreak | KContinue => {
+                    self.stmt(s)?
+                    result = Some(self.sub.fresh())
+                }
+                // `while true` without a `break` never finishes: it needs no value after it.
+                KWhile(c, body) if is_true(c) and not ckast.breaks(body.stmts) => {
+                    self.stmt(s)?
+                    result = Some(self.sub.fresh())
+                }
+                _ => self.stmt(s)?,
+            }
+        } else {
+            self.stmt(s)?
+        }
+    }
+    let _ = self.scopes.pop()
+    match result {
+        Some(t) => Ok(t),
+        None => {
+            let sp = if n > 0 { b.stmts[n - 1].sp } else { b.sp }
+            if not self.sub.unify(exp, cktypes.t_unit()) {
+                return ckast.fail(sp, "this block must end with a value of type " + self.show(exp))
+            }
+            Ok(cktypes.t_unit())
+        }
+    }
+}
+
+fn is_true(e: ckast.Expr) -> Bool {
+    match e.k {
+        XBool(b) => b,
+        _ => false,
+    }
+}
+
+fn Ck.stmt(mut self, s: ckast.Stmt) -> Result[Unit, ckast.Diag] {
+    match s.k {
+        KExpr(e) => {
+            let t0 = self.sub.fresh()
+            let t1 = self.expr(e, t0)?
+            let t = self.sub.resolve(t1)
+            if not (t.is("Unit") or is_var(t)) {
+                return ckast.fail(e.sp, "unused value of type " + t.show() + "; handle it, or discard explicitly with 'let _ = ...'")
+            }
+            if is_var(t) { let _ = self.sub.unify(t, cktypes.t_unit()) }
+        }
+        KLet(pat, mutable, ty, value, els) => {
+            let t = match ty {
+                Some(x) => self.env.lower_type(x, self.tparams)?,
+                None => self.sub.fresh(),
+            }
+            let _ = self.expr(value, t)?
+            match els {
+                None => if not irrefutable(pat) {
+                    return ckast.fail(pat.sp, "'let' needs a pattern that always matches; use 'let ... else' or 'match'")
+                },
+                Some(b) => {
+                    match pat.k {
+                        QOr(_) => return ckast.fail(pat.sp, "'let ... else' cannot use '|' patterns; use 'match'"),
+                        _ => {}
+                    }
+                    if not ckast.leaves(b) {
+                        return ckast.fail(b.sp, "the 'else' block of 'let ... else' must leave: end it with return, break, continue or panic")
+                    }
+                    // Checked before the pattern binds: the else block cannot see its names.
+                    let _ = self.block(b, cktypes.t_unit(), false)?
+                }
+            }
+            self.pattern(pat, t, mutable)?
+            if els.is_some() {
+                // A pattern that always matches makes the else block dead.
+                let arm = ckast.Arm { pat, guard: None, body: ckast.Expr { id: -1, sp: pat.sp, k: XUnit } }
+                if ckexh.check(self.env, self.pres, pat.sp, self.sub.resolve(t), [arm]).is_ok() {
+                    return ckast.fail(pat.sp, "this pattern always matches, so the 'else' block can never run; use plain 'let'")
+                }
+            }
+        }
+        KAssign(target, op, value) => {
+            let t0 = self.sub.fresh()
+            let t = self.expr(target, t0)?
+            self.place(target, true)?
+            let _ = self.expr(value, t)?
+            match op {
+                Some(o) => {
+                    let rt = self.known(t, target.sp, "this operand")?
+                    self.arith_ok(o, rt, s.sp)?
+                }
+                None => {}
+            }
+        }
+        KWhile(cond, body) => {
+            let _ = self.expr(cond, cktypes.t_bool())?
+            self.add_loops(1)
+            let _ = self.block(body, cktypes.t_unit(), false)?
+            self.add_loops(-1)
+        }
+        KFor(pat, it, body) => {
+            self.scopes.push([])
+            let elem = match it {
+                FRange(a, z) => {
+                    let _ = self.expr(a, cktypes.t_int())?
+                    let _ = self.expr(z, cktypes.t_int())?
+                    cktypes.t_int()
+                }
+                FEach(x) => {
+                    let t0 = self.sub.fresh()
+                    let t1 = self.expr(x, t0)?
+                    let t = self.known(t1, x.sp, "the loop source")?
+                    match t {
+                        Con(n, a) if n == "List" => a[0],
+                        Con(n, a) if n == "Map" => Tup([a[0], a[1]]),
+                        _ => return ckast.fail(x.sp, "cannot iterate over " + self.show(t) + "; expected a List or Map"),
+                    }
+                }
+            }
+            if not irrefutable(pat) { return ckast.fail(pat.sp, "loop variables need a pattern that always matches") }
+            self.pattern(pat, elem, false)?
+            self.add_loops(1)
+            let _ = self.block(body, cktypes.t_unit(), false)?
+            self.add_loops(-1)
+            let _ = self.scopes.pop()
+        }
+        KReturn(v) => {
+            let ret = self.ret_ty()
+            match v {
+                Some(e) => {
+                    let _ = self.expr(e, ret)?
+                }
+                None => {
+                    if not self.sub.unify(ret, cktypes.t_unit()) {
+                        return ckast.fail(s.sp, "'return' needs a value of type " + self.show(ret))
+                    }
+                }
+            }
+        }
+        KBreak | KContinue => {
+            if self.ctx[self.ctx.len() - 1].loops == 0 { return ckast.fail(s.sp, "'break'/'continue' outside of a loop") }
+        }
+    }
+    Ok(())
+}
+
+// Is `e` a place rooted in a `var` (or `mut self`)? Needed for mutation.
+fn Ck.place(self, e: ckast.Expr, assign: Bool) -> Result[Unit, ckast.Diag] {
+    match e.k {
+        XName(n) => {
+            if n == "self" {
+                if self.self_mut and self.lambdas.is_empty() { return Ok(()) }
+                return ckast.fail(e.sp, "cannot mutate 'self'; declare the method with 'mut self'")
+            }
+            match self.lookup(n) {
+                Some((_, l)) if l.mutable and l.depth == self.lambdas.len() => Ok(()),
+                Some((_, l)) if l.mutable => ckast.fail(e.sp, "'" + n + "' is captured by a closure as a copy and cannot be mutated"),
+                Some(_) => ckast.fail(e.sp, "cannot mutate '" + n + "'; declare it with 'var'"),
+                None => ckast.fail(e.sp, "this is not a mutable variable"),
+            }
+        }
+        XField(b, _) => self.place(b, assign),
+        XTField(b, _) => self.place(b, assign),
+        XIndex(b, _) => self.place(b, assign),
+        _ => ckast.fail(e.sp, if assign { "cannot assign to this expression" } else { "cannot mutate a temporary value; store it in a 'var' first" }),
+    }
+}
+
+// ---- patterns ----
+
+fn Ck.pattern(mut self, p: ckast.Pat, t: cktypes.Ty, mutable: Bool) -> Result[Unit, ckast.Diag] {
+    self.record(p.id, t)
+    match p.k {
+        QWild => {}
+        QBind(n) => self.bind(n, t, mutable, p.sp)?,
+        QInt(_) => self.unify_at(p.sp, t, cktypes.t_int())?,
+        QStr(_) => self.unify_at(p.sp, t, cktypes.t_str())?,
+        QBool(_) => self.unify_at(p.sp, t, cktypes.t_bool())?,
+        QTuple(ps) => {
+            var ts: List[cktypes.Ty] = []
+            for _ in ps { ts.push(self.sub.fresh()) }
+            self.unify_at(p.sp, t, Tup(ts))?
+            for i in 0..ps.len() { self.pattern(ps[i], ts[i], mutable)? }
+        }
+        QVariant(q, v, args) => {
+            let st = self.known(t, p.sp, "the matched value")?
+            let cant = "pattern '" + v + "' cannot match a value of type " + self.show(st)
+            let (tn, targs) = match st {
+                Con(n, a) => (n, a),
+                _ => return ckast.fail(p.sp, cant),
+            }
+            let ei = match self.env.enum_idx(tn) {
+                Some(i) => i,
+                None => return ckast.fail(p.sp, cant),
+            }
+            match q {
+                Some(qn) => if self.env.resolve_type(qn, p.sp)? != tn {
+                    return ckast.fail(p.sp, "pattern is for '" + qn + "' but the value has type " + tn)
+                },
+                None => {}
+            }
+            let en = self.env.enums[ei]
+            var vi = -1
+            for i in 0..en.variants.len() {
+                if vi < 0 and en.variants[i].0 == v { vi = i }
+            }
+            if vi < 0 { return ckast.fail(p.sp, "'" + tn + "' has no variant '" + v + "'") }
+            let fts = en.variants[vi].1.map(fn(x) => x.subst(en.tparams, targs))
+            if fts.len() != args.len() {
+                return ckast.fail(p.sp, "variant '" + v + "' has {fts.len()} field(s), pattern has {args.len()}")
+            }
+            self.pres[p.id] = RVariant(ei, vi, targs)
+            for i in 0..args.len() { self.pattern(args[i], fts[i], mutable)? }
+        }
+        QOr(alts) => {
+            let last = self.scopes.len() - 1
+            let before = self.scopes[last].len()
+            self.pattern(alts[0], t, mutable)?
+            let first = self.scopes[last]
+            let names = first.slice(before, first.len()).map(fn(l) => l.name)
+            for ai in 1..alts.len() {
+                let a = alts[ai]
+                let tmp = self.scopes[last]
+                self.scopes[last] = tmp.slice(0, before)
+                self.pattern(a, t, mutable)?
+                let now = self.scopes[last]
+                let got = now.slice(before, now.len())
+                if got.map(fn(l) => l.name).sorted() != names.sorted() {
+                    return ckast.fail(a.sp, "every alternative of '|' must bind the same names")
+                }
+                let orig = tmp.slice(before, tmp.len())
+                for l in got {
+                    var ot = l.ty
+                    var found = false
+                    for o in orig {
+                        if not found and o.name == l.name {
+                            ot = o.ty
+                            found = true
+                        }
+                    }
+                    self.unify_at(a.sp, ot, l.ty)?
+                }
+                self.scopes[last] = tmp
+            }
+        }
+    }
+    Ok(())
+}
+
+// ---- expressions ----
+
+pub fn Ck.expr(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
+    let t = self.expr_inner(e, exp)?
+    self.unify_at(e.sp, exp, t)?
+    self.record(e.id, t)
+    Ok(t)
+}
+
+fn Ck.arith_ok(self, op: Str, t: cktypes.Ty, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    let ok = if op == "Add" {
+        t.is("Int") or t.is("Float") or t.is("Str") or t.is("List")
+    } else if op == "Sub" or op == "Mul" or op == "Div" or op == "Rem" {
+        t.is("Int") or t.is("Float")
+    } else {
+        true
+    }
+    if ok { Ok(()) } else { ckast.fail(sp, "operator " + op + " is not defined for " + self.show(t)) }
+}
+
+fn not_comparable(t: cktypes.Ty) -> Bool {
+    match t {
+        Fun(_, _) => true,
+        Con(n, _) => cktypes.is_capability(n),
+        _ => false,
+    }
+}
+
+fn Ck.comparable(self, t: cktypes.Ty, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    let r = self.sub.resolve(t)
+    if r.any(not_comparable) { return ckast.fail(sp, "values of type " + r.show() + " cannot be compared") }
+    Ok(())
+}
+
+fn Ck.instantiate(mut self, fi: Int) -> List[cktypes.Ty] {
+    let n = self.env.fns[fi].tparams.len()
+    var targs: List[cktypes.Ty] = []
+    for _ in 0..n { targs.push(self.sub.fresh()) }
+    targs
+}
+
+fn Ck.fn_type(self, fi: Int, targs: List[cktypes.Ty]) -> cktypes.Ty {
+    let f = self.env.fns[fi]
+    Fun(f.params.map(fn(p) => p.1.subst(f.tparams, targs)), f.ret.subst(f.tparams, targs))
+}
+
+fn Ck.call_args(mut self, sp: ckast.Span, params: List[cktypes.Ty], args: List[ckast.Expr], what: Str) -> Result[Unit, ckast.Diag] {
+    self.call_args_mut(sp, params, [], args, what, [])
+}
+
+// The variable a place expression is rooted at.
+fn place_root(e: ckast.Expr) -> Str {
+    match e.k {
+        XField(b, _) => place_root(b),
+        XTField(b, _) => place_root(b),
+        XIndex(b, _) => place_root(b),
+        XName(n) => n,
+        _ => "",
+    }
+}
+
+// `muts[i]`: parameter i is `mut`, so its argument must be `mut place`.
+fn Ck.call_args_mut(mut self, sp: ckast.Span, params: List[cktypes.Ty], muts: List[Bool], args: List[ckast.Expr], what: Str, roots0: List[Str]) -> Result[Unit, ckast.Diag] {
+    if params.len() != args.len() {
+        return ckast.fail(sp, what + " expects {params.len()} argument(s), found {args.len()}")
+    }
+    var roots = roots0
+    for i in 0..args.len() {
+        let a = args[i]
+        let want_mut = i < muts.len() and muts[i]
+        match a.k {
+            XMutArg(inner) => {
+                if not want_mut { return ckast.fail(a.sp, "this parameter is not 'mut'; pass the value without 'mut'") }
+                let _ = self.expr(inner, params[i])?
+                self.place(inner, false)?
+                self.record(a.id, params[i])
+                let root = place_root(inner)
+                if roots.contains(root) { return ckast.fail(a.sp, "two 'mut' arguments refer to '" + root + "'; they would alias") }
+                roots.push(root)
+            }
+            _ => {
+                if want_mut {
+                    return ckast.fail(a.sp, "this parameter is 'mut': pass a variable as 'mut x' so the change is visible at the call")
+                }
+                let _ = self.expr(a, params[i])?
+            }
+        }
+    }
+    Ok(())
+}
+
+fn Ck.variant_by_name(self, v: Str, sp: ckast.Span) -> Result[Option[(Int, Int)], ckast.Diag] {
+    var found: List[(Int, Int)] = []
+    for c in self.env.variant_ix.get(v).unwrap_or([]) {
+        let e = self.env.enums[c.0]
+        if e.file == self.env.cur or e.file == 0 or (e.public and self.env.imported(self.env.modules[e.file])) {
+            found.push(c)
+        }
+    }
+    if found.is_empty() { return Ok(None) }
+    if found.len() == 1 { return Ok(Some(found[0])) }
+    let names = found.map(fn(c) => self.env.enums[c.0].name)
+    ckast.fail(sp, "variant '" + v + "' is ambiguous (" + names.join(", ") + "); qualify it, e.g. " + names[0] + "." + v)
+}
+
+fn Ck.variant_pos(self, ei: Int, m: Str) -> Option[Int] {
+    let vs = self.env.enums[ei].variants
+    for i in 0..vs.len() {
+        if vs[i].0 == m { return Some(i) }
+    }
+    None
+}
+
+fn Ck.variant_value(mut self, sp: ckast.Span, callee: Int, ei: Int, vi: Int, args: Option[List[ckast.Expr]]) -> Result[cktypes.Ty, ckast.Diag] {
+    let en = self.env.enums[ei]
+    var targs: List[cktypes.Ty] = []
+    for _ in en.tparams { targs.push(self.sub.fresh()) }
+    let vname = en.variants[vi].0
+    let fts = en.variants[vi].1.map(fn(x) => x.subst(en.tparams, targs))
+    let ety = Con(en.name, targs)
+    self.pres[callee] = RVariant(ei, vi, targs)
+    match args {
+        None => if fts.is_empty() { Ok(ety) } else { Ok(Fun(fts, ety)) },
+        Some(xs) => {
+            if fts.is_empty() { return ckast.fail(sp, "variant '" + vname + "' takes no arguments") }
+            self.call_args(sp, fts, xs, "variant '" + vname + "'")?
+            Ok(ety)
+        }
+    }
+}
+
+fn Ck.fresh_list(mut self, n: Int) -> List[cktypes.Ty] {
+    var out: List[cktypes.Ty] = []
+    for _ in 0..n { out.push(self.sub.fresh()) }
+    out
+}
+
+fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
+    match e.k {
+        XInt => Ok(cktypes.t_int()),
+        XFloat => Ok(cktypes.t_float()),
+        XBool(_) => Ok(cktypes.t_bool()),
+        XUnit => Ok(cktypes.t_unit()),
+        XStr(xs) => {
+            for x in xs {
+                let t0 = self.sub.fresh()
+                let t = self.expr(x, t0)?
+                match self.sub.shallow(t) {
+                    Fun(_, _) => return ckast.fail(x.sp, "functions cannot be converted to strings"),
+                    _ => {}
+                }
+            }
+            Ok(cktypes.t_str())
+        }
+        XName(n) => self.name(e, n),
+        XPath(t0, m) => self.path(e, t0, m),
+        XCall(callee, args) => self.call(e, callee, args, exp),
+        XMethod(recv, m, args) => self.method(e, recv, m, args),
+        XField(b, f) => {
+            let t0 = self.sub.fresh()
+            let t1 = self.expr(b, t0)?
+            let t = self.known(t1, b.sp, "this value")?
+            let fields = match self.env.struct_fields(t) {
+                Some(fs) => fs,
+                None => return ckast.fail(e.sp, "type " + self.show(t) + " has no fields"),
+            }
+            var fi = -1
+            for i in 0..fields.len() {
+                if fi < 0 and fields[i].0 == f { fi = i }
+            }
+            if fi < 0 { return ckast.fail(e.sp, "type " + self.show(t) + " has no field '" + f + "'") }
+            match t {
+                Con(sn, _) => {
+                    let st = self.env.structs[self.env.struct_idx(sn).unwrap()]
+                    if st.file != self.env.cur and not st.pub_fields[fi] {
+                        return ckast.fail(e.sp, "field '" + f + "' of '" + sn + "' is private to its module")
+                    }
+                }
+                _ => {}
+            }
+            self.pres[e.id] = RField(fi)
+            Ok(fields[fi].1)
+        }
+        XTField(b, i) => {
+            let t0 = self.sub.fresh()
+            let t1 = self.expr(b, t0)?
+            let t = self.known(t1, b.sp, "this value")?
+            match t {
+                Tup(ts) if i < ts.len() => Ok(ts[i]),
+                _ => ckast.fail(e.sp, "type " + self.show(t) + " has no element {i}"),
+            }
+        }
+        XIndex(b, i) => {
+            let t0 = self.sub.fresh()
+            let t1 = self.expr(b, t0)?
+            let t = self.known(t1, b.sp, "the indexed value")?
+            match t {
+                Con(n, a) if n == "List" => {
+                    let _ = self.expr(i, cktypes.t_int())?
+                    Ok(a[0])
+                }
+                Con(n, a) if n == "Map" => {
+                    let _ = self.expr(i, a[0])?
+                    Ok(a[1])
+                }
+                _ => ckast.fail(e.sp, "cannot index a value of type " + self.show(t)),
+            }
+        }
+        XUnary(op, x) => {
+            if op == "not" {
+                let _ = self.expr(x, cktypes.t_bool())?
+                return Ok(cktypes.t_bool())
+            }
+            let t0 = self.sub.fresh()
+            let t1 = self.expr(x, t0)?
+            let t = self.known(t1, x.sp, "the operand")?
+            if not (t.is("Int") or t.is("Float")) { return ckast.fail(e.sp, "cannot negate " + self.show(t)) }
+            Ok(t)
+        }
+        XBinary(op, l, r) => {
+            if op == "And" or op == "Or" {
+                let _ = self.expr(l, cktypes.t_bool())?
+                let _ = self.expr(r, cktypes.t_bool())?
+                return Ok(cktypes.t_bool())
+            }
+            if op == "Eq" or op == "Ne" or op == "Lt" or op == "Le" or op == "Gt" or op == "Ge" {
+                let t0 = self.sub.fresh()
+                let t = self.expr(l, t0)?
+                let _ = self.expr(r, t)?
+                self.comparable(t, e.sp)?
+                return Ok(cktypes.t_bool())
+            }
+            let t = if is_var(self.sub.shallow(exp)) { self.sub.fresh() } else { exp }
+            let lt0 = self.expr(l, t)?
+            let _ = self.expr(r, lt0)?
+            let lt = self.known(lt0, l.sp, "the operand")?
+            self.arith_ok(op, lt, e.sp)?
+            Ok(lt)
+        }
+        XIf(c, then, els) => {
+            let _ = self.expr(c, cktypes.t_bool())?
+            match els {
+                None => {
+                    match self.block(then, cktypes.t_unit(), true) {
+                        Ok(_) => {}
+                        Err(d) => {
+                            if d.msg.starts_with("type mismatch") {
+                                return ckast.fail(d.sp, d.msg + " ('if' without 'else' must produce Unit)")
+                            }
+                            return Err(d)
+                        }
+                    }
+                    Ok(cktypes.t_unit())
+                }
+                Some(x) => {
+                    let t = self.block(then, exp, true)?
+                    let _ = self.expr(x, t)?
+                    Ok(t)
+                }
+            }
+        }
+        XBlock(b) => self.block(b, exp, true),
+        XMatch(s, arms) => {
+            let st0 = self.sub.fresh()
+            let st = self.expr(s, st0)?
+            for a in arms {
+                self.scopes.push([])
+                self.pattern(a.pat, st, false)?
+                match a.guard {
+                    Some(g) => {
+                        let _ = self.expr(g, cktypes.t_bool())?
+                    }
+                    None => {}
+                }
+                let _ = self.expr(a.body, exp)?
+                let _ = self.scopes.pop()
+            }
+            let rst = self.sub.resolve(st)
+            ckexh.check(self.env, self.pres, e.sp, rst, arms)?
+            Ok(exp)
+        }
+        XList(xs) => {
+            let et = match self.sub.shallow(exp) {
+                Con(n, a) if n == "List" => a[0],
+                _ => self.sub.fresh(),
+            }
+            for x in xs {
+                let _ = self.expr(x, et)?
+            }
+            Ok(cktypes.t_list(et))
+        }
+        XMap(ps) => {
+            var kt = cktypes.t_unit()
+            var vt = cktypes.t_unit()
+            match self.sub.shallow(exp) {
+                Con(n, a) if n == "Map" => {
+                    kt = a[0]
+                    vt = a[1]
+                }
+                _ => {
+                    kt = self.sub.fresh()
+                    vt = self.sub.fresh()
+                }
+            }
+            for p in ps {
+                let _ = self.expr(p.0, kt)?
+                let _ = self.expr(p.1, vt)?
+            }
+            Ok(Con("Map", [kt, vt]))
+        }
+        XTuple(xs) => {
+            let ets = match self.sub.shallow(exp) {
+                Tup(ts) if ts.len() == xs.len() => ts,
+                _ => self.fresh_list(xs.len()),
+            }
+            for i in 0..xs.len() {
+                let _ = self.expr(xs[i], ets[i])?
+            }
+            Ok(Tup(ets))
+        }
+        XNew(name0, fields, base) => self.struct_lit(e, name0, fields, base, exp),
+        XTry(x) => {
+            let t0 = self.sub.fresh()
+            let t1 = self.expr(x, t0)?
+            let t = self.known(t1, x.sp, "the operand of '?'")?
+            let ret = self.ret_ty()
+            match t {
+                Con(n, a) if n == "Result" => {
+                    let ok = self.sub.fresh()
+                    if not self.sub.unify(ret, Con("Result", [ok, a[1]])) {
+                        return ckast.fail(e.sp, "'?' on " + self.show(t) + " needs the function to return Result[_, " +
+                            self.show(a[1]) + "], but it returns " + self.show(ret))
+                    }
+                    Ok(a[0])
+                }
+                Con(n, a) if n == "Option" => {
+                    let ok = self.sub.fresh()
+                    if not self.sub.unify(ret, Con("Option", [ok])) {
+                        return ckast.fail(e.sp, "'?' on an Option needs the function to return an Option, but it returns " + self.show(ret))
+                    }
+                    Ok(a[0])
+                }
+                _ => ckast.fail(e.sp, "'?' needs a Result or Option, found " + self.show(t)),
+            }
+        }
+        XLambda(params, ret, body) => self.lambda(e, params, ret, body, exp),
+        XMutArg(_) => ckast.fail(e.sp, "'mut' marks an argument to a 'mut' parameter"),
+    }
+}
+
+fn Ck.name(mut self, e: ckast.Expr, n: Str) -> Result[cktypes.Ty, ckast.Diag] {
+    match self.lookup(n) {
+        Some((si, l)) => {
+            self.note_use(n, si, l.ty)
+            self.pres[e.id] = RLocal(n)
+            return Ok(l.ty)
+        }
+        None => {}
+    }
+    match self.env.lookup_fn(n) {
+        Some(fi) => {
+            let f = self.env.fns[fi]
+            if not self.in_callee and f.muts.contains(true) {
+                return ckast.fail(e.sp, "'" + n + "' has 'mut' parameters, so it can only be called, not used as a value")
+            }
+            if f.is_const {
+                self.pres[e.id] = RConst(fi)
+                return Ok(f.ret)
+            }
+            let targs = self.instantiate(fi)
+            self.pres[e.id] = RFn(fi, targs)
+            return Ok(self.fn_type(fi, targs))
+        }
+        None => {}
+    }
+    if ckast.upper(n) {
+        match self.variant_by_name(n, e.sp)? {
+            Some((ei, vi)) => return self.variant_value(e.sp, e.id, ei, vi, None),
+            None => {}
+        }
+    }
+    ckast.fail(e.sp, "unknown name '" + n + "'")
+}
+
+fn Ck.path(mut self, e: ckast.Expr, t0: Str, m: Str) -> Result[cktypes.Ty, ckast.Diag] {
+    var t = t0
+    if t0.starts_with("@") {
+        let md = t0.slice(1, t0.len())
+        if not self.env.imported(md) { return ckast.fail(e.sp, "unknown module '" + md + "'") }
+        t = md
+    } else {
+        t = self.env.resolve_type(t0, e.sp)?
+    }
+    match self.env.enum_idx(t) {
+        Some(ei) => match self.variant_pos(ei, m) {
+            Some(vi) => return self.variant_value(e.sp, e.id, ei, vi, None),
+            None => {}
+        },
+        None => {}
+    }
+    let fi = match self.env.find_fn(t + "." + m) {
+        Some(i) => i,
+        None => return ckast.fail(e.sp, "'" + t + "' has no member '" + m + "'"),
+    }
+    self.env.visible(fi, e.sp)?
+    if self.env.fns[fi].is_const {
+        self.pres[e.id] = RConst(fi)
+        return Ok(self.env.fns[fi].ret)
+    }
+    let targs = self.instantiate(fi)
+    self.pres[e.id] = RFn(fi, targs)
+    Ok(self.fn_type(fi, targs))
+}
+
+fn Ck.call(mut self, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr], exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
+    // Variant constructors get their arguments checked directly.
+    var variant: Option[(Int, Int)] = None
+    match callee.k {
+        XName(n) if ckast.upper(n) and self.lookup(n).is_none() and self.env.lookup_fn(n).is_none() => {
+            variant = self.variant_by_name(n, callee.sp)?
+        }
+        XPath(t, m) if not t.starts_with("@") => match self.env.resolve_type(t, callee.sp) {
+            Ok(tn) => match self.env.enum_idx(tn) {
+                Some(ei) => match self.variant_pos(ei, m) {
+                    Some(vi) => variant = Some((ei, vi)),
+                    None => {}
+                },
+                None => {}
+            },
+            Err(_) => {}
+        },
+        _ => {}
+    }
+    match variant {
+        Some((ei, vi)) => {
+            let t = self.variant_value(e.sp, callee.id, ei, vi, Some(args))?
+            self.record(callee.id, t)
+            return Ok(t)
+        }
+        None => {}
+    }
+    let ct0 = self.sub.fresh()
+    let saved = self.in_callee
+    self.in_callee = true
+    let checked = self.expr(callee, ct0)
+    self.in_callee = saved
+    let ct1 = checked?
+    let ct = self.known(ct1, callee.sp, "the called value")?
+    match ct {
+        Fun(ps, r) => {
+            let named = match callee.k {
+                XName(_) | XPath(_, _) => true,
+                _ => false,
+            }
+            let local = match self.pres.get(callee.id) {
+                Some(RLocal(_)) => true,
+                _ => false,
+            }
+            if not named or local { self.pres[e.id] = RCallValue }
+            let muts = match self.pres.get(callee.id) {
+                Some(RFn(fi, _)) => self.env.fns[fi].muts,
+                _ => [],
+            }
+            self.call_args_mut(e.sp, ps, muts, args, "this function", [])?
+            Ok(r)
+        }
+        _ => ckast.fail(callee.sp, "cannot call a value of type " + self.show(ct)),
+    }
+}
+
+fn Ck.struct_lit(mut self, e: ckast.Expr, name0: Str, fields: List[(Str, ckast.Expr)], base: Option[ckast.Expr], exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
+    let name = self.env.resolve_type(name0, e.sp)?
+    let si = match self.env.struct_idx(name) {
+        Some(i) => i,
+        None => return ckast.fail(e.sp, "'" + name0 + "' is not a struct"),
+    }
+    let sd = self.env.structs[si]
+    if sd.file != self.env.cur and sd.pub_fields.any(fn(p) => not p) {
+        return ckast.fail(e.sp, "'" + name0 + "' has private fields; it can only be built inside its module")
+    }
+    self.pres[e.id] = RStruct(si)
+    let targs = match self.sub.shallow(exp) {
+        Con(n, a) if n == name => a,
+        _ => self.fresh_list(sd.tparams.len()),
+    }
+    let st = Con(name, targs)
+    let decl = self.env.struct_fields(st).unwrap()
+    for i in 0..fields.len() {
+        let (f, v) = fields[i]
+        var ft: Option[cktypes.Ty] = None
+        for d in decl {
+            if ft.is_none() and d.0 == f { ft = Some(d.1) }
+        }
+        let fty = match ft {
+            Some(x) => x,
+            None => return ckast.fail(v.sp, "struct '" + name + "' has no field '" + f + "'"),
+        }
+        if fields.slice(0, i).any(fn(g) => g.0 == f) { return ckast.fail(v.sp, "field '" + f + "' is given twice") }
+        let _ = self.expr(v, fty)?
+    }
+    match base {
+        Some(b) => {
+            let _ = self.expr(b, st)?
+        }
+        None => {
+            for d in decl {
+                if not fields.any(fn(g) => g.0 == d.0) {
+                    return ckast.fail(e.sp, "missing field '" + d.0 + "' in '" + name + "'")
+                }
+            }
+        }
+    }
+    Ok(st)
+}
+
+fn Ck.lambda(mut self, e: ckast.Expr, params: List[(Str, Option[ckast.TExpr])], ret: Option[ckast.TExpr], body: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
+    var pts: List[cktypes.Ty] = []
+    var rt = cktypes.t_unit()
+    match self.sub.shallow(exp) {
+        Fun(ps, r) if ps.len() == params.len() => {
+            pts = ps
+            rt = r
+        }
+        _ => {
+            pts = self.fresh_list(params.len())
+            rt = self.sub.fresh()
+        }
+    }
+    let tps = self.tparams
+    for i in 0..params.len() {
+        match params[i].1 {
+            Some(a) => {
+                let at = self.env.lower_type(a, tps)?
+                self.unify_at(e.sp, pts[i], at)?
+            }
+            None => {}
+        }
+    }
+    match ret {
+        Some(r) => {
+            let rr = self.env.lower_type(r, tps)?
+            self.unify_at(e.sp, rt, rr)?
+        }
+        None => {}
+    }
+    if not self.pcaps.contains(e.id) { self.pcaps[e.id] = [] }
+    self.lambdas.push((e.id, self.scopes.len()))
+    self.scopes.push([])
+    for i in 0..params.len() { self.bind(params[i].0, pts[i], false, e.sp)? }
+    self.ctx.push(Ctx { ret: rt, loops: 0 })
+    let _ = self.expr(body, rt)?
+    let _ = self.ctx.pop()
+    let _ = self.scopes.pop()
+    let _ = self.lambdas.pop()
+    Ok(Fun(pts, rt))
+}
+
+fn Ck.method(mut self, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast.Expr]) -> Result[cktypes.Ty, ckast.Diag] {
+    let rt0 = self.sub.fresh()
+    let rt1 = self.expr(recv, rt0)?
+    let rt = self.known(rt1, recv.sp, "the receiver")?
+    if m == "to_str" and args.is_empty() {
+        self.comparable(rt, e.sp)?
+        self.pres[e.id] = RToStr
+        return Ok(cktypes.t_str())
+    }
+    let owner = match rt {
+        Con(n, _) => n,
+        Par(p) => return ckast.fail(e.sp, "no methods are available on generic type '" + p + "'"),
+        _ => return ckast.fail(e.sp, "type " + self.show(rt) + " has no method '" + m + "'"),
+    }
+    let fi = match self.env.find_fn(owner + "." + m) {
+        Some(i) => i,
+        None => {
+            let hint = match self.env.struct_fields(rt) {
+                Some(fs) if fs.any(fn(f) => f.0 == m) => "; to call the field, write (x." + m + ")(...)",
+                _ => "",
+            }
+            return ckast.fail(e.sp, "type " + self.show(rt) + " has no method '" + m + "'" + hint)
+        }
+    }
+    self.env.visible(fi, e.sp)?
+    let f = self.env.fns[fi]
+    if f.self_kind == NoSelf {
+        return ckast.fail(e.sp, "'" + owner + "." + m + "' is not a method; call it as " + owner + "." + m + "(...)")
+    }
+    let targs = self.instantiate(fi)
+    let own = f.owner.unwrap().subst(f.tparams, targs)
+    let params = f.params.slice(1, f.params.len()).map(fn(p) => p.1.subst(f.tparams, targs))
+    let ret = f.ret.subst(f.tparams, targs)
+    if not self.sub.unify(own, rt) {
+        return ckast.fail(e.sp, "method '" + m + "' requires " + self.show(own) + ", found " + self.show(rt))
+    }
+    if f.self_kind == MutSelf {
+        match self.place(recv, false) {
+            Ok(_) => {}
+            Err(d) => return ckast.fail(d.sp, "'" + m + "' mutates its receiver: " + d.msg),
+        }
+    }
+    self.pres[e.id] = RMethod(fi, targs)
+    let roots0 = if f.self_kind == MutSelf { [place_root(recv)] } else { [] }
+    self.call_args_mut(e.sp, params, f.muts, args, "method '" + m + "'", roots0)?
+    Ok(ret)
+}

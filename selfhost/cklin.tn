@@ -1,0 +1,550 @@
+// module (imported by the self-hosted checker)
+// Linear and unique types, run after type checking: a port of src/linear.rs
+// (flow-sensitive consumption analysis) including the codec restrictions.
+
+import ckast
+import cktypes
+import ckenv
+
+struct Var { name: Str, kind: ckast.Kind, moved: Option[ckast.Span], borrowed: Bool }
+
+// State of a set of alternative paths run from the same starting point.
+struct Br { before: List[Var], outs: List[List[Var]], all_div: Bool }
+
+pub struct Walk {
+    env: ckenv.Env,
+    fns: List[ckast.FnDecl],
+    types: Map[Int, cktypes.Ty],
+    res: Map[Int, ckenv.Res],
+    caps: Map[Int, List[(Str, cktypes.Ty)]],
+    assume: List[Str], // type parameters treated as linear
+    vars: List[Var],
+    loops: List[Int], // vars.len() at the start of each enclosing loop
+    diverged: Bool,
+    // Does generic function `fi` accept a linear argument for parameter P?
+    // Keyed "fi:P"; a recursive query assumes success.
+    safe: Map[Str, Bool],
+}
+
+fn word(k: ckast.Kind) -> Str { ckenv.kind_word(k) }
+
+// Builtins (no body to analyze) that consume a generic argument exactly once.
+fn extern_ok(n: Str) -> Bool {
+    n == "Option.unwrap" or n == "Option.expect" or n == "Result.unwrap" or n == "Result.expect" or n == "panic"
+}
+
+pub fn check_all(env: ckenv.Env, fns: List[ckast.FnDecl], types: Map[Int, cktypes.Ty], res: Map[Int, ckenv.Res], caps: Map[Int, List[(Str, cktypes.Ty)]]) -> Result[Unit, ckast.Diag] {
+    var w = Walk { env, fns, types, res, caps, assume: [], vars: [], loops: [], diverged: false, safe: [:] }
+    for fi in 0..fns.len() { w.walk_fn(fi, [])? }
+    Ok(())
+}
+
+fn Walk.fresh(self, assume: List[Str]) -> Walk {
+    Walk {
+        env: self.env, fns: self.fns, types: self.types, res: self.res, caps: self.caps, assume,
+        vars: [], loops: [], diverged: false, safe: self.safe,
+    }
+}
+
+fn Walk.walk_fn(mut self, fi: Int, assume: List[Str]) -> Result[Unit, ckast.Diag] {
+    let f = self.fns[fi]
+    let body = match f.body {
+        Some(b) => b,
+        None => return Ok(()),
+    }
+    var w = self.fresh(assume)
+    let r = w.walk_body(fi, f, body)
+    self.safe = w.safe
+    r
+}
+
+fn Walk.walk_body(mut self, fi: Int, f: ckast.FnDecl, body: ckast.Block) -> Result[Unit, ckast.Diag] {
+    for p in self.env.fns[fi].params {
+        let k = self.kind_ty(p.1)
+        let by_ref = f.params.any(fn(q) => q.name == p.0 and (q.by_ref or q.by_mut))
+        if k != Plain and p.0 != "self" { self.vars.push(Var { name: p.0, kind: k, moved: None, borrowed: by_ref }) }
+    }
+    self.block(body, true)?
+    self.end_scope(0, body.sp)
+}
+
+fn Walk.kind_ty(self, t: cktypes.Ty) -> ckast.Kind {
+    let assume = self.assume
+    if not assume.is_empty() and t.any(fn(x) => match x {
+        Par(p) => assume.contains(p),
+        _ => false,
+    }) {
+        return Linear
+    }
+    self.env.kind_of(t)
+}
+
+fn Walk.kind(self, id: Int) -> ckast.Kind {
+    match self.types.get(id) {
+        Some(t) => self.kind_ty(t),
+        None => Plain,
+    }
+}
+
+fn Walk.consume(mut self, name: Str, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    var i = self.vars.len() - 1
+    while i >= 0 and self.vars[i].name != name { i -= 1 }
+    if i < 0 { return Ok(()) }
+    let v = self.vars[i]
+    if v.borrowed { return ckast.fail(sp, "'" + name + "' is a 'ref' parameter: it can be inspected but not consumed") }
+    if v.moved.is_some() {
+        return ckast.fail(sp, "'" + name + "' was already used: a " + word(v.kind) + " value cannot be copied")
+    }
+    if not self.loops.is_empty() and i < self.loops[self.loops.len() - 1] {
+        return ckast.fail(sp, "'" + name + "' is " + word(v.kind) + " and is consumed inside a loop, so it could be used more than once")
+    }
+    self.vars[i].moved = Some(sp)
+    Ok(())
+}
+
+// Every linear value declared at or after `from` must have been consumed.
+fn Walk.live_check(self, from: Int, sp: ckast.Span, why: Str) -> Result[Unit, ckast.Diag] {
+    if self.diverged { return Ok(()) }
+    for i in from..self.vars.len() {
+        let v = self.vars[i]
+        if v.kind == Linear and v.moved.is_none() and not v.borrowed {
+            return ckast.fail(sp, "linear value '" + v.name + "' is never used: " + why + " would drop it")
+        }
+    }
+    Ok(())
+}
+
+fn Walk.end_scope(mut self, mark: Int, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    self.live_check(mark, sp, "the end of this block")?
+    if self.vars.len() > mark { self.vars = self.vars.slice(0, mark) }
+    Ok(())
+}
+
+// ---- alternative paths (src/linear.rs `branches`) ----
+
+fn Walk.br_start(self) -> Br { Br { before: self.vars, outs: [], all_div: true } }
+
+fn Walk.br_path(mut self, b: Br) {
+    self.vars = b.before
+    self.diverged = false
+}
+
+fn Walk.br_done(self, b: Br) -> Br {
+    if self.diverged { return b }
+    var outs = b.outs
+    outs.push(self.vars.slice(0, b.before.len()))
+    Br { before: b.before, outs, all_div: false }
+}
+
+fn Walk.br_finish(mut self, b: Br, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    self.vars = b.before
+    self.diverged = b.all_div
+    if b.all_div { return Ok(()) }
+    for i in 0..self.vars.len() {
+        var any: Option[ckast.Span] = None
+        var some = false
+        var none = false
+        for o in b.outs {
+            match o[i].moved {
+                Some(s) => {
+                    some = true
+                    if any.is_none() { any = Some(s) }
+                }
+                None => none = true,
+            }
+        }
+        if self.vars[i].kind == Linear and some and none {
+            return ckast.fail(any.unwrap_or(sp), "linear value '" + self.vars[i].name + "' is consumed on some paths but not others; consume it on every path")
+        }
+        self.vars[i].moved = any
+    }
+    Ok(())
+}
+
+// ---- statements ----
+
+fn Walk.block(mut self, b: ckast.Block, consume: Bool) -> Result[Unit, ckast.Diag] {
+    let mark = self.vars.len()
+    let n = b.stmts.len()
+    for i in 0..n {
+        if self.diverged { break }
+        let s = b.stmts[i]
+        match s.k {
+            KExpr(e) if i + 1 == n => self.expr(e, consume)?,
+            _ => self.stmt(s)?,
+        }
+    }
+    self.end_scope(mark, b.sp)
+}
+
+fn Walk.bind(mut self, p: ckast.Pat) -> Result[Unit, ckast.Diag] {
+    let k = self.kind(p.id)
+    match p.k {
+        QBind(n) if k != Plain => self.vars.push(Var { name: n, kind: k, moved: None, borrowed: false }),
+        QWild if k == Linear => return ckast.fail(p.sp, "'_' would drop a linear value; bind it and consume it"),
+        QTuple(ps) | QVariant(_, _, ps) => {
+            for q in ps { self.bind(q)? }
+        }
+        QOr(alts) => {
+            if k != Plain { return ckast.fail(p.sp, "'|' patterns cannot bind " + word(k) + " values") }
+            for a in alts { self.bind(a)? }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn Walk.stmt(mut self, s: ckast.Stmt) -> Result[Unit, ckast.Diag] {
+    match s.k {
+        KExpr(e) => self.expr(e, true),
+        KLet(pat, _, _, value, els) => {
+            if els.is_some() and self.kind(value.id) == Linear {
+                return ckast.fail(s.sp, "'let ... else' would drop the linear value when the pattern fails; use 'match'")
+            }
+            self.expr(value, true)?
+            match els {
+                Some(b) => {
+                    var br = self.br_start()
+                    self.br_path(br)
+                    self.block(b, false)?
+                    br = self.br_done(br)
+                    self.br_path(br)
+                    br = self.br_done(br)
+                    self.br_finish(br, s.sp)?
+                    self.diverged = false
+                }
+                None => {}
+            }
+            self.bind(pat)
+        }
+        KAssign(target, _, value) => {
+            self.expr(value, true)?
+            match target.k {
+                XIndex(b, i) => {
+                    self.expr(b, false)?
+                    self.expr(i, true)?
+                }
+                _ => {}
+            }
+            if self.kind(target.id) == Linear {
+                let n = match target.k {
+                    XName(n) => n,
+                    _ => return ckast.fail(target.sp, "cannot overwrite a linear value in place; it would be dropped"),
+                }
+                var i = self.vars.len() - 1
+                while i >= 0 and self.vars[i].name != n { i -= 1 }
+                if i >= 0 {
+                    if self.vars[i].moved.is_none() {
+                        return ckast.fail(target.sp, "assigning to '" + n + "' would drop its linear value; consume it first")
+                    }
+                    self.vars[i].moved = None
+                }
+            }
+            Ok(())
+        }
+        KWhile(cond, body) => {
+            self.loops.push(self.vars.len())
+            self.expr(cond, false)?
+            var br = self.br_start()
+            self.br_path(br)
+            self.block(body, false)?
+            br = self.br_done(br)
+            self.br_path(br)
+            br = self.br_done(br)
+            self.br_finish(br, s.sp)?
+            let _ = self.loops.pop()
+            self.diverged = false
+            Ok(())
+        }
+        KFor(pat, it, body) => {
+            match it {
+                FRange(a, z) => {
+                    self.expr(a, false)?
+                    self.expr(z, false)?
+                }
+                FEach(x) => self.expr(x, false)?,
+            }
+            self.loops.push(self.vars.len())
+            var br = self.br_start()
+            self.br_path(br)
+            let mark = self.vars.len()
+            self.bind(pat)?
+            self.block(body, false)?
+            self.end_scope(mark, body.sp)?
+            br = self.br_done(br)
+            self.br_path(br)
+            br = self.br_done(br)
+            self.br_finish(br, s.sp)?
+            let _ = self.loops.pop()
+            self.diverged = false
+            Ok(())
+        }
+        KReturn(v) => {
+            match v {
+                Some(e) => self.expr(e, true)?,
+                None => {}
+            }
+            self.live_check(0, s.sp, "this 'return'")?
+            self.diverged = true
+            Ok(())
+        }
+        KBreak | KContinue => {
+            let from = if self.loops.is_empty() { 0 } else { self.loops[self.loops.len() - 1] }
+            self.live_check(from, s.sp, "this 'break'/'continue'")?
+            self.diverged = true
+            Ok(())
+        }
+    }
+}
+
+// ---- expressions ----
+
+// Which explicit (non-self) parameters of function fi are `ref`.
+fn Walk.ref_params(self, fi: Int) -> List[Bool] { self.fns[fi].params.map(fn(p) => p.by_ref) }
+
+fn Walk.generic_args_ok(mut self, fi: Int, targs: List[cktypes.Ty], sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    let info = self.env.fns[fi]
+    let n = info.tparams.len().min(targs.len())
+    for i in 0..n {
+        let p = info.tparams[i]
+        let t = targs[i]
+        let k = self.kind_ty(t)
+        if k != Plain {
+            var ok = false
+            if info.is_extern {
+                ok = extern_ok(info.name)
+            } else {
+                let key = "{fi}:" + p
+                match self.safe.get(key) {
+                    Some(v) => ok = v,
+                    None => {
+                        self.safe[key] = true
+                        ok = self.walk_fn(fi, [p]).is_ok()
+                        self.safe[key] = ok
+                    }
+                }
+            }
+            if not ok {
+                return ckast.fail(sp, "'" + info.name + "' may copy or drop values of its type parameter " + p +
+                    ", so it cannot be used with the " + word(k) + " type " + t.show())
+            }
+        }
+    }
+    Ok(())
+}
+
+fn Walk.args(mut self, args: List[ckast.Expr], refs: List[Bool]) -> Result[Unit, ckast.Diag] {
+    for i in 0..args.len() {
+        let by_ref = i < refs.len() and refs[i]
+        self.expr(args[i], not by_ref)?
+    }
+    Ok(())
+}
+
+fn Walk.exprs(mut self, xs: List[ckast.Expr], consume: Bool) -> Result[Unit, ckast.Diag] {
+    for x in xs { self.expr(x, consume)? }
+    Ok(())
+}
+
+fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag] {
+    match self.types.get(e.id) {
+        Some(Con(n, a)) if n == "List" or n == "Map" => {
+            for x in a {
+                if self.kind_ty(x) != Plain { return ckast.fail(e.sp, n + " cannot hold linear or unique values") }
+            }
+        }
+        _ => {}
+    }
+    match e.k {
+        XInt | XFloat | XBool(_) | XUnit | XPath(_, _) => Ok(()),
+        XStr(xs) => self.exprs(xs, false),
+        XName(n) => {
+            match self.res.get(e.id) {
+                Some(RFn(fi, targs)) => return self.generic_args_ok(fi, targs, e.sp),
+                Some(RLocal(_)) => if consume and self.kind(e.id) != Plain { return self.consume(n, e.sp) },
+                _ => {}
+            }
+            Ok(())
+        }
+        XField(b, f) => {
+            self.expr(b, false)?
+            let k = self.kind(e.id)
+            if consume and k != Plain {
+                return ckast.fail(e.sp, "cannot move " + word(k) + " field '" + f + "' out of a value")
+            }
+            Ok(())
+        }
+        XTField(b, _) => self.expr(b, consume and self.kind(e.id) != Plain),
+        XIndex(b, i) => {
+            self.expr(b, false)?
+            self.expr(i, true)
+        }
+        XCall(callee, args) => {
+            var refs: List[Bool] = []
+            match self.res.get(callee.id) {
+                Some(RFn(fi, targs)) => {
+                    self.generic_args_ok(fi, targs, e.sp)?
+                    let name = self.env.fns[fi].name
+                    if name == "encode" or name == "decode" {
+                        match codec_ok(self.env, targs[0], e.sp.file, []) {
+                            Ok(_) => {}
+                            Err(m) => return ckast.fail(e.sp, "cannot " + name + " " + targs[0].show() + ": " + m),
+                        }
+                    }
+                    refs = self.ref_params(fi)
+                }
+                _ => {}
+            }
+            self.expr(callee, false)?
+            self.args(args, refs)
+        }
+        XMethod(recv, _, args) => {
+            var refs: List[Bool] = []
+            match self.res.get(e.id) {
+                Some(RMethod(fi, targs)) => {
+                    self.generic_args_ok(fi, targs, e.sp)?
+                    // Builtin handle methods use their receiver without consuming it.
+                    let f = self.env.fns[fi]
+                    let handle = f.is_extern and match f.owner {
+                        Some(Con(o, _)) => cktypes.is_capability(o),
+                        _ => false,
+                    }
+                    self.expr(recv, f.self_kind == ValSelf and not handle)?
+                    refs = self.ref_params(fi)
+                }
+                _ => self.expr(recv, false)?,
+            }
+            self.args(args, refs)
+        }
+        XUnary(_, x) => self.expr(x, false),
+        XBinary(op, l, r) => {
+            self.expr(l, false)?
+            if op == "And" or op == "Or" {
+                var br = self.br_start()
+                self.br_path(br)
+                self.expr(r, false)?
+                br = self.br_done(br)
+                self.br_path(br)
+                br = self.br_done(br)
+                return self.br_finish(br, e.sp)
+            }
+            self.expr(r, false)
+        }
+        XIf(c, then, els) => {
+            self.expr(c, false)?
+            var br = self.br_start()
+            self.br_path(br)
+            self.block(then, consume)?
+            br = self.br_done(br)
+            self.br_path(br)
+            match els {
+                Some(x) => self.expr(x, consume)?,
+                None => {}
+            }
+            br = self.br_done(br)
+            self.br_finish(br, e.sp)
+        }
+        XMatch(s, arms) => {
+            let destructure = self.kind(s.id) != Plain
+            self.expr(s, destructure)?
+            var br = self.br_start()
+            for a in arms {
+                self.br_path(br)
+                let mark = self.vars.len()
+                if destructure { self.bind(a.pat)? }
+                match a.guard {
+                    Some(g) => self.expr(g, false)?,
+                    None => {}
+                }
+                self.expr(a.body, consume)?
+                self.end_scope(mark, a.body.sp)?
+                br = self.br_done(br)
+            }
+            self.br_finish(br, e.sp)
+        }
+        XBlock(b) => self.block(b, consume),
+        XList(xs) | XTuple(xs) => self.exprs(xs, true),
+        XMap(ps) => {
+            for p in ps {
+                self.expr(p.0, true)?
+                self.expr(p.1, true)?
+            }
+            Ok(())
+        }
+        XNew(_, fs, base) => {
+            for f in fs { self.expr(f.1, true)? }
+            match base {
+                Some(b) => self.expr(b, true),
+                None => Ok(()),
+            }
+        }
+        XTry(x) => {
+            self.expr(x, true)?
+            self.live_check(0, e.sp, "the early return of '?'")
+        }
+        XMutArg(x) => self.expr(x, false),
+        XLambda(params, _, body) => {
+            for c in self.caps.get(e.id).unwrap_or([]) {
+                let k = self.kind_ty(c.1)
+                if k != Plain { return ckast.fail(e.sp, "closures cannot capture the " + word(k) + " value '" + c.0 + "'") }
+            }
+            let pts = match self.types.get(e.id) {
+                Some(Fun(pts, _)) => pts,
+                _ => return Ok(()),
+            }
+            var inner = self.fresh(self.assume)
+            for i in 0..params.len().min(pts.len()) {
+                let k = self.kind_ty(pts[i])
+                if k != Plain { inner.vars.push(Var { name: params[i].0, kind: k, moved: None, borrowed: false }) }
+            }
+            let r = inner.lambda_body(body)
+            self.safe = inner.safe
+            r
+        }
+    }
+}
+
+fn Walk.lambda_body(mut self, body: ckast.Expr) -> Result[Unit, ckast.Diag] {
+    self.expr(body, true)?
+    self.end_scope(0, body.sp)
+}
+
+// Can values of type t be encoded/decoded by code in `file`? On success,
+// returns the types visited so far (shared across the whole walk).
+fn codec_ok(env: ckenv.Env, t: cktypes.Ty, file: Int, seen0: List[cktypes.Ty]) -> Result[List[cktypes.Ty], Str] {
+    if seen0.contains(t) { return Ok(seen0) }
+    var seen = seen0
+    seen.push(t)
+    match t {
+        Fun(_, _) => Err("functions cannot be encoded"),
+        Par(_) | TVar(_) => Err("the type must be concrete"),
+        Tup(ts) => {
+            for x in ts { seen = codec_ok(env, x, file, seen)? }
+            Ok(seen)
+        }
+        Con(n, args) => {
+            if cktypes.is_capability(n) { return Err(n + " is a capability") }
+            let k = env.kind_of(t)
+            if k != Plain { return Err(n + " is " + word(k)) }
+            match env.struct_idx(n) {
+                Some(si) => {
+                    let s = env.structs[si]
+                    if s.file != file and s.pub_fields.any(fn(p) => not p) { return Err(n + " has private fields") }
+                }
+                None => {}
+            }
+            match env.struct_fields(t) {
+                Some(fs) => for f in fs { seen = codec_ok(env, f.1, file, seen)? },
+                None => {}
+            }
+            match env.enum_variants(t) {
+                Some(vs) => for v in vs {
+                    for x in v.1 { seen = codec_ok(env, x, file, seen)? }
+                },
+                None => {}
+            }
+            for x in args { seen = codec_ok(env, x, file, seen)? }
+            Ok(seen)
+        }
+    }
+}

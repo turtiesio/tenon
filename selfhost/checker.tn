@@ -1,0 +1,31 @@
+// module (imported by check.tn)
+// Self-hosted type checker: a second, independent implementation of
+// src/check.rs, src/check_expr.rs, src/exhaust.rs and src/linear.rs.
+// `check FILE` must report the same first diagnostic as `tenon check FILE`
+// for every file in the corpus (tools/selfhost.sh).
+//
+//   ckast    syntax tree with ids, conversion from the parser, fix_paths
+//   cktypes  types, substitution, unification
+//   ckenv    declarations and type resolution across modules
+//   ckinfer  function bodies: inference, methods, places, patterns
+//   ckexh    match exhaustiveness and reachability
+//   cklin    linear and unique types, codec restrictions
+
+import ckast
+import ckenv
+import ckinfer
+import cklin
+
+// Check a whole program (prelude, main file and modules, already merged).
+pub fn check(prog: ckast.Program) -> Result[Unit, ckast.Diag] {
+    let env = ckenv.declare(prog)?
+    var ck = ckinfer.new_ck(env)
+    for i in 0..prog.fns.len() { ck.check_fn(prog.fns[i], i)? }
+    var main = -1
+    for i in 0..prog.fns.len() {
+        if main < 0 and prog.fns[i].name == "main" and prog.fns[i].owner.is_none() { main = i }
+    }
+    if main < 0 { return ckast.fail(ckast.Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'") }
+    ck.env.check_main(main)?
+    cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures)
+}

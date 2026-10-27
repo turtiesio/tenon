@@ -1,0 +1,94 @@
+// check FILE [ROOT]: the self-hosted checker (compare: tenon check FILE).
+// Prints `ok`, or the first diagnostic as `PATH:LINE:COL: error: MESSAGE`.
+// ROOT (default `.`) is the repository, where src/prelude.tn and the
+// standard library (std/) are read from.
+import parser
+import ckast
+import checker
+
+// Standard library modules (src/main.rs `STD`).
+fn std_modules() -> List[Str] { ["journal"] }
+
+// Path::parent, as the bootstrap uses it to find a module next to its importer.
+fn parent(p: Str) -> Str {
+    var i = p.len() - 1
+    while i >= 0 and p.byte(i) != 47 { i -= 1 }
+    if i < 0 { "" } else if i == 0 { "/" } else { p.slice(0, i) }
+}
+
+fn join(dir: Str, name: Str) -> Str {
+    if dir == "" { name } else if dir.ends_with("/") { dir + name } else { dir + "/" + name }
+}
+
+fn report(con: Console, file: Str, line: Int, col: Int, msg: Str) -> Int {
+    con.println("{file}:{line}:{col}: error: {msg}")
+    1
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() < 1 or sys.args.len() > 2 {
+        con.eprintln("usage: check FILE [ROOT]")
+        return 2
+    }
+    let path = sys.args[0]
+    let root = if sys.args.len() == 2 { sys.args[1] } else { "." }
+    let prelude = match sys.fs.read(join(root, "src/prelude.tn")) {
+        Ok(s) => s,
+        Err(e) => {
+            con.eprintln("check: cannot read the prelude: {e}")
+            return 2
+        }
+    }
+    let src = match sys.fs.read(path) {
+        Ok(s) => s,
+        Err(e) => {
+            con.eprintln("check: cannot read {path}: {e}")
+            return 2
+        }
+    }
+    // Load the program: prelude, the main file, then every imported module
+    // (from the importing file's directory, else the standard library).
+    var files: List[(Str, Str)] = [("<prelude>", prelude), (path, src)]
+    var modules = ["", ""]
+    var parsed: List[parser.Program] = []
+    var i = 0
+    while i < files.len() {
+        let prog = match parser.parse(files[i].1) {
+            Ok(p) => p,
+            Err(e) => return report(con, files[i].0, e.line, e.col, e.msg),
+        }
+        parsed.push(prog)
+        for im in prog.imports {
+            let name = im.0
+            if not modules.contains(name) {
+                let local = join(parent(files[i].0), name + ".tn")
+                match sys.fs.read(local) {
+                    Ok(text) => files.push((local, text)),
+                    Err(_) => {
+                        if not std_modules().contains(name) {
+                            return report(con, files[i].0, im.1.line, im.1.col,
+                                "cannot find module '{name}' ({local} or the standard library)")
+                        }
+                        match sys.fs.read(join(root, "std/" + name + ".tn")) {
+                            Ok(text) => files.push(("<std>/" + name + ".tn", text)),
+                            Err(e) => {
+                                con.eprintln("check: cannot read the standard library: {e}")
+                                return 2
+                            }
+                        }
+                    }
+                }
+                modules.push(name)
+            }
+        }
+        i += 1
+    }
+    match checker.check(ckast.convert(parsed, modules)) {
+        Ok(_) => {
+            con.println("ok")
+            0
+        }
+        Err(d) => report(con, files[d.sp.file].0, d.sp.line, d.sp.col, d.msg),
+    }
+}

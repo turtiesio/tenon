@@ -1,0 +1,585 @@
+// module (imported by the self-hosted checker)
+// The checker's syntax tree: the parser's tree plus file numbers and node ids
+// (the checker keeps types and resolutions in side tables keyed by id), and
+// the path rewriting of src/check.rs `fix_paths`.
+
+import parser
+
+pub struct Span { pub file: Int, pub line: Int, pub col: Int }
+
+pub struct Diag { pub sp: Span, pub msg: Str }
+
+pub fn fail[T](sp: Span, msg: Str) -> Result[T, Diag] { Err(Diag { sp, msg }) }
+
+pub enum Kind { Plain, Linear, Unique }
+
+pub enum SelfK { NoSelf, ValSelf, MutSelf }
+
+pub enum TK { TNamed(Str, List[TExpr]), TFn(List[TExpr], TExpr), TTuple(List[TExpr]) }
+pub struct TExpr { pub sp: Span, pub k: TK }
+
+pub enum PK {
+    QWild,
+    QBind(Str),
+    QInt(Int),
+    QStr(Str),
+    QBool(Bool),
+    QTuple(List[Pat]),
+    QVariant(Option[Str], Str, List[Pat]),
+    QOr(List[Pat]),
+}
+pub struct Pat { pub id: Int, pub sp: Span, pub k: PK }
+
+pub enum EK {
+    XInt,
+    XFloat,
+    XBool(Bool),
+    XStr(List[Expr]),
+    XUnit,
+    XName(Str),
+    XPath(Str, Str),
+    XField(Expr, Str),
+    XTField(Expr, Int),
+    XIndex(Expr, Expr),
+    XCall(Expr, List[Expr]),
+    XMethod(Expr, Str, List[Expr]),
+    XUnary(Str, Expr),
+    XBinary(Str, Expr, Expr),
+    XIf(Expr, Block, Option[Expr]),
+    XMatch(Expr, List[Arm]),
+    XBlock(Block),
+    XList(List[Expr]),
+    XMap(List[(Expr, Expr)]),
+    XTuple(List[Expr]),
+    XNew(Str, List[(Str, Expr)], Option[Expr]),
+    XTry(Expr),
+    XLambda(List[(Str, Option[TExpr])], Option[TExpr], Expr),
+    XMutArg(Expr), // `mut place` as an argument to a `mut` parameter
+}
+pub struct Expr { pub id: Int, pub sp: Span, pub k: EK }
+pub struct Arm { pub pat: Pat, pub guard: Option[Expr], pub body: Expr }
+
+pub enum FIter { FRange(Expr, Expr), FEach(Expr) }
+pub enum SK {
+    KLet(Pat, Bool, Option[TExpr], Expr, Option[Block]), // `let PAT = v else { ... }`
+    KExpr(Expr),
+    KAssign(Expr, Option[Str], Expr),
+    KWhile(Expr, Block),
+    KFor(Pat, FIter, Block),
+    KReturn(Option[Expr]),
+    KBreak,
+    KContinue,
+}
+pub struct Stmt { pub sp: Span, pub k: SK }
+pub struct Block { pub sp: Span, pub stmts: List[Stmt] }
+
+pub struct Param { pub name: Str, pub by_ref: Bool, pub by_mut: Bool, pub ty: TExpr, pub sp: Span }
+pub struct FnDecl {
+    pub name: Str, pub owner: Option[TExpr], pub tparams: List[Str], pub self_kind: SelfK,
+    pub params: List[Param], pub ret: Option[TExpr], pub body: Option[Block], pub public: Bool, pub is_const: Bool,
+    pub sp: Span,
+}
+pub struct StructDecl {
+    pub name: Str, pub tparams: List[Str], pub fields: List[(Str, TExpr)], pub pub_fields: List[Bool],
+    pub kind: Kind, pub public: Bool, pub sp: Span,
+}
+pub struct VariantDecl { pub name: Str, pub fields: List[TExpr], pub sp: Span }
+pub struct EnumDecl {
+    pub name: Str, pub tparams: List[Str], pub variants: List[VariantDecl], pub kind: Kind, pub public: Bool, pub sp: Span,
+}
+pub struct Import { pub file: Int, pub name: Str, pub sp: Span }
+pub struct Program {
+    pub structs: List[StructDecl], pub enums: List[EnumDecl], pub fns: List[FnDecl], pub imports: List[Import],
+    pub modules: List[Str], // module name per file ("" for the prelude and the main file)
+}
+
+pub fn upper(s: Str) -> Bool { s.len() > 0 and s.byte(0) >= 65 and s.byte(0) <= 90 }
+
+// Only capitals, digits and '_' (constant names).
+pub fn all_caps(s: Str) -> Bool {
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not ((c >= 65 and c <= 90) or (c >= 48 and c <= 57) or c == 95) { return false }
+    }
+    true
+}
+
+// ---- conversion from the parser's tree ----
+
+struct Conv { file: Int, next: Int }
+
+fn Conv.sp(self, p: parser.Pos) -> Span { Span { file: self.file, line: p.line, col: p.col } }
+fn Conv.id(mut self) -> Int {
+    self.next += 1
+    self.next - 1
+}
+
+fn kind_of(k: Str) -> Kind {
+    if k == "linear" { Linear } else if k == "unique" { Unique } else { Plain }
+}
+
+fn Conv.ty(self, t: parser.Ty) -> TExpr {
+    match t {
+        Named(n, a, p) => TExpr { sp: self.sp(p), k: TNamed(n, a.map(fn(x) => self.ty(x))) },
+        FnTy(a, r, p) => TExpr { sp: self.sp(p), k: TFn(a.map(fn(x) => self.ty(x)), self.ty(r)) },
+        TupleTy(a, p) => TExpr { sp: self.sp(p), k: TTuple(a.map(fn(x) => self.ty(x))) },
+    }
+}
+
+fn Conv.opt_ty(self, t: Option[parser.Ty]) -> Option[TExpr] {
+    match t {
+        Some(x) => Some(self.ty(x)),
+        None => None,
+    }
+}
+
+fn Conv.pats(mut self, ps: List[parser.Pattern]) -> List[Pat] {
+    var out: List[Pat] = []
+    for p in ps { out.push(self.pat(p)) }
+    out
+}
+
+fn Conv.pat(mut self, p: parser.Pattern) -> Pat {
+    let k = match p.kind {
+        Wild => QWild,
+        Bind(n) => QBind(n),
+        PInt(i) => QInt(i),
+        PStr(s) => QStr(s),
+        PBool(b) => QBool(b),
+        PTuple(ps) => QTuple(self.pats(ps)),
+        Variant(q, v, ps) => QVariant(q, v, self.pats(ps)),
+        POr(ps) => QOr(self.pats(ps)),
+    }
+    Pat { id: self.id(), sp: self.sp(p.at), k }
+}
+
+fn Conv.exprs(mut self, es: List[parser.Expr]) -> List[Expr] {
+    var out: List[Expr] = []
+    for e in es { out.push(self.expr(e)) }
+    out
+}
+
+fn Conv.opt_expr(mut self, e: Option[parser.Expr]) -> Option[Expr] {
+    match e {
+        Some(x) => Some(self.expr(x)),
+        None => None,
+    }
+}
+
+fn Conv.block(mut self, b: parser.Block) -> Block {
+    var stmts: List[Stmt] = []
+    for s in b.stmts { stmts.push(self.stmt(s)) }
+    Block { sp: self.sp(b.at), stmts }
+}
+
+fn Conv.stmt(mut self, s: parser.Stmt) -> Stmt {
+    let k = match s.kind {
+        Let(p, m, t, v, els) => {
+            let pat = self.pat(p)
+            let value = self.expr(v)
+            let eb = match els {
+                Some(b) => Some(self.block(b)),
+                None => None,
+            }
+            KLet(pat, m, self.opt_ty(t), value, eb)
+        }
+        ExprStmt(e) => KExpr(self.expr(e)),
+        Assign(t, op, v) => {
+            let target = self.expr(t)
+            KAssign(target, op, self.expr(v))
+        }
+        While(c, b) => {
+            let cond = self.expr(c)
+            KWhile(cond, self.block(b))
+        }
+        ForLoop(p, it, b) => {
+            let pat = self.pat(p)
+            let iter = match it {
+                Range(a, z) => {
+                    let lo = self.expr(a)
+                    FRange(lo, self.expr(z))
+                }
+                Each(e) => FEach(self.expr(e)),
+            }
+            KFor(pat, iter, self.block(b))
+        }
+        Return(v) => KReturn(self.opt_expr(v)),
+        Break => KBreak,
+        Continue => KContinue,
+    }
+    Stmt { sp: self.sp(s.at), k }
+}
+
+fn Conv.expr(mut self, e: parser.Expr) -> Expr {
+    let k = match e.kind {
+        EInt(_) => XInt,
+        EFloat(_) => XFloat,
+        EBool(b) => XBool(b),
+        EStr(segs) => {
+            var xs: List[Expr] = []
+            for s in segs {
+                match s {
+                    SExpr(x) => xs.push(self.expr(x)),
+                    SLit(_) => {}
+                }
+            }
+            XStr(xs)
+        }
+        EUnit => XUnit,
+        Name(n) => XName(n),
+        Path(t, m) => XPath(t, m),
+        Field(b, f) => XField(self.expr(b), f),
+        TField(b, i) => XTField(self.expr(b), i),
+        Index(a, b) => {
+            let x = self.expr(a)
+            XIndex(x, self.expr(b))
+        }
+        Call(f, args) => {
+            let callee = self.expr(f)
+            XCall(callee, self.exprs(args))
+        }
+        Method(r, m, args) => {
+            let recv = self.expr(r)
+            XMethod(recv, m, self.exprs(args))
+        }
+        Unary(op, x) => XUnary(op, self.expr(x)),
+        Binary(op, l, r) => {
+            let lhs = self.expr(l)
+            XBinary(op, lhs, self.expr(r))
+        }
+        If(c, t, els) => {
+            let cond = self.expr(c)
+            let then = self.block(t)
+            XIf(cond, then, self.opt_expr(els))
+        }
+        Match(s, arms) => {
+            let scrut = self.expr(s)
+            var out: List[Arm] = []
+            for a in arms {
+                let pat = self.pat(a.pat)
+                let guard = self.opt_expr(a.guard)
+                out.push(Arm { pat, guard, body: self.expr(a.body) })
+            }
+            XMatch(scrut, out)
+        }
+        EBlock(b) => XBlock(self.block(b)),
+        EList(xs) => XList(self.exprs(xs)),
+        EMap(ps) => {
+            var out: List[(Expr, Expr)] = []
+            for kv in ps {
+                let k = self.expr(kv.0)
+                out.push((k, self.expr(kv.1)))
+            }
+            XMap(out)
+        }
+        ETuple(xs) => XTuple(self.exprs(xs)),
+        New(n, fs, base) => {
+            var out: List[(Str, Expr)] = []
+            for f in fs { out.push((f.0, self.expr(f.1))) }
+            XNew(n, out, self.opt_expr(base))
+        }
+        Try(x) => XTry(self.expr(x)),
+        Lambda(ps, r, b) => {
+            let params = ps.map(fn(p) => (p.0, self.opt_ty(p.1)))
+            XLambda(params, self.opt_ty(r), self.expr(b))
+        }
+        MutArg(x) => XMutArg(self.expr(x)),
+    }
+    Expr { id: self.id(), sp: self.sp(e.at), k }
+}
+
+fn self_kind(s: Str) -> SelfK {
+    if s == "self" { ValSelf } else if s == "mut-self" { MutSelf } else { NoSelf }
+}
+
+fn Conv.fn_decl(mut self, f: parser.FnDecl) -> FnDecl {
+    let params = f.params.map(fn(p) => Param { name: p.name, by_ref: p.by_ref, by_mut: p.by_mut, ty: self.ty(p.ty), sp: self.sp(p.at) })
+    let body = match f.body {
+        Some(b) => Some(self.block(b)),
+        None => None,
+    }
+    FnDecl {
+        name: f.name, owner: self.opt_ty(f.owner), tparams: f.tparams, self_kind: self_kind(f.self_kind),
+        params, ret: self.opt_ty(f.ret), body, public: f.public, is_const: f.is_const, sp: self.sp(f.at),
+    }
+}
+
+// Merge the parsed files (file 0 is the prelude, 1 the main file) into one
+// program, as src/main.rs `front` does, then rewrite paths.
+pub fn convert(files: List[parser.Program], modules: List[Str]) -> Program {
+    var prog = Program { structs: [], enums: [], fns: [], imports: [], modules }
+    var c = Conv { file: 0, next: 0 }
+    for fi in 0..files.len() {
+        c.file = fi
+        let f = files[fi]
+        for s in f.structs {
+            prog.structs.push(StructDecl {
+                name: s.name, tparams: s.tparams, fields: s.fields.map(fn(x) => (x.1, c.ty(x.2))),
+                pub_fields: s.fields.map(fn(x) => x.0), kind: kind_of(s.kind), public: s.public, sp: c.sp(s.at),
+            })
+        }
+        for e in f.enums {
+            let vs = e.variants.map(fn(v) => VariantDecl { name: v.0, fields: v.1.map(fn(t) => c.ty(t)), sp: c.sp(v.2) })
+            prog.enums.push(EnumDecl {
+                name: e.name, tparams: e.tparams, variants: vs, kind: kind_of(e.kind), public: e.public, sp: c.sp(e.at),
+            })
+        }
+        for d in f.fns { prog.fns.push(c.fn_decl(d)) }
+        for im in f.imports { prog.imports.push(Import { file: fi, name: im.0, sp: c.sp(im.1) }) }
+    }
+    fix_paths(prog)
+}
+
+// ---- fix_paths ----
+// `Value.member` parses as a type path when the name is capitalized (a unit
+// variant such as `Red.name()`); turn those back into field/method access.
+// `module.f(..)` and `module.Type.f(..)` become calls of paths.
+
+struct Fixer { types: List[Str], aliases: List[List[Str]] }
+
+pub fn fix_paths(prog: Program) -> Program {
+    var types = ["Int", "Float", "Bool", "Str", "Unit", "List", "Map", "Console", "Fs", "Clock", "Net", "Listener", "Conn"]
+    for s in prog.structs { types.push(s.name) }
+    for e in prog.enums { types.push(e.name) }
+    var aliases: List[List[Str]] = []
+    for _ in 0..prog.modules.len() { aliases.push([]) }
+    for im in prog.imports {
+        if im.file < aliases.len() { aliases[im.file].push(im.name) }
+    }
+    let fx = Fixer { types, aliases }
+    var fns: List[FnDecl] = []
+    for f in prog.fns {
+        fns.push(match f.body {
+            Some(b) => FnDecl { body: Some(fx.block(b)), ..f },
+            None => f,
+        })
+    }
+    Program { fns, ..prog }
+}
+
+fn Fixer.is_mod(self, file: Int, n: Str) -> Bool { file < self.aliases.len() and self.aliases[file].contains(n) }
+
+fn Fixer.plain_path(self, t: Str) -> Bool {
+    not self.types.contains(t) and not t.starts_with("@") and t.find(".").is_none()
+}
+
+fn Fixer.block(self, b: Block) -> Block { Block { sp: b.sp, stmts: b.stmts.map(fn(s) => self.stmt(s)) } }
+
+fn Fixer.opt(self, e: Option[Expr]) -> Option[Expr] {
+    match e {
+        Some(x) => Some(self.expr(x)),
+        None => None,
+    }
+}
+
+fn Fixer.stmt(self, s: Stmt) -> Stmt {
+    let k = match s.k {
+        KLet(p, m, t, v, els) => {
+            let value = self.expr(v)
+            KLet(p, m, t, value, match els {
+                Some(b) => Some(self.block(b)),
+                None => None,
+            })
+        }
+        KExpr(e) => KExpr(self.expr(e)),
+        KAssign(t, op, v) => KAssign(self.expr(t), op, self.expr(v)),
+        KWhile(c, b) => KWhile(self.expr(c), self.block(b)),
+        KFor(p, it, b) => {
+            let it2 = match it {
+                FRange(a, z) => FRange(self.expr(a), self.expr(z)),
+                FEach(e) => FEach(self.expr(e)),
+            }
+            KFor(p, it2, self.block(b))
+        }
+        KReturn(v) => KReturn(self.opt(v)),
+        other => other,
+    }
+    Stmt { sp: s.sp, k }
+}
+
+fn Fixer.expr(self, e0: Expr) -> Expr {
+    var k = e0.k
+    // `module.CONST`
+    match k {
+        XField(b, c) => match b.k {
+            XName(m) if self.is_mod(e0.sp.file, m) and all_caps(c) => k = XPath("@" + m, c),
+            _ => {}
+        },
+        _ => {}
+    }
+    // `module.f(..)` and `module.Type.f(..)`
+    match k {
+        XMethod(recv, f, args) => match recv.k {
+            XName(m) if self.is_mod(e0.sp.file, m) => {
+                k = XCall(Expr { id: recv.id, sp: recv.sp, k: XPath("@" + m, f) }, args)
+            }
+            XField(b, t) => match b.k {
+                XName(m) if self.is_mod(e0.sp.file, m) and upper(t) => {
+                    k = XCall(Expr { id: recv.id, sp: recv.sp, k: XPath(m + "." + t, f) }, args)
+                }
+                _ => {}
+            },
+            _ => {}
+        },
+        _ => {}
+    }
+    match k {
+        XCall(callee, args) => match callee.k {
+            XPath(t, m) if self.plain_path(t) => {
+                k = XMethod(Expr { id: callee.id, sp: callee.sp, k: XName(t) }, m, args)
+            }
+            _ => {}
+        },
+        XPath(t, m) if self.plain_path(t) => {
+            k = XField(Expr { id: -1 - e0.id, sp: e0.sp, k: XName(t) }, m)
+        }
+        _ => {}
+    }
+    Expr { id: e0.id, sp: e0.sp, k: self.children(k) }
+}
+
+fn Fixer.children(self, k: EK) -> EK {
+    match k {
+        XStr(xs) => XStr(xs.map(fn(x) => self.expr(x))),
+        XField(b, f) => XField(self.expr(b), f),
+        XTField(b, i) => XTField(self.expr(b), i),
+        XUnary(op, b) => XUnary(op, self.expr(b)),
+        XTry(b) => XTry(self.expr(b)),
+        XIndex(a, b) => XIndex(self.expr(a), self.expr(b)),
+        XBinary(op, a, b) => XBinary(op, self.expr(a), self.expr(b)),
+        XCall(c, args) => XCall(self.expr(c), args.map(fn(x) => self.expr(x))),
+        XMethod(c, m, args) => XMethod(self.expr(c), m, args.map(fn(x) => self.expr(x))),
+        XIf(c, t, els) => XIf(self.expr(c), self.block(t), self.opt(els)),
+        XMatch(s, arms) => XMatch(self.expr(s), arms.map(fn(a) => Arm { pat: a.pat, guard: self.opt(a.guard), body: self.expr(a.body) })),
+        XBlock(b) => XBlock(self.block(b)),
+        XList(xs) => XList(xs.map(fn(x) => self.expr(x))),
+        XTuple(xs) => XTuple(xs.map(fn(x) => self.expr(x))),
+        XMap(ps) => XMap(ps.map(fn(p) => (self.expr(p.0), self.expr(p.1)))),
+        XNew(n, fs, b) => XNew(n, fs.map(fn(f) => (f.0, self.expr(f.1))), self.opt(b)),
+        XLambda(ps, r, b) => XLambda(ps, r, self.expr(b)),
+        XMutArg(b) => XMutArg(self.expr(b)),
+        other => other,
+    }
+}
+
+// ---- traversal helpers ----
+
+// Does this block always leave (return, break, continue, or panic)?
+pub fn leaves(b: Block) -> Bool {
+    if b.stmts.is_empty() { return false }
+    match b.stmts[b.stmts.len() - 1].k {
+        KReturn(_) | KBreak | KContinue => true,
+        KExpr(e) => match e.k {
+            XCall(f, _) => match f.k {
+                XName(n) => n == "panic",
+                _ => false,
+            },
+            XBlock(inner) => leaves(inner),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+// Does this loop body contain a `break` for its own loop? A port of
+// src/check.rs `breaks`, including how it looks into nested statements.
+pub fn breaks(stmts: List[Stmt]) -> Bool {
+    for s in stmts {
+        let found = match s.k {
+            KBreak => true,
+            KWhile(_, _) | KFor(_, _, _) => false,
+            _ => stmt_exprs(s).any(in_expr),
+        }
+        if found { return true }
+    }
+    false
+}
+
+fn in_expr(e: Expr) -> Bool {
+    match e.k {
+        XBlock(b) => if breaks(b.stmts) { return true },
+        XIf(_, b, _) => if breaks(b.stmts) { return true },
+        XLambda(_, _, _) => return false,
+        _ => {}
+    }
+    children(e).any(in_expr)
+}
+
+// The expressions directly inside a statement, in src/interp.rs `visit_stmt` order.
+pub fn stmt_exprs(s: Stmt) -> List[Expr] {
+    match s.k {
+        KLet(_, _, _, v, els) => match els {
+            Some(b) => [v] + block_exprs(b),
+            None => [v],
+        },
+        KExpr(e) => [e],
+        KAssign(t, _, v) => [t, v],
+        KWhile(c, b) => [c] + block_exprs(b),
+        KFor(_, it, b) => {
+            let head = match it {
+                FRange(a, z) => [a, z],
+                FEach(x) => [x],
+            }
+            head + block_exprs(b)
+        }
+        KReturn(v) => match v {
+            Some(x) => [x],
+            None => [],
+        },
+        _ => [],
+    }
+}
+
+fn block_exprs(b: Block) -> List[Expr] {
+    var out: List[Expr] = []
+    for s in b.stmts { out.extend(stmt_exprs(s)) }
+    out
+}
+
+// Direct sub-expressions, in src/interp.rs `visit_children` order.
+pub fn children(e: Expr) -> List[Expr] {
+    match e.k {
+        XStr(xs) | XList(xs) | XTuple(xs) => xs,
+        XField(b, _) | XTField(b, _) | XUnary(_, b) | XTry(b) | XMutArg(b) => [b],
+        XIndex(a, b) | XBinary(_, a, b) => [a, b],
+        XCall(c, args) | XMethod(c, _, args) => [c] + args,
+        XIf(c, t, els) => {
+            var out = [c] + block_exprs(t)
+            match els {
+                Some(x) => out.push(x),
+                None => {}
+            }
+            out
+        }
+        XMatch(s, arms) => {
+            var out = [s]
+            for a in arms {
+                match a.guard {
+                    Some(g) => out.push(g),
+                    None => {}
+                }
+                out.push(a.body)
+            }
+            out
+        }
+        XBlock(b) => block_exprs(b),
+        XMap(ps) => {
+            var out: List[Expr] = []
+            for p in ps {
+                out.push(p.0)
+                out.push(p.1)
+            }
+            out
+        }
+        XNew(_, fs, b) => {
+            var out = fs.map(fn(f) => f.1)
+            match b {
+                Some(x) => out.push(x),
+                None => {}
+            }
+            out
+        }
+        XLambda(_, _, b) => [b],
+        _ => [],
+    }
+}

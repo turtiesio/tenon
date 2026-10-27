@@ -1,0 +1,484 @@
+// module (imported by the self-hosted checker)
+// Declarations: the tables of structs, enums and functions, type resolution
+// across modules, and the declaration checks of src/check.rs `declare`,
+// `check_recursion`, `check_main` and src/linear.rs `check_decls`.
+
+import ckast
+import cktypes
+
+pub struct StructInfo {
+    pub name: Str, pub tparams: List[Str], pub fields: List[(Str, cktypes.Ty)], pub kind: ckast.Kind,
+    pub file: Int, pub public: Bool, pub pub_fields: List[Bool],
+}
+pub struct EnumInfo {
+    pub name: Str, pub tparams: List[Str], pub variants: List[(Str, List[cktypes.Ty])], pub kind: ckast.Kind,
+    pub file: Int, pub public: Bool,
+}
+pub struct FnInfo {
+    pub name: Str, pub tparams: List[Str], pub owner: Option[cktypes.Ty], pub params: List[(Str, cktypes.Ty)],
+    pub muts: List[Bool], // per explicit (non-self) parameter: `x: mut T`
+    pub ret: cktypes.Ty, pub self_kind: ckast.SelfK, pub is_extern: Bool, pub is_const: Bool, pub public: Bool,
+    pub sp: ckast.Span,
+}
+
+// What a name, call or pattern resolved to (src/check.rs `Res`).
+pub enum Res {
+    RLocal(Str),
+    RFn(Int, List[cktypes.Ty]),          // function index, type args (all tparams)
+    RVariant(Int, Int, List[cktypes.Ty]), // enum, variant, enum type args
+    RField(Int),
+    RMethod(Int, List[cktypes.Ty]),
+    RStruct(Int),
+    RConst(Int), // a `const`: evaluate its function
+    RToStr,
+    RCallValue,
+}
+
+pub struct Env {
+    pub structs: List[StructInfo], pub enums: List[EnumInfo], pub fns: List[FnInfo],
+    pub struct_ix: Map[Str, Int], pub enum_ix: Map[Str, Int], pub fn_ix: Map[Str, Int],
+    pub variant_ix: Map[Str, List[(Int, Int)]], // variant name -> (enum, variant), in declaration order
+    pub modules: List[Str], pub imports: List[List[Str]],
+    pub cur: Int, // file (module) being checked
+}
+
+fn span0() -> ckast.Span { ckast.Span { file: 0, line: 0, col: 0 } }
+
+// Type parameters are `T`, `K`, `V2`, ...; type names are longer.
+pub fn is_tparam_name(s: Str) -> Bool {
+    if s.len() == 0 or not ckast.upper(s) { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if c < 48 or c > 57 { return false }
+    }
+    true
+}
+
+pub fn Env.struct_idx(self, n: Str) -> Option[Int] { self.struct_ix.get(n) }
+pub fn Env.enum_idx(self, n: Str) -> Option[Int] { self.enum_ix.get(n) }
+pub fn Env.find_fn(self, full: Str) -> Option[Int] { self.fn_ix.get(full) }
+
+// Internal name of item `n` declared in `file`: modules prefix their items.
+pub fn Env.internal(self, file: Int, n: Str) -> Str {
+    if file < self.modules.len() and self.modules[file] != "" { self.modules[file] + "." + n } else { n }
+}
+
+pub fn Env.imported(self, m: Str) -> Bool { self.cur < self.imports.len() and self.imports[self.cur].contains(m) }
+
+pub fn Env.type_decl(self, n: Str) -> Option[(Int, Bool)] {
+    match self.struct_idx(n) {
+        Some(i) => return Some((self.structs[i].file, self.structs[i].public)),
+        None => {}
+    }
+    match self.enum_idx(n) {
+        Some(i) => Some((self.enums[i].file, self.enums[i].public)),
+        None => None,
+    }
+}
+
+// Resolve a type name as written in the current module to its internal name.
+pub fn Env.resolve_type(self, n: Str, sp: ckast.Span) -> Result[Str, ckast.Diag] {
+    if cktypes.is_builtin(n) { return Ok(n) }
+    match n.find(".") {
+        Some(i) => {
+            let m = n.slice(0, i)
+            if not self.imported(m) { return ckast.fail(sp, "unknown module '{m}'; add 'import {m}'") }
+            return match self.type_decl(n) {
+                Some((_, true)) => Ok(n),
+                Some(_) => ckast.fail(sp, "type '{n}' is private to module '{m}'"),
+                None => ckast.fail(sp, "module '{m}' has no type '{n.slice(i + 1, n.len())}'"),
+            }
+        }
+        None => {}
+    }
+    let own = self.internal(self.cur, n)
+    if self.type_decl(own).is_some() { return Ok(own) }
+    match self.type_decl(n) {
+        Some((0, _)) => Ok(n),
+        _ => ckast.fail(sp, "unknown type '{n}'"),
+    }
+}
+
+pub fn Env.arity(self, n: Str) -> Int {
+    let b = cktypes.builtin_arity(n)
+    if b >= 0 { return b }
+    match self.struct_idx(n) {
+        Some(i) => return self.structs[i].tparams.len(),
+        None => {}
+    }
+    match self.enum_idx(n) {
+        Some(i) => self.enums[i].tparams.len(),
+        None => 0,
+    }
+}
+
+pub fn Env.lower_type(self, t: ckast.TExpr, params: List[Str]) -> Result[cktypes.Ty, ckast.Diag] {
+    match t.k {
+        TNamed(n0, args) => {
+            if params.contains(n0) {
+                if not args.is_empty() { return ckast.fail(t.sp, "type parameter '{n0}' takes no arguments") }
+                return Ok(Par(n0))
+            }
+            let n = self.resolve_type(n0, t.sp)?
+            let ar = self.arity(n)
+            if ar != args.len() {
+                return ckast.fail(t.sp, "type '{n}' expects {ar} type argument(s), found {args.len()}")
+            }
+            Ok(Con(n, self.lower_list(args, params)?))
+        }
+        TFn(a, r) => {
+            let args = self.lower_list(a, params)?
+            Ok(Fun(args, self.lower_type(r, params)?))
+        }
+        TTuple(a) => Ok(Tup(self.lower_list(a, params)?)),
+    }
+}
+
+pub fn Env.lower_list(self, ts: List[ckast.TExpr], params: List[Str]) -> Result[List[cktypes.Ty], ckast.Diag] {
+    var out: List[cktypes.Ty] = []
+    for t in ts { out.push(self.lower_type(t, params)?) }
+    Ok(out)
+}
+
+// Linear (must be consumed exactly once) or unique (never copied), including
+// any type that contains such a value.
+pub fn Env.kind_of(self, t: cktypes.Ty) -> ckast.Kind {
+    self.kind_walk(t, Plain, []).0
+}
+
+fn note(k: ckast.Kind, d: ckast.Kind) -> ckast.Kind {
+    if d == Linear or (d == Unique and k == Plain) { d } else { k }
+}
+
+fn Env.kind_walk(self, t: cktypes.Ty, k0: ckast.Kind, seen0: List[cktypes.Ty]) -> (ckast.Kind, List[cktypes.Ty]) {
+    if seen0.contains(t) or k0 == Linear { return (k0, seen0) }
+    var seen = seen0
+    seen.push(t)
+    var k = k0
+    match t {
+        Tup(ts) => {
+            for x in ts {
+                let r = self.kind_walk(x, k, seen)
+                k = r.0
+                seen = r.1
+            }
+        }
+        Con(n, args) => {
+            for x in args {
+                let r = self.kind_walk(x, k, seen)
+                k = r.0
+                seen = r.1
+            }
+            if cktypes.is_unique_builtin(n) {
+                k = note(k, Unique)
+            } else {
+                match self.struct_idx(n) {
+                    Some(i) => k = note(k, self.structs[i].kind),
+                    None => match self.enum_idx(n) {
+                        Some(i) => k = note(k, self.enums[i].kind),
+                        None => {}
+                    },
+                }
+            }
+        }
+        _ => {}
+    }
+    (k, seen)
+}
+
+pub fn Env.struct_fields(self, t: cktypes.Ty) -> Option[List[(Str, cktypes.Ty)]] {
+    match t {
+        Con(n, args) => match self.struct_idx(n) {
+            Some(i) => {
+                let s = self.structs[i]
+                Some(s.fields.map(fn(f) => (f.0, f.1.subst(s.tparams, args))))
+            }
+            None => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn Env.enum_variants(self, t: cktypes.Ty) -> Option[List[(Str, List[cktypes.Ty])]] {
+    match t {
+        Con(n, args) => match self.enum_idx(n) {
+            Some(i) => {
+                let e = self.enums[i]
+                Some(e.variants.map(fn(v) => (v.0, v.1.map(fn(x) => x.subst(e.tparams, args)))))
+            }
+            None => None,
+        },
+        _ => None,
+    }
+}
+
+// A free function visible by its plain name: the current module's, else the prelude's.
+pub fn Env.lookup_fn(self, n: Str) -> Option[Int] {
+    match self.find_fn(self.internal(self.cur, n)) {
+        Some(i) => Some(i),
+        None => match self.find_fn(n) {
+            Some(i) if self.fns[i].sp.file == 0 => Some(i),
+            _ => None,
+        },
+    }
+}
+
+pub fn Env.visible(self, fi: Int, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    let f = self.fns[fi]
+    if f.sp.file != self.cur and f.sp.file != 0 and not f.public {
+        return ckast.fail(sp, "'{f.name}' is private to its module")
+    }
+    Ok(())
+}
+
+// ---- declarations ----
+
+pub fn declare(prog: ckast.Program) -> Result[Env, ckast.Diag] {
+    var imports: List[List[Str]] = []
+    for _ in 0..prog.modules.len() { imports.push([]) }
+    for im in prog.imports { imports[im.file].push(im.name) }
+    var env = Env {
+        structs: [], enums: [], fns: [], struct_ix: [:], enum_ix: [:], fn_ix: [:], variant_ix: [:],
+        modules: prog.modules, imports, cur: 1,
+    }
+    env.declare_types(prog)?
+    env.check_recursion()?
+    env.check_kinds(prog)?
+    env.declare_fns(prog)?
+    Ok(env)
+}
+
+fn Env.declare_types(mut self, prog: ckast.Program) -> Result[Unit, ckast.Diag] {
+    var names: List[(Str, ckast.Span, List[Str])] = []
+    for s in prog.structs { names.push((s.name, s.sp, s.tparams)) }
+    for e in prog.enums { names.push((e.name, e.sp, e.tparams)) }
+    var seen: Map[Str, Bool] = [:]
+    for x in names {
+        let (n0, sp, _) = x
+        let full = self.internal(sp.file, n0)
+        if not ckast.upper(n0) { return ckast.fail(sp, "type names start with an uppercase letter: '{n0}'") }
+        if is_tparam_name(n0) {
+            return ckast.fail(sp, "'{n0}' is reserved for type parameters (one capital letter, optional digits); use a longer type name")
+        }
+        if seen.contains(full) or cktypes.is_builtin(full) { return ckast.fail(sp, "type '{full}' is already defined") }
+        seen[full] = true
+    }
+    for x in names {
+        let (n, sp, ps) = x
+        for p in ps {
+            if not is_tparam_name(p) {
+                return ckast.fail(sp, "type parameter '{p}' of '{n}' must be one capital letter, optionally followed by digits")
+            }
+        }
+    }
+    for s in prog.structs {
+        let name = self.internal(s.sp.file, s.name)
+        if not self.struct_ix.contains(name) { self.struct_ix[name] = self.structs.len() }
+        self.structs.push(StructInfo {
+            name, tparams: s.tparams, fields: [], kind: s.kind, file: s.sp.file, public: s.public, pub_fields: s.pub_fields,
+        })
+    }
+    for e in prog.enums {
+        let name = self.internal(e.sp.file, e.name)
+        if not self.enum_ix.contains(name) { self.enum_ix[name] = self.enums.len() }
+        self.enums.push(EnumInfo { name, tparams: e.tparams, variants: [], kind: e.kind, file: e.sp.file, public: e.public })
+    }
+    for i in 0..prog.structs.len() {
+        let s = prog.structs[i]
+        self.cur = s.sp.file
+        var fields: List[(Str, cktypes.Ty)] = []
+        for f in s.fields {
+            if fields.any(fn(g) => g.0 == f.0) { return ckast.fail(f.1.sp, "duplicate field '{f.0}'") }
+            fields.push((f.0, self.lower_type(f.1, s.tparams)?))
+        }
+        self.structs[i].fields = fields
+    }
+    for i in 0..prog.enums.len() {
+        let e = prog.enums[i]
+        self.cur = e.sp.file
+        var vs: List[(Str, List[cktypes.Ty])] = []
+        for v in e.variants {
+            if not ckast.upper(v.name) { return ckast.fail(v.sp, "variant names start with an uppercase letter: '{v.name}'") }
+            if vs.any(fn(w) => w.0 == v.name) { return ckast.fail(v.sp, "duplicate variant '{v.name}'") }
+            vs.push((v.name, self.lower_list(v.fields, e.tparams)?))
+        }
+        self.enums[i].variants = vs
+    }
+    for ei in 0..self.enums.len() {
+        let vs = self.enums[ei].variants
+        for vi in 0..vs.len() {
+            var l = self.variant_ix.get(vs[vi].0).unwrap_or([])
+            l.push((ei, vi))
+            self.variant_ix[vs[vi].0] = l
+        }
+    }
+    Ok(())
+}
+
+// A struct may not contain itself by value (it would be infinitely large).
+fn Env.contains(self, t: cktypes.Ty, target: Str, seen: List[Str]) -> (Bool, List[Str]) {
+    match t {
+        Con(n, a) => {
+            if n == target { return (true, seen) }
+            if n == "List" or n == "Map" or seen.contains(n) { return (false, seen) }
+            var s2 = seen
+            s2.push(n)
+            for x in a {
+                let r = self.contains(x, target, s2)
+                if r.0 { return r }
+                s2 = r.1
+            }
+            match self.struct_idx(n) {
+                Some(i) => {
+                    for f in self.structs[i].fields {
+                        let r = self.contains(f.1, target, s2)
+                        if r.0 { return r }
+                        s2 = r.1
+                    }
+                    (false, s2)
+                }
+                None => (false, s2),
+            }
+        }
+        Tup(a) => {
+            var s2 = seen
+            for x in a {
+                let r = self.contains(x, target, s2)
+                if r.0 { return r }
+                s2 = r.1
+            }
+            (false, s2)
+        }
+        _ => (false, seen),
+    }
+}
+
+fn Env.check_recursion(self) -> Result[Unit, ckast.Diag] {
+    for s in self.structs {
+        for f in s.fields {
+            if self.contains(f.1, s.name, []).0 {
+                return ckast.fail(span0(), "struct '{s.name}' contains itself through field '{f.0}'; use an enum or List to break the cycle")
+            }
+        }
+    }
+    Ok(())
+}
+
+fn word(k: ckast.Kind) -> Str { if k == Linear { "linear" } else { "unique" } }
+pub fn kind_word(k: ckast.Kind) -> Str { word(k) }
+
+fn mixes(k: ckast.Kind, outer: ckast.Kind) -> Bool { (k != Plain and outer == Plain) or (k == Linear and outer == Unique) }
+
+fn Env.check_kinds(self, prog: ckast.Program) -> Result[Unit, ckast.Diag] {
+    for si in 0..self.structs.len() {
+        let s = self.structs[si]
+        for f in s.fields {
+            let k = self.kind_of(f.1)
+            if mixes(k, s.kind) {
+                return ckast.fail(prog.structs[si].sp, "field '{f.0}' of '{s.name}' is {word(k)}; declare '{word(k)} struct {s.name}'")
+            }
+        }
+    }
+    for ei in 0..self.enums.len() {
+        let e = self.enums[ei]
+        for v in e.variants {
+            for t in v.1 {
+                let k = self.kind_of(t)
+                // Option/Result are generic wrappers: they take the kind of their contents.
+                if mixes(k, e.kind) and not e.tparams.any(fn(p) => t.any(fn(x) => x == Par(p))) {
+                    return ckast.fail(prog.enums[ei].sp, "variant '{v.0}' of '{e.name}' holds a {word(k)} value; declare '{word(k)} enum {e.name}'")
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn Env.declare_fns(mut self, prog: ckast.Program) -> Result[Unit, ckast.Diag] {
+    var fseen: Map[Str, Bool] = [:]
+    for f in prog.fns {
+        self.cur = f.sp.file
+        var tparams: List[Str] = []
+        var owner: Option[cktypes.Ty] = None
+        match f.owner {
+            Some(o) => {
+                match o.k {
+                    TNamed(_, args) => {
+                        for a in args {
+                            match a.k {
+                                TNamed(an, aa) => if aa.is_empty() and is_tparam_name(an) { tparams.push(an) },
+                                _ => {}
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                let ot = self.lower_type(o, tparams)?
+                match ot {
+                    Con(on, _) => match self.type_decl(on) {
+                        Some((file, _)) if file != f.sp.file => {
+                            return ckast.fail(o.sp, "methods of '{on}' can only be defined in the module that defines it")
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+                owner = Some(ot)
+            }
+            None => {}
+        }
+        let full = match owner {
+            Some(Con(on, _)) => on + "." + f.name,
+            _ => self.internal(f.sp.file, f.name),
+        }
+        if fseen.contains(full) { return ckast.fail(f.sp, "function '{full}' is already defined") }
+        fseen[full] = true
+        if f.is_const {
+            if not (f.name.len() >= 2 and ckast.all_caps(f.name)) {
+                return ckast.fail(f.sp, "constant names are written in capitals, like MAX_SIZE: '{f.name}'")
+            }
+        } else if ckast.upper(f.name) {
+            return ckast.fail(f.sp, "function names start with a lowercase letter: '{f.name}'")
+        }
+        if f.body.is_none() and f.sp.file != 0 { return ckast.fail(f.sp, "'extern' is reserved for the prelude") }
+        for t in f.tparams {
+            if not is_tparam_name(t) {
+                return ckast.fail(f.sp, "type parameter '{t}' must be one capital letter, optionally followed by digits")
+            }
+            if tparams.contains(t) { return ckast.fail(f.sp, "type parameter '{t}' shadows another type") }
+            tparams.push(t)
+        }
+        var params: List[(Str, cktypes.Ty)] = []
+        if f.self_kind != NoSelf {
+            match owner {
+                Some(o) => params.push(("self", o)),
+                None => {}
+            }
+        }
+        for p in f.params {
+            if params.any(fn(q) => q.0 == p.name) { return ckast.fail(p.sp, "duplicate parameter '{p.name}'") }
+            if ckast.upper(p.name) { return ckast.fail(p.sp, "parameter names start with a lowercase letter") }
+            params.push((p.name, self.lower_type(p.ty, tparams)?))
+        }
+        let ret = match f.ret {
+            Some(t) => self.lower_type(t, tparams)?,
+            None => cktypes.t_unit(),
+        }
+        if not self.fn_ix.contains(full) { self.fn_ix[full] = self.fns.len() }
+        self.fns.push(FnInfo {
+            name: full, tparams, owner, params, muts: f.params.map(fn(p) => p.by_mut), ret, self_kind: f.self_kind,
+            is_extern: f.body.is_none(), is_const: f.is_const, public: f.public, sp: f.sp,
+        })
+    }
+    Ok(())
+}
+
+pub fn Env.check_main(self, i: Int) -> Result[Unit, ckast.Diag] {
+    let f = self.fns[i]
+    if not f.tparams.is_empty() { return ckast.fail(f.sp, "'main' cannot be generic") }
+    let params_ok = f.params.is_empty() or (f.params.len() == 1 and f.params[0].1.is("Sys"))
+    if not params_ok { return ckast.fail(f.sp, "'main' takes no parameters or a single 'Sys'") }
+    let ok = f.ret.is("Unit") or f.ret.is("Int") or (f.ret.is("Result") and f.ret.args()[0].is("Unit"))
+    if not ok { return ckast.fail(f.sp, "'main' returns Unit, Int (the exit status) or Result[Unit, E]") }
+    Ok(())
+}

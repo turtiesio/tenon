@@ -1,0 +1,167 @@
+// module (imported by the self-hosted checker)
+// Semantic types, substitution and unification: a port of src/types.rs.
+// Unification binds variables as it goes and never rolls back, exactly like
+// the bootstrap, because error messages print the partially unified types.
+
+pub enum Ty { Con(Str, List[Ty]), Tup(List[Ty]), Fun(List[Ty], Ty), Par(Str), TVar(Int) }
+
+pub fn con0(n: Str) -> Ty { Con(n, []) }
+pub fn t_int() -> Ty { Con("Int", []) }
+pub fn t_bool() -> Ty { Con("Bool", []) }
+pub fn t_str() -> Ty { Con("Str", []) }
+pub fn t_unit() -> Ty { Con("Unit", []) }
+pub fn t_float() -> Ty { Con("Float", []) }
+pub fn t_list(t: Ty) -> Ty { Con("List", [t]) }
+
+// Opaque runtime types: arity, or -1 when `n` is not one of them.
+pub fn builtin_arity(n: Str) -> Int {
+    match n {
+        "Int" | "Float" | "Bool" | "Str" | "Unit" => 0,
+        "List" => 1,
+        "Map" => 2,
+        "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" => 0,
+        _ => -1,
+    }
+}
+pub fn is_builtin(n: Str) -> Bool { builtin_arity(n) >= 0 }
+pub fn is_capability(n: Str) -> Bool {
+    match n {
+        "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" => true,
+        _ => false,
+    }
+}
+pub fn is_unique_builtin(n: Str) -> Bool { n == "Listener" or n == "Conn" }
+
+pub fn Ty.is(self, n: Str) -> Bool {
+    match self {
+        Con(m, _) => m == n,
+        _ => false,
+    }
+}
+
+pub fn Ty.args(self) -> List[Ty] {
+    match self {
+        Con(_, a) => a,
+        _ => [],
+    }
+}
+
+// Substitute type parameters; a repeated name maps to its last argument.
+pub fn Ty.subst(self, ps: List[Str], ts: List[Ty]) -> Ty {
+    if ps.is_empty() { return self }
+    match self {
+        Par(p) => {
+            var i = ps.len().min(ts.len()) - 1
+            while i >= 0 {
+                if ps[i] == p { return ts[i] }
+                i -= 1
+            }
+            self
+        }
+        Con(n, a) => Con(n, a.map(fn(t) => t.subst(ps, ts))),
+        Tup(a) => Tup(a.map(fn(t) => t.subst(ps, ts))),
+        Fun(a, r) => Fun(a.map(fn(t) => t.subst(ps, ts)), r.subst(ps, ts)),
+        TVar(_) => self,
+    }
+}
+
+pub fn Ty.any(self, f: fn(Ty) -> Bool) -> Bool {
+    if f(self) { return true }
+    match self {
+        Con(_, a) | Tup(a) => a.any(fn(t) => t.any(f)),
+        Fun(a, r) => a.any(fn(t) => t.any(f)) or r.any(f),
+        _ => false,
+    }
+}
+
+pub fn show_list(a: List[Ty]) -> Str { a.map(fn(t) => t.show()).join(", ") }
+
+pub fn Ty.show(self) -> Str {
+    match self {
+        Con(n, a) => if a.is_empty() { n } else { n + "[" + show_list(a) + "]" },
+        Tup(a) => "(" + show_list(a) + ")",
+        Fun(a, r) => "fn(" + show_list(a) + ") -> " + r.show(),
+        Par(p) => p,
+        TVar(_) => "_",
+    }
+}
+
+pub struct Subst { pub vars: List[Option[Ty]] }
+
+pub fn new_subst() -> Subst { Subst { vars: [] } }
+
+pub fn Subst.fresh(mut self) -> Ty {
+    self.vars.push(None)
+    TVar(self.vars.len() - 1)
+}
+
+pub fn Subst.shallow(self, t: Ty) -> Ty {
+    var cur = t
+    while true {
+        match cur {
+            TVar(v) => match self.vars[v] {
+                Some(b) => cur = b,
+                None => return cur,
+            },
+            _ => return cur,
+        }
+    }
+    cur
+}
+
+pub fn Subst.resolve(self, t: Ty) -> Ty {
+    match self.shallow(t) {
+        Con(n, a) => Con(n, a.map(fn(x) => self.resolve(x))),
+        Tup(a) => Tup(a.map(fn(x) => self.resolve(x))),
+        Fun(a, r) => Fun(a.map(fn(x) => self.resolve(x)), self.resolve(r)),
+        other => other,
+    }
+}
+
+// Unresolved variables become Unit (only diverging expressions stay unknown).
+pub fn Subst.finish(self, t: Ty) -> Ty {
+    match self.shallow(t) {
+        TVar(_) => t_unit(),
+        Con(n, a) => Con(n, a.map(fn(x) => self.finish(x))),
+        Tup(a) => Tup(a.map(fn(x) => self.finish(x))),
+        Fun(a, r) => Fun(a.map(fn(x) => self.finish(x)), self.finish(r)),
+        other => other,
+    }
+}
+
+pub fn Subst.occurs(self, v: Int, t: Ty) -> Bool {
+    match self.shallow(t) {
+        TVar(w) => v == w,
+        Con(_, a) | Tup(a) => a.any(fn(x) => self.occurs(v, x)),
+        Fun(a, r) => a.any(fn(x) => self.occurs(v, x)) or self.occurs(v, r),
+        Par(_) => false,
+    }
+}
+
+pub fn Subst.unify(mut self, a0: Ty, b0: Ty) -> Bool {
+    let a = self.shallow(a0)
+    let b = self.shallow(b0)
+    match (a, b) {
+        (TVar(x), TVar(y)) if x == y => true,
+        (TVar(x), t) => self.bind(x, t),
+        (t, TVar(x)) => self.bind(x, t),
+        (Con(n, a1), Con(m, a2)) => n == m and a1.len() == a2.len() and self.unify_all(a1, a2),
+        (Tup(a1), Tup(a2)) => a1.len() == a2.len() and self.unify_all(a1, a2),
+        (Fun(a1, r1), Fun(a2, r2)) => a1.len() == a2.len() and self.unify_all(a1, a2) and self.unify(r1, r2),
+        (Par(p), Par(q)) => p == q,
+        _ => false,
+    }
+}
+
+pub fn Subst.bind(mut self, x: Int, t: Ty) -> Bool {
+    if self.occurs(x, t) { return false }
+    self.vars[x] = Some(t)
+    true
+}
+
+pub fn Subst.unify_all(mut self, a: List[Ty], b: List[Ty]) -> Bool {
+    for i in 0..a.len() {
+        if not self.unify(a[i], b[i]) { return false }
+    }
+    true
+}
