@@ -97,6 +97,8 @@ fn expr(e: parser.Expr) -> Str {
         Binary(op, l, r) => op + " " + expr(l) + " " + expr(r),
         If(c, t, els) => "if " + expr(c) + " " + block(t) + opt_expr(els, " "),
         Match(s, arms) => "match " + expr(s) + list(arms.map(fn(a) => {
+            // the `_` arm added by `if let` / `while let` (parser.tn `if_let`)
+            if a.fallback { return "(else " + expr(a.body) + ")" }
             let g = match a.guard {
                 Some(x) => " (guard " + expr(x) + ")",
                 None => "",

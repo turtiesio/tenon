@@ -1,0 +1,2 @@
+// error: expected hex digits after '0x'
+fn main() { let mask = 0xZZ }

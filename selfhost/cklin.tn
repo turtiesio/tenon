@@ -511,6 +511,9 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
             for a in arms {
                 self.br_path(br)
                 let mark = self.vars.len()
+                if destructure and a.fallback and self.kind(a.pat.id) == Linear {
+                    return ckast.fail(a.pat.sp, "'if let' and 'while let' would drop the linear value when the pattern does not match; use 'match'")
+                }
                 if destructure { self.bind(a.pat)? }
                 match a.guard {
                     Some(g) => {

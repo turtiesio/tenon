@@ -339,14 +339,23 @@ impl Checker {
             ExprKind::Match(s, arms) => {
                 let st = self.sub.fresh();
                 let st = self.expr(s, &st)?;
-                let res = exp.clone();
+                // `if let` without `else` (parser.rs `if_let`): like `if` without
+                // `else`, its block must produce Unit.
+                let no_else = arms.last().is_some_and(|a| a.fallback && matches!(a.body.kind, ExprKind::Unit));
+                let res = if no_else { Ty::unit() } else { exp.clone() };
                 for a in arms {
                     self.scopes.push(vec![]);
                     self.pattern(&a.pat, &st, false)?;
                     if let Some(g) = &a.guard {
                         self.expr(g, &Ty::bool())?;
                     }
-                    self.expr(&a.body, &res)?;
+                    self.expr(&a.body, &res).map_err(|d| {
+                        if no_else && !a.fallback && d.msg.starts_with("type mismatch") {
+                            Diag::new(d.span, &format!("{} ('if' without 'else' must produce Unit)", d.msg))
+                        } else {
+                            d
+                        }
+                    })?;
                     self.scopes.pop();
                 }
                 let rst = self.sub.resolve(&st);
@@ -536,7 +545,7 @@ impl Checker {
     }
     // `let PAT = v else ...` with a pattern that always matches is a mistake.
     pub(crate) fn exhaustive_or_refutable(&mut self, pat: &Pattern, t: &Ty) -> CResult<()> {
-        let arm = Arm { pat: pat.clone(), guard: None, body: Expr { id: u32::MAX, span: pat.span, kind: ExprKind::Unit } };
+        let arm = Arm { pat: pat.clone(), guard: None, body: Expr { id: u32::MAX, span: pat.span, kind: ExprKind::Unit }, fallback: false };
         if self.exhaustive(pat.span, t, &[arm]).is_ok() {
             return err(pat.span, "this pattern always matches, so the 'else' block can never run; use plain 'let'");
         }

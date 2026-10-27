@@ -35,7 +35,9 @@ identically; the test suite checks this for every test program.
   continues the previous line, and so does anything inside `( )` or `[ ]`.
 - Names: types and enum variants start with an uppercase letter; functions,
   variables and fields start with a lowercase letter. The compiler enforces this.
-- Literals: `42`, `1_000`, `3.14`, `1e-9`, `true`, `false`, `"text"`, and
+- Literals: `42`, `1_000`, `3.14`, `1e-9`, `true`, `false`, `"text"`, integers
+  in hex `0xFF`, binary `0b1010` and octal `0o17` (lowercase prefix, digits in
+  either case; `_` separators allowed in any integer: `0xFF_FF`), and
   character literals `'a'`, `'\n'`, `'\''`, `'é'`, which are the character's
   code point as an `Int` (`'a'` is `97`; compare with `s.byte(i)`).
   Escapes: `\n \t \r \0 \\ \" \{ \}`. `"{expr}"` interpolates any value (see §8); write `\{` for a literal `{` (a lone `}` is literal).
@@ -193,6 +195,21 @@ match shape {
     _ => "other",
 }
 ```
+
+`if let` runs a block when a value matches a pattern; the pattern's names are
+visible only in that block. It is an expression like `if`, and chains with
+`else if` / `else if let`. `while let` loops while the pattern matches
+(`break`/`continue` work as in `while`; it always can finish). Any `match`
+pattern works, including `|` and patterns that always match:
+
+```tenon
+if let Some(rest) = line.strip_prefix("push ") { push(rest) }
+else if let Some(n) = line.to_int() { use(n) } else { skip() }
+while let Some(job) = queue.pop() { run(job) }
+```
+
+`if let P = e { a } else { b }` means `match e { P => a, _ => b }`, so a linear
+value cannot be the matched value (the `else` path would drop it).
 
 `let ... else` unwraps or leaves; the `else` block must end with `return`,
 `break`, `continue` or `panic(...)`, and cannot see the pattern's names:

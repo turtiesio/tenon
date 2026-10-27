@@ -57,7 +57,8 @@ pub enum EK {
     XMutArg(Expr), // `mut place` as an argument to a `mut` parameter
 }
 pub struct Expr { pub id: Int, pub sp: Span, pub k: EK }
-pub struct Arm { pub pat: Pat, pub guard: Option[Expr], pub body: Expr }
+// `fallback`: the `_` arm added for `if let` / `while let` (parser.tn `if_let`).
+pub struct Arm { pub pat: Pat, pub guard: Option[Expr], pub body: Expr, pub fallback: Bool }
 
 pub enum FIter { FRange(Expr, Expr), FEach(Expr) }
 pub enum SK {
@@ -258,7 +259,7 @@ fn Conv.expr(mut self, e: parser.Expr) -> Expr {
             for a in arms {
                 let pat = self.pat(a.pat)
                 let guard = self.opt_expr(a.guard)
-                out.push(Arm { pat, guard, body: self.expr(a.body) })
+                out.push(Arm { pat, guard, body: self.expr(a.body), fallback: a.fallback })
             }
             XMatch(scrut, out)
         }
@@ -450,7 +451,7 @@ fn Fixer.children(self, k: EK) -> EK {
         XCall(c, args) => XCall(self.expr(c), args.map(fn(x) => self.expr(x))),
         XMethod(c, m, args) => XMethod(self.expr(c), m, args.map(fn(x) => self.expr(x))),
         XIf(c, t, els) => XIf(self.expr(c), self.block(t), self.opt(els)),
-        XMatch(s, arms) => XMatch(self.expr(s), arms.map(fn(a) => Arm { pat: a.pat, guard: self.opt(a.guard), body: self.expr(a.body) })),
+        XMatch(s, arms) => XMatch(self.expr(s), arms.map(fn(a) => Arm { pat: a.pat, guard: self.opt(a.guard), body: self.expr(a.body), fallback: a.fallback })),
         XBlock(b) => XBlock(self.block(b)),
         XList(xs) => XList(xs.map(fn(x) => self.expr(x))),
         XTuple(xs) => XTuple(xs.map(fn(x) => self.expr(x))),

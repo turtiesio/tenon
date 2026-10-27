@@ -249,7 +249,7 @@ fn Ck.stmt(mut self, s: ckast.Stmt) -> Result[Unit, ckast.Diag] {
             }
             if els.is_some() {
                 // A pattern that always matches makes the else block dead.
-                let arm = ckast.Arm { pat, guard: None, body: ckast.Expr { id: -1, sp: pat.sp, k: XUnit } }
+                let arm = ckast.Arm { pat, guard: None, body: ckast.Expr { id: -1, sp: pat.sp, k: XUnit }, fallback: false }
                 if ckexh.check(self.env, self.pres, pat.sp, self.sub.resolve(t), [arm]).is_ok() {
                     return ckast.fail(pat.sp, "this pattern always matches, so the 'else' block can never run; use plain 'let'")
                 }
@@ -696,6 +696,13 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
         XMatch(s, arms) => {
             let st0 = self.sub.fresh()
             let st = self.expr(s, st0)?
+            // `if let` without `else` (parser.tn `if_let`): like `if` without
+            // `else`, its block must produce Unit.
+            let no_else = match arms.last() {
+                Some(a) => a.fallback and a.body.k == XUnit,
+                None => false,
+            }
+            let res = if no_else { cktypes.t_unit() } else { exp }
             for a in arms {
                 self.scopes.push([])
                 self.pattern(a.pat, st, false)?
@@ -705,12 +712,20 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
                     }
                     None => {}
                 }
-                let _ = self.expr(a.body, exp)?
+                match self.expr(a.body, res) {
+                    Ok(_) => {}
+                    Err(d) => {
+                        if no_else and not a.fallback and d.msg.starts_with("type mismatch") {
+                            return ckast.fail(d.sp, d.msg + " ('if' without 'else' must produce Unit)")
+                        }
+                        return Err(d)
+                    }
+                }
                 let _ = self.scopes.pop()
             }
             let rst = self.sub.resolve(st)
             ckexh.check(self.env, self.pres, e.sp, rst, arms)?
-            Ok(exp)
+            Ok(res)
         }
         XList(xs) => {
             let et = match self.sub.shallow(exp) {

@@ -1,0 +1,7 @@
+// error: 'if let' and 'while let' would drop the linear value when the pattern does not match
+linear struct Claim { job: Str }
+fn Claim.done(self) {}
+fn f(o: Option[Claim]) {
+    if let Some(c) = o { c.done() }
+}
+fn main() {}

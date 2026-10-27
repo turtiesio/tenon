@@ -1,0 +1,6 @@
+// error: this block must end with a value of type Int
+fn f(o: Option[Int]) -> Int {
+    var cur = o
+    while let Some(n) = cur { cur = if n > 0 { Some(n - 1) } else { None } }
+}
+fn main() {}

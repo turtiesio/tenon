@@ -1,0 +1,6 @@
+// error: unused value of type Int
+fn f(o: Option[Int]) -> Int {
+    let v = if let Some(x) = o { x }
+    0
+}
+fn main() {}

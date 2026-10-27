@@ -166,12 +166,17 @@ fn expr(e: &Expr) -> String {
         ExprKind::Match(s, arms) => format!(
             "match {}{}",
             expr(s),
-            list(arms.iter().map(|a| format!(
-                "(arm {}{} {})",
-                pat(&a.pat),
-                a.guard.as_ref().map(|g| format!(" (guard {})", expr(g))).unwrap_or_default(),
-                expr(&a.body)
-            )))
+            list(arms.iter().map(|a| if a.fallback {
+                // the `_` arm added by `if let` / `while let` (parser.rs `if_let`)
+                format!("(else {})", expr(&a.body))
+            } else {
+                format!(
+                    "(arm {}{} {})",
+                    pat(&a.pat),
+                    a.guard.as_ref().map(|g| format!(" (guard {})", expr(g))).unwrap_or_default(),
+                    expr(&a.body)
+                )
+            }))
         ),
         ExprKind::Block(b) => block(b),
         ExprKind::List(xs) => format!("list{}", list(xs.iter().map(expr))),

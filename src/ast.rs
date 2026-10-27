@@ -213,6 +213,9 @@ pub struct Arm {
     pub pat: Pattern,
     pub guard: Option<Expr>,
     pub body: Expr,
+    // The `_` arm the parser adds for `if let` / `while let` (see Parser::if_let):
+    // never reported as unreachable, and named in the linear "would drop" message.
+    pub fallback: bool,
 }
 
 #[derive(Debug, Clone)]

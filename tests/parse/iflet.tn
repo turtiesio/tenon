@@ -1,0 +1,8 @@
+fn f(o: Option[Int], r: Result[Int, Str]) -> Int {
+    if let Some(x) = o { x } else if let Ok(1) | Ok(2) = r { 1 } else if o.is_none() { 2 } else { 3 }
+}
+fn g(xs: List[(Int, Int)]) {
+    var v = xs
+    while let Some((a, _)) = v.pop() { if a > 2 { break } }
+    let z = match o { Some(_) => if let None = o { 0 } else { 1 }, None => while let Some(_) = o { break } }
+}

@@ -397,6 +397,9 @@ impl<'a> Parser<'a> {
             let els = if self.eat_kw("else") { Some(self.block()?) } else { None };
             StmtKind::Let { pat, mutable, ty, value, els }
         } else if self.eat_kw("while") {
+            if self.eat_kw("let") {
+                return self.while_let(span);
+            }
             let cond = self.head_expr()?;
             let body = self.block()?;
             StmtKind::While { cond, body }
@@ -809,7 +812,7 @@ impl<'a> Parser<'a> {
                         StmtKind::Expr(e) => e,
                         _ => self.mk(bspan, ExprKind::Block(Block { stmts: vec![st], span: bspan })),
                     };
-                    arms.push(Arm { pat, guard, body });
+                    arms.push(Arm { pat, guard, body, fallback: false });
                     if !self.is_sym("}") && !self.is_sym(",") && !self.is_sym(";") {
                         return self.err("',' or '}' after match arm");
                     }
@@ -900,6 +903,9 @@ impl<'a> Parser<'a> {
     fn if_expr(&mut self) -> PResult<Expr> {
         let span = self.span();
         self.advance(); // if
+        if self.eat_kw("let") {
+            return self.if_let(span);
+        }
         let cond = self.head_expr()?;
         let then = self.block()?;
         let els = if self.eat_kw("else") {
@@ -914,5 +920,62 @@ impl<'a> Parser<'a> {
             None
         };
         Ok(self.mk(span, ExprKind::If(Box::new(cond), then, els)))
+    }
+
+    // `if let` and `while let` are desugared here, and only here (both front
+    // ends do the same; selfhost/parser.tn mirrors this):
+    //   if let P = E { A } else B    =>  match E { P => { A }, _ => B }
+    //   if let P = E { A }           =>  match E { P => { A }, _ => () }
+    //   while let P = E { A }        =>  while true { match E { P => { A }, _ => break } }
+    // so the checker, the linear analysis, the interpreter and the C emitter
+    // need nothing new. The added `_` arm is marked `fallback`: it is never
+    // "unreachable" (P may be irrefutable), it makes the match exhaustive, a
+    // fallback whose body is the bare `()` checks the then-block like an `if`
+    // without `else` (must be Unit), and the linear pass names `if let` when it
+    // would drop a linear scrutinee. `tenon ast` prints it as `(else BODY)`.
+    // The synthetic nodes take the position of the `if`/`while` keyword.
+    fn if_let(&mut self, span: Span) -> PResult<Expr> {
+        let pat = self.pattern()?;
+        self.expect_sym("=")?;
+        let scrut = self.head_expr()?;
+        let bspan = self.span();
+        let then = self.block()?;
+        let then = self.mk(bspan, ExprKind::Block(then));
+        let els = if self.eat_kw("else") {
+            if self.is_kw("if") {
+                self.if_expr()?
+            } else {
+                let bspan = self.span();
+                let b = self.block()?;
+                self.mk(bspan, ExprKind::Block(b))
+            }
+        } else {
+            self.mk(span, ExprKind::Unit)
+        };
+        Ok(self.let_match(span, pat, scrut, then, els))
+    }
+
+    fn while_let(&mut self, span: Span) -> PResult<Stmt> {
+        let pat = self.pattern()?;
+        self.expect_sym("=")?;
+        let scrut = self.head_expr()?;
+        let bspan = self.span();
+        let body = self.block()?;
+        let body = self.mk(bspan, ExprKind::Block(body));
+        let brk = Block { stmts: vec![Stmt { kind: StmtKind::Break, span }], span };
+        let brk = self.mk(span, ExprKind::Block(brk));
+        let m = self.let_match(span, pat, scrut, body, brk);
+        let cond = self.mk(span, ExprKind::Bool(true));
+        let body = Block { stmts: vec![Stmt { kind: StmtKind::Expr(m), span }], span };
+        Ok(Stmt { kind: StmtKind::While { cond, body }, span })
+    }
+
+    fn let_match(&mut self, span: Span, pat: Pattern, scrut: Expr, then: Expr, els: Expr) -> Expr {
+        let wild = Pattern { id: self.id(), span, kind: PatKind::Wild };
+        let arms = vec![
+            Arm { pat, guard: None, body: then, fallback: false },
+            Arm { pat: wild, guard: None, body: els, fallback: true },
+        ];
+        self.mk(span, ExprKind::Match(Box::new(scrut), arms))
     }
 }

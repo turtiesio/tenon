@@ -142,7 +142,8 @@ pub fn check(
     let mut rows: Vec<Vec<P>> = Vec::new();
     for a in arms {
         let alts = lower(&a.pat, res);
-        let reachable = alts.iter().any(|p| useful(&cx, &rows, &[p.clone()], &tys));
+        // The `_` added by `if let` may follow an irrefutable pattern: not an error.
+        let reachable = a.fallback || alts.iter().any(|p| useful(&cx, &rows, &[p.clone()], &tys));
         if !reachable {
             return Err(Diag::new(a.pat.span, "unreachable pattern: earlier arms already cover it"));
         }

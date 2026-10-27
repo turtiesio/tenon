@@ -1,0 +1,6 @@
+// error: unknown name 'x'
+fn f(o: Option[Int]) -> Int {
+    if let Some(x) = o { let _ = x } else { return 0 }
+    x
+}
+fn main() {}

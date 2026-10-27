@@ -1,0 +1,1 @@
+let a = [0xFF, 0xff_FF, 0x_1, 0b1010, 0b_1, 0o17, 0o7_7, 1_000, 0x7FFFFFFFFFFFFFFF, 0, 0.5, t.0x]
