@@ -45,6 +45,9 @@ def main():
             rs_bin = os.path.join(OUT, name + "_rs")
             subprocess.run(["rustc", "-O", "-o", rs_bin, rs], check=True, capture_output=True)
             impls.append(("rust", [rs_bin]))
+        ts = os.path.join(d, name + ".ts")
+        if os.path.exists(ts):
+            impls.append(("typescript", ["node", ts]))
         row = {}
         outs = {}
         for impl, cmd in impls:

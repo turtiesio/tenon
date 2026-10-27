@@ -21,6 +21,8 @@ def case(name, args=(), stdin='', out='', code=0, setup=None):
 
 def multi(name, steps, setup=None):
     base = ROOT/TASK/'cases'/name
+    for old in ('cmd', 'stdin', 'expected_stdout', 'expected_exit'):
+        (base/old).unlink(missing_ok=True)
     files(base,setup)
     manifest = []
     for i,step in enumerate(steps,1):
@@ -117,7 +119,7 @@ case('leap-day-of-year',['-F','%j-%a-%b','add','2024-12-31','0'],out='366-Tue-De
 case('normal-day-of-year',['-F','%j','add','2023-12-31','0'],out='365\n')
 case('empty-format',['-F','','addmonths','2024-01-01','0'],out='\n')
 case('format-starts-dash',['-F','-%Y','add','2024-01-01','-0'],out='-2024\n')
-case('last-format-wins',['-F','%q','-F','%%Y %Y%%%m','add','2000-02-29','0000000'],out='%Y 2000%02\n')
+case('last-format-wins',['-F','%m','-F','%%Y %Y%%%m','add','2000-02-29','0000000'],out='%Y 2000%02\n')
 dates('format-ignored-but-validated',[(['-F','anything','weekday','2000-01-01'],'Saturday\n',0),(['-F','','diff','2024-01-01','2024-01-01'],'0\n',0),(['-F','%Q','weekday','0000-00-00'],'',2),(['-F','end%','diff','invalid','invalid'],'',2)])
 dates('date-syntax-invalid',[(['weekday',d],'',1) for d in ['0000-01-01','2024-13-01','2024-00-01','2024-04-31','2024-01-00',' 2024-01-05','2024-01-05 ','2024-1-05','2024-01-5','10000-01-01','1900-02-29']])
 dates('result-day-range',[(['add','0001-01-01','-1'],'',1),(['add','0001-01-01','3652058'],'9999-12-31\n',0),(['add','9999-12-31','-3652058'],'0001-01-01\n',0),(['add','2000-01-01','9999999'],'',1)])
@@ -222,7 +224,7 @@ case('example-2',stdin='HIT 5 api bob\nPOLICY api 2 100\nPOLICY api 5 5\nHIT 50 
 case('example-3',stdin='POLICY p 2 10\nHIT 0 p c\nHIT 0 p c\nHIT 15 p c\nHIT 100 p c\nHIT 105 p c\nHIT 109 p c\nHIT 110 p c\n',out='OK\nALLOW 1\nALLOW 0\nALLOW 0\nALLOW 1\nALLOW 0\nDENY 1\nALLOW 0\n')
 case('example-4',['extra'],code=2)
 case('empty-input')
-case('initial-stats',stdin='POLICY p 1 1\nSTATS p\n',out='OK\nallowed=0 denied=0 clients=0\n')
+multi('initial-stats',[([], 'POLICY p 1 1\nSTATS p\nHIT 0 p c\n', 'OK\nallowed=0 denied=0 clients=0\n', None, 2)])
 case('client-policy-isolation',stdin='POLICY p 1 10\nPOLICY q 2 10\nHIT 0 p a\nHIT 0 p b\nHIT 0 q a\nHIT 0 p a\nSTATS p\nSTATS q\n',out='OK\nOK\nALLOW 0\nALLOW 0\nALLOW 1\nDENY 10\nallowed=2 denied=1 clients=2\nallowed=1 denied=0 clients=1\n')
 case('peek-creates-not-hits',stdin='POLICY p 3 10\nPEEK 5 p c\nPEEK 7 p c\nSTATS p\nHIT 7 p c 3\nHIT 16 p c\nHIT 17 p c\n',out='OK\nTOKENS 3\nTOKENS 3\nallowed=0 denied=0 clients=1\nALLOW 0\nDENY 1\nALLOW 0\n')
 case('denial-does-not-consume',stdin='POLICY p 3 10\nHIT 0 p c 2\nHIT 5 p c 2\nPEEK 5 p c\nHIT 5 p c\nSTATS p\n',out='OK\nALLOW 1\nDENY 5\nTOKENS 1\nALLOW 0\nallowed=2 denied=1 clients=1\n')
@@ -251,7 +253,7 @@ case('example-2',stdin='0 ADD A-1 5\n0 RESERVE A-1 5 3\n1 REMOVE A-1 1\n2 RELEAS
 case('example-3',stdin='0 ADD X 2\n0 RESERVE X 1 10\n0 RESERVE X 1 10\n9 COMMIT 1\n10 COMMIT 2\n10 STATS\n10 AVAIL X\n',out='OK 2\nHOLD 1\nHOLD 2\nOK\nERR expired\nholds=0 committed=1 expired=1 released=0\nX on_hand=1 held=0 available=1\n')
 case('example-4',['now'],code=2)
 case('empty-input')
-case('unknown-sku-and-hold',stdin='0 AVAIL X\n0 REMOVE X 1\n0 RESERVE X 1 1\n0 COMMIT 0\n0 RELEASE 1\n0 STATS\n',out='X on_hand=0 held=0 available=0\nERR insufficient 0\nERR insufficient 0\nERR no such hold\nERR no such hold\nholds=0 committed=0 expired=0 released=0\n')
+multi('unknown-sku-and-hold',[([], '0 AVAIL X\n0 REMOVE X 1\n0 RESERVE X 1 1\n0 COMMIT 0\n0 RELEASE 1\n0 STATS\n', 'X on_hand=0 held=0 available=0\nERR insufficient 0\nERR insufficient 0\nERR no such hold\nERR no such hold\nholds=0 committed=0 expired=0 released=0\n', None, 6)])
 case('success-only-ids',stdin='0 RESERVE X 1 1\n0 ADD X 2\n0 RESERVE X 1 10\n0 RESERVE X 2 10\n0 RESERVE X 1 10\n',out='ERR insufficient 0\nOK 2\nHOLD 1\nERR insufficient 1\nHOLD 2\n')
 case('remove-available-equality',stdin='0 ADD X 5\n0 RESERVE X 2 10\n1 REMOVE X 3\n1 AVAIL X\n1 REMOVE X 1\n',out='OK 5\nHOLD 1\nOK 2\nX on_hand=2 held=2 available=0\nERR insufficient 0\n')
 case('release-quantity-and-terminal-state',stdin='0 ADD X 3\n0 RESERVE X 2 10\n1 RELEASE 1\n1 AVAIL X\n1 COMMIT 1\n10 RELEASE 1\n10 STATS\n',out='OK 3\nHOLD 1\nOK\nX on_hand=3 held=0 available=3\nERR no such hold\nERR no such hold\nholds=0 committed=0 expired=0 released=1\n')
