@@ -63,9 +63,13 @@ fn main(sys: Sys) -> Int {
             let name = im.0
             if not modules.contains(name) {
                 let local = join(parent(files[i].0), name + ".tn")
-                match sys.fs.read(local) {
-                    Ok(text) => files.push((local, text)),
-                    Err(_) => {
+                // A file never imports itself: `regex.tn` doing `import regex` gets the std module.
+                let me = files[i].0
+                let is_self = me == name + ".tn" or me.ends_with("/" + name + ".tn")
+                let found = if is_self { None } else { sys.fs.read(local).ok() }
+                match found {
+                    Some(text) => files.push((local, text)),
+                    None => {
                         if not std_modules().contains(name) {
                             return report(con, files[i].0, im.1.line, im.1.col,
                                 "cannot find module '{name}' ({local} or the standard library)")

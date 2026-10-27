@@ -67,9 +67,11 @@ pub fn front(path: &str) -> (check::Checked, SourceMap) {
             }
             let dir = std::path::Path::new(&sm.files[i].0).parent().map(|p| p.to_path_buf()).unwrap_or_default();
             let local = dir.join(format!("{}.tn", im.name));
+            // A file never imports itself: `regex.tn` doing `import regex` gets the std module.
+            let is_self = std::fs::canonicalize(&local).ok() == std::fs::canonicalize(&sm.files[i].0).ok();
             let found = match std::fs::read_to_string(&local) {
-                Ok(t) => Some((local.to_string_lossy().into_owned(), t)),
-                Err(_) => STD.iter().find(|(n, _)| *n == im.name).map(|(n, t)| (format!("<std>/{}.tn", n), t.to_string())),
+                Ok(t) if !is_self => Some((local.to_string_lossy().into_owned(), t)),
+                _ => STD.iter().find(|(n, _)| *n == im.name).map(|(n, t)| (format!("<std>/{}.tn", n), t.to_string())),
             };
             let Some(f) = found else {
                 let d = diag::Diag::new(im.span, &format!("cannot find module '{}' ({} or the standard library)", im.name, local.display()));
