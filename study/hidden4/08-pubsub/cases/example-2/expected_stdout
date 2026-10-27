@@ -1,0 +1,18 @@
+OK
+OK
+ERR already subscribed
+DELIVERED 1
+DELIVERED 1
+DELIVERED 1
+DELIVERED 1
+subs=2 queued=3 dropped=1
+MSGS 2 a.c=m2 a=m3
+subs=2 queued=1 dropped=1
+OK
+ERR not subscribed
+DELIVERED 0
+DELIVERED 1
+subs=1 queued=2 dropped=1
+MSGS 2 a.b.c=m4 a.b=m6
+subs=0 queued=0 dropped=0
+MSGS 0

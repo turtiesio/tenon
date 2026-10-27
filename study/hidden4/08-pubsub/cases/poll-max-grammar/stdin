@@ -1,0 +1,9 @@
+POLL a 0
+POLL a 00
+POLL a 01
+POLL a 0001
+POLL a 1000
+POLL a +1
+POLL a -1
+POLL a 1.0
+POLL a 999

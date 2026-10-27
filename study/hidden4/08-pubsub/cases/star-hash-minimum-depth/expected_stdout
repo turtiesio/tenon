@@ -1,0 +1,7 @@
+OK
+OK
+DELIVERED 1
+DELIVERED 2
+DELIVERED 2
+MSGS 3 x=a x.y=b x.y.z=c
+MSGS 2 x.y=b x.y.z=c

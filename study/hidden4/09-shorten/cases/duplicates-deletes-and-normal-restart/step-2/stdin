@@ -1,0 +1,8 @@
+INFO
+GET 1
+HITS 2
+HITS 3
+DEL 2
+DEL 3
+PUT same
+INFO

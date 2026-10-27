@@ -1,0 +1,15 @@
+SUB Ann x
+SUB ann x.#.y
+SUB ann #
+SUB ann *.#
+PUB a.* m
+PUB a hello world
+PUB a.b.c.d.e.f.g.h.i m
+POLL ann 0
+POLL ann 1000
+sub ann x
+STATS
+
+PUB a
+PUB q x,y
+SUB ann a..b

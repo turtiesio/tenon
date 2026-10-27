@@ -1,0 +1,7 @@
+ballots=0 invalid=0
+round 1: P=0 Q=0 R=0 exhausted=0
+eliminated: R
+round 2: P=0 Q=0 exhausted=0
+eliminated: Q
+round 3: P=0 exhausted=0
+winner: P

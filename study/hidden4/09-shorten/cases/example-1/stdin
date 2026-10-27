@@ -1,0 +1,12 @@
+PUT https://example.com/a
+PUT http://x.org/?q=1&r=2
+GET 1
+GET 1
+GET 2
+HITS 1
+HITS 3
+DEL 2
+GET 2
+DEL 2
+PUT https://example.com/a
+INFO

@@ -1,0 +1,12 @@
+CODE 1
+CODE 2
+URL https://example.com/a
+URL https://example.com/a
+URL http://x.org/?q=1&r=2
+HITS 2
+ERR not found
+OK
+ERR not found
+ERR not found
+CODE 3
+links=2 next=4 records=7

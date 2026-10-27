@@ -1,0 +1,7 @@
+ballots=4 invalid=0
+round 1: A=2 B=1 C=1 exhausted=0
+eliminated: C
+round 2: A=2 B=2 exhausted=0
+eliminated: B
+round 3: A=2 exhausted=2
+winner: A

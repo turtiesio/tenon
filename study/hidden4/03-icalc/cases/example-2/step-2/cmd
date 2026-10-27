@@ -1,0 +1,7 @@
+-D
+rate=7
+-D
+rate=3
+-D
+n_2=-0
+(rate - n_2) * -(2 + rate) / 4

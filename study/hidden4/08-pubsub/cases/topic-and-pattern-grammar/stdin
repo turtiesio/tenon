@@ -1,0 +1,16 @@
+PUB A x
+PUB a..b x
+PUB .a x
+PUB a. x
+PUB a_b x
+PUB a-b x
+PUB aaaaaaaaaaaaaaaaa x
+PUB a.a.a.a.a.a.a.a.a x
+PUB a.# x
+PUB * x
+SUB a a.#.b
+SUB a a..b
+SUB a a*
+SUB a ##
+SUB a *.*.*.*.*.*.*.*.*
+STATS a

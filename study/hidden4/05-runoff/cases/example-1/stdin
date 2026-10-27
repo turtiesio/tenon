@@ -1,0 +1,8 @@
+candidates: Alice Bob Carol
+Alice>Bob
+Alice
+Alice>Carol
+Bob>Alice
+Bob
+Carol>Bob
+Carol>Bob

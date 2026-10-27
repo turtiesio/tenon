@@ -1,0 +1,7 @@
+SUB a #
+SUB a a.#
+SUB a a.*
+SUB a a.b
+PUB a.b x
+STATS a
+POLL a 9

@@ -1,0 +1,13 @@
+SUB ann news.sport
+SUB bob news.*
+SUB cy news.#
+PUB news.sport Goal!
+PUB news.weather Rain
+PUB news Extra
+PUB news.sport.uk Win
+PUB other Hi
+POLL ann 10
+POLL bob 1
+POLL bob 5
+POLL cy 10
+POLL cy 10

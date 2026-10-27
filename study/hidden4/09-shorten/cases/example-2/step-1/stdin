@@ -1,0 +1,4 @@
+PUT u1
+PUT u2
+GET 2
+DEL 1

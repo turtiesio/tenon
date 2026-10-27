@@ -1,0 +1,6 @@
+SUB a a.b.#
+PUB a x
+PUB a.b y
+PUB a.b.c z
+PUB a.c w
+POLL a 9

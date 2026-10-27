@@ -1,0 +1,13 @@
+# club vote
+candidates: Ana Ben Cho Dov
+Ana>Ben
+Ben>Ana
+Cho
+Dov>Cho
+
+Ana>Zed
+Ben>Ben
+Ana>>Ben
+ana
+Cho>Ana
+Ben>Cho>Dov

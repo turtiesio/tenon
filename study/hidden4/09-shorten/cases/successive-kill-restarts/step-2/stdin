@@ -1,0 +1,4 @@
+INFO
+DEL 1
+PUT b
+GET 2

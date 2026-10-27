@@ -1,0 +1,5 @@
+SUB a x.*
+PUB x one
+PUB x.y two
+PUB x.y.z three
+POLL a 9

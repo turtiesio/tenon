@@ -1,0 +1,5 @@
+1 board=4 arrive=10
+2 board=1 arrive=4
+3 board=12 arrive=17
+4 board=6 arrive=12
+moves=12 stops=6 finish=17 total_wait=16

@@ -1,0 +1,6 @@
+a Mon 00:00 IN
+a Mon 08:00 OUT
+a Tue 00:00 IN
+a Tue 08:01 OUT
+a Wed 00:00 IN
+a Wed 07:59 OUT

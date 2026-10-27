@@ -1,0 +1,13 @@
+OK
+DELIVERED 1
+DELIVERED 1
+DELIVERED 1
+DELIVERED 1
+DELIVERED 1
+DELIVERED 1
+subs=1 queued=3 dropped=3
+MSGS 1 x=m4
+MSGS 1 x=m5
+MSGS 1 x=m6
+MSGS 0
+subs=1 queued=0 dropped=3
