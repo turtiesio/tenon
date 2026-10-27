@@ -25,19 +25,20 @@ TRY = r'''#!/usr/bin/env bash
 # try.sh --done TASK      mark that your solution passes the visible examples
 # try.sh --give-up TASK   mark that you stop without passing the visible examples
 set -u
-cd "$(dirname "$0")"
+# Paths in ARGS stay relative to the caller's directory; the kit is K.
+K=$(cd "$(dirname "$0")" && pwd)
 now() { python3 -c 'import time; print(time.time())'; }
-log() { printf '%s\n' "$1" >> attempts.jsonl; }
+log() { printf '%s\n' "$1" >> "$K/attempts.jsonl"; }
 case "${1:-}" in
   --start)
     # The specification is revealed only when its clock starts.
-    [ -f "tasks/$2.md" ] || cp ".specs/$2.md" "tasks/$2.md"
+    [ -f "$K/tasks/$2.md" ] || cp "$K/.specs/$2.md" "$K/tasks/$2.md"
     log "{\"event\": \"start\", \"task\": \"$2\", \"t\": $(now)}"
     echo "started $2: read tasks/$2.md"; exit 0 ;;
   --done|--give-up) log "{\"event\": \"${1#--}\", \"task\": \"$2\", \"t\": $(now)}"; exit 0 ;;
 esac
 task=$1; shift
-dir=solutions/$task
+dir=$K/solutions/$task
 LANG_KIND=__LANG__
 case $LANG_KIND in
   tenon)
