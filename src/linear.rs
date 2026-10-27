@@ -35,6 +35,7 @@ struct Var {
     name: String,
     kind: Kind,
     moved: Option<Span>,
+    borrowed: bool, // a `ref` parameter: may be inspected, never consumed
 }
 
 struct Walk<'a> {
@@ -95,8 +96,9 @@ fn walk_fn(c: &Checked, prog: &Program, fi: usize, assume: Vec<String>) -> LResu
     let mut w = Walk { c, prog, assume, vars: vec![], loops: vec![], diverged: false };
     for (n, t) in &info.params {
         let k = w.kind_ty(t);
+        let by_ref = f.params.iter().any(|p| p.name == *n && p.by_ref);
         if k != Kind::Plain && n != "self" {
-            w.vars.push(Var { name: n.clone(), kind: k, moved: None });
+            w.vars.push(Var { name: n.clone(), kind: k, moved: None, borrowed: by_ref });
         }
     }
     w.block(body, true)?;
@@ -119,6 +121,9 @@ impl<'a> Walk<'a> {
 
     fn consume(&mut self, name: &str, sp: Span) -> LResult {
         let Some(i) = self.vars.iter().rposition(|v| v.name == name) else { return Ok(()) };
+        if self.vars[i].borrowed {
+            return err(sp, format!("'{}' is a 'ref' parameter: it can be inspected but not consumed", name));
+        }
         if self.vars[i].moved.is_some() {
             return err(sp, format!(
                 "'{}' was already used: a {} value cannot be copied", name, word(self.vars[i].kind)
@@ -141,7 +146,7 @@ impl<'a> Walk<'a> {
             return Ok(());
         }
         for v in &self.vars[from..] {
-            if v.kind == Kind::Linear && v.moved.is_none() {
+            if v.kind == Kind::Linear && v.moved.is_none() && !v.borrowed {
                 return err(sp, format!("linear value '{}' is never used: {} would drop it", v.name, why));
             }
         }
@@ -204,7 +209,7 @@ impl<'a> Walk<'a> {
     fn bind(&mut self, p: &Pattern) -> LResult {
         let k = self.kind(p.id);
         match &p.kind {
-            PatKind::Bind(n) if k != Kind::Plain => self.vars.push(Var { name: n.clone(), kind: k, moved: None }),
+            PatKind::Bind(n) if k != Kind::Plain => self.vars.push(Var { name: n.clone(), kind: k, moved: None, borrowed: false }),
             PatKind::Wild if k == Kind::Linear => {
                 return err(p.span, "'_' would drop a linear value; bind it and consume it".into());
             }
@@ -299,6 +304,11 @@ impl<'a> Walk<'a> {
         }
     }
 
+    // Which explicit (non-self) parameters of function fi are `ref`.
+    fn ref_params(&self, fi: usize) -> Vec<bool> {
+        self.prog.fns[fi].params.iter().map(|p| p.by_ref).collect()
+    }
+
     fn generic_args_ok(&self, fi: usize, targs: &[Ty], sp: Span) -> LResult {
         let info = &self.c.fns[fi];
         for (p, t) in info.tparams.iter().zip(targs) {
@@ -387,8 +397,12 @@ impl<'a> Walk<'a> {
                     }
                 }
                 self.expr(callee, false)?;
-                for a in args {
-                    self.expr(a, true)?;
+                let refs = match self.c.res.get(&callee.id) {
+                    Some(Res::Fn(fi, _)) => self.ref_params(*fi),
+                    _ => vec![],
+                };
+                for (i, a) in args.iter().enumerate() {
+                    self.expr(a, !refs.get(i).copied().unwrap_or(false))?;
                 }
                 Ok(())
             }
@@ -396,13 +410,20 @@ impl<'a> Walk<'a> {
                 match self.c.res.get(&e.id) {
                     Some(Res::Method(fi, targs)) => {
                         self.generic_args_ok(*fi, targs, e.span)?;
-                        let by_value = self.c.fns[*fi].self_kind == Some(SelfKind::Value);
+                        // Builtin handle methods use their receiver without consuming it.
+                        let f = &self.c.fns[*fi];
+                        let handle = f.is_extern && matches!(&f.owner, Some(Ty::Con(o, _)) if crate::types::is_capability(o));
+                        let by_value = f.self_kind == Some(SelfKind::Value) && !handle;
                         self.expr(recv, by_value)?;
                     }
                     _ => self.expr(recv, false)?,
                 }
-                for a in args {
-                    self.expr(a, true)?;
+                let refs = match self.c.res.get(&e.id) {
+                    Some(Res::Method(fi, _)) => self.ref_params(*fi),
+                    _ => vec![],
+                };
+                for (i, a) in args.iter().enumerate() {
+                    self.expr(a, !refs.get(i).copied().unwrap_or(false))?;
                 }
                 Ok(())
             }
@@ -484,7 +505,7 @@ impl<'a> Walk<'a> {
                 for ((n, _), t) in params.iter().zip(&pts) {
                     let k = self.kind_ty(t);
                     if k != Kind::Plain {
-                        inner.vars.push(Var { name: n.clone(), kind: k, moved: None });
+                        inner.vars.push(Var { name: n.clone(), kind: k, moved: None, borrowed: false });
                     }
                 }
                 inner.expr(body, true)?;

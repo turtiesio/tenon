@@ -29,7 +29,7 @@ pub struct Token {
 const KEYWORDS: &[&str] = &[
     "fn", "let", "var", "if", "else", "while", "for", "in", "match", "return", "break",
     "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
-    "unique", "import", "extern", "pub",
+    "unique", "import", "extern", "pub", "ref",
 ];
 
 // Longest first so that greedy matching works.

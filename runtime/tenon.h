@@ -15,6 +15,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -1518,6 +1522,154 @@ static TN_UNUSED tn_Fs tn_fs_within(tn_Fs f, tn_Str p) {
     return tn_fs_make(root, true, f->wr);
 }
 
+/* ---------- network capability: TCP, blocking ---------- */
+
+typedef uint8_t tn_Net;
+TN_TRIVIAL(tn_Net)
+TN_INCOMPARABLE(tn_Net)
+static TN_UNUSED void tn_Net_show(tn_buf *b, tn_Net x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Net>"); }
+
+/* Listener and Conn: unique handles; the last release closes the socket. */
+typedef struct tn_sock_s { int64_t rc; int fd; char *buf; int64_t len, pos; } *tn_Listener, *tn_Conn;
+static TN_UNUSED struct tn_sock_s *tn_sock_new(int fd) {
+    struct tn_sock_s *s = tn_alloc(sizeof *s);
+    s->rc = 1; s->fd = fd; s->buf = NULL; s->len = s->pos = 0;
+    return s;
+}
+#define TN_SOCK(T, NAME)                                                                     \
+    static TN_UNUSED T T##_retain(T s) { s->rc++; return s; }                                \
+    static TN_UNUSED void T##_release(T s) {                                                 \
+        if (s && --s->rc == 0) { close(s->fd); free(s->buf); free(s); }                      \
+    }                                                                                        \
+    static TN_UNUSED void T##_show(tn_buf *b, T s, int mode) { (void)s; (void)mode; tn_buf_cstr(b, NAME); } \
+    TN_INCOMPARABLE(T)
+TN_SOCK(tn_Listener, "<Listener>")
+TN_SOCK(tn_Conn, "<Conn>")
+
+static TN_UNUSED int tn_net_err(const char *what, int e, tn_Str *msg) {
+    int k = tn_io_kind(e);
+    *msg = tn_io_msg(k, tn_str_lit(what, (int64_t)strlen(what)), strerror(e));
+    return k;
+}
+static TN_UNUSED int tn_net_listen(tn_Int port, tn_Listener *out, tn_Str *msg) {
+    char what[64];
+    snprintf(what, sizeof what, "127.0.0.1:%lld", (long long)port);
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) return tn_net_err(what, errno, msg);
+    int one = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof a);
+    a.sin_family = AF_INET;
+    a.sin_port = htons((uint16_t)port);
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (bind(fd, (struct sockaddr *)&a, sizeof a) != 0 || listen(fd, 128) != 0) {
+        int e = errno;
+        close(fd);
+        return tn_net_err(what, e, msg);
+    }
+    *out = tn_sock_new(fd);
+    return TN_IO_OK;
+}
+static TN_UNUSED tn_Int tn_listener_port(tn_Listener l) {
+    struct sockaddr_in a;
+    socklen_t n = sizeof a;
+    if (getsockname(l->fd, (struct sockaddr *)&a, &n) != 0) return 0;
+    return ntohs(a.sin_port);
+}
+static TN_UNUSED int tn_listener_accept(tn_Listener l, tn_Conn *out, tn_Str *msg) {
+    tn_flush(); /* a program about to block has shown all of its output */
+    int fd;
+    do fd = accept(l->fd, NULL, NULL);
+    while (fd < 0 && errno == EINTR);
+    if (fd < 0) return tn_net_err("accept", errno, msg);
+    *out = tn_sock_new(fd);
+    return TN_IO_OK;
+}
+static TN_UNUSED int tn_net_connect(tn_Str host, tn_Int port, tn_Conn *out, tn_Str *msg) {
+    tn_flush(); /* a program about to block has shown all of its output */
+    char h[256], what[320], ps[16];
+    snprintf(h, sizeof h, "%.*s", (int)host.len, host.p);
+    snprintf(what, sizeof what, "%s:%lld", h, (long long)port);
+    snprintf(ps, sizeof ps, "%lld", (long long)port);
+    struct addrinfo hints, *res;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_socktype = SOCK_STREAM;
+    if (getaddrinfo(h, ps, &hints, &res) != 0) return tn_net_err(what, EHOSTUNREACH, msg);
+    int e = ECONNREFUSED, fd = -1;
+    for (struct addrinfo *p = res; p; p = p->ai_next) {
+        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (fd < 0) { e = errno; continue; }
+        if (connect(fd, p->ai_addr, p->ai_addrlen) == 0) break;
+        e = errno;
+        close(fd);
+        fd = -1;
+    }
+    freeaddrinfo(res);
+    if (fd < 0) return tn_net_err(what, e, msg);
+    *out = tn_sock_new(fd);
+    return TN_IO_OK;
+}
+/* Buffered read of more bytes; returns false at end of stream, *err on failure. */
+static bool tn_conn_fill(tn_Conn c, int *err) {
+    if (c->pos > 0) {
+        memmove(c->buf, c->buf + c->pos, (size_t)(c->len - c->pos));
+        c->len -= c->pos;
+        c->pos = 0;
+    }
+    c->buf = tn_realloc(c->buf, (size_t)c->len + 65536);
+    ssize_t r;
+    do r = read(c->fd, c->buf + c->len, 65536);
+    while (r < 0 && errno == EINTR);
+    if (r < 0) { *err = errno; return false; }
+    if (r == 0) return false;
+    c->len += r;
+    return true;
+}
+static TN_UNUSED int tn_conn_read_line(tn_Conn c, bool *some, tn_Str *line, tn_Str *msg) {
+    tn_flush(); /* a program about to block has shown all of its output */
+    int64_t scan = c->pos;
+    int err = 0;
+    for (;;) {
+        for (; scan < c->len; scan++)
+            if (c->buf[scan] == '\n') goto found;
+        int64_t off = scan - c->pos;
+        bool more = tn_conn_fill(c, &err);
+        scan = c->pos + off;
+        if (err) return tn_net_err("read", err, msg);
+        if (!more) break;
+    }
+    if (c->pos == c->len) { *some = false; return TN_IO_OK; }
+found:;
+    int64_t end = scan, next = scan < c->len ? scan + 1 : scan;
+    if (scan < c->len && end > c->pos && c->buf[end - 1] == '\r') end--;
+    tn_buf b = tn_buf_new();
+    tn_utf8_lossy(c->buf + c->pos, end - c->pos, &b);
+    c->pos = next;
+    *line = tn_buf_finish(&b);
+    *some = true;
+    return TN_IO_OK;
+}
+static TN_UNUSED int tn_conn_read(tn_Conn c, tn_Int n, tn_Str *out, tn_Str *msg) {
+    tn_flush(); /* a program about to block has shown all of its output */
+    int err = 0;
+    if (n < 0) n = 0;
+    while (c->len - c->pos < n) {
+        if (!tn_conn_fill(c, &err)) break;
+    }
+    if (err) return tn_net_err("read", err, msg);
+    int64_t k = c->len - c->pos < n ? c->len - c->pos : n;
+    tn_buf b = tn_buf_new();
+    tn_utf8_lossy(c->buf + c->pos, k, &b);
+    c->pos += k;
+    *out = tn_buf_finish(&b);
+    return TN_IO_OK;
+}
+static TN_UNUSED int tn_conn_write(tn_Conn c, tn_Str s, tn_Str *msg) {
+    if (!tn_write_all(c->fd, s)) return tn_net_err("write", errno, msg);
+    return TN_IO_OK;
+}
+
 /* ---------- clock ---------- */
 
 static TN_UNUSED tn_Int tn_now_ms(void) {
@@ -1531,6 +1683,7 @@ static TN_UNUSED tn_Int tn_mono_ns(void) {
     return (tn_Int)(t.tv_sec - tn_mono0.tv_sec) * 1000000000 + (t.tv_nsec - tn_mono0.tv_nsec);
 }
 static TN_UNUSED void tn_sleep_ms(tn_Int ms) {
+    tn_flush(); /* a program about to block has shown all of its output */
     if (ms <= 0) return;
     struct timespec t = {ms / 1000, (ms % 1000) * 1000000};
     while (nanosleep(&t, &t) != 0 && errno == EINTR) {}

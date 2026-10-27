@@ -322,6 +322,7 @@ impl<'a> Interp<'a> {
             V::Cap(Rc::new(Cap::Console)),
             V::Cap(Rc::new(Cap::Fs { root: String::new(), attenuated: false, writable: true })),
             V::Cap(Rc::new(Cap::Clock)),
+            V::Cap(Rc::new(Cap::Net)),
             args,
         ]))
     }
@@ -1202,12 +1203,14 @@ impl<'a> Interp<'a> {
                 strv(&String::from_utf8_lossy(&buf))
             }
             n if n.starts_with("Fs.") => return self.fs_op(n, &args, sp),
+            n if n.starts_with("Net.") || n.starts_with("Listener.") || n.starts_with("Conn.") => return Ok(self.net_op(n, &args)),
             "Clock.now_ms" => Int(std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0)),
             "Clock.mono_ns" => Int(self.mono_origin.elapsed().as_nanos() as i64),
             "Clock.sleep_ms" => {
+                let _ = self.out.flush();
                 if int(1) > 0 {
                     std::thread::sleep(std::time::Duration::from_millis(int(1) as u64));
                 }
@@ -1215,6 +1218,83 @@ impl<'a> Interp<'a> {
             }
             _ => panic!("interp: missing builtin {}", name),
         })
+    }
+
+    fn net_op(&mut self, name: &str, a: &[V]) -> V {
+        use std::io::BufRead;
+        // A program about to block has shown all of its output.
+        let _ = self.out.flush();
+        let V::Cap(cap) = &a[0] else { unreachable!() };
+        let arg_s = |i: usize| match &a[i] {
+            V::Str(s) => s.to_string(),
+            _ => unreachable!(),
+        };
+        let arg_i = |i: usize| match &a[i] {
+            V::Int(x) => *x,
+            _ => unreachable!(),
+        };
+        let conn = |s: std::net::TcpStream| V::Cap(Rc::new(Cap::Conn(std::cell::RefCell::new(std::io::BufReader::new(s)))));
+        match (name, &**cap) {
+            ("Net.listen", _) => {
+                let port = arg_i(1);
+                let what = format!("127.0.0.1:{}", port);
+                let r = std::net::TcpListener::bind(("127.0.0.1", port as u16));
+                self.io_result(&what, r, |l| V::Cap(Rc::new(Cap::Listener(l))))
+            }
+            ("Net.connect", _) => {
+                let (h, port) = (arg_s(1), arg_i(2));
+                let what = format!("{}:{}", h, port);
+                let r = std::net::TcpStream::connect((h.as_str(), port as u16));
+                self.io_result(&what, r, conn)
+            }
+            ("Listener.port", Cap::Listener(l)) => V::Int(l.local_addr().map(|a| a.port() as i64).unwrap_or(0)),
+            ("Listener.accept", Cap::Listener(l)) => {
+                let r = l.accept().map(|(s, _)| s);
+                self.io_result("accept", r, conn)
+            }
+            ("Conn.read_line", Cap::Conn(c)) => {
+                let mut buf = Vec::new();
+                let r = c.borrow_mut().read_until(b'\n', &mut buf);
+                let r = r.map(|n| {
+                    if n == 0 {
+                        return None;
+                    }
+                    if buf.ends_with(b"\n") {
+                        buf.pop();
+                        if buf.ends_with(b"\r") {
+                            buf.pop();
+                        }
+                    }
+                    Some(String::from_utf8_lossy(&buf).into_owned())
+                });
+                self.io_result("read", r, |o| self.opt(o.map(|s| V::Str(s.into()))))
+            }
+            ("Conn.read", Cap::Conn(c)) => {
+                let n = arg_i(1).max(0) as usize;
+                let mut buf = vec![0u8; n];
+                let mut got = 0;
+                let mut res = Ok(());
+                while got < n {
+                    match std::io::Read::read(&mut *c.borrow_mut(), &mut buf[got..]) {
+                        Ok(0) => break,
+                        Ok(k) => got += k,
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                        Err(e) => {
+                            res = Err(e);
+                            break;
+                        }
+                    }
+                }
+                buf.truncate(got);
+                self.io_result("read", res, |_| V::Str(String::from_utf8_lossy(&buf).into_owned().into()))
+            }
+            ("Conn.write", Cap::Conn(c)) => {
+                let s = arg_s(1);
+                let r = std::io::Write::write_all(c.borrow_mut().get_mut(), s.as_bytes());
+                self.io_result("write", r, |_| V::Unit)
+            }
+            _ => unreachable!("net op {}", name),
+        }
     }
 
     fn fs_op(&mut self, name: &str, a: &[V], _sp: Span) -> R {

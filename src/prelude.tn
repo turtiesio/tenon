@@ -8,7 +8,7 @@ enum Result[T, E] { Ok(T), Err(E) }
 enum IoError { NotFound(Str), Denied(Str), Failed(Str) }
 
 // The authority a program starts with; only `main` receives one.
-pub struct Sys { pub console: Console, pub fs: Fs, pub clock: Clock, pub args: List[Str] }
+pub struct Sys { pub console: Console, pub fs: Fs, pub clock: Clock, pub net: Net, pub args: List[Str] }
 
 extern fn panic[T](msg: Str) -> T
 extern fn assert(cond: Bool)
@@ -201,6 +201,16 @@ extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]
 extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError]
 extern fn Fs.within(self, dir: Str) -> Fs
 extern fn Fs.read_only(self) -> Fs
+
+// TCP on 127.0.0.1 or a named host. Listener and Conn are unique handles:
+// they cannot be copied, and dropping one closes it.
+extern fn Net.listen(self, port: Int) -> Result[Listener, IoError] // port 0: any free port
+extern fn Net.connect(self, host: Str, port: Int) -> Result[Conn, IoError]
+extern fn Listener.port(self) -> Int
+extern fn Listener.accept(self) -> Result[Conn, IoError]
+extern fn Conn.read_line(self) -> Result[Option[Str], IoError] // None at end of stream; strips "\r\n"
+extern fn Conn.read(self, n: Int) -> Result[Str, IoError]       // up to n bytes; fewer only at end
+extern fn Conn.write(self, s: Str) -> Result[Unit, IoError]
 
 extern fn Clock.now_ms(self) -> Int
 extern fn Clock.mono_ns(self) -> Int

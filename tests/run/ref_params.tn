@@ -1,0 +1,9 @@
+linear struct Claim { id: Int, job: Str }
+fn Claim.done(self) -> Str { "done {self.job}" }
+fn describe(c: ref Claim) -> Str { "claim {c.id} for {c.job}" }
+fn check(c: ref Claim, limit: Int) -> Bool { c.id <= limit }
+fn main(sys: Sys) {
+    let c = Claim { id: 7, job: "resize" }
+    sys.console.println(describe(c))
+    if check(c, 10) { sys.console.println(c.done()) } else { sys.console.println(c.done() + " late") }
+}

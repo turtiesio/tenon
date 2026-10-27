@@ -1,0 +1,6 @@
+// error: it can be inspected but not consumed
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn peek(c: ref Claim) -> Int { c.done()
+ 0 }
+fn main() {}

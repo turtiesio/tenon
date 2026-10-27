@@ -142,7 +142,7 @@ impl<'a> Emitter<'a> {
 
     pub fn trivial(&mut self, t: &Ty) -> bool {
         match t {
-            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Console" | "Clock") => true,
+            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Console" | "Clock" | "Net") => true,
             Ty::Tuple(ts) => ts.clone().iter().all(|t| self.trivial(t)),
             Ty::Con(n, _) if n == "List" || n == "Map" || n == "Str" || n == "Fs" => false,
             Ty::Con(..) => {
@@ -1344,6 +1344,32 @@ impl<'a> Emitter<'a> {
             "Fs.read_only" => {
                 self.tmp_owned(t, &format!("tn_fs_make(tn_Str_retain(({0})->root), ({0})->att, false)", a[0]))
             }
+            "Net.listen" | "Net.connect" | "Listener.accept" | "Conn.read" | "Conn.write" => {
+                let okt = t.args()[0].clone();
+                let on = self.cty(&okt);
+                let (r, m) = (self.fresh("r"), self.fresh("m"));
+                self.line(&format!("{} {} = {{0}}; tn_Str {} = {{0}};", on, r, m));
+                let call = match name {
+                    "Net.listen" => format!("tn_net_listen({}, &{}, &{})", a[1], r, m),
+                    "Net.connect" => format!("tn_net_connect({}, {}, &{}, &{})", a[1], a[2], r, m),
+                    "Listener.accept" => format!("tn_listener_accept({}, &{}, &{})", a[0], r, m),
+                    "Conn.read" => format!("tn_conn_read({}, {}, &{}, &{})", a[0], a[1], r, m),
+                    _ => format!("tn_conn_write({}, {}, &{})", a[0], a[1], m),
+                };
+                let k = self.tmp_val(&Ty::int(), &call).code;
+                self.io_result(t, &k, &r, &m)
+            }
+            "Conn.read_line" => {
+                let opt = t.args()[0].clone();
+                let (some, l, m) = (self.fresh("some"), self.fresh("l"), self.fresh("m"));
+                self.line(&format!("bool {} = false; tn_Str {} = {{0}}, {} = {{0}};", some, l, m));
+                let k = self.tmp_val(&Ty::int(), &format!("tn_conn_read_line({}, &{}, &{}, &{})", a[0], some, l, m)).code;
+                let sm = self.ctor_named(&opt, "Some", &[l.clone()]);
+                let nn = self.ctor_named(&opt, "None", &[]);
+                let o = self.tmp_val(&opt, &format!("{} ? {} : {}", some, sm, nn)).code;
+                self.io_result(t, &k, &o, &m)
+            }
+            "Listener.port" => self.tmp_val(t, &format!("tn_listener_port({})", a[0])),
             "Clock.now_ms" => self.tmp_val(t, "tn_now_ms()"),
             "Clock.mono_ns" => self.tmp_val(t, "tn_mono_ns()"),
             "Clock.sleep_ms" => {

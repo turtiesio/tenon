@@ -106,6 +106,7 @@ impl FnDecl {
 #[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
+    pub by_ref: bool, // `x: ref T`: inspected, never consumed (for linear/unique T)
     pub ty: TypeExpr,
     pub span: Span,
 }

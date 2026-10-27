@@ -276,6 +276,14 @@ wrappers such as `Option[Claim]` become linear automatically).
 
 A **unique** value follows the same rules except that it may be dropped.
 
+A parameter declared `x: ref T` only *inspects* its argument: the caller keeps
+the value (it is not consumed by the call), and the function may read it but
+not consume it. Use it for helpers that look at an obligation or a handle:
+
+```tenon
+fn respond(c: ref Conn, body: Str) -> Result[Unit, IoError] { c.write(body) }
+```
+
 ## 13. Modules
 
 ```tenon
@@ -301,6 +309,29 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 - Standard library modules: `journal` (append-only, checksummed, crash-safe
   record log; see `std/journal.tn`).
 
-## 14. Not yet implemented
+## 14. Data codec
 
-Concurrency, networking and derived data codecs; see `docs/log.md`.
+`encode(x)` gives the text that formatting prints for `x`, with every field;
+`decode(text)` parses it back for the expected type and is strict: it accepts
+exactly the canonical text and fails with `Err("cannot decode T at byte N")`
+otherwise. Annotate the expected type where it is not inferred:
+`let r: Result[Event, Str] = decode(line)`. Functions, capabilities,
+linear/unique types and types with fields you cannot see cannot be encoded.
+
+## 15. Networking
+
+```tenon
+let l = sys.net.listen(8080)?          // Listener on 127.0.0.1; port 0 picks one (l.port())
+let c = l.accept()?                    // Conn
+let line = c.read_line()?              // Option[Str]; None at end of stream
+c.write("HTTP/1.1 200 OK\r\n...")?
+let d = sys.net.connect("localhost", 8080)?
+```
+
+`Listener` and `Conn` are unique handles: they cannot be copied, and dropping
+one closes it. Operations block; before blocking (`accept`, `connect`, reads,
+`sleep_ms`, reading the console) the program's standard output is flushed.
+
+## 16. Not yet implemented
+
+Concurrency (one connection at a time today); see `docs/log.md`.

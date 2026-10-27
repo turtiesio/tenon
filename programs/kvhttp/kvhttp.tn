@@ -1,0 +1,150 @@
+// kvhttp: an HTTP/1.1 key-value service with a durable journal.
+//
+//   kvhttp DIR PORT        (PORT 0 picks a free port; prints "listening on PORT")
+//
+//   GET    /kv/KEY   200 value | 404
+//   PUT    /kv/KEY   201 created | 200 replaced   (body is the value)
+//   DELETE /kv/KEY   204 | 404
+//   GET    /stats    200 "keys K requests R"
+//   POST   /shutdown 200, then exit
+//
+// Writes are journaled (fsync) before they are acknowledged, so an
+// acknowledged PUT/DELETE survives a crash. One connection at a time.
+
+import journal
+
+enum Op { Put(Str, Str), Del(Str) }
+
+struct Request { method: Str, path: Str, body: Str }
+
+struct Response { status: Int, body: Str }
+
+struct Server { data: Map[Str, Str], requests: Int, log: journal.Journal }
+
+fn reason(status: Int) -> Str {
+    match status {
+        200 => "OK",
+        201 => "Created",
+        204 => "No Content",
+        400 => "Bad Request",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        500 => "Internal Server Error",
+        _ => "Unknown",
+    }
+}
+
+fn read_request(c: ref Conn) -> Result[Option[Request], Str] {
+    let line = match c.read_line().map_err(fn(e) => "read: {e}")? {
+        Some(l) => l,
+        None => return Ok(None),
+    }
+    let parts = line.split(" ")
+    if parts.len() != 3 { return Err("bad request line: {line}") }
+    var length = 0
+    while true {
+        let h = c.read_line().map_err(fn(e) => "read: {e}")?.unwrap_or("")
+        if h == "" { break }
+        match h.find(":") {
+            Some(i) if h.slice(0, i).lower() == "content-length" => {
+                length = h.slice(i + 1, h.len()).trim().to_int().ok_or("bad Content-Length: {h}")?
+            }
+            _ => {}
+        }
+    }
+    let body = c.read(length).map_err(fn(e) => "read: {e}")?
+    Ok(Some(Request { method: parts[0], path: parts[1], body }))
+}
+
+fn Server.apply(mut self, op: Op) {
+    match op {
+        Put(k, v) => self.data[k] = v,
+        Del(k) => { let _ = self.data.remove(k) }
+    }
+}
+
+fn Server.commit(mut self, op: Op) -> Result[Unit, Str] {
+    self.log.append(encode(op)).map_err(fn(e) => "journal: {e}")?
+    self.apply(op)
+    Ok(())
+}
+
+fn Server.handle(mut self, r: Request) -> Response {
+    self.requests += 1
+    if r.path == "/stats" and r.method == "GET" {
+        return Response { status: 200, body: "keys {self.data.len()} requests {self.requests}" }
+    }
+    if not r.path.starts_with("/kv/") or r.path.len() == 4 {
+        return Response { status: 404, body: "no such route" }
+    }
+    let key = r.path.slice(4, r.path.len())
+    match r.method {
+        "GET" => match self.data.get(key) {
+            Some(v) => Response { status: 200, body: v },
+            None => Response { status: 404, body: "no key {key}" },
+        },
+        "PUT" => {
+            let existed = self.data.contains(key)
+            match self.commit(Put(key, r.body)) {
+                Ok(_) => Response { status: if existed { 200 } else { 201 }, body: "" },
+                Err(m) => Response { status: 500, body: m },
+            }
+        }
+        "DELETE" => {
+            if not self.data.contains(key) { return Response { status: 404, body: "no key {key}" } }
+            match self.commit(Del(key)) {
+                Ok(_) => Response { status: 204, body: "" },
+                Err(m) => Response { status: 500, body: m },
+            }
+        }
+        _ => Response { status: 405, body: "method {r.method} not allowed" },
+    }
+}
+
+fn respond(c: ref Conn, r: Response) -> Result[Unit, IoError] {
+    let head = "HTTP/1.1 {r.status} {reason(r.status)}\r\nContent-Length: {r.body.len()}\r\nConnection: close\r\n\r\n"
+    c.write(head + r.body)
+}
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    if sys.args.len() != 2 { return Err("usage: kvhttp DIR PORT") }
+    let port = sys.args[1].to_int().ok_or("PORT must be a number")?
+    let _ = sys.fs.mkdir(sys.args[0])
+    let log = journal.open(sys.fs.within(sys.args[0]), "journal")
+    var s = Server { data: [:], requests: 0, log }
+    let loaded = log.load().map_err(fn(e) => "journal: {e}")?
+    for rec in loaded.records {
+        match decode(rec) {
+            Ok(op) => s.apply(op),
+            Err(m) => con.eprintln("skipping journal record: {m}"),
+        }
+    }
+    let l = sys.net.listen(port).map_err(fn(e) => "listen: {e}")?
+    con.println("listening on {l.port()} with {s.data.len()} keys")
+    while true {
+        let c = match l.accept() {
+            Ok(c) => c,
+            Err(e) => {
+                con.eprintln("accept: {e}")
+                continue
+            }
+        }
+        match read_request(c) {
+            Ok(Some(r)) => {
+                let stop = r.method == "POST" and r.path == "/shutdown"
+                let resp = if stop { Response { status: 200, body: "bye" } } else { s.handle(r) }
+                match respond(c, resp) {
+                    Ok(_) => {}
+                    Err(e) => con.eprintln("write: {e}"),
+                }
+                if stop { break }
+            }
+            Ok(None) => {}
+            Err(m) => {
+                let _ = respond(c, Response { status: 400, body: m })
+            }
+        }
+    }
+    Ok(())
+}
