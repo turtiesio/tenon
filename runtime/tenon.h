@@ -1339,6 +1339,18 @@ static TN_UNUSED tn_Str tn_int_char(tn_Int c, const char *loc) {
     }
     return tn_str_new(t, n);
 }
+static TN_UNUSED tn_Str tn_float_fixed(tn_Float x, tn_Int d) {
+    if (isnan(x)) return tn_str_lit("nan", 3);
+    if (isinf(x)) return x > 0 ? tn_str_lit("inf", 3) : tn_str_lit("-inf", 4);
+    if (d < 0) d = 0;
+    if (d > 100) d = 100;
+    int n = snprintf(NULL, 0, "%.*f", (int)d, x);
+    char *buf = tn_alloc((size_t)n + 1);
+    snprintf(buf, (size_t)n + 1, "%.*f", (int)d, x);
+    tn_Str r = tn_str_new(buf, n);
+    tn_free(buf);
+    return r;
+}
 static TN_UNUSED tn_Int tn_float_to_int(tn_Float x, const char *loc) {
     if (!(x >= -9223372036854775808.0 && x < 9223372036854775808.0))
         tn_trap("float to int conversion out of range", loc);

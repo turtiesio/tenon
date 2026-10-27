@@ -2,7 +2,7 @@
 
 This is the single source document for the language. It is also the only
 documentation given to authors in the usability study, so it must be enough to
-write real programs. Builtin APIs are listed in [`src/prelude.tn`](../src/prelude.tn),
+write real programs. Builtin APIs are listed in the prelude (`src/prelude.tn` in the repository; `docs/prelude.tn` in a study kit),
 which is ordinary Tenon source and the single source of the builtin API.
 
 Every claim here is checked by a test in `tests/` (run `./check`).
@@ -296,7 +296,7 @@ An attenuated `Fs` rejects absolute paths and `..` (`Err(Denied(..))`).
 
 ## 11. Builtin API
 
-See [`src/prelude.tn`](../src/prelude.tn) for the full list with signatures.
+See the prelude (`src/prelude.tn`, or `docs/prelude.tn` in a study kit) for the full list with signatures.
 Highlights:
 
 - `Str`: `len byte slice find split lines words trim trim_start trim_end
@@ -315,23 +315,27 @@ Highlights:
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
   sort_by_desc sort_with swap first last index_of contains extend sorted reversed map filter any all count
   is_empty`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
-- `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`, `insert`,
+- `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`,
+  `update(k, default, f)` (store `f` of the current or default value), `insert`,
   `remove`, `contains`, `keys`, `values`, `entries`, `len`, `is_empty`.
 - `Heap[T]`: a priority queue: `Heap.new()`, `push`, `pop` (smallest first, as
   `Option`), `peek`, `len`, `is_empty`. For largest first push negated keys.
 - `Set[T]`: `Set.new()`, `Set.of(list)`, `insert` (false if already present),
   `remove` (false if absent), `contains`, `len`, `is_empty`, `items` (insertion order).
+- `xs.enumerate()` gives `[(0, a), (1, b), ...]` (`for (i, x) in xs.enumerate()`).
 - `List.filled(n, x)` makes a list of n copies of x; `xs.sort_with(fn(a, b) => ...)`
   sorts stably by a comparison (negative: a first).
-- `Option[T]`: `unwrap expect unwrap_or is_some is_none map and_then is_some_and ok_or`.
+- `Option[T]`: `unwrap expect unwrap_or is_some is_none map map_or and_then filter is_some_and ok_or`.
 - `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok map_err`.
 - `Int`: `abs min max to_float to_str char`; `checked_add checked_sub
   checked_mul checked_div` give `None` instead of trapping; `rem_euclid` and
-  `div_euclid` (the remainder is never negative); constants
+  `div_euclid` (the remainder is never negative); `fmt_fixed(scale)` writes a
+  fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents); constants
   `INT_MAX`, `INT_MIN`; and for code points
   `is_digit is_alpha is_alnum is_space is_upper is_lower`
   (`s.byte(i).is_digit()`, `'7' - '0'`); `Float`: `to_int floor ceil round
-  sqrt abs min max`.
+  sqrt abs min max`, and `to_fixed(decimals)` (exactly that many digits; rounds the
+  binary value half to even, like printf).
 - `Console`: `print println eprintln read_line read_all flush`. `read_line`
   returns `None` at end of input and removes the line's `"\n"` (and a `"\r"`
   before it); invalid UTF-8 input becomes U+FFFD.

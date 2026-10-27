@@ -38,6 +38,13 @@ fn Int.rem_euclid(self, d: Int) -> Int {
     if r < 0 { r + d.abs() } else { r }
 }
 fn Int.div_euclid(self, d: Int) -> Int { (self - self.rem_euclid(d)) / d }
+// Fixed-point text: 1234.fmt_fixed(2) == "12.34", (-5).fmt_fixed(2) == "-0.05".
+fn Int.fmt_fixed(self, scale: Int) -> Str {
+    if scale <= 0 { return self.to_str() }
+    let digits = self.abs().to_str().pad_left(scale + 1, "0")
+    let cut = digits.len() - scale
+    (if self < 0 { "-" } else { "" }) + digits.slice(0, cut) + "." + digits.slice(cut, digits.len())
+}
 extern fn Int.char(self) -> Str
 // Character classes for code points (ASCII): '7'.is_digit(), s.byte(i).is_space()
 fn Int.is_digit(self) -> Bool { self >= '0' and self <= '9' }
@@ -51,6 +58,8 @@ extern fn Float.sqrt(self) -> Float
 extern fn Float.floor(self) -> Float
 extern fn Float.ceil(self) -> Float
 extern fn Float.round(self) -> Float
+// Exactly `decimals` digits after the point (round half to even on the binary value, like printf).
+extern fn Float.to_fixed(self, decimals: Int) -> Str
 fn Float.abs(self) -> Float { if self < 0.0 { -self } else { self } }
 fn Float.min(self, o: Float) -> Float { if self < o { self } else { o } }
 fn Float.max(self, o: Float) -> Float { if self > o { self } else { o } }
@@ -126,6 +135,12 @@ extern fn List[T].sort_by_desc[K](mut self, key: fn(T) -> K) // stable: equal ke
 extern fn List[T].reverse(mut self)
 extern fn List[Str].join(self, sep: Str) -> Str
 fn List[T].is_empty(self) -> Bool { self.len() == 0 }
+// [(0, a), (1, b), ...] for `for (i, x) in xs.enumerate()`
+fn List[T].enumerate(self) -> List[(Int, T)] {
+    var out: List[(Int, T)] = []
+    for i in 0..self.len() { out.push((i, self[i])) }
+    out
+}
 fn List[T].filled(n: Int, x: T) -> List[T] {
     var out: List[T] = []
     for _ in 0..n { out.push(x) }
@@ -235,6 +250,11 @@ extern fn Map[K, V].values(self) -> List[V]
 fn Map[K, V].is_empty(self) -> Bool { self.len() == 0 }
 fn Map[K, V].contains(self, k: K) -> Bool { self.get(k).is_some() }
 fn Map[K, V].get_or(self, k: K, default: V) -> V { self.get(k).unwrap_or(default) }
+// m.update(k, 0, fn(n) => n + 1): apply f to the value at k (default if absent) and store it.
+fn Map[K, V].update(mut self, k: K, default: V, f: fn(V) -> V) {
+    let v = f(self.get_or(k, default))
+    self[k] = v
+}
 fn Map[K, V].entries(self) -> List[(K, V)] {
     var out: List[(K, V)] = []
     for e in self { out.push(e) }
@@ -315,6 +335,12 @@ fn Option[T].map[U](self, f: fn(T) -> U) -> Option[U] {
 }
 fn Option[T].and_then[U](self, f: fn(T) -> Option[U]) -> Option[U] {
     match self { Some(x) => f(x), None => None }
+}
+fn Option[T].map_or[U](self, default: U, f: fn(T) -> U) -> U {
+    match self { Some(x) => f(x), None => default }
+}
+fn Option[T].filter(self, keep: fn(T) -> Bool) -> Option[T] {
+    match self { Some(x) => if keep(x) { Some(x) } else { None }, None => None }
 }
 fn Option[T].is_some_and(self, pred: fn(T) -> Bool) -> Bool {
     match self { Some(x) => pred(x), None => false }

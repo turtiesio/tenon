@@ -191,6 +191,11 @@ impl<'a> Interp<'a> {
             "Float.floor" => Float(flt(0).floor()),
             "Float.ceil" => Float(flt(0).ceil()),
             "Float.round" => Float(flt(0).round()),
+            "Float.to_fixed" => {
+                let d = int(1).clamp(0, 100) as usize;
+                let x = flt(0);
+                if x.is_nan() { strv("nan") } else if x.is_infinite() { strv(if x > 0.0 { "inf" } else { "-inf" }) } else { strv(&format!("{:.*}", d, x)) }
+            }
             "Str.len" => Int(s(0).len() as i64),
             "Str.byte" => {
                 let (st, i) = (s(0), int(1));

@@ -67,6 +67,7 @@ impl<'a> Emitter<'a> {
             }
             "Int.char" => self.tmp_owned(t, &format!("tn_int_char({}, {})", a[0], loc)),
             "Float.to_int" => self.tmp_val(t, &format!("tn_float_to_int({}, {})", a[0], loc)),
+            "Float.to_fixed" => self.tmp_owned(t, &format!("tn_float_fixed({}, {})", a[0], a[1])),
             "Float.sqrt" | "Float.floor" | "Float.ceil" | "Float.round" => {
                 self.tmp_val(t, &format!("{}({})", &name[6..], a[0]))
             }

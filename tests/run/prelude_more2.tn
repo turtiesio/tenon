@@ -1,0 +1,10 @@
+fn main(sys: Sys) {
+    let c = sys.console
+    var m: Map[Str, Int] = [:]
+    for w in ["a", "b", "a"] { m.update(w, 0, fn(n) => n + 1) }
+    var idx: List[Str] = []
+    for (i, x) in ["x", "y"].enumerate() { idx.push("{i}={x}") }
+    let o: Option[Int] = Some(3)
+    c.println("{m} {idx} {o.map_or(0, fn(x) => x * 2)} {o.filter(fn(x) => x > 5)} {None.map_or(-1, fn(x: Int) => x)}")
+    c.println("{1234.fmt_fixed(2)} {(-5).fmt_fixed(2)} {7.fmt_fixed(0)} {(2.0 / 3.0).to_fixed(3)} {(2.5).to_fixed(0)} {(-0.125).to_fixed(2)} {(1e21).to_fixed(1)}")
+}

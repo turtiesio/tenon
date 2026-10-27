@@ -555,7 +555,11 @@ impl<'a> Parser<'a> {
     // ---- expressions ----
 
     pub fn expr(&mut self) -> PResult<Expr> {
-        self.binary(0)
+        let e = self.binary(0)?;
+        if self.is_sym("..") && !self.no_struct {
+            return Err(Diag::new(self.span(), "ranges `a..b` are only allowed in `for` loops; use a list or a loop"));
+        }
+        Ok(e)
     }
 
     fn binop(&self) -> Option<(BinOp, u8)> {
