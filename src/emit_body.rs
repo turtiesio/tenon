@@ -513,6 +513,12 @@ impl<'a> Emitter<'a> {
                 }
                 self.line(&format!("*{} = {};", ptr, nv));
             }
+            Some(BinOp::Add) if t.is("Str") => {
+                // s += t appends in place when s's buffer is not shared
+                self.reg(&nv, &t);
+                let ptr = self.place_ptr(&p, p.steps.len(), target.span);
+                self.line(&format!("tn_str_append({}, {});", ptr, nv));
+            }
             Some(op) => {
                 self.reg(&nv, &t);
                 let ptr = self.place_ptr(&p, p.steps.len(), target.span);

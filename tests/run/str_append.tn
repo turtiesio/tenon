@@ -1,0 +1,16 @@
+fn main(sys: Sys) {
+    var s = "ab"
+    let t = s
+    s += "cd"
+    var u = s.slice(0, 2)
+    u += "!"
+    var w = s
+    w += w
+    var parts: List[Str] = ["x"]
+    parts[0] += "y"
+    var m = ["k": "v"]
+    m["k"] += "w"
+    var big = ""
+    for i in 0..1000 { big += "{i % 10}" }
+    sys.console.println("{s} {t} {u} {w} {parts} {m} {big.len()} {big.slice(995, 1000)}")
+}
