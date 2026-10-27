@@ -1,0 +1,4 @@
+trying 70
+exit: 70
+stderr: trap: exit status 70 is out of range or reserved
+stderr:   at exit_reserved.tn:1:1
