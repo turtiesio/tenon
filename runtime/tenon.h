@@ -1528,7 +1528,8 @@ static TN_UNUSED int tn_fs_write(tn_Fs f, tn_Str p, tn_Str d, tn_Str *msg) {
     tn_buf_cstr(&tb, ".tmp");
     tn_buf_add(&tb, "", 1);
     const char *tmp = tb.p + sizeof(tn_rc);
-    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    unlink(tmp); /* never write through a pre-existing temp file (it may be a planted symlink) */
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
     if (fd < 0) { int e = errno; free(tb.p); TN_FS_FAIL(e); }
     if (!tn_write_all(fd, d) || fsync(fd) != 0) {
         int e = errno; close(fd); unlink(tmp); free(tb.p); TN_FS_FAIL(e);
@@ -1707,18 +1708,27 @@ static TN_UNUSED int tn_net_connect(tn_Str host, tn_Int port, tn_Conn *out, tn_S
     tn_flush(); /* a program about to block has shown all of its output */
     char h[256], what[320], ps[16];
     snprintf(h, sizeof h, "%.*s", (int)host.len, host.p);
+    bool nul = host.len == 0 || memchr(host.p, 0, (size_t)host.len) != NULL;
     snprintf(what, sizeof what, "%s:%lld", h, (long long)port);
     snprintf(ps, sizeof ps, "%lld", (long long)port);
-    if (port < 0 || port > 65535) {
-        char m[384];
-        snprintf(m, sizeof m, "%s: port must be 0-65535", what);
-        *msg = tn_str_new(m, (int64_t)strlen(m));
+    if (port < 0 || port > 65535 || nul) {
+        char tail[64];
+        snprintf(tail, sizeof tail, ":%lld: %s", (long long)port, (port < 0 || port > 65535) ? "port must be 0-65535" : "invalid host name");
+        tn_buf mb = tn_buf_new();
+        tn_buf_str(&mb, host); /* byte for byte, NULs included */
+        tn_buf_cstr(&mb, tail);
+        *msg = tn_buf_finish(&mb);
         return TN_IO_FAILED;
     }
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof hints);
     hints.ai_socktype = SOCK_STREAM;
-    if (getaddrinfo(h, ps, &hints, &res) != 0) return tn_net_err(what, EHOSTUNREACH, msg);
+    if (getaddrinfo(h, ps, &hints, &res) != 0) {
+        char m[384];
+        snprintf(m, sizeof m, "%s: host not found", what);
+        *msg = tn_str_new(m, (int64_t)strlen(m));
+        return TN_IO_FAILED;
+    }
     int e = ECONNREFUSED, fd = -1;
     for (struct addrinfo *p = res; p; p = p->ai_next) {
         fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -1814,7 +1824,11 @@ static TN_UNUSED void tn_sleep_ms(tn_Int ms) {
 
 static TN_UNUSED tn_List_Str tn_args(void) {
     tn_List_Str out = NULL;
-    for (int i = 1; i < tn_argc; i++) tn_List_Str_push(&out, tn_str_lit(tn_argv[i], (int64_t)strlen(tn_argv[i])));
+    for (int i = 1; i < tn_argc; i++) { /* invalid UTF-8 becomes U+FFFD, as in the interpreter */
+        tn_buf b = tn_buf_new();
+        tn_utf8_lossy(tn_argv[i], (int64_t)strlen(tn_argv[i]), &b);
+        tn_List_Str_push(&out, tn_buf_finish(&b));
+    }
     return out;
 }
 

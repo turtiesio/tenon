@@ -1,0 +1,5 @@
+// A trap raised inside a prelude-defined method is located in <prelude>, not at the call in user code.
+fn main(sys: Sys) {
+    let x = -9223372036854775807 - 1
+    sys.console.println("{x.abs()}")
+}

@@ -150,7 +150,9 @@ impl<'a> Lexer<'a> {
                 return Ok(out);
             }
             let tok = if c.is_ascii_digit() {
-                self.number()?
+                // after `.`, digits are a tuple index: `t.0.1` is t . 0 . 1
+                let after_dot = matches!(out.last().map(|t: &Token| &t.tok), Some(Tok::Sym(".")));
+                self.number(after_dot)?
             } else if c.is_ascii_alphabetic() || (c == b'_' && is_ident_char(self.peek(1))) {
                 let start = self.pos;
                 while is_ident_char(self.peek(0)) {
@@ -193,13 +195,17 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn number(&mut self) -> Result<Tok, Diag> {
+    fn number(&mut self, int_only: bool) -> Result<Tok, Diag> {
         let sp = self.span();
         let start = self.pos;
         while self.peek(0).is_ascii_digit() || self.peek(0) == b'_' {
             self.bump();
         }
         let mut is_float = false;
+        if int_only {
+            let text: String = std::str::from_utf8(&self.src[start..self.pos]).unwrap().chars().filter(|c| *c != '_').collect();
+            return text.parse::<i64>().map(Tok::Int).map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit)"));
+        }
         if self.peek(0) == b'.' && self.peek(1).is_ascii_digit() {
             is_float = true;
             self.bump();

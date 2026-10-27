@@ -91,7 +91,7 @@ pub fn front(path: &str) -> (check::Checked, SourceMap) {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = std::env::args_os().map(|a| a.to_string_lossy().into_owned()).collect();
     if args.len() < 3 {
         usage()
     }

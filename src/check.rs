@@ -146,6 +146,7 @@ pub struct Checker {
     pub(crate) self_mut: bool,
     pub(crate) cur: u16,                          // file (module) being checked
     pub(crate) in_callee: bool, // checking the callee of a call (functions with `mut` params allowed)
+    pub(crate) let_types: Vec<(Span, String, Ty)>, // `let` bindings, checked for unresolved types
     pub(crate) modules: Vec<String>,              // module name per file
     pub(crate) imports: HashMap<u16, Vec<String>>, // modules imported by each file
 }
@@ -160,6 +161,44 @@ pub(crate) fn err<T>(span: Span, msg: impl AsRef<str>) -> CResult<T> {
 pub fn is_tparam_name(s: &str) -> bool {
     let b = s.as_bytes();
     !b.is_empty() && b[0].is_ascii_uppercase() && b[1..].iter().all(|c| c.is_ascii_digit())
+}
+
+// A constant may not depend on itself through other constants.
+fn const_cycles(c: &Checked, prog: &Program) -> CResult<()> {
+    let deps = |fi: usize| -> Vec<usize> {
+        let mut out = Vec::new();
+        fn walk(c: &Checked, e: &Expr, out: &mut Vec<usize>) {
+            if let Some(Res::Const(j)) = c.res.get(&e.id) {
+                out.push(*j);
+            }
+            crate::interp::visit_children(e, &mut |x| walk(c, x, out));
+        }
+        if let Some(b) = &prog.fns[fi].body {
+            for s in &b.stmts {
+                crate::interp::visit_stmt(s, &mut |e| walk(c, e, &mut out));
+            }
+        }
+        out
+    };
+    for start in (0..prog.fns.len()).filter(|&i| prog.fns[i].is_const) {
+        let mut stack = vec![(start, vec![start])];
+        let mut seen = vec![false; prog.fns.len()];
+        while let Some((fi, path)) = stack.pop() {
+            for d in deps(fi) {
+                if d == start {
+                    let names: Vec<String> = path.iter().chain([&start]).map(|&i| prog.fns[i].name.clone()).collect();
+                    return err(prog.fns[start].span, format!("constant '{}' depends on itself ({})", prog.fns[start].name, names.join(" -> ")));
+                }
+                if !seen[d] {
+                    seen[d] = true;
+                    let mut p = path.clone();
+                    p.push(d);
+                    stack.push((d, p));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 // Does this block always leave (return, break, continue, or panic)?
@@ -293,6 +332,7 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
         self_mut: false,
         cur: 1,
         in_callee: false,
+        let_types: vec![],
         modules: prog.modules.clone(),
         imports: HashMap::new(),
     };
@@ -308,6 +348,7 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
         return err(Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'");
     };
     c.check_main(main)?;
+    const_cycles(&c.out, &prog)?;
     for i in 0..prog.fns.len() {
         crate::linear::check_fn(&c.out, &prog, i)?;
     }
@@ -639,7 +680,13 @@ impl Checker {
             .collect()];
         self.ctx = vec![Ctx { ret: ret.clone(), loops: 0, lambda: None }];
         self.lambda_stack.clear();
+        self.let_types.clear();
         self.block(body, &ret, true)?;
+        for (sp, n, t) in std::mem::take(&mut self.let_types) {
+            if self.sub.resolve(&t).any(&|x| matches!(x, Ty::Var(_))) {
+                return err(sp, format!("cannot infer the type of '{}'; add a type annotation (for example `let {}: List[Int] = ...`)", n, n));
+            }
+        }
         self.flush();
         Ok(())
     }
@@ -809,6 +856,9 @@ impl Checker {
                     None => {}
                 }
                 self.pattern(pat, &t, *mutable)?;
+                if let PatKind::Bind(n) = &pat.kind {
+                    self.let_types.push((pat.span, n.clone(), t.clone()));
+                }
                 if els.is_some() {
                     let rt = self.sub.resolve(&t);
                     self.exhaustive_or_refutable(pat, &rt)?;

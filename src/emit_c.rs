@@ -97,6 +97,21 @@ pub fn emit(c: &Checked, sm: &SourceMap) -> String {
     e.assemble(&main_c)
 }
 
+// The C backend makes one copy per type instantiation; a function or type
+// whose instantiations grow without bound (polymorphic recursion) has none.
+pub fn ty_depth(t: &Ty) -> usize {
+    match t {
+        Ty::Con(_, a) | Ty::Tuple(a) => 1 + a.iter().map(ty_depth).max().unwrap_or(0),
+        Ty::Fn(a, r) => 1 + a.iter().chain([&**r]).map(ty_depth).max().unwrap_or(0),
+        _ => 1,
+    }
+}
+
+pub fn polymorphic_recursion(what: &str) -> ! {
+    eprintln!("tenon: cannot compile polymorphic recursion ({}); the interpreter can run it, the C backend needs finitely many instantiations", what);
+    std::process::exit(1)
+}
+
 pub fn sanitize(s: &str) -> String {
     s.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect()
 }
@@ -124,8 +139,20 @@ impl<'a> Emitter<'a> {
         format!("{}{}", base, self.counter)
     }
 
+    // Prelude code reports traps at the user call that entered it (tn_cur_loc).
     pub fn loc(&self, sp: Span) -> String {
+        if sp.file == 0 {
+            return "tn_cur_loc".to_string();
+        }
         c_string(&self.sm.loc(sp))
+    }
+
+    pub fn note_prelude_call(&mut self, fi: usize, sp: Span) -> Option<String> {
+        if self.c.fns[fi].span.file == 0 && sp.file != 0 {
+            Some(format!("tn_cur_loc = {};", self.loc(sp)))
+        } else {
+            None
+        }
     }
 
     // ---- types ----
@@ -174,6 +201,9 @@ impl<'a> Emitter<'a> {
     pub fn cty(&mut self, t: &Ty) -> String {
         if let Some(n) = self.tnames.get(t) {
             return n.clone();
+        }
+        if ty_depth(t) > 48 {
+            polymorphic_recursion(&format!("the type {} keeps growing", crate::interp::display(&t.to_string())));
         }
         let name = match t {
             Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn") => {

@@ -1,0 +1,4 @@
+// error: cannot infer the type of 'r'
+fn main() {
+    let r = decode("1")
+}

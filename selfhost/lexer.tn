@@ -77,7 +77,12 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
             return Ok(out)
         }
         let tok = if is_digit(c) {
-            self.number()?
+            // after `.`, digits are a tuple index: `t.0.1` is t . 0 . 1
+            let after_dot = match out.last() {
+                Some(t) => t.tok == Sym("."),
+                None => false,
+            }
+            self.number(after_dot)?
         } else if is_alpha(c) or (c == 95 and is_ident_char(self.peek(1))) {
             let start = self.pos
             while is_ident_char(self.peek(0)) { let _ = self.bump() }
@@ -107,10 +112,16 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
     Ok(out)
 }
 
-fn Lx.number(mut self) -> Result[Tok, LexError] {
+fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
     let (line, col) = (self.line, self.col)
     let start = self.pos
     while is_digit(self.peek(0)) or self.peek(0) == 95 { let _ = self.bump() }
+    if int_only {
+        return match self.src.slice(start, self.pos).replace("_", "").to_int() {
+            Some(i) => Ok(IntTok(i)),
+            None => Err(self.fail(line, col, "integer literal does not fit in Int (64-bit)")),
+        }
+    }
     var is_float = false
     if self.peek(0) == 46 and is_digit(self.peek(1)) {
         is_float = true

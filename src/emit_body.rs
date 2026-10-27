@@ -71,6 +71,9 @@ impl<'a> Emitter<'a> {
     // ---- function instances ----
 
     pub fn fn_inst(&mut self, fi: usize, targs: Vec<Ty>) -> String {
+        if targs.iter().any(|t| ty_depth(t) > 24) {
+            polymorphic_recursion(&format!("'{}' calls itself at ever larger types", self.c.fns[fi].name));
+        }
         let key = (fi, targs.clone());
         if let Some(n) = self.fn_names.get(&key) {
             return n.clone();
@@ -813,6 +816,11 @@ impl<'a> Emitter<'a> {
     }
 
     pub(crate) fn call(&mut self, e: &Expr, callee: &Expr, args: &[Expr], t: &Ty) -> CV {
+        if let Some(Res::Fn(fi, _)) = self.c.res.get(&callee.id) {
+            if let Some(l) = self.note_prelude_call(*fi, e.span) {
+                self.line(&l);
+            }
+        }
         let loc = self.loc(e.span);
         if let Some(Res::CallValue) = self.c.res.get(&e.id) {
             let mut refs: Vec<&Expr> = vec![callee];
@@ -874,6 +882,9 @@ impl<'a> Emitter<'a> {
                 self.tmp_owned(&Ty::str(), &format!("tn_buf_finish(&{})", b))
             }
             Res::Method(fi, targs) => {
+                if let Some(l) = self.note_prelude_call(fi, e.span) {
+                    self.line(&l);
+                }
                 let targs: Vec<Ty> = targs.iter().map(|x| self.sub(x)).collect();
                 let (ptys, _) = self.sig(fi, &targs);
                 let info = &self.c.fns[fi];

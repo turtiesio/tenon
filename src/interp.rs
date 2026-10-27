@@ -35,6 +35,7 @@ pub(crate) enum Step {
 }
 
 pub struct Interp<'a> {
+    pub(crate) user_site: Span, // last call from user code into the prelude: where prelude traps are reported
     pub(crate) c: &'a Checked,
     pub(crate) lambdas: HashMap<Id, &'a Expr>,
     pub(crate) env: Vec<(String, V)>,
@@ -286,6 +287,7 @@ pub fn run(c: &Checked, sm: &SourceMap, args: Vec<String>) -> i32 {
         snames_full: c.structs.iter().map(|s| (display(&s.name).to_string(), s.fields.iter().map(|f| Some(f.0.clone())).collect())).collect(),
         enames: c.enums.iter().map(|e| (display(&e.name).to_string(), e.variants.iter().map(|v| v.0.clone()).collect())).collect(),
         mono_origin: std::time::Instant::now(),
+        user_site: Span::default(),
         args,
     };
     let main = &c.fns[c.main];
@@ -311,6 +313,7 @@ pub fn run(c: &Checked, sm: &SourceMap, args: Vec<String>) -> i32 {
         },
         Err(Ctrl::Trap(msg, sp)) => {
             let _ = it.out.flush();
+            let sp = if sp.file == 0 { it.user_site } else { sp };
             eprintln!("trap: {}\n  at {}", msg, sm.loc(sp));
             EXIT_TRAP
         }
@@ -698,6 +701,11 @@ impl<'a> Interp<'a> {
                 _ => unreachable!(),
             },
             ExprKind::Call(callee, args) => {
+                if let Some(Res::Fn(fi, _)) = self.c.res.get(&callee.id) {
+                    if self.c.fns[*fi].span.file == 0 && e.span.file != 0 {
+                        self.user_site = e.span;
+                    }
+                }
                 if let Some(Res::CallValue) = self.c.res.get(&e.id) {
                     let f = self.eval(callee)?;
                     let av = self.eval_args(args)?;
@@ -735,6 +743,10 @@ impl<'a> Interp<'a> {
                 }
             }
             ExprKind::Method(recv, _, args) => match self.c.res[&e.id].clone() {
+                Res::Method(fi, _) if self.c.fns[fi].span.file == 0 && e.span.file != 0 && self.user_site != e.span => {
+                    self.user_site = e.span;
+                    self.eval(e)
+                }
                 Res::ToStr => {
                     let v = self.eval(recv)?;
                     Ok(V::Str(self.show_top(&v).into()))

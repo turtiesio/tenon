@@ -299,6 +299,9 @@ impl Checker {
                         if let Some(bad) = incomparable_part(&self.out, &rt, false) {
                             return err(e.span, format!("values of type {} cannot be compared: they contain {}", rt, bad));
                         }
+                        if !matches!(op, Eq | Ne) && rt.any(&|x| x.is("Map")) {
+                            return err(e.span, format!("values of type {} cannot be ordered: maps are not ordered", rt));
+                        }
                         Ok(Ty::bool())
                     }
                     _ => {

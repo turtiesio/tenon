@@ -386,7 +386,15 @@ impl<'a> Interp<'a> {
                 if !(0..=65535).contains(&port) {
                     return self.io_err("Failed", format!("{}: port must be 0-65535", what));
                 }
-                let r = std::net::TcpStream::connect((h.as_str(), port as u16));
+                if h.contains('\0') || h.is_empty() {
+                    return self.io_err("Failed", format!("{}: invalid host name", what));
+                }
+                // Name lookup failures are worded differently by every resolver: normalize.
+                let addrs: Vec<std::net::SocketAddr> = match std::net::ToSocketAddrs::to_socket_addrs(&(h.as_str(), port as u16)) {
+                    Ok(a) => a.collect(),
+                    Err(_) => return self.io_err("Failed", format!("{}: host not found", what)),
+                };
+                let r = std::net::TcpStream::connect(&addrs[..]);
                 self.io_result(&what, r, conn)
             }
             ("Listener.port", Cap::Listener(l)) => V::Int(l.local_addr().map(|a| a.port() as i64).unwrap_or(0)),
@@ -476,7 +484,9 @@ impl<'a> Interp<'a> {
                 let data = arg(2);
                 let tmp = format!("{}.tmp", full);
                 let r = (|| {
-                    let mut f = std::fs::File::create(&tmp)?;
+                    // never write through a pre-existing temp file (it may be a planted symlink)
+                    let _ = std::fs::remove_file(&tmp);
+                    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
                     f.write_all(data.as_bytes())?;
                     f.sync_all()?;
                     std::fs::rename(&tmp, &full)
