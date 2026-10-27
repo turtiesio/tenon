@@ -39,9 +39,15 @@ def main():
         tn_bin, c_bin = os.path.join(OUT, name + "_tn"), os.path.join(OUT, name + "_c")
         subprocess.run([TENON, "build", os.path.join(d, name + ".tn"), "-o", tn_bin], check=True)
         subprocess.run(["cc", "-O2", "-o", c_bin, os.path.join(d, name + ".c")], check=True)
+        impls = [("tenon", [tn_bin]), ("c", [c_bin]), ("python", [sys.executable, os.path.join(d, name + ".py")])]
+        rs = os.path.join(d, name + ".rs")
+        if os.path.exists(rs):
+            rs_bin = os.path.join(OUT, name + "_rs")
+            subprocess.run(["rustc", "-O", "-o", rs_bin, rs], check=True, capture_output=True)
+            impls.append(("rust", [rs_bin]))
         row = {}
         outs = {}
-        for impl, cmd in [("tenon", [tn_bin]), ("c", [c_bin]), ("python", [sys.executable, os.path.join(d, name + ".py")])]:
+        for impl, cmd in impls:
             t, out = timed(cmd, inp)
             row[impl] = round(t, 4)
             outs[impl] = out
