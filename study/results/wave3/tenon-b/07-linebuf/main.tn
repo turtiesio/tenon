@@ -1,0 +1,175 @@
+enum Cmd {
+    Append(Str),
+    Insert(Int, Str),
+    Delete(Int, Int),
+    Replace(Int, Str),
+    Print(Int),
+    Find(Str),
+    Count,
+    Undo,
+    Redo,
+}
+
+// A recorded edit; indexes are 0-based.
+enum Change {
+    Inserted(Int, List[Str]),    // lines inserted at an index
+    Deleted(Int, List[Str]),     // lines that were removed, starting at an index
+    Replaced(Int, Str, Str),     // index, old text, new text
+}
+
+struct Buffer {
+    lines: List[Str],
+    undo: List[Change],
+    redo: List[Change],
+}
+
+fn Buffer.new() -> Buffer { Buffer { lines: [], undo: [], redo: [] } }
+
+fn Buffer.apply(mut self, c: Change) {
+    match c {
+        Inserted(at, ls) => {
+            var k = at
+            for l in ls {
+                self.lines.insert(k, l)
+                k += 1
+            }
+        }
+        Deleted(at, ls) => {
+            for _ in 0..ls.len() { let _ = self.lines.remove(at) }
+        }
+        Replaced(at, _, new) => { self.lines[at] = new }
+    }
+}
+
+fn Buffer.revert(mut self, c: Change) {
+    match c {
+        Inserted(at, ls) => self.apply(Deleted(at, ls)),
+        Deleted(at, ls) => self.apply(Inserted(at, ls)),
+        Replaced(at, old, new) => self.apply(Replaced(at, new, old)),
+    }
+}
+
+// a new edit: clears the redo history
+fn Buffer.edit(mut self, c: Change) {
+    self.apply(c)
+    self.undo.push(c)
+    self.redo.clear()
+}
+
+fn parse_num(s: Str) -> Option[Int] {
+    if s.len() > 9 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+// splits "<n> <text>" into the number and the rest of the line
+fn num_and_text(rest: Str) -> Option[(Int, Str)] {
+    let sp = rest.find(" ")?
+    let n = parse_num(rest.slice(0, sp))?
+    Some((n, rest.slice(sp + 1, rest.len())))
+}
+
+fn parse_cmd(line: Str) -> Option[Cmd] {
+    if line == "COUNT" { return Some(Count) }
+    if line == "UNDO" { return Some(Undo) }
+    if line == "REDO" { return Some(Redo) }
+    if let_prefix(line, "APPEND ") { return Some(Append(line.slice(7, line.len()))) }
+    if let_prefix(line, "INSERT ") {
+        let (n, text) = num_and_text(line.slice(7, line.len()))?
+        return Some(Insert(n, text))
+    }
+    if let_prefix(line, "REPLACE ") {
+        let (n, text) = num_and_text(line.slice(8, line.len()))?
+        return Some(Replace(n, text))
+    }
+    if let_prefix(line, "PRINT ") {
+        return Some(Print(parse_num(line.slice(6, line.len()))?))
+    }
+    if let_prefix(line, "DELETE ") {
+        let parts = line.slice(7, line.len()).split(" ")
+        if parts.len() == 1 {
+            let n = parse_num(parts[0])?
+            return Some(Delete(n, n))
+        }
+        if parts.len() == 2 {
+            return Some(Delete(parse_num(parts[0])?, parse_num(parts[1])?))
+        }
+        return None
+    }
+    if let_prefix(line, "FIND ") {
+        let text = line.slice(5, line.len())
+        if text.is_empty() { return None }
+        return Some(Find(text))
+    }
+    None
+}
+
+fn let_prefix(line: Str, p: Str) -> Bool { line.starts_with(p) }
+
+fn Buffer.run(mut self, c: Cmd) -> Str {
+    let count = self.lines.len()
+    match c {
+        Append(text) => {
+            self.edit(Inserted(count, [text]))
+            "OK {self.lines.len()}"
+        }
+        Insert(n, text) => {
+            if n < 1 or n > count + 1 { return "ERR bad line" }
+            self.edit(Inserted(n - 1, [text]))
+            "OK {self.lines.len()}"
+        }
+        Delete(a, b) => {
+            if a < 1 or a > b or b > count { return "ERR bad line" }
+            self.edit(Deleted(a - 1, self.lines.slice(a - 1, b)))
+            "OK {self.lines.len()}"
+        }
+        Replace(n, text) => {
+            if n < 1 or n > count { return "ERR bad line" }
+            self.edit(Replaced(n - 1, self.lines[n - 1], text))
+            "OK {self.lines.len()}"
+        }
+        Print(n) => {
+            if n < 1 or n > count { return "ERR bad line" }
+            "{n}|{self.lines[n - 1]}"
+        }
+        Find(text) => {
+            var hits: List[Str] = []
+            for (i, l) in self.lines.enumerate() {
+                if l.contains(text) { hits.push("{i + 1}") }
+            }
+            if hits.is_empty() { "NONE" } else { hits.join(" ") }
+        }
+        Count => "{count}",
+        Undo => {
+            let Some(ch) = self.undo.pop() else { return "ERR nothing to undo" }
+            self.revert(ch)
+            self.redo.push(ch)
+            "OK {self.lines.len()}"
+        }
+        Redo => {
+            let Some(ch) = self.redo.pop() else { return "ERR nothing to redo" }
+            self.apply(ch)
+            self.undo.push(ch)
+            "OK {self.lines.len()}"
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 0 {
+        con.eprintln("linebuf takes no arguments")
+        return 2
+    }
+    var buf = Buffer.new()
+    while true {
+        let Some(raw) = con.read_line() else { break }
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let reply = match parse_cmd(line) {
+            Some(c) => buf.run(c),
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

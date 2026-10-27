@@ -1,0 +1,128 @@
+enum Term { Number(Int), Cells(List[Int]) }
+struct Content { raw: Str, terms: List[(Int, Term)], refs: List[Int] }
+fn cell(s: Str) -> Option[Int] {
+    if s.len() < 2 or s.len() > 3 or not s.byte(0).is_upper() or s.byte(1) < '1' or s.byte(1) > '9' { return None }
+    if s.len() == 3 and not s.byte(2).is_digit() { return None }
+    Some((s.byte(0) - 'A') * 99 + s.slice(1, s.len()).to_int()? - 1)
+}
+fn read_cell(s: Str, i: mut Int) -> Option[Int] {
+    let start = i
+    if i >= s.len() or not s.byte(i).is_upper() { return None }
+    i += 1
+    while i < s.len() and s.byte(i).is_digit() { i += 1 }
+    cell(s.slice(start, i))
+}
+fn term(s: Str, i: mut Int) -> Option[Term] {
+    if i >= s.len() { return None }
+    if s.byte(i).is_digit() {
+        let start = i
+        while i < s.len() and s.byte(i).is_digit() { i += 1 }
+        if i - start > 9 { return None }
+        return Some(Number(s.slice(start, i).to_int()?))
+    }
+    if s.slice(i, s.len()).starts_with("SUM(") {
+        i += 4
+        let a = read_cell(s, mut i)?
+        if i >= s.len() or s.byte(i) != ':' { return None }
+        i += 1
+        let b = read_cell(s, mut i)?
+        if i >= s.len() or s.byte(i) != ')' { return None }
+        i += 1
+        var refs: List[Int] = []
+        for col in (a / 99).min(b / 99)..((a / 99).max(b / 99) + 1) {
+            for row in (a % 99).min(b % 99)..((a % 99).max(b % 99) + 1) { refs.push(col * 99 + row) }
+        }
+        return Some(Cells(refs))
+    }
+    Some(Cells([read_cell(s, mut i)?]))
+}
+fn parse(raw: Str) -> Option[Content] {
+    if not raw.starts_with("=") {
+        let digits = raw.strip_prefix("-").unwrap_or(raw)
+        if not digits.is_digits() or digits.len() > 9 { return None }
+        return Some(Content { raw, terms: [(1, Number(raw.to_int()?))], refs: [] })
+    }
+    var i = 1
+    var sign = 1
+    if i < raw.len() and raw.byte(i) == '-' { sign = -1; i += 1 }
+    var terms: List[(Int, Term)] = []
+    var refs: List[Int] = []
+    while true {
+        let value = term(raw, mut i)?
+        match value { Cells(cs) => refs.extend(cs), Number(_) => () }
+        terms.push((sign, value))
+        if i == raw.len() { break }
+        let op = raw.byte(i)
+        if op != '+' and op != '-' { return None }
+        sign = if op == '+' { 1 } else { -1 }
+        i += 1
+    }
+    Some(Content { raw, terms, refs })
+}
+fn cycle(sheet: Map[Int, Content], target: Int, refs: List[Int]) -> Bool {
+    var pending = refs
+    var seen: Set[Int] = Set.new()
+    while not pending.is_empty() {
+        let node = pending.pop().unwrap()
+        if node == target { return true }
+        if seen.insert(node) {
+            match sheet.get(node) { Some(contents) => pending.extend(contents.refs), None => () }
+        }
+    }
+    false
+}
+fn evaluate(sheet: Map[Int, Content], id: Int, cache: mut Map[Int, Option[Int]]) -> Option[Int] {
+    match cache.get(id) { Some(value) => return value, None => () }
+    var total = 0
+    match sheet.get(id) {
+        None => (),
+        Some(contents) => {
+            for (sign, value) in contents.terms {
+                match value {
+                    Number(n) => total += sign * n,
+                    Cells(refs) => {
+                        for referenced in refs {
+                            let Some(n) = evaluate(sheet, referenced, mut cache) else { cache[id] = None; return None }
+                            total += sign * n
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let result = if total.abs() > 1000000000000 { None } else { Some(total) }
+    cache[id] = result
+    result
+}
+fn command(sheet: mut Map[Int, Content], line: Str) -> Str {
+    let parts = line.split(" ")
+    if parts.len() != 2 and parts.len() != 3 { return "ERR bad command" }
+    let Some(id) = cell(parts[1]) else { return "ERR bad command" }
+    let op = parts[0]
+    if op == "SET" and parts.len() == 3 {
+        let Some(contents) = parse(parts[2]) else { return "ERR bad command" }
+        if cycle(sheet, id, contents.refs) { return "ERR cycle" }
+        sheet[id] = contents
+        return "OK"
+    }
+    if parts.len() != 2 { return "ERR bad command" }
+    match op {
+        "CLEAR" => { let _ = sheet.remove(id); "OK" }
+        "SHOW" => match sheet.get(id) { Some(contents) => contents.raw, None => "EMPTY" },
+        "GET" => {
+            var cache: Map[Int, Option[Int]] = [:]
+            match evaluate(sheet, id, mut cache) { Some(n) => n.to_str(), None => "ERR overflow" }
+        }
+        _ => "ERR bad command",
+    }
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments allowed"); return 2 }
+    var sheet: Map[Int, Content] = [:]
+    while true {
+        let Some(line) = sys.console.read_line() else { break }
+        sys.console.println(command(mut sheet, line))
+        sys.console.flush()
+    }
+    0
+}

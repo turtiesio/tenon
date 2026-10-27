@@ -1,0 +1,137 @@
+struct Opts { width: Int, indent: Int, justify: Bool }
+
+fn parse_num(s: Str) -> Option[Int] {
+    if not s.is_digits() or s.len() > 4 { return None }
+    s.to_int()
+}
+
+fn parse_args(args: List[Str]) -> Result[Opts, Str] {
+    var width: Option[Int] = None
+    var indent: Option[Int] = None
+    var justify = false
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-j" {
+            if justify { return Err("-j given twice") }
+            justify = true
+            i += 1
+        } else if a == "-w" or a == "-i" {
+            if i + 1 >= args.len() { return Err("{a} needs a value") }
+            let Some(n) = parse_num(args[i + 1]) else { return Err("bad value for {a}: {args[i + 1]}") }
+            if a == "-w" {
+                if width.is_some() { return Err("-w given twice") }
+                if n < 1 or n > 1000 { return Err("width out of range") }
+                width = Some(n)
+            } else {
+                if indent.is_some() { return Err("-i given twice") }
+                indent = Some(n)
+            }
+            i += 2
+        } else {
+            return Err("unknown argument: {a}")
+        }
+    }
+    let w = width.unwrap_or(72)
+    let ind = indent.unwrap_or(0)
+    if ind >= w { return Err("indent must be smaller than width") }
+    Ok(Opts { width: w, indent: ind, justify })
+}
+
+fn valid_line(l: Str) -> Bool {
+    for i in 0..l.len() {
+        let b = l.byte(i)
+        if b < 32 or b > 126 { return false }
+    }
+    true
+}
+
+fn justify_line(words: List[Str], indent: Int, width: Int) -> Str {
+    var letters = 0
+    for w in words { letters += w.len() }
+    let gaps = words.len() - 1
+    let s = width - indent - letters
+    let base = s / gaps
+    let extra = s % gaps
+    var out = " ".repeat(indent)
+    for (i, w) in words.enumerate() {
+        out += w
+        if i < gaps {
+            out += " ".repeat(base + (if i < extra { 1 } else { 0 }))
+        }
+    }
+    out
+}
+
+fn emit_line(out: mut Str, words: List[Str], indent: Int, last: Bool, o: Opts) {
+    if o.justify and not last and words.len() >= 2 {
+        out += justify_line(words, indent, o.width)
+    } else {
+        out += " ".repeat(indent) + words.join(" ")
+    }
+    out += "\n"
+}
+
+fn fill(out: mut Str, words: List[Str], o: Opts) {
+    var line: List[Str] = []
+    var len = 0
+    var indent = o.indent
+    for w in words {
+        if line.is_empty() {
+            line.push(w)
+            len = indent + w.len()
+        } else if len + 1 + w.len() <= o.width {
+            line.push(w)
+            len += 1 + w.len()
+        } else {
+            emit_line(mut out, line, indent, false, o)
+            indent = 0
+            line = [w]
+            len = w.len()
+        }
+    }
+    if not line.is_empty() { emit_line(mut out, line, indent, true, o) }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let o = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(e) => {
+            con.eprintln("usage error: {e}")
+            return 2
+        }
+    }
+    var lines: List[Str] = []
+    for l in con.read_all().lines() {
+        lines.push(l.strip_suffix("\r").unwrap_or(l))
+    }
+    for l in lines {
+        if not valid_line(l) {
+            con.eprintln("invalid input: line contains a disallowed byte")
+            return 1
+        }
+    }
+    var out = ""
+    var para: List[Str] = []
+    var first = true
+    for l in lines {
+        let ws = l.words()
+        if ws.is_empty() {
+            if not para.is_empty() {
+                if not first { out += "\n" }
+                fill(mut out, para, o)
+                first = false
+                para = []
+            }
+        } else {
+            para.extend(ws)
+        }
+    }
+    if not para.is_empty() {
+        if not first { out += "\n" }
+        fill(mut out, para, o)
+    }
+    con.print(out)
+    0
+}

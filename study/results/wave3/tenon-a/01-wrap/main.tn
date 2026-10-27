@@ -1,0 +1,145 @@
+struct Options { width: Int, indent: Int, justify: Bool }
+
+// A WIDTH or INDENT value: 1 to 4 ASCII digits.
+fn parse_number(s: Str) -> Option[Int] {
+    if s.len() < 1 or s.len() > 4 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+fn parse_args(args: List[Str]) -> Result[Options, Str] {
+    var width: Option[Int] = None
+    var indent: Option[Int] = None
+    var justify = false
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-w" or a == "-i" {
+            if i + 1 >= args.len() { return Err("{a} needs a value") }
+            let Some(n) = parse_number(args[i + 1]) else { return Err("bad value for {a}: {args[i + 1]}") }
+            if a == "-w" {
+                if width.is_some() { return Err("-w given more than once") }
+                if n < 1 or n > 1000 { return Err("width out of range: {n}") }
+                width = Some(n)
+            } else {
+                if indent.is_some() { return Err("-i given more than once") }
+                indent = Some(n)
+            }
+            i += 2
+        } else if a == "-j" {
+            if justify { return Err("-j given more than once") }
+            justify = true
+            i += 1
+        } else {
+            return Err("unknown argument: {a}")
+        }
+    }
+    let w = width.unwrap_or(72)
+    let ind = indent.unwrap_or(0)
+    if ind >= w { return Err("indent must be smaller than width") }
+    Ok(Options { width: w, indent: ind, justify })
+}
+
+// Splits the input into lines (final line without "\n" included, one "\r" removed)
+// and checks every byte.
+fn read_lines(text: Str) -> Result[List[Str], Str] {
+    var lines: List[Str] = []
+    for raw in text.lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        for i in 0..line.len() {
+            let b = line.byte(i)
+            if b < ' ' or b > '~' {
+                return Err("invalid byte {b} on line {lines.len() + 1}")
+            }
+        }
+        lines.push(line)
+    }
+    Ok(lines)
+}
+
+fn paragraphs(lines: List[Str]) -> List[List[Str]] {
+    var out: List[List[Str]] = []
+    var current: List[Str] = []
+    for line in lines {
+        let ws = line.words()
+        if ws.is_empty() {
+            if not current.is_empty() {
+                out.push(current)
+                current = []
+            }
+        } else {
+            current.extend(ws)
+        }
+    }
+    if not current.is_empty() { out.push(current) }
+    out
+}
+
+// Greedy filling: each output line is a list of words.
+fn fill(words: List[Str], opts: Options) -> List[List[Str]] {
+    var out: List[List[Str]] = []
+    var i = 0
+    while i < words.len() {
+        let indent = if out.is_empty() { opts.indent } else { 0 }
+        var line = [words[i]]
+        var len = indent + words[i].len()
+        i += 1
+        while i < words.len() and len + 1 + words[i].len() <= opts.width {
+            len += 1 + words[i].len()
+            line.push(words[i])
+            i += 1
+        }
+        out.push(line)
+    }
+    out
+}
+
+fn render(out: mut Str, words: List[Str], indent: Int, stretch: Bool, width: Int) {
+    out += " ".repeat(indent)
+    if not stretch or words.len() < 2 {
+        out += words.join(" ")
+        out += "\n"
+        return
+    }
+    var letters = 0
+    for w in words { letters += w.len() }
+    let s = width - indent - letters
+    let g = words.len() - 1
+    for (k, w) in words.enumerate() {
+        out += w
+        if k < g {
+            let extra = if k < s % g { 1 } else { 0 }
+            out += " ".repeat(s / g + extra)
+        }
+    }
+    out += "\n"
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(e) => {
+            con.eprintln("wrap: {e}")
+            return 2
+        }
+    }
+    let lines = match read_lines(con.read_all()) {
+        Ok(ls) => ls,
+        Err(e) => {
+            con.eprintln("wrap: invalid input: {e}")
+            return 1
+        }
+    }
+    var out = ""
+    for (p, words) in paragraphs(lines).enumerate() {
+        if p > 0 { out += "\n" }
+        let filled = fill(words, opts)
+        for (k, line) in filled.enumerate() {
+            let indent = if k == 0 { opts.indent } else { 0 }
+            let last = k == filled.len() - 1
+            render(mut out, line, indent, opts.justify and not last, opts.width)
+        }
+    }
+    con.print(out)
+    0
+}

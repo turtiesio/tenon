@@ -1,0 +1,175 @@
+struct Options { block: Int, l1: (Int, Int), l2: (Int, Int) }
+
+struct Access { text: Str, write: Bool, addr: Int }
+
+struct Block { id: Int, dirty: Bool }
+
+// A set-associative cache; each set lists its blocks from LRU to MRU.
+struct Cache { sets: List[List[Block]], ways: Int, hits: Int, misses: Int, writebacks: Int }
+
+fn Cache.new(geometry: (Int, Int)) -> Cache {
+    Cache { sets: List.filled(geometry.0, []), ways: geometry.1, hits: 0, misses: 0, writebacks: 0 }
+}
+
+fn Cache.set_of(self, b: Int) -> Int { b % self.sets.len() }
+
+fn Cache.position(self, b: Int) -> Option[Int] {
+    let s = self.set_of(b)
+    for (i, blk) in self.sets[s].enumerate() {
+        if blk.id == b { return Some(i) }
+    }
+    None
+}
+
+// Makes a held block MRU, optionally marking it dirty. Returns false if b is not held.
+fn Cache.touch(mut self, b: Int, make_dirty: Bool) -> Bool {
+    let Some(i) = self.position(b) else { return false }
+    let s = self.set_of(b)
+    var blk = self.sets[s].remove(i)
+    if make_dirty { blk.dirty = true }
+    self.sets[s].push(blk)
+    true
+}
+
+// Installs b as MRU; returns the evicted LRU block, if any.
+fn Cache.install(mut self, b: Int, dirty: Bool) -> Option[Block] {
+    let s = self.set_of(b)
+    var victim: Option[Block] = None
+    if self.sets[s].len() >= self.ways { victim = Some(self.sets[s].remove(0)) }
+    self.sets[s].push(Block { id: b, dirty })
+    victim
+}
+
+struct Hierarchy { l1: Cache, l2: Cache }
+
+fn Hierarchy.install_l2(mut self, b: Int, dirty: Bool) {
+    match self.l2.install(b, dirty) {
+        Some(v) => if v.dirty { self.l2.writebacks += 1 },
+        None => {}
+    }
+}
+
+fn Hierarchy.access(mut self, b: Int, write: Bool) -> Str {
+    if self.l1.touch(b, write) {
+        self.l1.hits += 1
+        return "L1"
+    }
+    self.l1.misses += 1
+    var result = "L2"
+    if self.l2.touch(b, false) {
+        self.l2.hits += 1
+    } else {
+        self.l2.misses += 1
+        self.install_l2(b, false)
+        result = "MEM"
+    }
+    match self.l1.install(b, write) {
+        Some(v) => {
+            if v.dirty {
+                self.l1.writebacks += 1
+                if not self.l2.touch(v.id, true) { self.install_l2(v.id, true) }
+            }
+        }
+        None => {}
+    }
+    result
+}
+
+fn number(s: Str, max_digits: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > max_digits or not s.is_digits() { return None }
+    s.to_int()
+}
+
+fn parse_geometry(s: Str) -> Option[(Int, Int)] {
+    let parts = s.split(":")
+    if parts.len() != 2 { return None }
+    let sets = number(parts[0], 4)?
+    let ways = number(parts[1], 2)?
+    if sets < 1 or sets > 4096 or ways < 1 or ways > 64 { return None }
+    Some((sets, ways))
+}
+
+fn parse_block(s: Str) -> Option[Int] {
+    let n = number(s, 4)?
+    var p = 1
+    while p < n { p *= 2 }
+    if p == n and n <= 4096 { Some(n) } else { None }
+}
+
+fn parse_args(args: List[Str]) -> Result[Options, Str] {
+    var opts = Options { block: 16, l1: (4, 2), l2: (16, 4) }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a != "-b" and a != "-1" and a != "-2" { return Err("unknown argument: {a}") }
+        if i + 1 >= args.len() { return Err("{a} needs a value") }
+        let v = args[i + 1]
+        if a == "-b" {
+            let Some(b) = parse_block(v) else { return Err("bad block size: {v}") }
+            opts.block = b
+        } else {
+            let Some(g) = parse_geometry(v) else { return Err("bad geometry: {v}") }
+            if a == "-1" { opts.l1 = g } else { opts.l2 = g }
+        }
+        i += 2
+    }
+    Ok(opts)
+}
+
+fn hex_digit(c: Int) -> Option[Int] {
+    if c.is_digit() { return Some(c - '0') }
+    if c >= 'a' and c <= 'f' { return Some(c - 'a' + 10) }
+    if c >= 'A' and c <= 'F' { return Some(c - 'A' + 10) }
+    None
+}
+
+fn parse_access(line: Str) -> Option[Access] {
+    if line.len() < 5 { return None }
+    let op = line.slice(0, 1)
+    if op != "R" and op != "W" { return None }
+    if line.slice(1, 4) != " 0x" { return None }
+    let hex = line.slice(4, line.len())
+    if hex.len() > 8 { return None }
+    var addr = 0
+    for i in 0..hex.len() { addr = addr * 16 + hex_digit(hex.byte(i))? }
+    Some(Access { text: line, write: op == "W", addr })
+}
+
+fn parse_trace(text: Str) -> Result[List[Access], Str] {
+    var out: List[Access] = []
+    for (i, raw) in text.lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() { continue }
+        let Some(a) = parse_access(line) else { return Err("line {i + 1}: invalid access \"{line}\"") }
+        out.push(a)
+    }
+    Ok(out)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(e) => {
+            con.eprintln("cachesim: {e}")
+            return 2
+        }
+    }
+    let trace = match parse_trace(con.read_all()) {
+        Ok(t) => t,
+        Err(e) => {
+            con.eprintln("cachesim: {e}")
+            return 1
+        }
+    }
+    var h = Hierarchy { l1: Cache.new(opts.l1), l2: Cache.new(opts.l2) }
+    var out = ""
+    for a in trace {
+        let result = h.access(a.addr / opts.block, a.write)
+        out += a.text + " " + result + "\n"
+    }
+    out += "L1 hits={h.l1.hits} misses={h.l1.misses} writebacks={h.l1.writebacks}\n"
+    out += "L2 hits={h.l2.hits} misses={h.l2.misses} writebacks={h.l2.writebacks}\n"
+    con.print(out)
+    0
+}

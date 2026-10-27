@@ -1,0 +1,93 @@
+fn csv(text: Str) -> Result[List[List[Str]], Str] {
+    var rows: List[List[Str]] = []
+    var i = 0
+    while i < text.len() {
+        if text.byte(i) == '\n' { i += 1; continue }
+        if text.byte(i) == '\r' and i + 1 < text.len() and text.byte(i + 1) == '\n' { i += 2; continue }
+        var row: List[Str] = []
+        while true {
+            var field = ""
+            if i < text.len() and text.byte(i) == '"' {
+                i += 1
+                var closed = false
+                while i < text.len() {
+                    if text.byte(i) == '"' {
+                        i += 1
+                        if i < text.len() and text.byte(i) == '"' { field += "\""; i += 1 } else { closed = true; break }
+                    } else { field += text.slice(i, i + 1); i += 1 }
+                }
+                if not closed { return Err("unterminated quote") }
+            } else {
+                let start = i
+                while i < text.len() and not [',', '\r', '\n'].contains(text.byte(i)) {
+                    if text.byte(i) == '"' { return Err("quote in unquoted field") }
+                    i += 1
+                }
+                field = text.slice(start, i)
+            }
+            row.push(field)
+            if i == text.len() { break }
+            let sep = text.byte(i)
+            i += 1
+            if sep == ',' { continue }
+            if sep == '\n' { break }
+            if sep == '\r' and i < text.len() and text.byte(i) == '\n' { i += 1; break }
+            return Err("bad field terminator")
+        }
+        rows.push(row)
+    }
+    if rows.is_empty() { return Err("missing header") }
+    var names: Set[Str] = Set.new()
+    for name in rows[0] { if not names.insert(name) { return Err("duplicate header") } }
+    for record in rows { if record.len() != rows[0].len() { return Err("wrong field count") } }
+    Ok(rows)
+}
+fn quoted(s: Str) -> Str {
+    if s.contains(",") or s.contains("\"") or s.contains("\r") or s.contains("\n") { "\"" + s.replace("\"", "\"\"") + "\"" } else { s }
+}
+fn load(fs: Fs, path: Str) -> Result[List[List[Str]], Str] { csv(fs.read(path).map_err(fn(e) => e.to_str())?) }
+fn joined(sys: Sys, paths: List[Str], key: Str, outer: Bool) -> Result[Unit, Str] {
+    let left = load(sys.fs, paths[0])?
+    let right = load(sys.fs, paths[1])?
+    let lk = left[0].index_of(key).ok_or("missing left key")?
+    let rk = right[0].index_of(key).ok_or("missing right key")?
+    var header = left[0]
+    for (i, name) in right[0].enumerate() {
+        if i != rk { header.push(if left[0].contains(name) { "r." + name } else { name }) }
+    }
+    var index: Map[Str, List[List[Str]]] = [:]
+    for j in 1..right.len() {
+        let record = right[j]
+        if not index.contains(record[rk]) { index[record[rk]] = [] }
+        index[record[rk]].push(record)
+    }
+    sys.console.println(header.map(quoted).join(","))
+    for j in 1..left.len() {
+        let record = left[j]
+        var matches = index.get_or(record[lk], [])
+        if outer and matches.is_empty() { matches.push(List.filled(right[0].len(), "")) }
+        for other in matches {
+            var output = record
+            for k in 0..other.len() { if k != rk { output.push(other[k]) } }
+            sys.console.println(output.map(quoted).join(","))
+        }
+    }
+    Ok(())
+}
+fn main(sys: Sys) -> Int {
+    var outer = false
+    var key = "id"
+    var paths: List[Str] = []
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg == "-l" { outer = true } else if arg == "-k" {
+            i += 1
+            if i >= sys.args.len() { sys.console.eprintln("missing key"); return 2 }
+            key = sys.args[i]
+        } else if arg.starts_with("-") { sys.console.eprintln("unknown option"); return 2 } else { paths.push(arg) }
+        i += 1
+    }
+    if paths.len() != 2 or key.is_empty() { sys.console.eprintln("bad arguments"); return 2 }
+    match joined(sys, paths, key, outer) { Ok(()) => 0, Err(e) => { sys.console.eprintln(e); 1 } }
+}

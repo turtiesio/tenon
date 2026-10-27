@@ -1,0 +1,191 @@
+enum Elem {
+    Star,
+    AnyOne,
+    Lit(Int),
+    Class(Bool, List[(Int, Int)]),   // negated, inclusive byte ranges
+}
+
+struct Options { ignore_case: Bool, invert: Bool, count: Bool, pattern: Str }
+
+fn parse_args(args: List[Str]) -> Result[Options, Str] {
+    var opts = Options { ignore_case: false, invert: false, count: false, pattern: "" }
+    var found = false
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if found { return Err("unexpected argument after PATTERN: {a}") }
+        if a == "-i" {
+            opts.ignore_case = true
+        } else if a == "-v" {
+            opts.invert = true
+        } else if a == "-c" {
+            opts.count = true
+        } else if a == "--" {
+            if i + 1 >= args.len() { return Err("missing PATTERN after --") }
+            opts.pattern = args[i + 1]
+            found = true
+            i += 1
+        } else if a.starts_with("-") {
+            return Err("unknown option: {a}")
+        } else {
+            opts.pattern = a
+            found = true
+        }
+        i += 1
+    }
+    if not found { return Err("missing PATTERN") }
+    Ok(opts)
+}
+
+fn compile(p: Str) -> Result[List[Elem], Str] {
+    var out: List[Elem] = []
+    var i = 0
+    let n = p.len()
+    while i < n {
+        let c = p.byte(i)
+        if c == '*' {
+            out.push(Star)
+            i += 1
+        } else if c == '?' {
+            out.push(AnyOne)
+            i += 1
+        } else if c == '\\' {
+            if i + 1 >= n { return Err("pattern ends with a backslash") }
+            out.push(Lit(p.byte(i + 1)))
+            i += 2
+        } else if c == '[' {
+            let start = i
+            i += 1
+            var negated = false
+            if i < n and p.byte(i) == '!' {
+                negated = true
+                i += 1
+            }
+            var ranges: List[(Int, Int)] = []
+            var first = true
+            var closed = false
+            while i < n {
+                if p.byte(i) == ']' and not first {
+                    closed = true
+                    i += 1
+                    break
+                }
+                first = false
+                let (x, after_x) = class_char(p, i)?
+                i = after_x
+                if i + 1 < n and p.byte(i) == '-' and p.byte(i + 1) != ']' {
+                    let (y, after_y) = class_char(p, i + 1)?
+                    if x > y { return Err("bad range in class at byte {start}") }
+                    ranges.push((x, y))
+                    i = after_y
+                } else {
+                    ranges.push((x, x))
+                }
+            }
+            if not closed { return Err("unclosed class at byte {start}") }
+            out.push(Class(negated, ranges))
+        } else {
+            out.push(Lit(c))
+            i += 1
+        }
+    }
+    Ok(out)
+}
+
+// One class character at byte i: `\c` or a single non-backslash byte.
+// Returns the character and the offset after it.
+fn class_char(p: Str, i: Int) -> Result[(Int, Int), Str] {
+    if p.byte(i) == '\\' {
+        if i + 1 >= p.len() { return Err("pattern ends with a backslash") }
+        Ok((p.byte(i + 1), i + 2))
+    } else {
+        Ok((p.byte(i), i + 1))
+    }
+}
+
+fn lower(c: Int) -> Int { if c.is_upper() { c + 32 } else { c } }
+fn upper(c: Int) -> Int { if c.is_lower() { c - 32 } else { c } }
+
+fn in_ranges(ranges: List[(Int, Int)], c: Int) -> Bool {
+    ranges.any(fn(r) => c >= r.0 and c <= r.1)
+}
+
+fn matches_one(e: Elem, c: Int, ignore_case: Bool) -> Bool {
+    match e {
+        Star => true,
+        AnyOne => true,
+        Lit(x) => if ignore_case { lower(x) == lower(c) } else { x == c },
+        Class(negated, ranges) => {
+            let hit = if ignore_case {
+                in_ranges(ranges, lower(c)) or in_ranges(ranges, upper(c))
+            } else {
+                in_ranges(ranges, c)
+            }
+            hit != negated
+        }
+    }
+}
+
+// Dynamic programming over pattern elements: reach[j] is true when the
+// first j elements can match the line prefix consumed so far.
+fn glob_match(pat: List[Elem], line: Str, ignore_case: Bool) -> Bool {
+    let m = pat.len()
+    var reach = List.filled(m + 1, false)
+    reach[0] = true
+    for j in 0..m {
+        if reach[j] and pat[j] == Star { reach[j + 1] = true }
+    }
+    for i in 0..line.len() {
+        let c = line.byte(i)
+        var next = List.filled(m + 1, false)
+        for j in 0..m {
+            if not reach[j] { continue }
+            if pat[j] == Star {
+                next[j] = true
+            } else if matches_one(pat[j], c, ignore_case) {
+                next[j + 1] = true
+            }
+        }
+        for j in 0..m {
+            if next[j] and pat[j] == Star { next[j + 1] = true }
+        }
+        reach = next
+    }
+    reach[m]
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(e) => {
+            con.eprintln("globgrep: {e}")
+            return 2
+        }
+    }
+    let pat = match compile(opts.pattern) {
+        Ok(p) => p,
+        Err(e) => {
+            con.eprintln("globgrep: invalid pattern: {e}")
+            return 2
+        }
+    }
+    var out = ""
+    var selected = 0
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if glob_match(pat, line, opts.ignore_case) != opts.invert {
+            selected += 1
+            if not opts.count {
+                out += line
+                out += "\n"
+            }
+        }
+    }
+    if opts.count {
+        con.println("{selected}")
+    } else {
+        con.print(out)
+    }
+    if selected > 0 { 0 } else { 1 }
+}

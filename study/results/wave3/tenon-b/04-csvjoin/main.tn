@@ -1,0 +1,200 @@
+// ---- CSV parsing ----
+
+// Parses a quoted field whose opening quote is at `i`; returns the text and the index after the closing quote.
+fn quoted_field(text: Str, i: Int) -> Result[(Str, Int), Str] {
+    var out = ""
+    var p = i + 1
+    var seg = p
+    while p < text.len() {
+        if text.byte(p) == '"' {
+            if p + 1 < text.len() and text.byte(p + 1) == '"' {
+                out += text.slice(seg, p + 1)
+                p += 2
+                seg = p
+            } else {
+                out += text.slice(seg, p)
+                return Ok((out, p + 1))
+            }
+        } else {
+            p += 1
+        }
+    }
+    Err("quoted field is not closed")
+}
+
+fn plain_field(text: Str, i: Int) -> Result[(Str, Int), Str] {
+    var p = i
+    while p < text.len() {
+        let b = text.byte(p)
+        if b == ',' or b == '\n' or b == '\r' { break }
+        if b == '"' { return Err("quote inside an unquoted field at byte {p}") }
+        p += 1
+    }
+    Ok((text.slice(i, p), p))
+}
+
+fn parse_csv(text: Str) -> Result[List[List[Str]], Str] {
+    var records: List[List[Str]] = []
+    var i = 0
+    let n = text.len()
+    while i < n {
+        // empty lines are skipped
+        if text.byte(i) == '\n' {
+            i += 1
+            continue
+        }
+        if text.byte(i) == '\r' and i + 1 < n and text.byte(i + 1) == '\n' {
+            i += 2
+            continue
+        }
+        var fields: List[Str] = []
+        while true {
+            let (f, next) = if i < n and text.byte(i) == '"' { quoted_field(text, i)? } else { plain_field(text, i)? }
+            fields.push(f)
+            i = next
+            if i >= n { break }
+            let b = text.byte(i)
+            if b == ',' {
+                i += 1
+            } else if b == '\n' {
+                i += 1
+                break
+            } else if b == '\r' and i + 1 < n and text.byte(i + 1) == '\n' {
+                i += 2
+                break
+            } else {
+                return Err("unexpected character after a quoted field at byte {i}")
+            }
+        }
+        records.push(fields)
+    }
+    Ok(records)
+}
+
+// ---- CSV output ----
+
+fn needs_quotes(f: Str) -> Bool {
+    for i in 0..f.len() {
+        let b = f.byte(i)
+        if b == ',' or b == '"' or b == '\r' or b == '\n' { return true }
+    }
+    false
+}
+
+fn csv_field(f: Str) -> Str {
+    if needs_quotes(f) { "\"" + f.replace("\"", "\"\"") + "\"" } else { f }
+}
+
+fn csv_record(fields: List[Str]) -> Str {
+    fields.map(csv_field).join(",") + "\n"
+}
+
+// ---- tables ----
+
+struct Table { header: List[Str], rows: List[List[Str]] }
+
+fn load(fs: Fs, path: Str) -> Result[Table, Str] {
+    let text = fs.read(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    let records = parse_csv(text).map_err(fn(e) => "{path}: {e}")?
+    if records.is_empty() { return Err("{path}: no header row") }
+    let header = records[0]
+    var names: Set[Str] = Set.new()
+    for h in header {
+        if not names.insert(h) { return Err("{path}: duplicate column {h}") }
+    }
+    var rows: List[List[Str]] = []
+    for r in 1..records.len() {
+        if records[r].len() != header.len() {
+            return Err("{path}: record {r} has {records[r].len()} fields, expected {header.len()}")
+        }
+        rows.push(records[r])
+    }
+    Ok(Table { header, rows })
+}
+
+fn run(sys: Sys, left_join: Bool, key: Str, lpath: Str, rpath: Str) -> Result[Str, Str] {
+    let left = load(sys.fs, lpath)?
+    let right = load(sys.fs, rpath)?
+    let Some(lk) = left.header.index_of(key) else { return Err("{lpath}: no column {key}") }
+    let Some(rk) = right.header.index_of(key) else { return Err("{rpath}: no column {key}") }
+
+    var out_header = left.header
+    var right_cols: List[Int] = []
+    for (i, name) in right.header.enumerate() {
+        if i == rk { continue }
+        right_cols.push(i)
+        out_header.push(if left.header.contains(name) { "r." + name } else { name })
+    }
+
+    var index: Map[Str, List[Int]] = [:]
+    for (i, row) in right.rows.enumerate() {
+        let k = row[rk]
+        if not index.contains(k) { index[k] = [] }
+        index[k].push(i)
+    }
+
+    var out = csv_record(out_header)
+    for lrow in left.rows {
+        let matches = index.get_or(lrow[lk], [])
+        if matches.is_empty() {
+            if left_join {
+                var fields = lrow
+                for _ in right_cols { fields.push("") }
+                out += csv_record(fields)
+            }
+        } else {
+            for m in matches {
+                var fields = lrow
+                for c in right_cols { fields.push(right.rows[m][c]) }
+                out += csv_record(fields)
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var left_join = false
+    var key = "id"
+    var paths: List[Str] = []
+    var i = 0
+    let args = sys.args
+    while i < args.len() {
+        let a = args[i]
+        if a == "-l" {
+            left_join = true
+        } else if a == "-k" {
+            if i + 1 >= args.len() {
+                con.eprintln("-k needs a column name")
+                return 2
+            }
+            key = args[i + 1]
+            i += 1
+        } else if a.starts_with("-") {
+            con.eprintln("unknown option: {a}")
+            return 2
+        } else {
+            paths.push(a)
+        }
+        i += 1
+    }
+    if paths.len() != 2 {
+        con.eprintln("expected exactly two files, got {paths.len()}")
+        return 2
+    }
+    if key.is_empty() {
+        con.eprintln("empty key name")
+        return 2
+    }
+    match run(sys, left_join, key, paths[0], paths[1]) {
+        Ok(out) => {
+            con.print(out)
+            0
+        }
+        Err(e) => {
+            con.eprintln("error: {e}")
+            1
+        }
+    }
+}

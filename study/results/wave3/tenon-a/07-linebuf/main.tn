@@ -1,0 +1,175 @@
+enum Command {
+    Append(Str),
+    Insert(Int, Str),
+    Delete(Int, Int),
+    Replace(Int, Str),
+    Print(Int),
+    Find(Str),
+    Count,
+    Undo,
+    Redo,
+}
+
+// A change that can be applied and reverted. Positions are 0-based.
+enum Change {
+    Added(Int, List[Str]),        // lines inserted at the position
+    Removed(Int, List[Str]),      // lines removed from the position
+    Replaced(Int, Str, Str),      // position, old text, new text
+}
+
+fn line_number(s: Str) -> Option[Int] {
+    if s.len() < 1 or s.len() > 9 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+// "<n> <text>": the number, then exactly one space, then the rest.
+fn number_and_text(rest: Str) -> Option[(Int, Str)] {
+    let sp = rest.find(" ")?
+    let n = line_number(rest.slice(0, sp))?
+    Some((n, rest.slice(sp + 1, rest.len())))
+}
+
+fn parse(line: Str) -> Option[Command] {
+    if line == "COUNT" { return Some(Count) }
+    if line == "UNDO" { return Some(Undo) }
+    if line == "REDO" { return Some(Redo) }
+    if line.starts_with("APPEND ") {
+        return Some(Append(line.slice(7, line.len())))
+    }
+    match line.strip_prefix("INSERT ") {
+        Some(rest) => {
+            let (n, text) = number_and_text(rest)?
+            return Some(Insert(n, text))
+        }
+        None => {}
+    }
+    match line.strip_prefix("REPLACE ") {
+        Some(rest) => {
+            let (n, text) = number_and_text(rest)?
+            return Some(Replace(n, text))
+        }
+        None => {}
+    }
+    match line.strip_prefix("DELETE ") {
+        Some(rest) => {
+            let parts = rest.split(" ")
+            if parts.len() == 1 {
+                let n = line_number(parts[0])?
+                return Some(Delete(n, n))
+            }
+            if parts.len() == 2 {
+                return Some(Delete(line_number(parts[0])?, line_number(parts[1])?))
+            }
+            return None
+        }
+        None => {}
+    }
+    match line.strip_prefix("PRINT ") {
+        Some(rest) => return Some(Print(line_number(rest)?)),
+        None => {}
+    }
+    match line.strip_prefix("FIND ") {
+        Some(rest) => return if rest.is_empty() { None } else { Some(Find(rest)) },
+        None => {}
+    }
+    None
+}
+
+struct Buffer { lines: List[Str], undo: List[Change], redo: List[Change] }
+
+fn Buffer.apply(mut self, c: Change) {
+    match c {
+        Added(at, ls) => {
+            if ls.len() == 1 {
+                self.lines.insert(at, ls[0])
+                return
+            }
+            self.lines = self.lines.slice(0, at) + ls + self.lines.slice(at, self.lines.len())
+        }
+        Removed(at, ls) => {
+            if ls.len() == 1 {
+                let _ = self.lines.remove(at)
+                return
+            }
+            self.lines = self.lines.slice(0, at) + self.lines.slice(at + ls.len(), self.lines.len())
+        }
+        Replaced(at, _, new) => self.lines[at] = new,
+    }
+}
+
+fn inverse(c: Change) -> Change {
+    match c {
+        Added(at, ls) => Removed(at, ls),
+        Removed(at, ls) => Added(at, ls),
+        Replaced(at, old, new) => Replaced(at, new, old),
+    }
+}
+
+fn Buffer.change(mut self, c: Change) -> Str {
+    self.apply(c)
+    self.undo.push(c)
+    self.redo.clear()
+    "OK {self.lines.len()}"
+}
+
+fn Buffer.run(mut self, cmd: Command) -> Str {
+    let count = self.lines.len()
+    match cmd {
+        Append(text) => self.change(Added(count, [text])),
+        Insert(n, text) => {
+            if n < 1 or n > count + 1 { return "ERR bad line" }
+            self.change(Added(n - 1, [text]))
+        }
+        Delete(a, b) => {
+            if a < 1 or a > b or b > count { return "ERR bad line" }
+            self.change(Removed(a - 1, self.lines.slice(a - 1, b)))
+        }
+        Replace(n, text) => {
+            if n < 1 or n > count { return "ERR bad line" }
+            self.change(Replaced(n - 1, self.lines[n - 1], text))
+        }
+        Print(n) => {
+            if n < 1 or n > count { return "ERR bad line" }
+            "{n}|{self.lines[n - 1]}"
+        }
+        Find(text) => {
+            var hits: List[Str] = []
+            for (i, l) in self.lines.enumerate() {
+                if l.contains(text) { hits.push("{i + 1}") }
+            }
+            if hits.is_empty() { "NONE" } else { hits.join(" ") }
+        }
+        Count => "{count}",
+        Undo => {
+            let Some(c) = self.undo.pop() else { return "ERR nothing to undo" }
+            self.apply(inverse(c))
+            self.redo.push(c)
+            "OK {self.lines.len()}"
+        }
+        Redo => {
+            let Some(c) = self.redo.pop() else { return "ERR nothing to redo" }
+            self.apply(c)
+            self.undo.push(c)
+            "OK {self.lines.len()}"
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("linebuf: no arguments expected")
+        return 2
+    }
+    var buf = Buffer { lines: [], undo: [], redo: [] }
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let response = match parse(line) {
+            Some(cmd) => buf.run(cmd),
+            None => "ERR bad command",
+        }
+        con.println(response)
+        con.flush()
+    }
+    0
+}

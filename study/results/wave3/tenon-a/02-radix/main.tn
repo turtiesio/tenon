@@ -1,0 +1,117 @@
+struct Options { from: Int, to: Int, width: Int, group: Int, upper: Bool }
+
+// An option value: 1 or 2 ASCII digits within [lo, hi].
+fn parse_option_value(s: Str, lo: Int, hi: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > 2 or not s.is_digits() { return None }
+    let n = s.to_int()?
+    if n < lo or n > hi { None } else { Some(n) }
+}
+
+fn parse_args(args: List[Str]) -> Result[(Options, List[Str]), Str] {
+    var opts = Options { from: 10, to: 10, width: 0, group: 0, upper: false }
+    var values: List[Str] = []
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-u" {
+            opts.upper = true
+            i += 1
+        } else if a == "-f" or a == "-t" or a == "-w" or a == "-g" {
+            if i + 1 >= args.len() { return Err("{a} needs a value") }
+            let v = args[i + 1]
+            let (lo, hi) = if a == "-f" or a == "-t" { (2, 36) } else { (1, 64) }
+            let Some(n) = parse_option_value(v, lo, hi) else { return Err("bad value for {a}: {v}") }
+            if a == "-f" {
+                opts.from = n
+            } else if a == "-t" {
+                opts.to = n
+            } else if a == "-w" {
+                opts.width = n
+            } else {
+                opts.group = n
+            }
+            i += 2
+        } else {
+            values.push(a)
+            i += 1
+        }
+    }
+    if values.is_empty() { return Err("no VALUE given") }
+    Ok((opts, values))
+}
+
+fn digit_value(c: Int) -> Option[Int] {
+    if c.is_digit() {
+        Some(c - '0')
+    } else if c.is_lower() {
+        Some(c - 'a' + 10)
+    } else if c.is_upper() {
+        Some(c - 'A' + 10)
+    } else {
+        None
+    }
+}
+
+// Returns (negative, magnitude).
+fn parse_value(s: Str, base: Int) -> Result[(Bool, Int), Str] {
+    let negative = s.starts_with("-")
+    let digits = if negative { s.slice(1, s.len()) } else { s }
+    if digits.is_empty() { return Err("no digits") }
+    var n = 0
+    for i in 0..digits.len() {
+        let Some(d) = digit_value(digits.byte(i)) else { return Err("invalid character") }
+        if d >= base { return Err("digit not valid in base {base}") }
+        let Some(m) = n.checked_mul(base) else { return Err("out of range") }
+        let Some(t) = m.checked_add(d) else { return Err("out of range") }
+        n = t
+    }
+    Ok((negative and n != 0, n))
+}
+
+fn format_value(negative: Bool, n: Int, opts: Options) -> Str {
+    let alphabet = if opts.upper { "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" } else { "0123456789abcdefghijklmnopqrstuvwxyz" }
+    var rev: List[Str] = []
+    var m = n
+    while true {
+        let d = m % opts.to
+        rev.push(alphabet.slice(d, d + 1))
+        m = m / opts.to
+        if m == 0 { break }
+    }
+    rev.reverse()
+    var digits = rev.join("").pad_left(opts.width, "0")
+    if opts.group > 0 and digits.len() > opts.group {
+        var groups: List[Str] = []
+        var end = digits.len()
+        while end > 0 {
+            let start = (end - opts.group).max(0)
+            groups.push(digits.slice(start, end))
+            end = start
+        }
+        groups.reverse()
+        digits = groups.join("_")
+    }
+    if negative { "-" + digits } else { digits }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let (opts, values) = match parse_args(sys.args) {
+        Ok(p) => p,
+        Err(e) => {
+            con.eprintln("radix: {e}")
+            return 2
+        }
+    }
+    var status = 0
+    for v in values {
+        match parse_value(v, opts.from) {
+            Ok((negative, n)) => con.println(format_value(negative, n, opts)),
+            Err(e) => {
+                con.eprintln("radix: invalid value {v}: {e}")
+                status = 1
+            }
+        }
+    }
+    status
+}

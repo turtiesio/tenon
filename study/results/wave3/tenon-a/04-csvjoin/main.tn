@@ -1,0 +1,202 @@
+struct Options { left_join: Bool, key: Str, left: Str, right: Str }
+
+fn parse_args(args: List[Str]) -> Result[Options, Str] {
+    var left_join = false
+    var key = "id"
+    var paths: List[Str] = []
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-l" {
+            left_join = true
+        } else if a == "-k" {
+            if i + 1 >= args.len() { return Err("-k needs a NAME") }
+            key = args[i + 1]
+            i += 1
+        } else if a.starts_with("-") {
+            return Err("unknown option: {a}")
+        } else {
+            paths.push(a)
+        }
+        i += 1
+    }
+    if key.is_empty() { return Err("empty key NAME") }
+    if paths.len() != 2 { return Err("expected LEFT and RIGHT paths, got {paths.len()}") }
+    Ok(Options { left_join, key, left: paths[0], right: paths[1] })
+}
+
+// Parses a whole CSV text into records; empty lines are skipped.
+fn parse_csv(text: Str) -> Result[List[List[Str]], Str] {
+    var records: List[List[Str]] = []
+    let n = text.len()
+    var i = 0
+    while i < n {
+        if at_terminator(text, i) {
+            i = end_record(text, i).unwrap()
+            continue
+        }
+        let at = records.len() + 1
+        var record: List[Str] = []
+        while true {
+            let (field, next) = parse_field(text, i).map_err(fn(e) => "record {at}: {e}")?
+            record.push(field)
+            i = next
+            if i >= n { break }
+            if text.byte(i) == ',' {
+                i += 1
+                continue
+            }
+            let Some(after) = end_record(text, i) else { return Err("record {at}: unexpected character after a field") }
+            i = after
+            break
+        }
+        records.push(record)
+    }
+    Ok(records)
+}
+
+fn at_terminator(text: Str, i: Int) -> Bool { end_record(text, i).is_some() }
+
+// One field starting at i (possibly at the end of the text: an empty field).
+// Returns the field and the offset just after it.
+fn parse_field(text: Str, i: Int) -> Result[(Str, Int), Str] {
+    let n = text.len()
+    if i < n and text.byte(i) == '"' {
+        var field = ""
+        var j = i + 1
+        while j < n {
+            if text.byte(j) == '"' {
+                if j + 1 < n and text.byte(j + 1) == '"' {
+                    field += "\""
+                    j += 2
+                } else {
+                    return Ok((field, j + 1))
+                }
+            } else {
+                let start = j
+                while j < n and text.byte(j) != '"' { j += 1 }
+                field += text.slice(start, j)
+            }
+        }
+        return Err("quoted field without a closing quote")
+    }
+    var j = i
+    while j < n {
+        let c = text.byte(j)
+        if c == ',' or c == '\n' or c == '\r' { break }
+        if c == '"' { return Err("quote inside an unquoted field") }
+        j += 1
+    }
+    Ok((text.slice(i, j), j))
+}
+
+// A record terminator at i: returns the offset after it.
+fn end_record(text: Str, i: Int) -> Option[Int] {
+    if text.byte(i) == '\n' { return Some(i + 1) }
+    if text.byte(i) == '\r' and i + 1 < text.len() and text.byte(i + 1) == '\n' { return Some(i + 2) }
+    None
+}
+
+struct Table { header: List[Str], rows: List[List[Str]], key_col: Int }
+
+fn load(fs: Fs, path: Str, key: Str) -> Result[Table, Str] {
+    let text = match fs.read(path) {
+        Ok(t) => t,
+        Err(e) => return Err("cannot read {path}: {e}"),
+    }
+    let records = parse_csv(text).map_err(fn(e) => "{path}: invalid CSV: {e}")?
+    if records.is_empty() { return Err("{path}: no header row") }
+    let header = records[0]
+    var seen: Set[Str] = Set.new()
+    for name in header {
+        if not seen.insert(name) { return Err("{path}: duplicate column {name}") }
+    }
+    for r in 1..records.len() {
+        if records[r].len() != header.len() {
+            return Err("{path}: record {r + 1} has {records[r].len()} fields, header has {header.len()}")
+        }
+    }
+    let Some(key_col) = header.index_of(key) else { return Err("{path}: no column named {key}") }
+    Ok(Table { header, rows: records.slice(1, records.len()), key_col })
+}
+
+fn write_field(out: mut Str, f: Str) {
+    if f.contains(",") or f.contains("\"") or f.contains("\r") or f.contains("\n") {
+        out += "\""
+        out += f.replace("\"", "\"\"")
+        out += "\""
+    } else {
+        out += f
+    }
+}
+
+fn write_record(out: mut Str, fields: List[Str]) {
+    for (i, f) in fields.enumerate() {
+        if i > 0 { out += "," }
+        write_field(mut out, f)
+    }
+    out += "\n"
+}
+
+fn without(xs: List[Str], skip: Int) -> List[Str] {
+    var out: List[Str] = []
+    for (i, x) in xs.enumerate() {
+        if i != skip { out.push(x) }
+    }
+    out
+}
+
+fn join(left: Table, right: Table, left_join: Bool) -> Str {
+    var out = ""
+    var header = left.header
+    for name in without(right.header, right.key_col) {
+        header.push(if left.header.contains(name) { "r." + name } else { name })
+    }
+    write_record(mut out, header)
+
+    var by_key: Map[Str, List[List[Str]]] = [:]
+    for row in right.rows {
+        let k = row[right.key_col]
+        if not by_key.contains(k) { by_key[k] = [] }
+        by_key[k].push(without(row, right.key_col))
+    }
+    let empty = List.filled(right.header.len() - 1, "")
+    for row in left.rows {
+        match by_key.get(row[left.key_col]) {
+            Some(matches) => {
+                for m in matches { write_record(mut out, row + m) }
+            }
+            None => {
+                if left_join { write_record(mut out, row + empty) }
+            }
+        }
+    }
+    out
+}
+
+fn run(fs: Fs, opts: Options) -> Result[Str, Str] {
+    let left = load(fs, opts.left, opts.key)?
+    let right = load(fs, opts.right, opts.key)?
+    Ok(join(left, right, opts.left_join))
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(e) => {
+            con.eprintln("csvjoin: {e}")
+            return 2
+        }
+    }
+    match run(sys.fs.read_only(), opts) {
+        Ok(out) => {
+            con.print(out)
+            0
+        }
+        Err(e) => {
+            con.eprintln("csvjoin: {e}")
+            1
+        }
+    }
+}

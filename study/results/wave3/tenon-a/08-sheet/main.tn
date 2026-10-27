@@ -1,0 +1,239 @@
+const ROWS: Int = 99
+const CELLS: Int = 26 * 99
+const LIMIT: Int = 1_000_000_000_000
+
+enum Term {
+    Num(Int),
+    Ref(Int),                    // a cell index
+    Sum(Int, Int, Int, Int),     // column range, row range (inclusive, ordered)
+}
+
+enum Contents {
+    Literal(Int),
+    Formula(List[(Int, Term)]),  // (sign, term), added left to right
+}
+
+struct Cell { text: Str, contents: Contents }
+
+enum Command {
+    Set(Int, Str, Contents),
+    Clear(Int),
+    Get(Int),
+    Show(Int),
+}
+
+fn cell_index(col: Int, row: Int) -> Int { col * ROWS + (row - 1) }
+
+// Parses a cell name at byte i of s; returns its column, row and the offset after it.
+fn cell_at(s: Str, i: Int) -> Option[(Int, Int, Int)] {
+    if i >= s.len() or not s.byte(i).is_upper() { return None }
+    if i + 1 >= s.len() or s.byte(i + 1) < '1' or s.byte(i + 1) > '9' { return None }
+    var row = s.byte(i + 1) - '0'
+    var end = i + 2
+    if end < s.len() and s.byte(end).is_digit() {
+        row = row * 10 + (s.byte(end) - '0')
+        end += 1
+    }
+    Some((s.byte(i) - 'A', row, end))
+}
+
+fn parse_cell(s: Str) -> Option[Int] {
+    let (col, row, end) = cell_at(s, 0)?
+    if end != s.len() { return None }
+    Some(cell_index(col, row))
+}
+
+fn digits_at(s: Str, i: Int) -> Int {
+    var j = i
+    while j < s.len() and s.byte(j).is_digit() { j += 1 }
+    j
+}
+
+// One term at byte i: returns the term and the offset after it.
+fn term_at(s: Str, i: Int) -> Option[(Term, Int)] {
+    if i >= s.len() { return None }
+    if s.byte(i).is_digit() {
+        let end = digits_at(s, i)
+        if end - i > 9 { return None }
+        return Some((Num(s.slice(i, end).to_int()?), end))
+    }
+    if s.slice(i, s.len()).starts_with("SUM(") {
+        let (c1, r1, a) = cell_at(s, i + 4)?
+        if a >= s.len() or s.byte(a) != ':' { return None }
+        let (c2, r2, b) = cell_at(s, a + 1)?
+        if b >= s.len() or s.byte(b) != ')' { return None }
+        return Some((Sum(c1.min(c2), c1.max(c2), r1.min(r2), r1.max(r2)), b + 1))
+    }
+    let (col, row, end) = cell_at(s, i)?
+    Some((Ref(cell_index(col, row)), end))
+}
+
+fn parse_contents(s: Str) -> Option[Contents] {
+    if not s.starts_with("=") {
+        let body = s.strip_prefix("-").unwrap_or(s)
+        if body.len() < 1 or body.len() > 9 or not body.is_digits() { return None }
+        return Some(Literal(s.to_int()?))
+    }
+    var terms: List[(Int, Term)] = []
+    var i = 1
+    var sign = 1
+    if i < s.len() and s.byte(i) == '-' {
+        sign = -1
+        i += 1
+    }
+    while true {
+        let (t, next) = term_at(s, i)?
+        terms.push((sign, t))
+        i = next
+        if i >= s.len() { break }
+        let op = s.byte(i)
+        if op == '+' { sign = 1 } else if op == '-' { sign = -1 } else { return None }
+        i += 1
+    }
+    Some(Formula(terms))
+}
+
+fn parse(line: Str) -> Option[Command] {
+    let tokens = line.split(" ")
+    if tokens.len() == 3 and tokens[0] == "SET" {
+        let cell = parse_cell(tokens[1])?
+        return Some(Set(cell, tokens[2], parse_contents(tokens[2])?))
+    }
+    if tokens.len() != 2 { return None }
+    let cell = parse_cell(tokens[1])?
+    if tokens[0] == "CLEAR" { return Some(Clear(cell)) }
+    if tokens[0] == "GET" { return Some(Get(cell)) }
+    if tokens[0] == "SHOW" { return Some(Show(cell)) }
+    None
+}
+
+// Every cell index a term references.
+fn term_refs(t: Term) -> List[Int] {
+    match t {
+        Num(_) => [],
+        Ref(c) => [c],
+        Sum(c1, c2, r1, r2) => {
+            var out: List[Int] = []
+            for c in c1..c2 + 1 {
+                for r in r1..r2 + 1 { out.push(cell_index(c, r)) }
+            }
+            out
+        }
+    }
+}
+
+// `memo` caches computed values (None inside: overflow) until the next change.
+struct Sheet { cells: List[Option[Cell]], memo: List[Option[Option[Int]]] }
+
+fn Sheet.refs(self, i: Int) -> List[Int] {
+    let Some(cell) = self.cells[i] else { return [] }
+    let Formula(terms) = cell.contents else { return [] }
+    var out: List[Int] = []
+    for (_, t) in terms { out.extend(term_refs(t)) }
+    out
+}
+
+// Would a formula with these references at `target` close a cycle?
+fn Sheet.creates_cycle(self, target: Int, terms: List[(Int, Term)]) -> Bool {
+    var seen = List.filled(CELLS, false)
+    var stack: List[Int] = []
+    for (_, t) in terms { stack.extend(term_refs(t)) }
+    while true {
+        let Some(c) = stack.pop() else { break }
+        if c == target { return true }
+        if seen[c] { continue }
+        seen[c] = true
+        stack.extend(self.refs(c))
+    }
+    false
+}
+
+// The value of cell i (None: overflow), memoized for one evaluation.
+fn Sheet.value(self, i: Int, memo: mut List[Option[Option[Int]]]) -> Option[Int] {
+    match memo[i] {
+        Some(v) => return v,
+        None => {}
+    }
+    let v = match self.cells[i] {
+        None => Some(0),
+        Some(cell) => match cell.contents {
+            Literal(n) => Some(n),
+            Formula(terms) => self.formula_value(terms, mut memo),
+        },
+    }
+    memo[i] = Some(v)
+    v
+}
+
+fn Sheet.formula_value(self, terms: List[(Int, Term)], memo: mut List[Option[Option[Int]]]) -> Option[Int] {
+    var total = 0
+    var overflow = false
+    for (sign, t) in terms {
+        var x = 0
+        match t {
+            Num(n) => x = n,
+            _ => {
+                for c in term_refs(t) {
+                    match self.value(c, mut memo) {
+                        Some(v) => x += v,
+                        None => overflow = true,
+                    }
+                }
+            }
+        }
+        total += sign * x
+    }
+    if overflow or total.abs() > LIMIT { None } else { Some(total) }
+}
+
+fn Sheet.run(mut self, cmd: Command) -> Str {
+    match cmd {
+        Set(i, text, contents) => {
+            match contents {
+                Formula(terms) => if self.creates_cycle(i, terms) { return "ERR cycle" },
+                Literal(_) => {}
+            }
+            self.cells[i] = Some(Cell { text, contents })
+            self.memo = List.filled(CELLS, None)
+            "OK"
+        }
+        Clear(i) => {
+            self.cells[i] = None
+            self.memo = List.filled(CELLS, None)
+            "OK"
+        }
+        Get(i) => {
+            var memo = self.memo
+            self.memo = []    // drop the shared reference so `memo` is updated in place
+            let v = self.value(i, mut memo)
+            self.memo = memo
+            match v {
+                Some(n) => "{n}",
+                None => "ERR overflow",
+            }
+        }
+        Show(i) => match self.cells[i] {
+            Some(cell) => cell.text,
+            None => "EMPTY",
+        },
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("sheet: no arguments expected")
+        return 2
+    }
+    var sheet = Sheet { cells: List.filled(CELLS, None), memo: List.filled(CELLS, None) }
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let response = match parse(line) {
+            Some(cmd) => sheet.run(cmd),
+            None => "ERR bad command",
+        }
+        con.println(response)
+        con.flush()
+    }
+    0
+}

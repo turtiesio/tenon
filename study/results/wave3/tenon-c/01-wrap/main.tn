@@ -1,0 +1,67 @@
+fn fill(words: List[Str], width: Int, indent: Int, justify: Bool) -> Str {
+    var out = ""
+    var pos = 0
+    while pos < words.len() {
+        let pad = if pos == 0 { indent } else { 0 }
+        let start = pos
+        var length = pad + words[pos].len()
+        var letters = words[pos].len()
+        pos += 1
+        while pos < words.len() and length + 1 + words[pos].len() <= width {
+            length += 1 + words[pos].len()
+            letters += words[pos].len()
+            pos += 1
+        }
+        out += " ".repeat(pad)
+        let gaps = pos - start - 1
+        let spread = justify and pos < words.len() and gaps > 0
+        for k in start..pos {
+            if k > start {
+                let spaces = if spread { (width - pad - letters) / gaps + if k - start <= (width - pad - letters) % gaps { 1 } else { 0 } } else { 1 }
+                out += " ".repeat(spaces)
+            }
+            out += words[k]
+        }
+        out += "\n"
+    }
+    out
+}
+fn main(sys: Sys) -> Int {
+    var width = 72
+    var indent = 0
+    var justify = false
+    var seen: Map[Str, Bool] = [:]
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if seen.contains(arg) or (arg != "-w" and arg != "-i" and arg != "-j") { sys.console.eprintln("bad option"); return 2 }
+        seen[arg] = true
+        if arg == "-j" { justify = true } else {
+            i += 1
+            if i >= sys.args.len() { sys.console.eprintln("missing value"); return 2 }
+            let value = sys.args[i]
+            if not value.is_digits() or value.len() > 4 { sys.console.eprintln("bad value"); return 2 }
+            let number = value.to_int().unwrap()
+            if arg == "-w" { width = number } else { indent = number }
+        }
+        i += 1
+    }
+    if width < 1 or width > 1000 or indent >= width { sys.console.eprintln("bad width or indent"); return 2 }
+    var paragraphs: List[List[Str]] = []
+    var current: List[Str] = []
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        for b in 0..line.len() {
+            if line.byte(b) < 32 or line.byte(b) > 126 { sys.console.eprintln("invalid input"); return 1 }
+        }
+        if line.trim().is_empty() {
+            if not current.is_empty() { paragraphs.push(current); current = [] }
+        } else { current.extend(line.words()) }
+    }
+    if not current.is_empty() { paragraphs.push(current) }
+    for (p, words) in paragraphs.enumerate() {
+        if p > 0 { sys.console.println("") }
+        sys.console.print(fill(words, width, indent, justify))
+    }
+    0
+}

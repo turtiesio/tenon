@@ -1,0 +1,60 @@
+import regex
+struct Team { name: Str, p: Int, w: Int, d: Int, l: Int, gf: Int, ga: Int, pts: Int, form: Str }
+fn fresh(name: Str) -> Team { Team { name, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, pts: 0, form: "" } }
+fn update(t: mut Team, gf: Int, ga: Int, points: List[Int]) {
+    t.p += 1
+    t.gf += gf
+    t.ga += ga
+    if gf > ga { t.w += 1; t.pts += points[0]; t.form += "W" } else if gf == ga { t.d += 1; t.pts += points[1]; t.form += "D" } else { t.l += 1; t.pts += points[2]; t.form += "L" }
+    if t.form.len() > 5 { t.form = t.form.slice(t.form.len() - 5, t.form.len()) }
+}
+fn rank(t: Team) -> (Int, Int, Int, Int) { (-t.pts, t.ga - t.gf, -t.gf, -t.w) }
+fn main(sys: Sys) -> Int {
+    var points = [3, 1, 0]
+    if not sys.args.is_empty() {
+        if sys.args.len() != 2 or sys.args[0] != "-p" { sys.console.eprintln("bad options"); return 2 }
+        let parts = sys.args[1].split(",")
+        if parts.len() != 3 { sys.console.eprintln("bad points"); return 2 }
+        for (i, part) in parts.enumerate() {
+            if not part.is_digits() or part.len() > 2 { sys.console.eprintln("bad points"); return 2 }
+            points[i] = part.to_int().unwrap()
+        }
+    }
+    let score = regex.compile("[0-9]\{1,2}-[0-9]\{1,2}").unwrap()
+    let name = regex.compile("[A-Za-z0-9.&']+").unwrap()
+    var teams: Map[Str, Team] = [:]
+    for (line_no, raw) in sys.console.read_all().lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() or line.starts_with("#") { continue }
+        let tokens = line.split(" ")
+        var location = -1
+        var valid = true
+        for (i, token) in tokens.enumerate() {
+            if score.is_full(token) { if location >= 0 { valid = false }; location = i } else if not name.is_full(token) { valid = false }
+        }
+        if not valid or location <= 0 or location >= tokens.len() - 1 { sys.console.eprintln("invalid result at line {line_no + 1}"); return 1 }
+        let home = tokens.slice(0, location).join(" ")
+        let away = tokens.slice(location + 1, tokens.len()).join(" ")
+        if home == away { sys.console.eprintln("same team at line {line_no + 1}"); return 1 }
+        let goals = tokens[location].split("-")
+        let hg = goals[0].to_int().unwrap()
+        let ag = goals[1].to_int().unwrap()
+        if not teams.contains(home) { teams[home] = fresh(home) }
+        if not teams.contains(away) { teams[away] = fresh(away) }
+        update(mut teams[home], hg, ag, points)
+        update(mut teams[away], ag, hg, points)
+    }
+    var table = teams.values()
+    table.sort_by(fn(t) => (rank(t), t.name))
+    var width = 0
+    for t in table { width = width.max(t.name.len()) }
+    var position = 0
+    for (i, t) in table.enumerate() {
+        if i == 0 or rank(t) != rank(table[i - 1]) { position = i + 1 }
+        let gd = t.gf - t.ga
+        let diff = if gd > 0 { "+{gd}" } else { gd.to_str() }
+        let goals_text = "{t.gf}:{t.ga}"
+        sys.console.println(position.to_str().pad_left(2, " ") + ". " + t.name.pad_right(width, " ") + t.p.to_str().pad_left(3, " ") + t.w.to_str().pad_left(3, " ") + t.d.to_str().pad_left(3, " ") + t.l.to_str().pad_left(3, " ") + goals_text.pad_left(7, " ") + diff.pad_left(4, " ") + t.pts.to_str().pad_left(4, " ") + " " + t.form)
+    }
+    0
+}
