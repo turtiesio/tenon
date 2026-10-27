@@ -1,0 +1,5 @@
+OPEN 7 3
+7 1 open book flights
+open=2 done=1 next_id=8
+ADDED 8
+5 1 done pay rent

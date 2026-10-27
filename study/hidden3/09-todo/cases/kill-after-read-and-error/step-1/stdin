@@ -1,0 +1,4 @@
+ADD 1 a
+SHOW 1
+BAD
+DONE 1

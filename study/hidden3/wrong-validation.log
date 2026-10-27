@@ -1,0 +1,251 @@
+PASS 01-wrap/blank-crlf
+FAIL 01-wrap/crlf-final-line: crlf-final-line: stdout byte 0: expected b'one two three\n', got b'' (length 14/0)
+PASS 01-wrap/empty
+FAIL 01-wrap/exact-width: exact-width: stdout byte 0: expected b'aa bb\nc\n', got b'' (length 8/0)
+FAIL 01-wrap/example-1: step-1: stdout byte 0: expected b'The quick brown\nfox jumps over\nthe lazy dog.\n', got b'' (length 45/0); step-2: stdout byte 0: expected b'The  quick brown\nfox  jumps  over\nthe lazy dog.\n', got b'' (length 48/0)
+FAIL 01-wrap/example-2: example-2: stdout byte 0: expected b'  Hello\nworld,\nthis is\nwrap.\n\n  Supercalifragilistic\nis', got b'' (length 61/0)
+FAIL 01-wrap/example-3: example-3: stdout byte 0: expected b'a   bb   ccc\ndddd   eeeee\nffffff\nggggggggggggg\nhi\n', got b'' (length 50/0)
+FAIL 01-wrap/example-4: step-2: stdout byte 0: expected b'one two three\n', got b'' (length 14/0)
+FAIL 01-wrap/example-5: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 1, got 0
+FAIL 01-wrap/indent-every-paragraph: indent-every-paragraph: stdout byte 0: expected b'  a b c\nd e\n\n  f g h\ni\n', got b'' (length 23/0)
+FAIL 01-wrap/indent-width-minus-one: indent-width-minus-one: stdout byte 0: expected b'    a\nb c d\nef\n', got b'' (length 15/0)
+FAIL 01-wrap/input-size-boundary: input-size-boundary: stdout byte 0: expected b'a a a a a a a a a a a a a a a a a a a a a a a a a a a a', got b'' (length 1000000/0)
+FAIL 01-wrap/invalid-byte-atomicity: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0; step-6: exit expected 1, got 0; step-7: exit expected 1, got 0
+FAIL 01-wrap/justify-indented: justify-indented: stdout byte 0: expected b'   a b c d e\nf g h i\n', got b'' (length 21/0)
+FAIL 01-wrap/justify-left-remainder: justify-left-remainder: stdout byte 0: expected b'aa  b  c d\neeee f\n', got b'' (length 18/0)
+FAIL 01-wrap/last-line-unpadded: last-line-unpadded: stdout byte 0: expected b'  a bb\n', got b'' (length 7/0)
+FAIL 01-wrap/maximum-width: maximum-width: stdout byte 0: expected b'                                                       ', got b'' (length 1003/0)
+FAIL 01-wrap/overlong-first-and-middle: overlong-first-and-middle: stdout byte 0: expected b' abcdef\nx\nabcde\nz\n', got b'' (length 18/0)
+FAIL 01-wrap/punctuation-is-word: punctuation-is-word: stdout byte 0: expected b'!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~\n', got b'' (length 33/0)
+FAIL 01-wrap/usage-before-invalid-input: usage-before-invalid-input: exit expected 2, got 0
+FAIL 01-wrap/usage-duplicates: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0
+FAIL 01-wrap/usage-indent-grammar: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0; step-8: exit expected 2, got 0
+FAIL 01-wrap/usage-option-spellings: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0
+FAIL 01-wrap/usage-width-grammar: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0; step-8: exit expected 2, got 0
+FAIL 01-wrap/width-one: width-one: stdout byte 0: expected b'a\nbb\nc\n', got b'' (length 7/0)
+FAIL 02-radix/all-base-boundaries: step-1: stdout byte 0: expected b'1\n2\n', got b'' (length 4/0); step-2: stdout byte 0: expected b'10\n1\n', got b'' (length 5/0); step-3: stdout byte 0: expected b'2\n3\n', got b'' (length 4/0); step-4: stdout byte 0: expected b'10\n2\n', got b'' (length 5/0); step-5: stdout byte 0: expected b'3\n4\n', got b'' (length 4/0); step-6: stdout byte 0: expected b'10\n3\n', got b'' (length 5/0); step-7: stdout byte 0: expected b'4\n5\n', got b'' (length 4/0); step-8: stdout byte 0: expected b'10\n4\n', got b'' (length 5/0); step-9: stdout byte 0: expected b'5\n6\n', got b'' (length 4/0); step-10: stdout byte 0: expected b'10\n5\n', got b'' (length 5/0); step-11: stdout byte 0: expected b'6\n7\n', got b'' (length 4/0); step-12: stdout byte 0: expected b'10\n6\n', got b'' (length 5/0); step-13: stdout byte 0: expected b'7\n8\n', got b'' (length 4/0); step-14: stdout byte 0: expected b'10\n7\n', got b'' (length 5/0); step-15: stdout byte 0: expected b'8\n9\n', got b'' (length 4/0); step-16: stdout byte 0: expected b'10\n8\n', got b'' (length 5/0); step-17: stdout byte 0: expected b'9\n10\n', got b'' (length 5/0); step-18: stdout byte 0: expected b'10\n9\n', got b'' (length 5/0); step-19: stdout byte 0: expected b'10\n11\n', got b'' (length 6/0); step-20: stdout byte 0: expected b'10\na\n', got b'' (length 5/0); step-21: stdout byte 0: expected b'11\n12\n', got b'' (length 6/0); step-22: stdout byte 0: expected b'10\nb\n', got b'' (length 5/0); step-23: stdout byte 0: expected b'12\n13\n', got b'' (length 6/0); step-24: stdout byte 0: expected b'10\nc\n', got b'' (length 5/0); step-25: stdout byte 0: expected b'13\n14\n', got b'' (length 6/0); step-26: stdout byte 0: expected b'10\nd\n', got b'' (length 5/0); step-27: stdout byte 0: expected b'14\n15\n', got b'' (length 6/0); step-28: stdout byte 0: expected b'10\ne\n', got b'' (length 5/0); step-29: stdout byte 0: expected b'15\n16\n', got b'' (length 6/0); step-30: stdout byte 0: expected b'10\nf\n', got b'' (length 5/0); step-31: stdout byte 0: expected b'16\n17\n', got b'' (length 6/0); step-32: stdout byte 0: expected b'10\ng\n', got b'' (length 5/0); step-33: stdout byte 0: expected b'17\n18\n', got b'' (length 6/0); step-34: stdout byte 0: expected b'10\nh\n', got b'' (length 5/0); step-35: stdout byte 0: expected b'18\n19\n', got b'' (length 6/0); step-36: stdout byte 0: expected b'10\ni\n', got b'' (length 5/0); step-37: stdout byte 0: expected b'19\n20\n', got b'' (length 6/0); step-38: stdout byte 0: expected b'10\nj\n', got b'' (length 5/0); step-39: stdout byte 0: expected b'20\n21\n', got b'' (length 6/0); step-40: stdout byte 0: expected b'10\nk\n', got b'' (length 5/0); step-41: stdout byte 0: expected b'21\n22\n', got b'' (length 6/0); step-42: stdout byte 0: expected b'10\nl\n', got b'' (length 5/0); step-43: stdout byte 0: expected b'22\n23\n', got b'' (length 6/0); step-44: stdout byte 0: expected b'10\nm\n', got b'' (length 5/0); step-45: stdout byte 0: expected b'23\n24\n', got b'' (length 6/0); step-46: stdout byte 0: expected b'10\nn\n', got b'' (length 5/0); step-47: stdout byte 0: expected b'24\n25\n', got b'' (length 6/0); step-48: stdout byte 0: expected b'10\no\n', got b'' (length 5/0); step-49: stdout byte 0: expected b'25\n26\n', got b'' (length 6/0); step-50: stdout byte 0: expected b'10\np\n', got b'' (length 5/0); step-51: stdout byte 0: expected b'26\n27\n', got b'' (length 6/0); step-52: stdout byte 0: expected b'10\nq\n', got b'' (length 5/0); step-53: stdout byte 0: expected b'27\n28\n', got b'' (length 6/0); step-54: stdout byte 0: expected b'10\nr\n', got b'' (length 5/0); step-55: stdout byte 0: expected b'28\n29\n', got b'' (length 6/0); step-56: stdout byte 0: expected b'10\ns\n', got b'' (length 5/0); step-57: stdout byte 0: expected b'29\n30\n', got b'' (length 6/0); step-58: stdout byte 0: expected b'10\nt\n', got b'' (length 5/0); step-59: stdout byte 0: expected b'30\n31\n', got b'' (length 6/0); step-60: stdout byte 0: expected b'10\nu\n', got b'' (length 5/0); step-61: stdout byte 0: expected b'31\n32\n', got b'' (length 6/0); step-62: stdout byte 0: expected b'10\nv\n', got b'' (length 5/0); step-63: stdout byte 0: expected b'32\n33\n', got b'' (length 6/0); step-64: stdout byte 0: expected b'10\nw\n', got b'' (length 5/0); step-65: stdout byte 0: expected b'33\n34\n', got b'' (length 6/0); step-66: stdout byte 0: expected b'10\nx\n', got b'' (length 5/0); step-67: stdout byte 0: expected b'34\n35\n', got b'' (length 6/0); step-68: stdout byte 0: expected b'10\ny\n', got b'' (length 5/0); step-69: stdout byte 0: expected b'35\n36\n', got b'' (length 6/0); step-70: stdout byte 0: expected b'10\nz\n', got b'' (length 5/0)
+FAIL 02-radix/binary-63-bit: binary-63-bit: stdout byte 0: expected b'7fffffffffffffff\n', got b'' (length 17/0); exit expected 1, got 0
+FAIL 02-radix/digit-boundary: digit-boundary: stdout byte 0: expected b'0\n1\n2\n1\n', got b'' (length 8/0); exit expected 1, got 0
+FAIL 02-radix/example-1: example-1: stdout byte 0: expected b'ff\n-a\n0\n', got b'' (length 8/0)
+FAIL 02-radix/example-2: step-1: stdout byte 0: expected b'1_000\n', got b'' (length 6/0); step-2: stdout byte 0: expected b'50F\n', got b'' (length 4/0); step-3: stdout byte 0: expected b'0000_0101\n-0000_0011\n', got b'' (length 21/0)
+FAIL 02-radix/example-3: example-3: stdout byte 0: expected b'1_000_000\n9_223_372_036_854_775_807\n', got b'' (length 36/0)
+FAIL 02-radix/example-4: example-4: stdout byte 0: expected b'c\n0\n7fffffffffffffff\n', got b'' (length 21/0); exit expected 1, got 0
+FAIL 02-radix/example-5: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0
+FAIL 02-radix/group-no-split: group-no-split: stdout byte 0: expected b'12\n123\n1_234\n', got b'' (length 13/0)
+FAIL 02-radix/group-one: group-one: stdout byte 0: expected b'f_f_f\n', got b'' (length 6/0)
+FAIL 02-radix/hex-range: hex-range: stdout byte 0: expected b'9223372036854775807\n-9223372036854775807\n-255\n-5\n', got b'' (length 49/0); exit expected 1, got 0
+FAIL 02-radix/invalid-value-lexemes: invalid-value-lexemes: stdout byte 0: expected b'5\n', got b'' (length 2/0); exit expected 1, got 0
+FAIL 02-radix/leading-zero-options: leading-zero-options: stdout byte 0: expected b'1r\n', got b'' (length 3/0)
+FAIL 02-radix/maximum-padding: maximum-padding: stdout byte 0: expected b'0000000000000000000000000000000000000000000000000000000', got b'' (length 131/0)
+FAIL 02-radix/mixed-case-base36: mixed-case-base36: stdout byte 0: expected b'35\n35\n371\n-371\n', got b'' (length 15/0)
+FAIL 02-radix/options-after-values: options-after-values: stdout byte 0: expected b'00_0F\n00_10\n', got b'' (length 12/0)
+FAIL 02-radix/padding-never-truncates: padding-never-truncates: stdout byte 0: expected b'1_23_45\n', got b'' (length 8/0)
+FAIL 02-radix/padding-sign-grouping: padding-sign-grouping: stdout byte 0: expected b'0_00_12\n-0_00_12\n0_00_00\n', got b'' (length 25/0)
+FAIL 02-radix/range-endpoints: range-endpoints: stdout byte 0: expected b'9223372036854775807\n-9223372036854775807\n', got b'' (length 41/0); exit expected 1, got 0
+FAIL 02-radix/repeat-all-options: repeat-all-options: stdout byte 0: expected b'0_0A\n', got b'' (length 5/0)
+FAIL 02-radix/usage-base-grammar: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0; step-8: exit expected 2, got 0; step-9: exit expected 2, got 0
+FAIL 02-radix/usage-missing-values: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0
+FAIL 02-radix/usage-option-tokens-consumed: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0
+FAIL 02-radix/usage-width-group-grammar: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0; step-8: exit expected 2, got 0; step-9: exit expected 2, got 0; step-10: exit expected 2, got 0; step-11: exit expected 2, got 0; step-12: exit expected 2, got 0; step-13: exit expected 2, got 0; step-14: exit expected 2, got 0
+FAIL 02-radix/zero-normalization: zero-normalization: stdout byte 0: expected b'0\n0\n0\n0\n', got b'' (length 8/0)
+FAIL 03-globgrep/case-insensitive-punctuation-range: case-insensitive-punctuation-range: stdout byte 0: expected b'[\n_\n`\na\nZ\n', got b'' (length 10/0)
+FAIL 03-globgrep/case-insensitive-range-original-bytes: case-insensitive-range-original-bytes: stdout byte 0: expected b'aQ\nBq\n', got b'' (length 6/0)
+FAIL 03-globgrep/class-special-characters: class-special-characters: stdout byte 0: expected b'*\n?\n[\n!\n', got b'' (length 8/0)
+FAIL 03-globgrep/empty-input: empty-input: exit expected 1, got 0
+FAIL 03-globgrep/empty-input-count-invert: empty-input-count-invert: stdout byte 0: expected b'0\n', got b'' (length 2/0); exit expected 1, got 0
+FAIL 03-globgrep/empty-lines-crlf-final: empty-lines-crlf-final: stdout byte 0: expected b'a\nb\nc\n', got b'' (length 6/0)
+FAIL 03-globgrep/escape-ordinary: escape-ordinary: stdout byte 0: expected b'ab\n', got b'' (length 3/0)
+FAIL 03-globgrep/escaped-close-and-range: escaped-close-and-range: stdout byte 0: expected b']\n^\n_\n`\na\n', got b'' (length 10/0)
+FAIL 03-globgrep/escaped-metacharacters: escaped-metacharacters: stdout byte 0: expected b'*?[]\\\n', got b'' (length 6/0)
+FAIL 03-globgrep/example-1: example-1: stdout byte 0: expected b'b.txt\nbb.txt\n', got b'' (length 13/0)
+FAIL 03-globgrep/example-2: example-2: stdout byte 0: expected b'a1.txt\nB2.TXT\ncc.txt\n', got b'' (length 21/0)
+FAIL 03-globgrep/example-3: step-1: stdout byte 0: expected b'*note\n**\n', got b'' (length 9/0); step-2: stdout byte 0: expected b'3\n', got b'' (length 2/0)
+FAIL 03-globgrep/example-4: step-1: exit expected 1, got 0; step-2: stdout byte 0: expected b'0\n', got b'' (length 2/0); exit expected 1, got 0; step-3: stdout byte 0: expected b'x]\nx-\n', got b'' (length 6/0); step-4: stdout byte 0: expected b'-v\n', got b'' (length 3/0); step-5: stdout byte 0: expected b'\n', got b'' (length 1/0)
+FAIL 03-globgrep/example-5: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0
+FAIL 03-globgrep/invalid-class-boundaries: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0
+FAIL 03-globgrep/literal-dash-classes: step-1: stdout byte 0: expected b'-\na\nz\n', got b'' (length 6/0); step-2: stdout byte 0: expected b'-\na\n', got b'' (length 4/0); step-3: stdout byte 0: expected b'-\na\n', got b'' (length 4/0)
+FAIL 03-globgrep/negated-right-bracket: negated-right-bracket: stdout byte 0: expected b'a\n-\n', got b'' (length 4/0)
+FAIL 03-globgrep/pathological-backtracking: pathological-backtracking: stdout byte 0: expected b'1\n', got b'' (length 2/0)
+FAIL 03-globgrep/pattern-and-input-limits: pattern-and-input-limits: stdout byte 0: expected b'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\nxxxxxxxxxxxxxx', got b'' (length 99999/0)
+FAIL 03-globgrep/repeated-flags-count: repeated-flags-count: stdout byte 0: expected b'2\n', got b'' (length 2/0)
+FAIL 03-globgrep/separated-stars-question: separated-stars-question: stdout byte 0: expected b'axb\naxxb\n', got b'' (length 9/0)
+FAIL 03-globgrep/slash-dot-no-special-treatment: slash-dot-no-special-treatment: stdout byte 0: expected b'/.hidden\na/b\n\n', got b'' (length 14/0)
+FAIL 03-globgrep/usage-after-pattern-and-end-options: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0
+FAIL 03-globgrep/whole-line-literals: whole-line-literals: stdout byte 0: expected b'abc\n', got b'' (length 4/0)
+FAIL 03-globgrep/wildcards-empty-sequence: wildcards-empty-sequence: stdout byte 0: expected b'abxc\naZZbxc\n', got b'' (length 12/0)
+FAIL 04-csvjoin/blank-record-skip: blank-record-skip: stdout byte 0: expected b'id,x,w\n1,y,z\n', got b'' (length 13/0)
+FAIL 04-csvjoin/duplicate-keys-cross-product: duplicate-keys-cross-product: stdout byte 0: expected b'id,v,r.v\na,L1,R2\na,L1,R1\na,L2,R2\na,L2,R1\n', got b'' (length 41/0)
+FAIL 04-csvjoin/empty-keys-exact-spaces: empty-keys-exact-spaces: stdout byte 0: expected b'id,v,w\n,x,e\n ,space,s\na,lower,l\n', got b'' (length 32/0)
+FAIL 04-csvjoin/empty-left-data: empty-left-data: stdout byte 0: expected b'id,v,w\n', got b'' (length 7/0)
+FAIL 04-csvjoin/example-1: example-1: stdout byte 0: expected b'id,name,city,order,item\n1,Ann,Oslo,o2,"ink ""blue"""\n2,', got b'' (length 101/0)
+FAIL 04-csvjoin/example-2: example-2: stdout byte 0: expected b'sku,name,r.name,qty\nA1,Widget,Widget Co,5\nB2,"Gadget\nXL', got b'' (length 79/0)
+FAIL 04-csvjoin/example-3: step-1: stdout byte 0: expected b'id,v,w\n', got b'' (length 7/0); step-2: stdout byte 0: expected b'id,w,v\n8,y,\n', got b'' (length 12/0)
+FAIL 04-csvjoin/example-4: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0
+FAIL 04-csvjoin/example-5: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0
+FAIL 04-csvjoin/file-size-boundary: file-size-boundary: stdout byte 0: expected b'id,x\n1,zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz', got b'' (length 1000000/0)
+FAIL 04-csvjoin/header-empty-name: header-empty-name: stdout byte 0: expected b'id,,r.\n1,x,y\n', got b'' (length 13/0)
+FAIL 04-csvjoin/header-quoting-clashes: header-quoting-clashes: stdout byte 0: expected b'id,"a,b","q""x","r.q""x","r.a,b"\n1,v,w,z,t\n', got b'' (length 43/0)
+FAIL 04-csvjoin/headers-only: headers-only: stdout byte 0: expected b'id,x,y\n', got b'' (length 7/0)
+FAIL 04-csvjoin/invalid-csv-atomicity: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0
+FAIL 04-csvjoin/invalid-headers: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0
+FAIL 04-csvjoin/key-column-middle: key-column-middle: stdout byte 0: expected b'x,key,y,z,w\nl,K,r,a,b\n', got b'' (length 22/0)
+FAIL 04-csvjoin/options-anywhere-last-key: step-1: stdout byte 0: expected b'key,v,w\n1,a,\n', got b'' (length 13/0); step-2: stdout byte 0: expected b'-l,v,w\n1,a,b\n', got b'' (length 13/0)
+FAIL 04-csvjoin/quoted-cr-lf-preserved: quoted-cr-lf-preserved: stdout byte 0: expected b'id,v,w\n1,"a\r\nb\rc\nd","x,y"\n', got b'' (length 26/0)
+FAIL 04-csvjoin/quoted-empty-record: quoted-empty-record: stdout byte 0: expected b'id,v\n,ok\n', got b'' (length 9/0)
+FAIL 04-csvjoin/quotes-only-where-needed: quotes-only-where-needed: stdout byte 0: expected b'id,v,w\n1,plain,\n2, ,x\n3,"a""b",z\n', got b'' (length 33/0)
+FAIL 04-csvjoin/read-errors: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0
+FAIL 04-csvjoin/record-count-limit: record-count-limit: stdout byte 0: expected b'id,x,w\n0,v,\n1,v,\n2,v,\n3,v,\n4,v,\n5,v,\n6,v,\n7,v,\n8,v,\n9,v', got b'' (length 78889/0)
+FAIL 04-csvjoin/right-key-only-left: right-key-only-left: stdout byte 0: expected b'id,x\n1,a\n1,a\n2,b\n', got b'' (length 17/0)
+FAIL 04-csvjoin/short-left-late: short-left-late: exit expected 1, got 0
+FAIL 04-csvjoin/usage-empty-key-options: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0
+FAIL 05-standings/allowed-name-tokens: allowed-name-tokens: stdout byte 0: expected b" 1. St. John's & 9  1  1  0  0    2:1  +1   3 W\n 2. FC ", got b'' (length 96/0)
+FAIL 05-standings/byte-name-order: byte-name-order: stdout byte 0: expected b' 1. A  1  0  1  0    0:0   0   1 D\n 1. Z  1  0  1  0   ', got b'' (length 140/0)
+FAIL 05-standings/case-sensitive-names: case-sensitive-names: stdout byte 0: expected b' 1. A  1  0  1  0    0:0   0   1 D\n 1. a  1  0  1  0   ', got b'' (length 70/0)
+FAIL 05-standings/crlf-final-leading-zeros: crlf-final-leading-zeros: stdout byte 0: expected b' 1. A  2  1  1  0   10:1  +9   4 WD\n 2. B  2  0  1  1  ', got b'' (length 72/0)
+FAIL 05-standings/custom-loss-points: custom-loss-points: stdout byte 0: expected b' 1. B  1  0  0  1    0:2  -2  99 L\n 2. C  1  0  1  0   ', got b'' (length 140/0)
+PASS 05-standings/empty
+FAIL 05-standings/example-1: example-1: stdout byte 0: expected b' 1. Wolves    2  1  1  0    2:0  +2   4 DW\n 2. Lions   ', got b'' (length 215/0)
+FAIL 05-standings/example-2: example-2: stdout byte 0: expected b' 1. E  1  1  0  0    2:0  +2   2 W\n 2. A  1  0  1  0   ', got b'' (length 210/0)
+FAIL 05-standings/example-3: example-3: stdout byte 0: expected b' 1. X  6  3  2  1   11:7  +4  11 DLWDW\n 2. Y  6  1  2  ', got b'' (length 78/0)
+FAIL 05-standings/example-4: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0; step-6: exit expected 1, got 0
+FAIL 05-standings/example-5: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0
+FAIL 05-standings/form-five-exact: form-five-exact: stdout byte 0: expected b' 1. A  5  2  2  1    2:1  +1   8 WLDDW\n 2. B  5  1  2  ', got b'' (length 78/0)
+FAIL 05-standings/goals-for-tiebreak: goals-for-tiebreak: stdout byte 0: expected b' 1. C  1  0  1  0    1:1   0   1 D\n 1. D  1  0  1  0   ', got b'' (length 140/0)
+PASS 05-standings/ignored-lines
+FAIL 05-standings/indented-comment-is-invalid: indented-comment-is-invalid: exit expected 1, got 0
+FAIL 05-standings/late-input-error-no-partial-output: late-input-error-no-partial-output: exit expected 1, got 0
+FAIL 05-standings/malformed-score-and-names: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0; step-6: exit expected 1, got 0
+FAIL 05-standings/malformed-spacing: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0; step-6: exit expected 1, got 0
+FAIL 05-standings/maximum-score: maximum-score: stdout byte 0: expected b' 1. A  1  1  0  0   99:0 +99   3 W\n 2. B  1  0  0  1   ', got b'' (length 70/0)
+FAIL 05-standings/team-count-limit: team-count-limit: stdout byte 0: expected b' 1. T00 98  0 98  0    0:0   0  98 DDDDD\n 2. T01  1  0 ', got b'' (length 3667/0)
+FAIL 05-standings/usage-before-input: usage-before-input: exit expected 2, got 0
+FAIL 05-standings/usage-extra-args: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0
+FAIL 05-standings/usage-point-grammar: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0; step-8: exit expected 2, got 0
+FAIL 05-standings/wide-statistics-line-limit: wide-statistics-line-limit: stdout byte 0: expected b' 1. A1000010000  0  0990000:0+990000990000 WWWWW\n 2. B1', got b'' (length 98/0)
+FAIL 05-standings/wins-final-tiebreak: wins-final-tiebreak: stdout byte 0: expected b' 1. A  2  1  0  1    1:1   0   0 WL\n 1. X  2  1  0  1  ', got b'' (length 142/0)
+FAIL 06-buildorder/comments-spaces-crlf: comments-spaces-crlf: stdout byte 0: expected b'b\na\n', got b'' (length 4/0)
+FAIL 06-buildorder/cycle-downstream-not-upstream: cycle-downstream-not-upstream: stdout byte 0: expected b'CYCLE a b consumer\n', got b'' (length 19/0); exit expected 1, got 0
+FAIL 06-buildorder/deep-chain-item-line-limit: deep-chain-item-line-limit: stdout byte 0: expected b'n9999\nn9998\nn9997\nn9996\nn9995\nn9994\nn9993\nn9992\nn9991\nn', got b'' (length 60000/0)
+FAIL 06-buildorder/dynamic-smallest-ready: dynamic-smallest-ready: stdout byte 0: expected b'b\nA\nz\n', got b'' (length 6/0)
+FAIL 06-buildorder/example-1: step-1: stdout byte 0: expected b'core\nlib\nutil\napp\ntest\n', got b'' (length 23/0); step-2: stdout byte 0: expected b'0: core\n1: lib util\n2: app\n3: test\n', got b'' (length 35/0)
+FAIL 06-buildorder/example-2: example-2: stdout byte 0: expected b'a\nc\nb\nZ\n', got b'' (length 8/0)
+FAIL 06-buildorder/example-3: step-1: stdout byte 0: expected b'CYCLE x y z\n', got b'' (length 12/0); exit expected 1, got 0; step-2: stdout byte 0: expected b'core\nlib\nutil\napp\n', got b'' (length 18/0); step-3: stdout byte 0: expected b'CYCLE x y z\n', got b'' (length 12/0); exit expected 1, got 0
+FAIL 06-buildorder/example-4: step-1: exit expected 3, got 0; step-2: exit expected 3, got 0; step-3: exit expected 3, got 0; step-4: exit expected 3, got 0
+FAIL 06-buildorder/example-5: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0
+FAIL 06-buildorder/input-name-grammar: step-1: exit expected 3, got 0; step-2: exit expected 3, got 0; step-3: exit expected 3, got 0; step-4: exit expected 3, got 0; step-5: exit expected 3, got 0; step-6: exit expected 3, got 0
+FAIL 06-buildorder/level-selection: level-selection: stdout byte 0: expected b'0: d\n1: b\n', got b'' (length 10/0)
+FAIL 06-buildorder/levels-longest-path: levels-longest-path: stdout byte 0: expected b'0: d x\n1: c\n2: b\n3: a\n', got b'' (length 22/0)
+FAIL 06-buildorder/malformed-unselected-still-error: malformed-unselected-still-error: exit expected 3, got 0
+FAIL 06-buildorder/maximum-name: maximum-name: stdout byte 0: expected b'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', got b'' (length 65/0)
+FAIL 06-buildorder/multi-target-closure: multi-target-closure: stdout byte 0: expected b'd\nb\ne\nc\n', got b'' (length 8/0)
+FAIL 06-buildorder/multiple-disjoint-cycles: multiple-disjoint-cycles: stdout byte 0: expected b'CYCLE Z a x y\n', got b'' (length 14/0); exit expected 1, got 0
+FAIL 06-buildorder/name-punctuation-byte-order: name-punctuation-byte-order: stdout byte 0: expected b'-x\n./x\n/x\nX\n_x\nx\ntarget\n', got b'' (length 24/0)
+FAIL 06-buildorder/plain-dependency-selection: plain-dependency-selection: stdout byte 0: expected b'x\n', got b'' (length 2/0)
+FAIL 06-buildorder/select-excludes-cycle: select-excludes-cycle: stdout byte 0: expected b'q\n', got b'' (length 2/0)
+FAIL 06-buildorder/self-cycle: self-cycle: stdout byte 0: expected b'CYCLE a c\n', got b'' (length 10/0); exit expected 1, got 0
+FAIL 06-buildorder/union-deduplication: union-deduplication: stdout byte 0: expected b'c\nb\na\n', got b'' (length 6/0)
+FAIL 06-buildorder/unknown-target-and-empty-name: step-1: exit expected 3, got 0; step-2: exit expected 3, got 0; step-3: exit expected 3, got 0; step-4: exit expected 3, got 0; step-5: exit expected 3, got 0
+FAIL 06-buildorder/usage-arguments: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0
+FAIL 06-buildorder/usage-before-input: usage-before-input: exit expected 2, got 0
+FAIL 06-buildorder/wide-level-item-limit: wide-level-item-limit: stdout byte 0: expected b'0: n0000 n0001 n0002 n0003 n0004 n0005 n0006 n0007 n000', got b'' (length 60003/0)
+FAIL 07-linebuf/bad-number-boundaries: bad-number-boundaries: stdout byte 0: expected b'OK 1\nERR bad line\nERR bad line\nERR bad line\nERR bad lin', got b'' (length 98/0)
+FAIL 07-linebuf/command-count-limit: command-count-limit: stdout byte 0: expected b'0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0\n0', got b'' (length 200000/0)
+FAIL 07-linebuf/crlf-final-no-newline: crlf-final-no-newline: stdout byte 0: expected b'OK 1\n1|x\n1\n', got b'' (length 11/0)
+FAIL 07-linebuf/delete-full-range-undo-redo: delete-full-range-undo-redo: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\nOK 0\n0\nOK 3\n2|b\nOK 0\n0\n', got b'' (length 38/0)
+PASS 07-linebuf/empty
+FAIL 07-linebuf/empty-state-queries: empty-state-queries: stdout byte 0: expected b'0\nERR nothing to undo\nERR nothing to redo\nNONE\nERR bad ', got b'' (length 73/0)
+FAIL 07-linebuf/example-1: example-1: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\n1|first line\n3|second\n3\n2 3\nOK 3\n3\nNONE\n', got b'' (length 55/0)
+FAIL 07-linebuf/example-2: example-2: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\nOK 4\nOK 2\n2|d\nOK 4\n3|c\nOK 3\nOK 4\nOK 5\nER', got b'' (length 80/0)
+FAIL 07-linebuf/example-3: example-3: stdout byte 0: expected b'ERR bad line\nOK 1\n1|\nERR bad line\nERR bad line\nOK 2\nERR', got b'' (length 156/0)
+FAIL 07-linebuf/example-4: example-4: exit expected 2, got 0
+FAIL 07-linebuf/failed-commands-preserve-redo: failed-commands-preserve-redo: stdout byte 0: expected b'OK 1\nOK 2\nOK 1\n1|a\n1\n1\nERR bad line\nERR bad line\nERR ba', got b'' (length 74/0)
+FAIL 07-linebuf/history-and-buffer-limit: history-and-buffer-limit: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\nOK 4\nOK 5\nOK 6\nOK 7\nOK 8\nOK 9\nOK 10\nOK 1', got b'' (length 236684/0)
+FAIL 07-linebuf/insertion-boundaries: insertion-boundaries: stdout byte 0: expected b'ERR bad line\nERR bad line\nOK 1\nOK 2\nOK 3\n1|b\n2|a\n3|c\n', got b'' (length 53/0)
+FAIL 07-linebuf/lockstep-response-flushing: step-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\n1|x\nOK 0\n0\n', got b'' (length 16/0)
+FAIL 07-linebuf/malformed-command-forms: malformed-command-forms: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 240/0)
+FAIL 07-linebuf/malformed-number-grammar: malformed-number-grammar: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 112/0)
+FAIL 07-linebuf/maximum-text: maximum-text: stdout byte 0: expected b'OK 1\n1|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', got b'' (length 1010/0)
+FAIL 07-linebuf/new-change-clears-redo: new-change-clears-redo: stdout byte 0: expected b'OK 1\nOK 2\nOK 1\nOK 2\nERR nothing to redo\nOK 1\n1|a\nOK 2\n1', got b'' (length 58/0)
+FAIL 07-linebuf/number-leading-zeros: number-leading-zeros: stdout byte 0: expected b'OK 1\nOK 2\n2|b\nOK 2\nOK 0\n0\nOK 2\n1|c\n', got b'' (length 35/0)
+FAIL 07-linebuf/replace-same-clears-redo: replace-same-clears-redo: stdout byte 0: expected b'OK 1\nOK 2\nOK 1\nOK 1\nERR nothing to redo\nOK 1\n1\n', got b'' (length 47/0)
+FAIL 07-linebuf/replace-undo-redo: replace-undo-redo: stdout byte 0: expected b'OK 1\nOK 1\nOK 1\n1|old\nOK 1\n1|new\nOK 1\nOK 0\nOK 1\n1|old\nOK', got b'' (length 64/0)
+FAIL 07-linebuf/same-text-replace-is-change: same-text-replace-is-change: stdout byte 0: expected b'OK 1\nOK 1\nOK 1\n1\nOK 0\n0\nOK 1\nOK 1\nOK 1\n1|a\n', got b'' (length 43/0)
+FAIL 07-linebuf/search-substring-case-sensitive: search-substring-case-sensitive: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\n1 3\n2\n3\nNONE\n', got b'' (length 28/0)
+FAIL 07-linebuf/text-spaces-empty-and-pipe: text-spaces-empty-and-pipe: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\nOK 3\n1| x  \n2||\n3| \n1 3\n', got b'' (length 39/0)
+FAIL 07-linebuf/usage-empty-and-options: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0
+FAIL 08-sheet/all-cells-deep-chain: all-cells-deep-chain: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nO', got b'' (length 7747/0)
+FAIL 08-sheet/command-and-line-limits: command-and-line-limits: stdout byte 0: expected b'OK\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n96\n9', got b'' (length 60000/0)
+FAIL 08-sheet/crlf-final-command: crlf-final-command: stdout byte 0: expected b'OK\n=007\n7\n', got b'' (length 10/0)
+FAIL 08-sheet/dynamic-transitive-recalculation: dynamic-transitive-recalculation: stdout byte 0: expected b'OK\nOK\nOK\n3\nOK\n11\nOK\n5\nEMPTY\n', got b'' (length 28/0)
+PASS 08-sheet/empty
+FAIL 08-sheet/empty-cells-clear: empty-cells-clear: stdout byte 0: expected b'0\nEMPTY\nOK\nOK\n0\n', got b'' (length 16/0)
+FAIL 08-sheet/exact-spacing-command-forms: exact-spacing-command-forms: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 192/0)
+FAIL 08-sheet/example-1: example-1: stdout byte 0: expected b'OK\nOK\nOK\n42\nOK\n27\n=A1+A2\n0\nEMPTY\n', got b'' (length 33/0)
+FAIL 08-sheet/example-2: example-2: stdout byte 0: expected b'OK\nOK\nOK\nOK\n5\nERR cycle\n2\nERR cycle\nOK\n95\nOK\n2\n98\nEMPTY', got b'' (length 56/0)
+FAIL 08-sheet/example-3: example-3: stdout byte 0: expected b'OK\nOK\nOK\nOK\n999999999000\nOK\nERR overflow\nOK\nERR overflo', got b'' (length 64/0)
+FAIL 08-sheet/example-4: example-4: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 134/0)
+FAIL 08-sheet/example-5: example-5: exit expected 2, got 0
+FAIL 08-sheet/flush-and-usage: step-1: stdout closed before N responses; stdout byte 0: expected b'OK\n1\nOK\n0\n', got b'' (length 10/0); step-2: exit expected 2, got 0; step-3: exit expected 2, got 0
+FAIL 08-sheet/formula-signs-left-to-right: formula-signs-left-to-right: stdout byte 0: expected b'OK\n6\nOK\n2\nOK\n-5\n=-5\n', got b'' (length 20/0)
+FAIL 08-sheet/intermediate-large-final-valid: intermediate-large-final-valid: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\nOK\n1000000000000\n', got b'' (length 32/0)
+FAIL 08-sheet/invalid-cell-names: invalid-cell-names: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 128/0)
+FAIL 08-sheet/invalid-formula-grammar: invalid-formula-grammar: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 246/0)
+FAIL 08-sheet/literal-spelling-preserved: literal-spelling-preserved: stdout byte 0: expected b'OK\n7\n000000007\nOK\n0\n-000\nOK\n-999999999\n', got b'' (length 39/0)
+FAIL 08-sheet/overflow-inclusive-boundaries: overflow-inclusive-boundaries: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\n1000000000000\nOK\nERR overflow\nOK\n-100000', got b'' (length 79/0)
+FAIL 08-sheet/range-overflow-propagates-and-recovers: range-overflow-propagates-and-recovers: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\nOK\nOK\nERR overflow\nOK\n0\n', got b'' (length 39/0)
+FAIL 08-sheet/range-overlap-counts-twice: range-overlap-counts-twice: stdout byte 0: expected b'OK\nOK\nOK\n14\n', got b'' (length 12/0)
+FAIL 08-sheet/range-references-empty-cells: range-references-empty-cells: stdout byte 0: expected b'OK\nERR cycle\nEMPTY\nOK\n5\n', got b'' (length 24/0)
+FAIL 08-sheet/range-reversed-two-dimensional: range-reversed-two-dimensional: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\n10\nOK\n2\nOK\n0\n', got b'' (length 28/0)
+FAIL 08-sheet/self-cycle-in-zero-coefficient: self-cycle-in-zero-coefficient: stdout byte 0: expected b'OK\nERR cycle\n5\n5\nERR cycle\nEMPTY\n', got b'' (length 33/0)
+FAIL 08-sheet/transitive-cycle-rejected-old-kept: transitive-cycle-rejected-old-kept: stdout byte 0: expected b'OK\nOK\nOK\nERR cycle\n2\n2\nOK\nOK\n0\n', got b'' (length 31/0)
+FAIL 09-todo/directory-errors-and-crlf: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: stdout byte 0: expected b'ADDED 1\n1 1 open x\n', got b'' (length 19/0); step-4: stdout byte 0: expected b'OPEN\n', got b'' (length 5/0)
+FAIL 09-todo/done-purge-normal-restart: step-1: stdout byte 0: expected b'ADDED 1\nADDED 2\nADDED 3\nOK\nOK\n', got b'' (length 30/0); step-2: stdout byte 0: expected b'1 1 done a\n3 3 done c\nPURGED 2\nPURGED 0\nopen=1 done=0 n', got b'' (length 64/0); step-3: stdout byte 0: expected b'ERR no such item\n2 2 open b\nADDED 4\nopen=2 done=0 next_', got b'' (length 60/0)
+PASS 09-todo/empty-start-and-restart
+FAIL 09-todo/empty-state-queries: empty-state-queries: stdout byte 0: expected b'OPEN\nNONE\nopen=0 done=0 next_id=1\nPURGED 0\nERR no such ', got b'' (length 77/0)
+FAIL 09-todo/example-1: example-1: stdout byte 0: expected b'ADDED 1\nADDED 2\nADDED 3\nOPEN 2 1 3\n2 1 open fix the roo', got b'' (length 188/0)
+FAIL 09-todo/example-2: step-1: stdout closed before N responses; stdout byte 0: expected b'ADDED 1\nADDED 2\nOK\n', got b'' (length 19/0); step-2: stdout byte 0: expected b'open=1 done=1 next_id=3\nOPEN 2\nADDED 3\n', got b'' (length 39/0)
+FAIL 09-todo/example-3: step-1: stdout byte 0: expected b'ADDED 1\nOK\nPURGED 1\nopen=0 done=0 next_id=2\n', got b'' (length 44/0); step-2: stdout byte 0: expected b'ADDED 2\nERR no such item\nOPEN 2\n', got b'' (length 32/0)
+FAIL 09-todo/example-4: example-4: stdout byte 0: expected b'OPEN 7 3\n7 1 open book flights\nopen=2 done=1 next_id=8\n', got b'' (length 81/0)
+FAIL 09-todo/example-5: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 1, got 0; step-6: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 80/0)
+FAIL 09-todo/id-grammar-and-zero-padding: id-grammar-and-zero-padding: stdout byte 0: expected b'ADDED 1\n1 1 open a\nOK\n1 1 done a\nERR already done\nERR n', got b'' (length 148/0)
+FAIL 09-todo/invalid-state-remains-invalid: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: stdout byte 0: expected b'open=0 done=0 next_id=1\n', got b'' (length 24/0)
+FAIL 09-todo/kill-after-add: step-1: stdout closed before N responses; stdout byte 0: expected b'ADDED 1\n', got b'' (length 8/0); step-2: stdout byte 0: expected b'1 9 open original\nERR no such item\nopen=1 done=0 next_i', got b'' (length 67/0)
+FAIL 09-todo/kill-after-done: step-1: stdout closed before N responses; stdout byte 0: expected b'ADDED 1\nOK\n', got b'' (length 11/0); step-2: stdout byte 0: expected b'1 1 done x\nOPEN\nNONE\nopen=0 done=1 next_id=2\nERR alread', got b'' (length 62/0)
+FAIL 09-todo/kill-after-purge: step-1: stdout closed before N responses; stdout byte 0: expected b'ADDED 1\nOK\nPURGED 1\n', got b'' (length 20/0); step-2: stdout byte 0: expected b'open=0 done=0 next_id=2\nERR no such item\nADDED 2\n', got b'' (length 49/0); step-3: stdout byte 0: expected b'2 2 open y\nopen=1 done=0 next_id=3\n', got b'' (length 35/0)
+FAIL 09-todo/kill-after-read-and-error: step-1: stdout closed before N responses; stdout byte 0: expected b'ADDED 1\n1 1 open a\nERR bad command\n', got b'' (length 35/0); step-2: stdout byte 0: expected b'1 1 open a\nopen=1 done=0 next_id=2\n', got b'' (length 35/0)
+FAIL 09-todo/malformed-commands-and-bytes: malformed-commands-and-bytes: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 328/0)
+FAIL 09-todo/priority-then-id: priority-then-id: stdout byte 0: expected b'ADDED 1\nADDED 2\nADDED 3\nADDED 4\nOPEN 2 4 3 1\nOK\nOPEN 4 ', got b'' (length 84/0)
+FAIL 09-todo/repeated-kill-recovery: step-1: stdout closed before N responses; stdout byte 0: expected b'ADDED 1\n', got b'' (length 8/0); step-2: stdout closed before N responses; stdout byte 0: expected b'ADDED 2\n', got b'' (length 8/0); step-3: stdout byte 0: expected b'OPEN 2 1\n1 2 open a\n2 1 open b\nopen=2 done=0 next_id=3\n', got b'' (length 55/0)
+FAIL 09-todo/state-and-command-limits: step-1: stdout byte 0: expected b'open=10000 done=0 next_id=10001\nOPEN 1 2 3 4 5 6 7 8 9 ', got b'' (length 48946/0); step-2: stdout byte 0: expected b'ADDED 999999998\n999999998 9 open end\nopen=1 done=0 next', got b'' (length 69/0); step-3: stdout byte 0: expected b'open=1 done=0 next_id=999999999\nopen=1 done=0 next_id=9', got b'' (length 320000/0)
+FAIL 09-todo/strict-state-header-grammar: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0; step-6: exit expected 1, got 0; step-7: exit expected 1, got 0; step-8: exit expected 1, got 0; step-9: exit expected 1, got 0; step-10: exit expected 1, got 0; step-11: exit expected 1, got 0
+FAIL 09-todo/strict-state-item-grammar: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0; step-6: exit expected 1, got 0; step-7: exit expected 1, got 0; step-8: exit expected 1, got 0; step-9: exit expected 1, got 0; step-10: exit expected 1, got 0; step-11: exit expected 1, got 0; step-12: exit expected 1, got 0; step-13: exit expected 1, got 0
+FAIL 09-todo/strict-state-order-and-next: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0
+FAIL 09-todo/temp-only-deleted-not-promoted: step-1: stdout byte 0: expected b'OPEN\nopen=0 done=0 next_id=1\n', got b'' (length 29/0); step-2: stdout byte 0: expected b'open=0 done=0 next_id=1\n', got b'' (length 24/0)
+FAIL 09-todo/text-spaces-and-length: step-1: stdout byte 0: expected b'ADDED 1\nADDED 2\nADDED 3\n1 1 open  \n2 2 open  !"#$%&\'()*', got b'' (length 290/0); step-2: stdout byte 0: expected b'1 1 open  \n2 2 open  !"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~  ', got b'' (length 266/0)
+FAIL 09-todo/valid-db-beats-newer-temp: step-1: stdout byte 0: expected b'OPEN 3\n3 9 open real\nopen=1 done=0 next_id=5\n', got b'' (length 45/0); step-2: stdout byte 0: expected b'OPEN\n', got b'' (length 5/0)
+FAIL 10-cachesim/access-count-limit: access-count-limit: stdout byte 0: expected b'R 0x0 MEM\nR 0x0 L1\nR 0x0 L1\nR 0x0 L1\nR 0x0 L1\nR 0x0 L1\n', got b'' (length 1800070/0)
+FAIL 10-cachesim/blank-trace: blank-trace: stdout byte 0: expected b'L1 hits=0 misses=0 writebacks=0\nL2 hits=0 misses=0 writ', got b'' (length 64/0)
+FAIL 10-cachesim/block-one-adjacency: block-one-adjacency: stdout byte 0: expected b'R 0x0 MEM\nR 0x1 MEM\nR 0x0 L1\nL1 hits=1 misses=2 writeba', got b'' (length 93/0)
+FAIL 10-cachesim/crlf-and-final-address-echo: crlf-and-final-address-echo: stdout byte 0: expected b'R 0xAbC MEM\nR 0x00000aBf L1\nL1 hits=1 misses=1 writebac', got b'' (length 92/0)
+FAIL 10-cachesim/example-1: example-1: stdout byte 0: expected b'R 0x00 MEM\nR 0x04 L1\nW 0x10 MEM\nR 0x20 MEM\nR 0x00 L2\nR ', got b'' (length 159/0)
+FAIL 10-cachesim/example-2: example-2: stdout byte 0: expected b'W 0x0 MEM\nR 0x4 MEM\nR 0x0 L2\nR 0x8 MEM\nL1 hits=0 misses', got b'' (length 103/0)
+FAIL 10-cachesim/example-3: example-3: stdout byte 0: expected b'R 0xABC MEM\nR 0xab0 L1\nL1 hits=1 misses=1 writebacks=0\n', got b'' (length 87/0)
+FAIL 10-cachesim/example-4: example-4: stdout byte 0: expected b'L1 hits=0 misses=0 writebacks=0\nL2 hits=0 misses=0 writ', got b'' (length 64/0)
+FAIL 10-cachesim/example-5: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 1, got 0; step-7: exit expected 1, got 0; step-8: exit expected 1, got 0
+FAIL 10-cachesim/l1-hit-leaves-l2-lru-alone: l1-hit-leaves-l2-lru-alone: stdout byte 0: expected b'R 0x0 MEM\nR 0x1 MEM\nR 0x0 L1\nR 0x2 MEM\nR 0x0 L1\nL1 hits', got b'' (length 112/0)
+FAIL 10-cachesim/l1-hit-refreshes-lru: l1-hit-refreshes-lru: stdout byte 0: expected b'R 0x0 MEM\nR 0x1 MEM\nR 0x0 L1\nR 0x2 MEM\nR 0x1 L2\nL1 hits', got b'' (length 112/0)
+FAIL 10-cachesim/l2-hit-refreshes-lru: l2-hit-refreshes-lru: stdout byte 0: expected b'R 0x0 MEM\nR 0x1 MEM\nR 0x0 L2\nR 0x2 MEM\nR 0x1 MEM\nL1 hit', got b'' (length 113/0)
+FAIL 10-cachesim/l2-read-hit-preserves-dirty: l2-read-hit-preserves-dirty: stdout byte 0: expected b'W 0x0 MEM\nR 0x1 MEM\nR 0x0 L2\nR 0x2 MEM\nR 0x3 MEM\nL1 hit', got b'' (length 113/0)
+FAIL 10-cachesim/max-block-sets-address: max-block-sets-address: stdout byte 0: expected b'R 0xFFFFFFFF MEM\nR 0xfffff000 L1\nW 0x0 MEM\nR 0x00000fff', got b'' (length 123/0)
+FAIL 10-cachesim/maximum-ways: maximum-ways: stdout byte 0: expected b'R 0x0 MEM\nR 0x1 MEM\nR 0x2 MEM\nR 0x3 MEM\nR 0x4 MEM\nR 0x5', got b'' (length 783/0)
+FAIL 10-cachesim/non-power-of-two-sets: non-power-of-two-sets: stdout byte 0: expected b'R 0x0 MEM\nR 0x3 MEM\nR 0x1 MEM\nR 0x4 MEM\nR 0x0 L2\nL1 hit', got b'' (length 113/0)
+FAIL 10-cachesim/noninclusive-l2-eviction: noninclusive-l2-eviction: stdout byte 0: expected b'R 0x0 MEM\nR 0x1 MEM\nR 0x0 L1\nL1 hits=1 misses=2 writeba', got b'' (length 93/0)
+FAIL 10-cachesim/repeated-options-leading-zeros: repeated-options-leading-zeros: stdout byte 0: expected b'R 0x0 MEM\nR 0x1 MEM\nR 0x0 L2\nL1 hits=0 misses=3 writeba', got b'' (length 93/0)
+FAIL 10-cachesim/same-block-write-no-final-flush: step-1: stdout byte 0: expected b'R 0x00 MEM\nW 0x0F L1\nR 0x00000001 L1\nW 0x0 L1\nL1 hits=3', got b'' (length 110/0); step-2: stdout byte 0: expected b'R 0x0 MEM\nW 0x0 L1\nR 0x1 MEM\nR 0x2 MEM\nL1 hits=1 misses', got b'' (length 103/0)
+FAIL 10-cachesim/strict-trace-atomicity: step-1: exit expected 1, got 0; step-2: exit expected 1, got 0; step-3: exit expected 1, got 0; step-4: exit expected 1, got 0; step-5: exit expected 1, got 0; step-6: exit expected 1, got 0; step-7: exit expected 1, got 0; step-8: exit expected 1, got 0; step-9: exit expected 1, got 0; step-10: exit expected 1, got 0; step-11: exit expected 1, got 0; step-12: exit expected 1, got 0
+FAIL 10-cachesim/usage-block-grammar: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0; step-8: exit expected 2, got 0; step-9: exit expected 2, got 0; step-10: exit expected 2, got 0; step-11: exit expected 2, got 0
+FAIL 10-cachesim/usage-geometry-grammar: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0; step-8: exit expected 2, got 0; step-9: exit expected 2, got 0; step-10: exit expected 2, got 0; step-11: exit expected 2, got 0; step-12: exit expected 2, got 0; step-13: exit expected 2, got 0; step-14: exit expected 2, got 0; step-15: exit expected 2, got 0; step-16: exit expected 2, got 0; step-17: exit expected 2, got 0; step-18: exit expected 2, got 0; step-19: exit expected 2, got 0; step-20: exit expected 2, got 0; step-21: exit expected 2, got 0; step-22: exit expected 2, got 0; step-23: exit expected 2, got 0; step-24: exit expected 2, got 0; step-25: exit expected 2, got 0; step-26: exit expected 2, got 0
+FAIL 10-cachesim/usage-missing-unknown-early-invalid: step-1: exit expected 2, got 0; step-2: exit expected 2, got 0; step-3: exit expected 2, got 0; step-4: exit expected 2, got 0; step-5: exit expected 2, got 0; step-6: exit expected 2, got 0; step-7: exit expected 2, got 0
+FAIL 10-cachesim/write-allocate-l2-clean-first: write-allocate-l2-clean-first: stdout byte 0: expected b'W 0x0 MEM\nW 0x1 MEM\nW 0x1 L1\nL1 hits=1 misses=2 writeba', got b'' (length 93/0)
+FAIL 10-cachesim/writeback-existing-refreshes-l2-lru: writeback-existing-refreshes-l2-lru: stdout byte 0: expected b'W 0x0 MEM\nR 0x1 MEM\nR 0x2 MEM\nR 0x0 L2\nL1 hits=0 misses', got b'' (length 103/0)
+7/250 passed; 243 failed

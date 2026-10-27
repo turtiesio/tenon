@@ -1,0 +1,4 @@
+ADD 1 a
+DONE 1
+PURGE
+STATS

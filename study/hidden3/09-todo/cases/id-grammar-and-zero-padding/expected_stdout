@@ -1,0 +1,11 @@
+ADDED 1
+1 1 open a
+OK
+1 1 done a
+ERR already done
+ERR no such item
+ERR no such item
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command

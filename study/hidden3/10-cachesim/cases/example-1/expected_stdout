@@ -1,0 +1,11 @@
+R 0x00 MEM
+R 0x04 L1
+W 0x10 MEM
+R 0x20 MEM
+R 0x00 L2
+R 0x14 L2
+R 0x30 MEM
+W 0x50 MEM
+R 0x58 L1
+L1 hits=2 misses=7 writebacks=1
+L2 hits=2 misses=5 writebacks=1

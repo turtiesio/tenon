@@ -1,0 +1,14 @@
+ADD 2 buy milk
+ADD 1 fix the roof
+ADD 2 call mom
+LIST
+NEXT
+DONE 2
+DONE 2
+DONE 9
+LIST
+SHOW 2
+PURGE
+STATS
+ADD 3 water plants
+SHOW 04

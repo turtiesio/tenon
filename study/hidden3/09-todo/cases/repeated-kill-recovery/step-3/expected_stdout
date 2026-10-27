@@ -1,0 +1,4 @@
+OPEN 2 1
+1 2 open a
+2 1 open b
+open=2 done=0 next_id=3

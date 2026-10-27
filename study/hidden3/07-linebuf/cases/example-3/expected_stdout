@@ -1,0 +1,14 @@
+ERR bad line
+OK 1
+1|
+ERR bad line
+ERR bad line
+OK 2
+ERR bad command
+ERR bad command
+ERR bad line
+OK 1
+ERR bad line
+ERR bad command
+OK 0
+ERR nothing to undo

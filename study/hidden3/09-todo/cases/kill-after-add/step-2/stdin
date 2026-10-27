@@ -1,0 +1,4 @@
+SHOW 1
+SHOW 2
+STATS
+ADD 1 next
