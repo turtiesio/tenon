@@ -1,0 +1,10 @@
+// error: cannot be a map or set key
+// Float map keys: NaN != NaN.  The interpreter traps on the insert; the native build inserts
+// an entry that can never be found again (and a new one on every insert).
+fn main(sys: Sys) {
+    let nan = 0.0 / 0.0
+    var m: Map[Float, Int] = [:]
+    m[nan] = 1
+    m[nan] = 2
+    sys.console.println("{m} {m.len()} {m.get(nan)}")
+}

@@ -455,7 +455,12 @@ impl<'a> Emitter<'a> {
             let hs = each(self, &|i, j, tn| format!("h = tn_mix(h * 31 + {tn}_hash(x{acc}u.v{i}.f{j})); "));
             if boxed {
                 let _ = writeln!(b, "static TN_UNUSED {n} {n}_retain({n} x) {{ x->rc++; return x; }}");
-                let _ = writeln!(b, "static TN_UNUSED void {n}_release({n} x) {{ if (!x || --x->rc) return; switch (x->tag) {{ {rl}}} free(x); }}");
+                let _ = writeln!(b, "static void {n}_free(void *p) {{ {n} x = p; tn_rel_depth++; switch (x->tag) {{ {rl}}} free(x); tn_rel_depth--; }}");
+                let _ = writeln!(
+                    b,
+                    "static TN_UNUSED void {n}_release({n} x) {{ if (!x || --x->rc) return; \
+                     if (tn_rel_depth > 1000) {{ tn_defer(x, {n}_free); return; }} {n}_free(x); if (tn_rel_depth == 0) tn_drain(); }}"
+                );
             } else {
                 let _ = writeln!(b, "static TN_UNUSED {n} {n}_retain({n} x) {{ switch (x.tag) {{ {rc}}} return x; }}");
                 let _ = writeln!(b, "static TN_UNUSED void {n}_release({n} x) {{ switch (x.tag) {{ {rl}}} }}");

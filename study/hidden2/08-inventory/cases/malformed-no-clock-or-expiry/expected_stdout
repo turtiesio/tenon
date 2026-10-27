@@ -1,0 +1,5 @@
+OK 1
+HOLD 1
+ERR bad command
+OK
+holds=0 committed=1 expired=0 released=0

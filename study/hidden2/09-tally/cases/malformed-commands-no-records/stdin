@@ -1,0 +1,12 @@
+
+set a 1
+SET A 1
+SET a +1
+SET a 1000000000000000
+SET  a 1
+ SET a 1
+SET a 1 
+GET a extra
+ADD a
+LIST 
+INFO

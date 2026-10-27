@@ -1,0 +1,5 @@
+OK 5
+HOLD 1
+OK 2
+X on_hand=2 held=2 available=0
+ERR insufficient 0

@@ -1,0 +1,18 @@
+
+policy p 1 1
+POLICY p 0 1
+POLICY p 1 0
+POLICY P 1 1
+POLICY p 1000000000 1
+POLICY p 1 +1
+HIT 0 p c 0
+HIT -1 p c
+HIT 1000000000000000 p c
+HIT 0 p c 1 2
+PEEK 0 p c extra
+STATS p 
+ STATS p
+STATS  p
+RESET p
+UNKNOWN
+HIT	0 p c

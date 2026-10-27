@@ -1,0 +1,5 @@
+OK
+ALLOW 0
+ERR policy exists
+TOKENS 0
+allowed=1 denied=0 clients=1

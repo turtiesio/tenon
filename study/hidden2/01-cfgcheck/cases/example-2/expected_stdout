@@ -1,0 +1,7 @@
+3: server.port: out of range 1..65535
+4: server.host: longer than 10
+5: server.debug: not a boolean
+6: duplicate key server.port
+9: syntax error
+missing: log.level
+errors: 6

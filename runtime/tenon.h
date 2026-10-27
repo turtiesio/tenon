@@ -160,6 +160,28 @@ TN_NORETURN static TN_UNUSED void tn_exit(int code) {
     static inline TN_UNUSED uint64_t T##_hash(T a) { (void)a; return 0; }             \
     static inline TN_UNUSED bool T##_same(T a, T b) { (void)a; (void)b; return false; }
 
+/* Releasing deeply nested recursive values (a million-long chain of enum
+ * nodes) must not overflow the C stack: past a nesting depth, frees are
+ * queued and drained iteratively. */
+static int tn_rel_depth;
+typedef struct { void *p; void (*f)(void *); } tn_deferred;
+static tn_deferred *tn_defer_q;
+static int64_t tn_defer_n, tn_defer_cap;
+static TN_UNUSED void tn_defer(void *p, void (*f)(void *)) {
+    if (tn_defer_n == tn_defer_cap) {
+        tn_defer_cap = tn_defer_cap ? tn_defer_cap * 2 : 256;
+        tn_defer_q = realloc(tn_defer_q, sizeof(tn_deferred) * (size_t)tn_defer_cap);
+        if (!tn_defer_q) _exit(TN_EXIT_OOM);
+    }
+    tn_defer_q[tn_defer_n++] = (tn_deferred){p, f};
+}
+static TN_UNUSED void tn_drain(void) {
+    while (tn_defer_n) {
+        tn_deferred d = tn_defer_q[--tn_defer_n];
+        d.f(d.p);
+    }
+}
+
 /* ---------- checked arithmetic ---------- */
 
 static inline tn_Int tn_add(tn_Int a, tn_Int b, const char *loc) {
@@ -1360,7 +1382,12 @@ static TN_UNUSED tn_Fs tn_fs_make(tn_Str root, bool att, bool wr) {
 enum { TN_IO_OK = 0, TN_IO_NOTFOUND = 1, TN_IO_DENIED = 2, TN_IO_FAILED = 3 };
 
 /* Resolve p under f into a NUL-terminated path; false if it escapes the root. */
+/* Same rules as builtins.rs fs_path: a NUL byte always escapes (C strings
+ * would truncate); an attenuated Fs also rejects absolute paths, `..` and any
+ * existing symlink on the way (a concurrent change after the check is not
+ * prevented). */
 static TN_UNUSED bool tn_fs_path(tn_Fs f, tn_Str p, tn_buf *out) {
+    if (memchr(p.p, 0, (size_t)p.len)) return false;
     if (f->att) {
         if (p.len == 0 || p.p[0] == '/') return false;
         int64_t s = 0;
@@ -1382,6 +1409,26 @@ static TN_UNUSED bool tn_fs_path(tn_Fs f, tn_Str p, tn_buf *out) {
         tn_buf_str(out, p);
     }
     tn_buf_add(out, "", 1);
+    if (f->att) {
+        /* walk root/comp1, root/comp1/comp2, ... refusing symlinks */
+        char *full = out->p + sizeof(tn_rc);
+        size_t start = (size_t)f->root.len;
+        for (size_t i = start + 1;; i++) {
+            char c = full[i];
+            if (c == '/' || c == 0) {
+                if (i > start + 1) {
+                    full[i] = 0;
+                    struct stat st;
+                    int r = lstat(full, &st);
+                    full[i] = c;
+                    if (r == 0 && S_ISLNK(st.st_mode)) return false;
+                    if (r != 0) break;
+                }
+                start = i;
+                if (c == 0) break;
+            }
+        }
+    }
     return true;
 }
 static TN_UNUSED int tn_io_kind(int e) {
@@ -1612,6 +1659,12 @@ static TN_UNUSED int tn_net_err(const char *what, int e, tn_Str *msg) {
 static TN_UNUSED int tn_net_listen(tn_Int port, tn_Listener *out, tn_Str *msg) {
     char what[64];
     snprintf(what, sizeof what, "127.0.0.1:%lld", (long long)port);
+    if (port < 0 || port > 65535) {
+        char m[96];
+        snprintf(m, sizeof m, "%s: port must be 0-65535", what);
+        *msg = tn_str_new(m, (int64_t)strlen(m));
+        return TN_IO_FAILED;
+    }
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return tn_net_err(what, errno, msg);
     int one = 1;
@@ -1650,6 +1703,12 @@ static TN_UNUSED int tn_net_connect(tn_Str host, tn_Int port, tn_Conn *out, tn_S
     snprintf(h, sizeof h, "%.*s", (int)host.len, host.p);
     snprintf(what, sizeof what, "%s:%lld", h, (long long)port);
     snprintf(ps, sizeof ps, "%lld", (long long)port);
+    if (port < 0 || port > 65535) {
+        char m[384];
+        snprintf(m, sizeof m, "%s: port must be 0-65535", what);
+        *msg = tn_str_new(m, (int64_t)strlen(m));
+        return TN_IO_FAILED;
+    }
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof hints);
     hints.ai_socktype = SOCK_STREAM;

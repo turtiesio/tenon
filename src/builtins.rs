@@ -374,12 +374,18 @@ impl<'a> Interp<'a> {
             ("Net.listen", _) => {
                 let port = arg_i(1);
                 let what = format!("127.0.0.1:{}", port);
+                if !(0..=65535).contains(&port) {
+                    return self.io_err("Failed", format!("{}: port must be 0-65535", what));
+                }
                 let r = std::net::TcpListener::bind(("127.0.0.1", port as u16));
                 self.io_result(&what, r, |l| V::Cap(Rc::new(Cap::Listener(l))))
             }
             ("Net.connect", _) => {
                 let (h, port) = (arg_s(1), arg_i(2));
                 let what = format!("{}:{}", h, port);
+                if !(0..=65535).contains(&port) {
+                    return self.io_err("Failed", format!("{}: port must be 0-65535", what));
+                }
                 let r = std::net::TcpStream::connect((h.as_str(), port as u16));
                 self.io_result(&what, r, conn)
             }
@@ -521,9 +527,27 @@ impl<'a> Interp<'a> {
 }
 
 // Path resolution under an Fs capability; None = escapes the root.
+// None if the path escapes the capability: a NUL byte (C would truncate), or,
+// for an attenuated Fs, an absolute path, a `..` component, or an existing
+// symlink on the way (checked component by component; a concurrent change
+// between this check and the use is not prevented).
 pub fn fs_path(root: &str, attenuated: bool, p: &str) -> Option<String> {
+    if p.contains('\0') {
+        return None;
+    }
     if attenuated && (p.is_empty() || p.starts_with('/') || p.split('/').any(|c| c == "..")) {
         return None;
+    }
+    if attenuated {
+        let mut cur = root.to_string();
+        for comp in p.split('/').filter(|c| !c.is_empty() && *c != ".") {
+            cur = format!("{}/{}", cur, comp);
+            match std::fs::symlink_metadata(&cur) {
+                Ok(m) if m.file_type().is_symlink() => return None,
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
     }
     if root.is_empty() {
         Some(if p.is_empty() { ".".to_string() } else { p.to_string() })

@@ -1,0 +1,4 @@
+SET a 1
+ADD a 10
+ADD b 7
+SET a 0

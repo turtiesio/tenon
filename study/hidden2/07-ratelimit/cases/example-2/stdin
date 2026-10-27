@@ -1,0 +1,12 @@
+HIT 5 api bob
+POLICY api 2 100
+POLICY api 5 5
+HIT 50 api bob 3
+HIT 40 api bob
+hit 60 api bob
+HIT 60 api bob
+RESET api bob
+RESET api bob
+PEEK 61 api bob
+STATS web
+STATS api

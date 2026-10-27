@@ -1,0 +1,5 @@
+A a A 1/10 10.0% F
+Z z Z 10/10 100.0% A
+section A: students=1 A=0 B=0 C=0 D=0 F=1 none=0
+section Z: students=1 A=1 B=0 C=0 D=0 F=0 none=0
+bad_students=0 bad_scores=0 orphans=0

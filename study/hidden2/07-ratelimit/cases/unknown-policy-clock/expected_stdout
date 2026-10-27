@@ -1,0 +1,5 @@
+ERR no such policy
+OK
+ERR time went backwards
+allowed=0 denied=0 clients=0
+ALLOW 0

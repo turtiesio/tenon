@@ -1,0 +1,15 @@
+// A client-defined generic wrapper drops or duplicates another module's linear value.
+// `self` of a type's own method is exempt from the linear rules; for a generic struct that exemption
+// applies even when the type argument is a linear type from a module that never agreed to it.
+// (Same hole lets `unique` handles such as Listener/Conn be duplicated: Wrap { v: listener }.dup().)
+import vaultlib
+struct Wrap[A] { v: A }
+fn Wrap[A].drop_it(self) -> Int { 1 }
+fn Wrap[A].dup(self) -> (Wrap[A], Wrap[A]) { (self, self) }
+fn main(sys: Sys) {
+    let w = Wrap { v: vaultlib.mk_tok() }
+    let n = w.drop_it()                                 // the Tok is gone; finish() was never called
+    let (a, b) = Wrap { v: vaultlib.mk_tok() }.dup()    // one Tok, two owners
+    let m = a.drop_it() + b.drop_it()
+    sys.console.println("{n} {m}")
+}

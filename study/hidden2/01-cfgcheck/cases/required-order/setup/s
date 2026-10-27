@@ -1,0 +1,3 @@
+z.x int required
+a.z string required
+a.y bool optional

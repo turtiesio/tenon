@@ -1,0 +1,5 @@
+# service settings
+server.port   int     required 1..65535
+server.host   string  required maxlen=10
+server.debug  bool    optional
+log.level     enum    required debug,info,warn

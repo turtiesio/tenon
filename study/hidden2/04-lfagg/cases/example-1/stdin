@@ -1,0 +1,7 @@
+ts=1 level=info svc=api dur=120 msg="GET /users"
+ts=2 level=error svc=db dur=900 msg="timeout after \"30s\""
+ts=3 level=info svc=api dur=80
+ts=4 level=info svc=web msg=hi
+bad line with "quote
+ts=5 svc=api dur=abc
+ts=6 level=warn dur=15 cached

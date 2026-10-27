@@ -1,0 +1,7 @@
+OK 3
+HOLD 1
+OK
+X on_hand=3 held=0 available=3
+ERR no such hold
+ERR no such hold
+holds=0 committed=0 expired=0 released=1

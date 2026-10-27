@@ -1,0 +1,4 @@
+ALERT 0 s 1
+ALERT 5 s 2
+s errors=2 warns=0 alerts=2 peak=2
+skipped=0

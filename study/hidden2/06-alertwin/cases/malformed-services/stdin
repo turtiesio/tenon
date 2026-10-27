@@ -1,0 +1,5 @@
+0 A ERROR
+0 -a ERROR
+0 a_b ERROR
+0 a.b ERROR
+0 1a ERROR

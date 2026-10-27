@@ -1,0 +1,4 @@
+api count=3 n=2 sum=200 min=80 max=120 avg=100.00
+db count=1 n=1 sum=900 min=900 max=900 avg=900.00
+web count=1 n=0 sum=0 min=- max=- avg=-
+lines=6 malformed=1 nokey=1

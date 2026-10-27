@@ -1,0 +1,5 @@
+SET z 1
+SET a 2
+ADD z 1
+COMPACT
+SET b 99

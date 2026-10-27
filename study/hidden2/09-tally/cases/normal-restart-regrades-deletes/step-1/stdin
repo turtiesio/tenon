@@ -1,0 +1,7 @@
+SET b 10
+SET a -2
+SET b 10
+ADD a 0
+DEL b
+DEL b
+INFO

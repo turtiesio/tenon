@@ -1,0 +1,5 @@
+// Helper module for 19-linear-generic-wrapper-bypass.tn: a linear obligation whose only
+// intended disposal is Tok.finish.  Fields are private, so only this module can build a Tok.
+pub linear struct Tok { id: Int }
+pub fn mk_tok() -> Tok { Tok { id: 5 } }
+pub fn Tok.finish(self) -> Int { self.id }

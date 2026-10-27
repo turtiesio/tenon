@@ -1,0 +1,3 @@
+ 	# c
+ s.x	int	required	-00..0005
+s.y string required maxlen=0002

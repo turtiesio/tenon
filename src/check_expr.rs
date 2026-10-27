@@ -295,6 +295,10 @@ impl Checker {
                         let t = self.expr(l, &t)?;
                         self.expr(r, &t)?;
                         self.comparable(&t, e.span)?;
+                        let rt = self.sub.resolve(&t);
+                        if let Some(bad) = incomparable_part(&self.out, &rt, false) {
+                            return err(e.span, format!("values of type {} cannot be compared: they contain {}", rt, bad));
+                        }
                         Ok(Ty::bool())
                     }
                     _ => {
@@ -555,4 +559,36 @@ pub(crate) fn place_root(e: &Expr) -> String {
         ExprKind::Name(n) => n.clone(),
         _ => String::new(),
     }
+}
+
+// The first part of t that derived equality cannot handle exactly: functions
+// and capabilities (and, for map keys, Float, since NaN != NaN). Looks through
+// struct fields and enum payloads.
+pub(crate) fn incomparable_part(c: &Checked, t: &Ty, key: bool) -> Option<String> {
+    fn walk(c: &Checked, t: &Ty, key: bool, seen: &mut Vec<Ty>) -> Option<String> {
+        if seen.contains(t) {
+            return None;
+        }
+        seen.push(t.clone());
+        match t {
+            Ty::Fn(..) => Some(format!("the function type {}", t)),
+            Ty::Con(n, _) if is_capability(n) => Some(format!("the capability {}", n)),
+            Ty::Con(n, _) if key && n == "Float" => Some("Float (NaN is not equal to itself)".into()),
+            Ty::Tuple(ts) => ts.iter().find_map(|x| walk(c, x, key, seen)),
+            Ty::Con(_, args) => {
+                if let Some(fs) = c.struct_fields(t) {
+                    if let Some(b) = fs.iter().find_map(|(_, x)| walk(c, x, key, seen)) {
+                        return Some(b);
+                    }
+                } else if let Some(vs) = c.enum_variants(t) {
+                    if let Some(b) = vs.iter().flat_map(|(_, f)| f.iter()).find_map(|x| walk(c, x, key, seen)) {
+                        return Some(b);
+                    }
+                }
+                args.iter().find_map(|x| walk(c, x, key, seen))
+            }
+            _ => None,
+        }
+    }
+    walk(c, t, key, &mut vec![])
 }

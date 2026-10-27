@@ -1,0 +1,9 @@
+0 start a s1 wait=0
+2 reject c
+4 done a s1
+4 start b s1 wait=3
+6 done b s1
+6 start d s1 wait=2
+7 done d s1
+served=3 rejected=1 max_wait=3 total_wait=5 makespan=7
+s1 busy=7 served=3

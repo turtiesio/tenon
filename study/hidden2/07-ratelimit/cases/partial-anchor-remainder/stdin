@@ -1,0 +1,5 @@
+POLICY p 5 10
+HIT 0 p c 5
+PEEK 25 p c
+PEEK 29 p c
+HIT 30 p c 3

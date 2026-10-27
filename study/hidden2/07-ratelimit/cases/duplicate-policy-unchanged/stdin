@@ -1,0 +1,5 @@
+POLICY p 1 10
+HIT 0 p c
+POLICY p 9 1
+PEEK 1 p c
+STATS p

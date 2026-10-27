@@ -1,0 +1,3 @@
+4: a.y: not an integer
+5: a.z: not an integer
+errors: 2
