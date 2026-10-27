@@ -1,0 +1,144 @@
+# nothing exists yet: everything is built, dependencies first
+$ mkplan fresh.mk
+[main.o] cc -c main.c
+[util.o] cc -c util.c
+[app] cc -o app main.o util.o
+3 to build, 0 up to date
+[exit 0]
+# all up to date
+$ mkplan uptodate.mk
+0 to build, 3 up to date
+[exit 0]
+# one source is newer: rebuilds propagate transitively
+$ mkplan newer.mk
+[util.o] cc -c util.c
+[app] cc -o app main.o util.o
+2 to build, 1 up to date
+[exit 0]
+# equal mtime is not newer
+$ mkplan equal.mk
+0 to build, 1 up to date
+[exit 0]
+# a target with no mtime is rebuilt even if its deps are old
+$ mkplan nomtime.mk
+[out] make out
+1 to build, 0 up to date
+[exit 0]
+# TARGET argument selects a sub-plan; the rest is ignored
+$ mkplan newer.mk util.o
+[util.o] cc -c util.c
+1 to build, 0 up to date
+[exit 0]
+$ mkplan newer.mk main.o
+0 to build, 1 up to date
+[exit 0]
+$ mkplan newer.mk app
+[util.o] cc -c util.c
+[app] cc -o app main.o util.o
+2 to build, 1 up to date
+[exit 0]
+$ mkplan newer.mk main.c
+mkplan: unknown target main.c
+[exit 1]
+$ mkplan newer.mk nothing
+mkplan: unknown target nothing
+[exit 1]
+# ties broken by order of appearance, not by dependency order
+$ mkplan order.mk
+[c] echo c
+[a] echo a
+[b] echo b
+[all] echo all
+4 to build, 0 up to date
+[exit 0]
+# diamond: the shared dependency is planned once
+$ mkplan diamond.mk
+[base] echo base
+[left] echo left
+[right] echo right
+[top] echo top
+4 to build, 0 up to date
+[exit 0]
+# commands may contain ':' and '|'
+$ mkplan cmd.mk
+[t] echo a:b | tee out
+1 to build, 0 up to date
+[exit 0]
+# the empty file, and one with only comments
+$ mkplan empty.mk
+0 to build, 0 up to date
+[exit 0]
+$ mkplan empty.mk anything
+mkplan: unknown target anything
+[exit 1]
+$ mkplan comments.mk
+0 to build, 0 up to date
+[exit 0]
+# errors
+$ mkplan cycle.mk
+mkplan: cycle: a -> b -> c -> a
+[exit 1]
+$ mkplan cycle2.mk
+mkplan: cycle: y -> z -> y
+[exit 1]
+$ mkplan self.mk
+mkplan: cycle: a -> a
+[exit 1]
+# a cycle outside the requested target is not reached
+$ mkplan offpath.mk
+[good] echo good
+1 to build, 0 up to date
+[exit 0]
+$ mkplan offpath.mk good
+[good] echo good
+1 to build, 0 up to date
+[exit 0]
+$ mkplan offpath.mk bad2
+mkplan: cycle: bad2 -> bad1 -> bad2
+[exit 1]
+$ mkplan cycle2.mk top
+mkplan: cycle: y -> z -> y
+[exit 1]
+$ mkplan missing.mk
+mkplan: missing dependency main.c of target main.o
+[exit 1]
+$ mkplan dup.mk
+mkplan: duplicate target a (line 3, first defined on line 1)
+[exit 1]
+$ mkplan bad1.mk
+mkplan: malformed line 4: missing ':'
+[exit 1]
+$ mkplan bad2.mk
+mkplan: malformed line 1: missing '|' before the command
+[exit 1]
+$ mkplan bad3.mk
+mkplan: malformed line 1: empty target name
+[exit 1]
+$ mkplan bad4.mk
+mkplan: malformed line 1: target name contains whitespace
+[exit 1]
+$ mkplan bad5.mk
+mkplan: malformed line 1: empty command
+[exit 1]
+$ mkplan bad6.mk
+mkplan: malformed line 3: mtime is not an integer: ten
+[exit 1]
+$ mkplan bad7.mk
+mkplan: malformed line 3: expected 'name mtime'
+[exit 1]
+$ mkplan bad8.mk
+mkplan: malformed line 4: duplicate mtime for a
+[exit 1]
+$ mkplan bad9.mk
+mkplan: malformed line 4: expected 'name mtime'
+[exit 1]
+$ mkplan nosuchfile.mk
+mkplan: cannot read nosuchfile.mk: NotFound("nosuchfile.mk")
+[exit 1]
+# usage
+$ mkplan 
+usage: mkplan FILE [TARGET]
+[exit 2]
+$ mkplan a b c
+usage: mkplan FILE [TARGET]
+[exit 2]

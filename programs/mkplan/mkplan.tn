@@ -1,0 +1,159 @@
+// mkplan: a tiny build planner.
+//
+//   mkplan FILE [TARGET]
+//
+// FILE has one rule per line, `target: dep1 dep2 | command text`, then an
+// optional section after a line `---` with `name mtime` lines giving the
+// modification times of existing files. Blank lines and `#` comments are
+// ignored in both sections. Both the `:` and the `|` (with a non-empty command)
+// are required.
+//
+// A target is rebuilt if it has no mtime, if a dependency has a larger mtime,
+// or if a dependency is itself rebuilt. A dependency that is neither a target
+// nor a file with an mtime is an error. Only targets reachable from TARGET
+// (default: the first target in FILE) are considered, and errors are only
+// reported for those (parse errors and duplicate targets are file-wide).
+//
+// The plan lists the commands as `[target] command`, dependencies first; among
+// the targets that are ready, the one appearing earliest in FILE goes first.
+// Errors go to stderr with exit status 1; usage errors exit with status 2.
+
+struct Rule { name: Str, deps: List[Str], cmd: Str }
+
+struct Plan {
+    rules: List[Rule],
+    index: Map[Str, Int],      // target name -> position in rules
+    mtimes: Map[Str, Int],
+    state: Map[Str, Int],      // absent: unvisited, 1: on the current path, 2: done
+    rebuild: Map[Str, Bool],   // decided for every state-2 target
+    reached: List[Int],        // positions of visited targets
+}
+
+fn parse_rule(line: Str, n: Int) -> Result[Rule, Str] {
+    let colon = line.find(":").ok_or("malformed line {n}: missing ':'")?
+    let name = line.slice(0, colon).trim()
+    if name.is_empty() { return Err("malformed line {n}: empty target name") }
+    if name.words().len() != 1 { return Err("malformed line {n}: target name contains whitespace") }
+    let rest = line.slice(colon + 1, line.len())
+    let bar = rest.find("|").ok_or("malformed line {n}: missing '|' before the command")?
+    let cmd = rest.slice(bar + 1, rest.len()).trim()
+    if cmd.is_empty() { return Err("malformed line {n}: empty command") }
+    Ok(Rule { name: name, deps: rest.slice(0, bar).words(), cmd: cmd })
+}
+
+fn parse(text: Str) -> Result[Plan, Str] {
+    var p = Plan { rules: [], index: [:], mtimes: [:], state: [:], rebuild: [:], reached: [] }
+    var in_files = false
+    var first_line: Map[Str, Int] = [:]
+    let lines = text.lines()
+    for i in 0..lines.len() {
+        let n = i + 1
+        let line = lines[i].trim()
+        if line.is_empty() or line.starts_with("#") { continue }
+        if line == "---" and not in_files {
+            in_files = true
+            continue
+        }
+        if in_files {
+            let w = line.words()
+            if w.len() != 2 { return Err("malformed line {n}: expected 'name mtime'") }
+            let t = w[1].to_int().ok_or("malformed line {n}: mtime is not an integer: {w[1]}")?
+            if p.mtimes.contains(w[0]) { return Err("malformed line {n}: duplicate mtime for {w[0]}") }
+            p.mtimes[w[0]] = t
+        } else {
+            let r = parse_rule(line, n)?
+            if p.index.contains(r.name) {
+                return Err("duplicate target {r.name} (line {n}, first defined on line {first_line[r.name]})")
+            }
+            p.index[r.name] = p.rules.len()
+            first_line[r.name] = n
+            p.rules.push(r)
+        }
+    }
+    Ok(p)
+}
+
+// Visits `name` (a target) and everything it depends on; true if it must be
+// rebuilt. `path` is the chain of targets that led here, for cycle reports.
+fn Plan.visit(mut self, name: Str, path: List[Str]) -> Result[Bool, Str] {
+    let st = self.state.get_or(name, 0)
+    if st == 2 { return Ok(self.rebuild[name]) }
+    let here = path + [name]
+    if st == 1 {
+        let start = path.index_of(name).unwrap()
+        return Err("cycle: " + here.slice(start, here.len()).join(" -> "))
+    }
+    self.state[name] = 1
+    let i = self.index[name]
+    self.reached.push(i)
+    let rule = self.rules[i]
+    var need = not self.mtimes.contains(name)
+    for dep in rule.deps {
+        if self.index.contains(dep) {
+            if self.visit(dep, here)? { need = true }
+        } else if not self.mtimes.contains(dep) {
+            return Err("missing dependency {dep} of target {name}")
+        }
+        match (self.mtimes.get(dep), self.mtimes.get(name)) {
+            (Some(d), Some(m)) => { if d > m { need = true } }
+            _ => {}
+        }
+    }
+    self.state[name] = 2
+    self.rebuild[name] = need
+    Ok(need)
+}
+
+// The rebuilt targets in a valid build order: repeatedly take the earliest
+// target in FILE whose rebuilt dependencies are all done.
+fn Plan.order(self) -> List[Int] {
+    let todo = self.reached.filter(fn(i) => self.rebuild[self.rules[i].name]).sorted()
+    var done: Map[Str, Bool] = [:]
+    var out: List[Int] = []
+    while out.len() < todo.len() {
+        for i in todo {
+            let r = self.rules[i]
+            if done.contains(r.name) { continue }
+            if r.deps.all(fn(d) => not self.rebuild.get_or(d, false) or done.contains(d)) {
+                out.push(i)
+                done[r.name] = true
+                break
+            }
+        }
+    }
+    out
+}
+
+fn usage() -> Str { "usage: mkplan FILE [TARGET]" }
+
+fn plan(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    let file = sys.args[0]
+    let text = sys.fs.read(file).map_err(fn(e) => "cannot read {file}: {e}")?
+    var p = parse(text)?
+    if p.rules.is_empty() and sys.args.len() == 1 {
+        con.println("0 to build, 0 up to date")
+        return Ok(())
+    }
+    let root = if sys.args.len() == 2 { sys.args[1] } else { p.rules[0].name }
+    if not p.index.contains(root) { return Err("unknown target {root}") }
+    let _ = p.visit(root, [])?
+    let order = p.order()
+    for i in order { con.println("[{p.rules[i].name}] {p.rules[i].cmd}") }
+    con.println("{order.len()} to build, {p.reached.len() - order.len()} up to date")
+    Ok(())
+}
+
+fn main(sys: Sys) -> Int {
+    if sys.args.len() < 1 or sys.args.len() > 2 {
+        sys.console.eprintln(usage())
+        return 2
+    }
+    match plan(sys) {
+        Ok(_) => 0,
+        Err(e) => {
+            sys.console.eprintln("mkplan: {e}")
+            1
+        }
+    }
+}
