@@ -197,6 +197,9 @@ impl<'a> Lexer<'a> {
 
     fn number(&mut self, int_only: bool) -> Result<Tok, Diag> {
         let sp = self.span();
+        if !int_only && self.peek(0) == b'0' && matches!(self.peek(1), b'x' | b'b' | b'o' | b'X' | b'B' | b'O') {
+            return self.radix_number();
+        }
         let start = self.pos;
         while self.peek(0).is_ascii_digit() || self.peek(0) == b'_' {
             self.bump();
@@ -242,6 +245,38 @@ impl<'a> Lexer<'a> {
                 .map(Tok::Int)
                 .map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)"))
         }
+    }
+
+    // `0xFF`, `0b1010`, `0o17`, with `_` separators anywhere after the prefix.
+    // Every letter and digit after the prefix belongs to the literal, so that
+    // `0x1G` is an error rather than `0x1` followed by a name.
+    fn radix_number(&mut self) -> Result<Tok, Diag> {
+        let sp = self.span();
+        self.bump();
+        let p = self.bump();
+        let (radix, name) = match p {
+            b'x' => (16, "hex"),
+            b'b' => (2, "binary"),
+            b'o' => (8, "octal"),
+            _ => {
+                let lower = (p as char).to_ascii_lowercase();
+                return Err(Diag::new(sp, &format!("write the number prefix in lowercase: '0{}'", lower)));
+            }
+        };
+        let start = self.pos;
+        while is_ident_char(self.peek(0)) {
+            self.bump();
+        }
+        let digits: String = std::str::from_utf8(&self.src[start..self.pos]).unwrap().chars().filter(|c| *c != '_').collect();
+        if !digits.starts_with(|c: char| c.is_digit(radix)) {
+            return Err(Diag::new(sp, &format!("expected {} digits after '0{}'", name, p as char)));
+        }
+        if let Some(c) = digits.chars().find(|c| !c.is_digit(radix)) {
+            return Err(Diag::new(sp, &format!("'{}' is not a {} digit", c, name)));
+        }
+        i64::from_str_radix(&digits, radix)
+            .map(Tok::Int)
+            .map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)"))
     }
 
     // 'a', '\n', 'é': the character's code point, as an Int.

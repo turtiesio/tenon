@@ -114,6 +114,9 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
 
 fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
     let (line, col) = (self.line, self.col)
+    if not int_only and self.peek(0) == '0' and "xboXBO".contains(self.peek(1).char()) {
+        return self.radix_number()
+    }
     let start = self.pos
     while is_digit(self.peek(0)) or self.peek(0) == 95 { let _ = self.bump() }
     if int_only {
@@ -153,6 +156,43 @@ fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
             None => Err(self.fail(line, col, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)")),
         }
     }
+}
+
+// The value of an ASCII digit or letter as a digit (`a`/`A` is 10), or 99.
+fn digit_value(c: Int) -> Int {
+    if is_digit(c) { c - '0' } else if c >= 'a' and c <= 'z' { c - 'a' + 10 } else if c >= 'A' and c <= 'Z' { c - 'A' + 10 } else { 99 }
+}
+
+// `0xFF`, `0b1010`, `0o17`, with `_` separators anywhere after the prefix.
+// Every letter and digit after the prefix belongs to the literal.
+fn Lx.radix_number(mut self) -> Result[Tok, LexError] {
+    let (line, col) = (self.line, self.col)
+    let _ = self.bump()
+    let p = self.bump()
+    let (radix, name) = match p {
+        'x' => (16, "hex"),
+        'b' => (2, "binary"),
+        'o' => (8, "octal"),
+        _ => return Err(self.fail(line, col, "write the number prefix in lowercase: '0{(p + 32).char()}'")),
+    }
+    let start = self.pos
+    while is_ident_char(self.peek(0)) { let _ = self.bump() }
+    let digits = self.src.slice(start, self.pos).replace("_", "")
+    if digits.is_empty() or digit_value(digits.byte(0)) >= radix {
+        return Err(self.fail(line, col, "expected {name} digits after '0{p.char()}'"))
+    }
+    for i in 0..digits.len() {
+        if digit_value(digits.byte(i)) >= radix { return Err(self.fail(line, col, "'{digits.slice(i, i + 1)}' is not a {name} digit")) }
+    }
+    var v = 0
+    for i in 0..digits.len() {
+        let d = digit_value(digits.byte(i))
+        v = match v.checked_mul(radix).and_then(fn(x) => x.checked_add(d)) {
+            Some(x) => x,
+            None => return Err(self.fail(line, col, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)")),
+        }
+    }
+    Ok(IntTok(v))
 }
 
 // 'a', '\n', 'é': the character's code point, as an Int.

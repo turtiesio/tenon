@@ -1,0 +1,18 @@
+say hi
+pop -> 7
+pop -> empty
+quit at 'bogus'
+x is 7
+first even 8
+no even
+1 one
+seen [6, 4, 3], left [1]
+countdown 3
+countdown 2
+countdown 1
+chain 6
+done a (ok)
+released b
+fd 9 -1
+err bad
+exit: 0

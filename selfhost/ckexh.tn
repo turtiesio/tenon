@@ -142,7 +142,8 @@ pub fn check(env: ckenv.Env, res: Map[Int, ckenv.Res], sp: ckast.Span, st: cktyp
     var rows: List[List[Pt]] = []
     for a in arms {
         let alts = lower(a.pat, res)
-        var reachable = false
+        // The `_` added by `if let` may follow an irrefutable pattern: not an error.
+        var reachable = a.fallback
         for p in alts {
             if not reachable and useful(env, rows, [p], tys) { reachable = true }
         }

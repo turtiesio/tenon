@@ -27,7 +27,8 @@ pub struct Pattern { pub at: Pos, pub kind: Pat }
 
 pub enum Seg { SLit(Str), SExpr(Expr) }
 
-pub struct Arm { pub pat: Pattern, pub guard: Option[Expr], pub body: Expr }
+// `fallback`: the `_` arm added for `if let` / `while let` (see Parser.if_let).
+pub struct Arm { pub pat: Pattern, pub guard: Option[Expr], pub body: Expr, pub fallback: Bool }
 
 pub enum Ex {
     EInt(Int),
@@ -419,6 +420,7 @@ fn Parser.stmt(mut self) -> Result[Stmt, ParseError] {
         let els = if self.eat_kw("else") { Some(self.block()?) } else { None }
         Let(pat, mutable, ty, value, els)
     } else if self.eat_kw("while") {
+        if self.eat_kw("let") { return self.while_let(at) }
         let cond = self.head_expr()?
         While(cond, self.block()?)
     } else if self.eat_kw("for") {
@@ -814,7 +816,7 @@ fn Parser.match_expr(mut self, at: Pos) -> Result[Expr, ParseError] {
             ExprStmt(e) => e,
             _ => Expr { at: bat, kind: EBlock(Block { at: bat, stmts: [st] }) },
         }
-        arms.push(Arm { pat, guard, body })
+        arms.push(Arm { pat, guard, body, fallback: false })
         if not self.sep_or_close() { return Err(self.fail("',' or '}' after match arm")) }
         self.skip_seps()
     }
@@ -871,6 +873,7 @@ fn Parser.struct_lit(mut self, at: Pos, name: Str) -> Result[Expr, ParseError] {
 fn Parser.if_expr(mut self) -> Result[Expr, ParseError] {
     let at = self.here()
     self.advance()
+    if self.eat_kw("let") { return self.if_let(at) }
     let cond = self.head_expr()?
     let then = self.block()?
     var els: Option[Expr] = None
@@ -883,6 +886,50 @@ fn Parser.if_expr(mut self) -> Result[Expr, ParseError] {
         }
     }
     Ok(Expr { at, kind: If(cond, then, els) })
+}
+
+// `if let` and `while let` are desugared by the parser, as src/parser.rs does
+// (see its `if_let` for the reasons):
+//   if let P = E { A } else B    =>  match E { P => { A }, _ => B }
+//   if let P = E { A }           =>  match E { P => { A }, _ => () }
+//   while let P = E { A }        =>  while true { match E { P => { A }, _ => break } }
+// The added `_` arm is marked `fallback`; synthetic nodes take the keyword's position.
+fn Parser.if_let(mut self, at: Pos) -> Result[Expr, ParseError] {
+    let pat = self.pattern()?
+    self.expect_sym("=")?
+    let scrut = self.head_expr()?
+    let bat = self.here()
+    let then = Expr { at: bat, kind: EBlock(self.block()?) }
+    var els = Expr { at, kind: EUnit }
+    if self.eat_kw("else") {
+        if self.is_kw("if") {
+            els = self.if_expr()?
+        } else {
+            let eat = self.here()
+            els = Expr { at: eat, kind: EBlock(self.block()?) }
+        }
+    }
+    Ok(let_match(at, pat, scrut, then, els))
+}
+
+fn Parser.while_let(mut self, at: Pos) -> Result[Stmt, ParseError] {
+    let pat = self.pattern()?
+    self.expect_sym("=")?
+    let scrut = self.head_expr()?
+    let bat = self.here()
+    let body = Expr { at: bat, kind: EBlock(self.block()?) }
+    let brk = Expr { at, kind: EBlock(Block { at, stmts: [Stmt { at, kind: Break }] }) }
+    let m = let_match(at, pat, scrut, body, brk)
+    let cond = Expr { at, kind: EBool(true) }
+    Ok(Stmt { at, kind: While(cond, Block { at, stmts: [Stmt { at, kind: ExprStmt(m) }] }) })
+}
+
+fn let_match(at: Pos, pat: Pattern, scrut: Expr, then: Expr, els: Expr) -> Expr {
+    let arms = [
+        Arm { pat, guard: None, body: then, fallback: false },
+        Arm { pat: Pattern { at, kind: Wild }, guard: None, body: els, fallback: true },
+    ]
+    Expr { at, kind: Match(scrut, arms) }
 }
 
 pub fn parse(src: Str) -> Result[Program, ParseError] {

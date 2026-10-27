@@ -1,0 +1,2 @@
+// error: '2' is not a binary digit
+fn main() { let b = 0b1012 }

@@ -1,0 +1,19 @@
+// Integer literals: decimal, hex, binary and octal, with `_` separators.
+const MASK: Int = 0xFF_FF
+
+fn main(sys: Sys) {
+    let con = sys.console
+    con.println("{0xFF} {0xff} {0xDead_Beef} {0x0} {0x_10}")
+    con.println("{0b1010} {0b1111_0000} {0b0}")
+    con.println("{0o17} {0o777} {0o0_7}")
+    con.println("{1_000_000} {1_2_3} {MASK}")
+    con.println("{0x7FFF_FFFF_FFFF_FFFF == INT_MAX} {-0x7FFF_FFFF_FFFF_FFFF - 1 == INT_MIN}")
+    con.println("{-0x10} {0x10 + 0b10 + 0o10 + 10}")
+    let c = 'A'
+    match c {
+        0x41 => con.println("hex pattern matched"),
+        _ => con.println("no match"),
+    }
+    if let 0b1 = 0x41 % 2 { con.println("odd") }
+    con.println("{(0xF0 / 0x10) * 0b100}")
+}

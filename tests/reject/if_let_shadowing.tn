@@ -1,0 +1,6 @@
+// error: shadowing is not allowed
+fn f(o: Option[Int]) -> Int {
+    let x = 1
+    if let Some(x) = o { x } else { 0 }
+}
+fn main() {}

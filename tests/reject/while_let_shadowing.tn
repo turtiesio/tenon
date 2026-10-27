@@ -1,0 +1,5 @@
+// error: shadowing is not allowed
+fn main() {
+    var xs = [1, 2]
+    while let Some(xs) = xs.pop() { let _ = xs }
+}

@@ -489,6 +489,9 @@ impl<'a> Walk<'a> {
                 for a in arms {
                     paths.push(Box::new(move |w: &mut Self| {
                         let mark = w.vars.len();
+                        if destructure && a.fallback && w.kind(a.pat.id) == Kind::Linear {
+                            return err(a.pat.span, "'if let' and 'while let' would drop the linear value when the pattern does not match; use 'match'".into());
+                        }
                         if destructure {
                             w.bind(&a.pat)?;
                         }
