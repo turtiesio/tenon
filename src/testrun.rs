@@ -95,9 +95,13 @@ fn directive(src: &str, key: &str) -> Option<String> {
     None
 }
 
+// Test programs; files whose first line is `// module` are imported by tests, not run.
 fn files(dir: &Path) -> Vec<PathBuf> {
+    let is_module = |p: &Path| std::fs::read_to_string(p).map(|s| s.starts_with("// module")).unwrap_or(false);
     let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map(|rd| rd.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "tn").unwrap_or(false)).collect())
+        .map(|rd| {
+            rd.flatten().map(|e| e.path()).filter(|p| p.extension().map(|x| x == "tn").unwrap_or(false) && !is_module(p)).collect()
+        })
         .unwrap_or_default();
     v.sort();
     v

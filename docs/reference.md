@@ -269,14 +269,38 @@ lock). The compiler rejects any program that copies one or loses one:
   other than `unwrap`/`expect` cannot take it (they might copy or drop).
 
 Inside a method of the type itself, `self` is exempt: the type's own methods
-(`fn Claim.complete(self)`) decide how a value is finished. A struct or enum
+(`fn Claim.complete(self)`) decide how a value is finished, and only the type's
+module can define them (§13). A struct or enum
 that contains a linear value must itself be declared `linear` (generic
 wrappers such as `Option[Claim]` become linear automatically).
 
 A **unique** value follows the same rules except that it may be dropped.
 
-## 13. Not yet implemented
+## 13. Modules
 
-Modules (with privacy, so that only a type's own module can finish its
-obligations), concurrency, networking and derived data codecs are designed but
-not implemented yet; see `docs/log.md`.
+```tenon
+import journal                       // journal.tn next to this file, else the standard library
+
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let j = journal.open(sys.fs.within("data"), "log")   // module function
+    let loaded: journal.Loaded = j.load()?                 // module type
+    j.append("hello")
+}
+```
+
+- A module is a file; `import name` makes its public items available as
+  `name.item` (functions, types, `name.Type.function`) and the variants of its
+  public enums by their plain names.
+- Items are private unless declared `pub`; struct fields are private unless
+  marked `pub`. Outside its module, a struct with private fields cannot be
+  built, and its private fields cannot be read. Derived formatting shows a
+  foreign type's private fields as `..`.
+- Methods of a type can only be defined in the module that defines the type.
+  Together with privacy this makes a module the only place that can create a
+  value of its type or finish a linear one: privacy is unforgeability.
+- Standard library modules: `journal` (append-only, checksummed, crash-safe
+  record log; see `std/journal.tn`).
+
+## 14. Not yet implemented
+
+Concurrency, networking and derived data codecs; see `docs/log.md`.

@@ -15,6 +15,7 @@ pub enum Res {
     Variant(usize, usize, Vec<Ty>),   // enum, variant, enum type args
     Field(usize),                     // struct field index
     Method(usize, Vec<Ty>),           // method call resolved to function
+    Struct(usize),                    // struct literal
     ToStr,                            // derived `x.to_str()`
     CallValue,                        // calling a function value
 }
@@ -24,6 +25,9 @@ pub struct StructInfo {
     pub tparams: Vec<String>,
     pub fields: Vec<(String, Ty)>,
     pub kind: Kind,
+    pub file: u16,
+    pub public: bool,
+    pub pub_fields: Vec<bool>,
 }
 
 pub struct EnumInfo {
@@ -31,6 +35,8 @@ pub struct EnumInfo {
     pub tparams: Vec<String>,
     pub variants: Vec<(String, Vec<Ty>)>,
     pub kind: Kind,
+    pub file: u16,
+    pub public: bool,
 }
 
 pub struct FnInfo {
@@ -41,6 +47,7 @@ pub struct FnInfo {
     pub ret: Ty,
     pub self_kind: Option<SelfKind>,
     pub is_extern: bool,
+    pub public: bool,
     pub span: Span,
 }
 
@@ -133,6 +140,9 @@ pub struct Checker {
     lambda_stack: Vec<(Id, usize)>, // (lambda id, scope index where it starts)
     tparams: Vec<String>,
     self_mut: bool,
+    cur: u16,                          // file (module) being checked
+    modules: Vec<String>,              // module name per file
+    imports: HashMap<u16, Vec<String>>, // modules imported by each file
 }
 
 type CResult<T> = Result<T, Diag>;
@@ -157,16 +167,37 @@ fn fix_paths(prog: &mut Program) {
     let mut types: Vec<String> = BUILTIN_TYPES.iter().map(|(n, _, _)| n.to_string()).collect();
     types.extend(prog.structs.iter().map(|s| s.name.clone()));
     types.extend(prog.enums.iter().map(|e| e.name.clone()));
-    fn fix(e: &mut Expr, types: &[String]) {
+    let aliases: HashMap<u16, Vec<String>> = prog.imports.iter().fold(HashMap::new(), |mut m, im| {
+        m.entry(im.file).or_default().push(im.name.clone());
+        m
+    });
+    fn fix(e: &mut Expr, types: &[String], aliases: &HashMap<u16, Vec<String>>) {
+        let is_mod = |n: &str| aliases.get(&e.span.file).map(|v| v.iter().any(|m| m == n)).unwrap_or(false);
+        // `module.f(..)` and `module.Type.f(..)`
+        let module_call = match &mut e.kind {
+            ExprKind::Method(recv, f, args) => match &recv.kind {
+                ExprKind::Name(m) if is_mod(m) => Some((format!("@{}", m), f.clone(), std::mem::take(args), recv.id, recv.span)),
+                ExprKind::Field(b, t) => match &b.kind {
+                    ExprKind::Name(m) if is_mod(m) && upper(t) => Some((format!("{}.{}", m, t), f.clone(), std::mem::take(args), recv.id, recv.span)),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some((t, f, args, id, span)) = module_call {
+            let callee = Expr { id, span, kind: ExprKind::Path(t, f) };
+            e.kind = ExprKind::Call(Box::new(callee), args);
+        }
         let replace = match &mut e.kind {
             ExprKind::Call(callee, args) => match &callee.kind {
-                ExprKind::Path(t, m) if !types.contains(t) => {
+                ExprKind::Path(t, m) if !types.contains(t) && !t.starts_with('@') && !t.contains('.') => {
                     let recv = Expr { id: callee.id, span: callee.span, kind: ExprKind::Name(t.clone()) };
                     Some(ExprKind::Method(Box::new(recv), m.clone(), std::mem::take(args)))
                 }
                 _ => None,
             },
-            ExprKind::Path(t, m) if !types.contains(t) => {
+            ExprKind::Path(t, m) if !types.contains(t) && !t.starts_with('@') && !t.contains('.') => {
                 let recv = Expr { id: u32::MAX - e.id, span: e.span, kind: ExprKind::Name(t.clone()) };
                 Some(ExprKind::Field(Box::new(recv), m.clone()))
             }
@@ -175,12 +206,12 @@ fn fix_paths(prog: &mut Program) {
         if let Some(k) = replace {
             e.kind = k;
         }
-        crate::interp::visit_children_mut(e, &mut |x| fix(x, types));
+        crate::interp::visit_children_mut(e, &mut |x| fix(x, types, aliases));
     }
     for f in &mut prog.fns {
         if let Some(b) = &mut f.body {
             for s in &mut b.stmts {
-                crate::interp::visit_stmt_mut(s, &mut |x| fix(x, &types));
+                crate::interp::visit_stmt_mut(s, &mut |x| fix(x, &types, &aliases));
             }
         }
     }
@@ -190,7 +221,7 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
     fix_paths(&mut prog);
     let mut c = Checker {
         out: Checked {
-            prog: Program { structs: vec![], enums: vec![], fns: vec![] },
+            prog: Program { structs: vec![], enums: vec![], fns: vec![], imports: vec![], modules: vec![] },
             types: HashMap::new(),
             res: HashMap::new(),
             captures: HashMap::new(),
@@ -207,7 +238,13 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
         lambda_stack: vec![],
         tparams: vec![],
         self_mut: false,
+        cur: 1,
+        modules: prog.modules.clone(),
+        imports: HashMap::new(),
     };
+    for im in &prog.imports {
+        c.imports.entry(im.file).or_default().push(im.name.clone());
+    }
     c.declare(&prog)?;
     for i in 0..prog.fns.len() {
         c.check_fn(&prog.fns[i], i)?;
@@ -228,10 +265,48 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
 impl Checker {
     // ---- declarations ----
 
-    fn type_known(&self, n: &str) -> bool {
-        BUILTIN_TYPES.iter().any(|(b, _, _)| *b == n)
-            || self.out.structs.iter().any(|s| s.name == n)
-            || self.out.enums.iter().any(|e| e.name == n)
+    // Internal name of item `n` declared in `file`: modules prefix their items.
+    fn internal(&self, file: u16, n: &str) -> String {
+        match self.modules.get(file as usize) {
+            Some(m) if !m.is_empty() => format!("{}.{}", m, n),
+            _ => n.to_string(),
+        }
+    }
+
+    fn imported(&self, m: &str) -> bool {
+        self.imports.get(&self.cur).map(|v| v.iter().any(|x| x == m)).unwrap_or(false)
+    }
+
+    fn type_decl(&self, internal: &str) -> Option<(u16, bool)> {
+        if let Some(s) = self.out.structs.iter().find(|s| s.name == internal) {
+            return Some((s.file, s.public));
+        }
+        self.out.enums.iter().find(|e| e.name == internal).map(|e| (e.file, e.public))
+    }
+
+    // Resolve a type name as written in the current module to its internal name.
+    fn resolve_type(&self, n: &str, sp: Span) -> CResult<String> {
+        if BUILTIN_TYPES.iter().any(|(b, _, _)| *b == n) {
+            return Ok(n.to_string());
+        }
+        if let Some((m, _)) = n.split_once('.') {
+            if !self.imported(m) {
+                return err(sp, format!("unknown module '{}'; add 'import {}'", m, m));
+            }
+            return match self.type_decl(n) {
+                Some((_, true)) => Ok(n.to_string()),
+                Some(_) => err(sp, format!("type '{}' is private to module '{}'", n, m)),
+                None => err(sp, format!("module '{}' has no type '{}'", m, &n[m.len() + 1..])),
+            };
+        }
+        let own = self.internal(self.cur, n);
+        if self.type_decl(&own).is_some() {
+            return Ok(own);
+        }
+        match self.type_decl(n) {
+            Some((0, _)) => Ok(n.to_string()),
+            _ => err(sp, format!("unknown type '{}'", n)),
+        }
     }
 
     fn arity(&self, n: &str) -> Option<usize> {
@@ -253,14 +328,13 @@ impl Checker {
                     }
                     return Ok(Ty::Param(n.clone()));
                 }
-                let Some(ar) = self.arity(n) else {
-                    return err(t.span, format!("unknown type '{}'", n));
-                };
+                let n = self.resolve_type(n, t.span)?;
+                let ar = self.arity(&n).unwrap();
                 if ar != args.len() {
                     return err(t.span, format!("type '{}' expects {} type argument(s), found {}", n, ar, args.len()));
                 }
                 let a = args.iter().map(|a| self.lower_type(a, params)).collect::<CResult<Vec<_>>>()?;
-                Ok(Ty::Con(n.clone(), a))
+                Ok(Ty::Con(n, a))
             }
             TypeExprKind::Fn(a, r) => Ok(Ty::Fn(
                 a.iter().map(|a| self.lower_type(a, params)).collect::<CResult<Vec<_>>>()?,
@@ -276,11 +350,13 @@ impl Checker {
         let mut seen: HashMap<String, Span> = HashMap::new();
         let names = prog.structs.iter().map(|s| (&s.name, s.span, &s.kind))
             .chain(prog.enums.iter().map(|e| (&e.name, e.span, &e.kind)));
-        for (n, sp, _) in names {
-            if !upper(n) {
-                return err(sp, format!("type names start with an uppercase letter: '{}'", n));
+        for (n0, sp, _) in names {
+            let full = self.internal(sp.file, n0);
+            let n = &full;
+            if !upper(n0) {
+                return err(sp, format!("type names start with an uppercase letter: '{}'", n0));
             }
-            if is_tparam_name(n) {
+            if is_tparam_name(n0) {
                 return err(sp, format!("'{}' is reserved for type parameters (one capital letter, optional digits); use a longer type name", n));
             }
             if seen.contains_key(n) || BUILTIN_TYPES.iter().any(|(b, _, _)| b == n) {
@@ -294,12 +370,28 @@ impl Checker {
             }
         }
         for s in &prog.structs {
-            self.out.structs.push(StructInfo { name: s.name.clone(), tparams: s.tparams.clone(), fields: vec![], kind: s.kind });
+            self.out.structs.push(StructInfo {
+                name: self.internal(s.span.file, &s.name),
+                tparams: s.tparams.clone(),
+                fields: vec![],
+                kind: s.kind,
+                file: s.span.file,
+                public: s.public,
+                pub_fields: s.pub_fields.clone(),
+            });
         }
         for e in &prog.enums {
-            self.out.enums.push(EnumInfo { name: e.name.clone(), tparams: e.tparams.clone(), variants: vec![], kind: e.kind });
+            self.out.enums.push(EnumInfo {
+                name: self.internal(e.span.file, &e.name),
+                tparams: e.tparams.clone(),
+                variants: vec![],
+                kind: e.kind,
+                file: e.span.file,
+                public: e.public,
+            });
         }
         for (i, s) in prog.structs.iter().enumerate() {
+            self.cur = s.span.file;
             let mut fields = Vec::new();
             for (f, t) in &s.fields {
                 if fields.iter().any(|(g, _)| g == f) {
@@ -311,6 +403,7 @@ impl Checker {
         }
         let mut vseen: HashMap<String, Span> = HashMap::new();
         for (i, e) in prog.enums.iter().enumerate() {
+            self.cur = e.span.file;
             let mut vs: Vec<(String, Vec<Ty>)> = Vec::new();
             for v in &e.variants {
                 if !upper(&v.name) {
@@ -330,7 +423,34 @@ impl Checker {
         // functions
         let mut fseen: HashMap<String, Span> = HashMap::new();
         for f in &prog.fns {
-            let full = f.full_name();
+            self.cur = f.span.file;
+            let mut tparams = Vec::new();
+            let owner = match &f.owner {
+                None => None,
+                Some(o) => {
+                    let TypeExprKind::Named(_, args) = &o.kind else { unreachable!() };
+                    for a in args {
+                        if let TypeExprKind::Named(an, aa) = &a.kind {
+                            if aa.is_empty() && is_tparam_name(an) {
+                                tparams.push(an.clone());
+                            }
+                        }
+                    }
+                    let ot = self.lower_type(o, &tparams)?;
+                    if let Ty::Con(on, _) = &ot {
+                        if let Some((file, _)) = self.type_decl(on) {
+                            if file != f.span.file {
+                                return err(o.span, format!("methods of '{}' can only be defined in the module that defines it", on));
+                            }
+                        }
+                    }
+                    Some(ot)
+                }
+            };
+            let full = match &owner {
+                Some(Ty::Con(on, _)) => format!("{}.{}", on, f.name),
+                _ => self.internal(f.span.file, &f.name),
+            };
             if fseen.contains_key(&full) {
                 return err(f.span, format!("function '{}' is already defined", full));
             }
@@ -341,24 +461,6 @@ impl Checker {
             if f.body.is_none() && f.span.file != 0 {
                 return err(f.span, "'extern' is reserved for the prelude");
             }
-            let mut tparams = Vec::new();
-            let owner = match &f.owner {
-                None => None,
-                Some(o) => {
-                    let TypeExprKind::Named(n, args) = &o.kind else { unreachable!() };
-                    if !self.type_known(n) {
-                        return err(o.span, format!("unknown type '{}'", n));
-                    }
-                    for a in args {
-                        if let TypeExprKind::Named(an, aa) = &a.kind {
-                            if aa.is_empty() && is_tparam_name(an) {
-                                tparams.push(an.clone());
-                            }
-                        }
-                    }
-                    Some(self.lower_type(o, &tparams)?)
-                }
-            };
             for t in &f.tparams {
                 if !is_tparam_name(t) {
                     return err(f.span, format!("type parameter '{}' must be one capital letter, optionally followed by digits", t));
@@ -393,6 +495,7 @@ impl Checker {
                 ret,
                 self_kind: f.self_kind,
                 is_extern: f.body.is_none(),
+                public: f.public,
                 span: f.span,
             });
         }
@@ -457,6 +560,7 @@ impl Checker {
 
     fn check_fn(&mut self, f: &FnDecl, idx: usize) -> CResult<()> {
         let Some(body) = &f.body else { return Ok(()) };
+        self.cur = f.span.file;
         self.sub = Subst::default();
         let info = &self.out.fns[idx];
         self.tparams = info.tparams.clone();
@@ -534,6 +638,9 @@ impl Checker {
     fn bind(&mut self, n: &str, ty: Ty, mutable: bool, span: Span) -> CResult<()> {
         if self.lookup(n).is_some() {
             return err(span, format!("'{}' is already defined in this function (shadowing is not allowed)", n));
+        }
+        if self.imported(n) {
+            return err(span, format!("'{}' is the name of an imported module", n));
         }
         let depth = self.lambda_stack.len();
         self.scopes.last_mut().unwrap().push((n.to_string(), Local { ty, mutable, depth }));
@@ -739,7 +846,7 @@ impl Checker {
                     return err(p.span, format!("pattern '{}' cannot match a value of type {}", v, self.sub.resolve(&st)));
                 };
                 if let Some(q) = q {
-                    if q != tn {
+                    if self.resolve_type(q, p.span)? != *tn {
                         return err(p.span, format!("pattern is for '{}' but the value has type {}", q, tn));
                     }
                 }
@@ -822,6 +929,20 @@ impl Checker {
         self.out.fns.iter().position(|f| f.name == full)
     }
 
+    // A free function visible by its plain name: the current module's, else the prelude's.
+    fn lookup_fn(&self, n: &str) -> Option<usize> {
+        let own = self.internal(self.cur, n);
+        self.find_fn(&own).or_else(|| self.find_fn(n).filter(|&i| self.out.fns[i].span.file == 0))
+    }
+
+    fn visible(&self, fi: usize, sp: Span) -> CResult<()> {
+        let f = &self.out.fns[fi];
+        if f.span.file != self.cur && f.span.file != 0 && !f.public {
+            return err(sp, format!("'{}' is private to its module", f.name));
+        }
+        Ok(())
+    }
+
     fn call_args(&mut self, span: Span, params: &[Ty], args: &[Expr], what: &str) -> CResult<()> {
         if params.len() != args.len() {
             return err(span, format!("{} expects {} argument(s), found {}", what, params.len(), args.len()));
@@ -835,6 +956,10 @@ impl Checker {
     fn variant_by_name(&self, v: &str, span: Span) -> CResult<Option<(usize, usize)>> {
         let mut found = Vec::new();
         for (ei, e) in self.out.enums.iter().enumerate() {
+            let vis = e.file == self.cur || e.file == 0 || (e.public && self.imported(&self.modules[e.file as usize]));
+            if !vis {
+                continue;
+            }
             if let Some(vi) = e.variants.iter().position(|(n, _)| n == v) {
                 found.push((ei, vi));
             }
@@ -895,7 +1020,7 @@ impl Checker {
                     self.pending_res.push((e.id, Res::Local(n.clone())));
                     return Ok(ty);
                 }
-                if let Some(fi) = self.find_fn(n) {
+                if let Some(fi) = self.lookup_fn(n) {
                     let (targs, m) = self.instantiate(fi);
                     let f = &self.out.fns[fi];
                     let t = Ty::Fn(f.params.iter().map(|(_, t)| t.subst(&m)).collect(), Box::new(f.ret.subst(&m)));
@@ -909,8 +1034,16 @@ impl Checker {
                 }
                 err(e.span, format!("unknown name '{}'", n))
             }
-            ExprKind::Path(t, m) => {
-                if let Some(ei) = self.out.enum_idx(t) {
+            ExprKind::Path(t0, m) => {
+                let t = if let Some(md) = t0.strip_prefix('@') {
+                    if !self.imported(md) {
+                        return err(e.span, format!("unknown module '{}'", md));
+                    }
+                    md.to_string()
+                } else {
+                    self.resolve_type(t0, e.span)?
+                };
+                if let Some(ei) = self.out.enum_idx(&t) {
                     if let Some(vi) = self.out.enums[ei].variants.iter().position(|(n, _)| n == m) {
                         return self.variant_value(e, e.id, ei, vi, None);
                     }
@@ -918,6 +1051,7 @@ impl Checker {
                 let Some(fi) = self.find_fn(&format!("{}.{}", t, m)) else {
                     return err(e.span, format!("'{}' has no member '{}'", t, m));
                 };
+                self.visible(fi, e.span)?;
                 let (targs, mm) = self.instantiate(fi);
                 let f = &self.out.fns[fi];
                 let ty = Ty::Fn(f.params.iter().map(|(_, t)| t.subst(&mm)).collect(), Box::new(f.ret.subst(&mm)));
@@ -927,10 +1061,10 @@ impl Checker {
             ExprKind::Call(callee, args) => {
                 // Variant constructors get their arguments checked directly.
                 let variant = match &callee.kind {
-                    ExprKind::Name(n) if upper(n) && self.lookup(n).is_none() && self.find_fn(n).is_none() => {
+                    ExprKind::Name(n) if upper(n) && self.lookup(n).is_none() && self.lookup_fn(n).is_none() => {
                         self.variant_by_name(n, callee.span)?
                     }
-                    ExprKind::Path(t, m) => self.out.enum_idx(t).and_then(|ei| {
+                    ExprKind::Path(t, m) if !t.starts_with('@') => self.resolve_type(t, callee.span).ok().and_then(|t| self.out.enum_idx(&t)).and_then(|ei| {
                         self.out.enums[ei].variants.iter().position(|(n, _)| n == m).map(|vi| (ei, vi))
                     }),
                     _ => None,
@@ -963,6 +1097,13 @@ impl Checker {
                 let Some(fi) = fields.iter().position(|(n, _)| n == f) else {
                     return err(e.span, format!("type {} has no field '{}'", self.sub.resolve(&t), f));
                 };
+                if let Ty::Con(sn, _) = &t {
+                    let si = self.out.struct_idx(sn).unwrap();
+                    let st = &self.out.structs[si];
+                    if st.file != self.cur && !st.pub_fields[fi] {
+                        return err(e.span, format!("field '{}' of '{}' is private to its module", f, sn));
+                    }
+                }
                 self.pending_res.push((e.id, Res::Field(fi)));
                 Ok(fields[fi].1.clone())
             }
@@ -1100,10 +1241,16 @@ impl Checker {
                 }
                 Ok(Ty::Tuple(ets))
             }
-            ExprKind::StructLit(name, fields, base) => {
+            ExprKind::StructLit(name0, fields, base) => {
+                let name = &self.resolve_type(name0, e.span)?;
                 let Some(si) = self.out.struct_idx(name) else {
-                    return err(e.span, format!("unknown struct '{}'", name));
+                    return err(e.span, format!("'{}' is not a struct", name0));
                 };
+                let sd = &self.out.structs[si];
+                if sd.file != self.cur && sd.pub_fields.iter().any(|p| !p) {
+                    return err(e.span, format!("'{}' has private fields; it can only be built inside its module", name0));
+                }
+                self.pending_res.push((e.id, Res::Struct(si)));
                 let tps = self.out.structs[si].tparams.clone();
                 let targs: Vec<Ty> = match self.sub.shallow(exp) {
                     Ty::Con(n, a) if n == *name => a,
@@ -1222,6 +1369,7 @@ impl Checker {
             };
             return err(e.span, format!("type {} has no method '{}'{}", self.sub.resolve(&rt), m, hint));
         };
+        self.visible(fi, e.span)?;
         let Some(sk) = self.out.fns[fi].self_kind else {
             return err(e.span, format!("'{}.{}' is not a method; call it as {}.{}(...)", owner, m, owner, m));
         };

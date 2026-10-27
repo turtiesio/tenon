@@ -1,0 +1,56 @@
+// journal: an append-only, checksummed, crash-safe log of text records.
+//
+// Each record is one line "BODY #CHECKSUM", appended and fsynced before
+// `append` returns. On `load`, records whose line is torn (crash mid-write) or
+// corrupt are archived to NAME.rejected and then dropped from the log
+// atomically, so later appends start on a clean line and nothing is applied
+// twice or half-applied.
+
+pub struct Journal { fs: Fs, name: Str }
+
+pub struct Loaded { pub records: List[Str], pub rejected: Int }
+
+pub fn open(fs: Fs, name: Str) -> Journal { Journal { fs, name } }
+
+fn checksum(s: Str) -> Int {
+    var h = 7
+    for i in 0..s.len() { h = (h * 31 + s.byte(i)) % 1000000007 }
+    h
+}
+
+fn line(body: Str) -> Str { "{body} #{checksum(body)}\n" }
+
+fn decode(l: Str) -> Option[Str] {
+    var i = l.len() - 1
+    while i >= 0 and l.byte(i) != 35 { i -= 1 }   // last '#'
+    if i < 1 or l.byte(i - 1) != 32 { return None }
+    let body = l.slice(0, i - 1)
+    if l.slice(i + 1, l.len()).to_int()? != checksum(body) { return None }
+    Some(body)
+}
+
+pub fn Journal.load(self) -> Result[Loaded, IoError] {
+    let text = match self.fs.read(self.name) {
+        Ok(t) => t,
+        Err(NotFound(_)) => "",
+        Err(e) => return Err(e),
+    }
+    var good: List[Str] = []
+    var bad: List[Str] = []
+    for l in text.lines() {
+        match decode(l) {
+            Some(b) => good.push(b),
+            None => bad.push(l + "\n"),
+        }
+    }
+    if bad.len() > 0 {
+        self.fs.append(self.name + ".rejected", bad.join(""))?
+        self.fs.write(self.name, good.map(line).join(""))?
+    }
+    Ok(Loaded { records: good, rejected: bad.len() })
+}
+
+pub fn Journal.append(self, body: Str) -> Result[Unit, IoError] {
+    assert(not body.contains("\n"))
+    self.fs.append(self.name, line(body))
+}

@@ -182,7 +182,7 @@ impl<'a> Emitter<'a> {
             Ty::Fn(..) => "tn_fn".to_string(),
             Ty::Con(n, _) => {
                 self.counter += 1;
-                format!("t{}_{}", self.counter, n)
+                format!("t{}_{}", self.counter, sanitize(n))
             }
             Ty::Tuple(_) => {
                 self.counter += 1;
@@ -489,7 +489,7 @@ impl<'a> Emitter<'a> {
         let mut sh = String::new();
         let is_tuple = matches!(t, Ty::Tuple(_));
         let tname = match t {
-            Ty::Con(n, _) => n.clone(),
+            Ty::Con(n, _) => crate::interp::display(n).to_string(),
             _ => String::new(),
         };
         if is_tuple {
@@ -499,6 +499,11 @@ impl<'a> Emitter<'a> {
         } else {
             let _ = write!(sh, "tn_buf_cstr(b, {}); ", c_string(&format!("{} {{ ", tname)));
         }
+        let shown: Vec<Option<String>> = match t {
+            Ty::Con(n, _) => crate::interp::shown_fields(&self.c.structs[self.c.struct_idx(n).unwrap()]),
+            _ => vec![],
+        };
+        let mut hidden = false;
         for (k, (f, ft)) in fs.iter().enumerate() {
             let tn = self.cty(ft);
             let _ = write!(rc, "{tn}_retain(x.{f}); ");
@@ -506,8 +511,16 @@ impl<'a> Emitter<'a> {
             let _ = write!(eq, " && {tn}_eq(a.{f}, b.{f})");
             let _ = write!(cm, "if ((c = {tn}_cmp(a.{f}, b.{f}))) return c; ");
             let _ = write!(hs, "h = tn_mix(h * 31 + {tn}_hash(x.{f})); ");
+            if hidden {
+                continue;
+            }
             if k > 0 {
                 sh.push_str("tn_buf_add(b, \", \", 2); ");
+            }
+            if !is_tuple && matches!(shown.get(k), Some(None)) {
+                sh.push_str("tn_buf_cstr(b, \"..\"); ");
+                hidden = true;
+                continue;
             }
             if !is_tuple {
                 let _ = write!(sh, "tn_buf_cstr(b, {}); ", c_string(&format!("{}: ", &f[2..])));

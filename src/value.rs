@@ -220,7 +220,8 @@ pub fn quote(s: &str, out: &mut String) {
 }
 
 pub struct Names<'a> {
-    pub structs: &'a [(String, Vec<String>)],
+    // field names; a None field is private to another module and not shown
+    pub structs: &'a [(String, Vec<Option<String>>)],
     pub enums: &'a [(String, Vec<String>)],
 }
 
@@ -280,13 +281,23 @@ pub fn show(v: &V, top: bool, n: &Names, out: &mut String) {
                 return;
             }
             out.push_str(" { ");
-            for (i, (f, x)) in fields.iter().zip(fs.iter()).enumerate() {
-                if i > 0 {
+            let mut first = true;
+            for (f, x) in fields.iter().zip(fs.iter()) {
+                if !first {
                     out.push_str(", ");
                 }
-                out.push_str(f);
-                out.push_str(": ");
-                show(x, false, n, out);
+                first = false;
+                match f {
+                    Some(f) => {
+                        out.push_str(f);
+                        out.push_str(": ");
+                        show(x, false, n, out);
+                    }
+                    None => {
+                        out.push_str("..");
+                        break;
+                    }
+                }
             }
             out.push_str(" }");
         }

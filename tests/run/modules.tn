@@ -1,0 +1,12 @@
+import shapes
+
+fn area(x: Int) -> Int { x }   // no clash with shapes' private area()
+
+fn main(sys: Sys) {
+    var c = shapes.Canvas.new("demo")
+    c.add(Circle(2))
+    c.add(Square(3))
+    let s: shapes.Shape = Square(1)
+    sys.console.println("{c.title} {c.total()} {shapes.describe(s)} {area(7)}")
+    sys.console.println("{c}")
+}

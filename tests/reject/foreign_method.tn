@@ -1,0 +1,4 @@
+// error: methods can only be defined in the module that defines the type
+import shapes
+fn shapes.Canvas.steal(self) -> Int { 0 }
+fn main() {}
