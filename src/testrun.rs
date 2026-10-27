@@ -20,6 +20,9 @@ struct Outcome {
     code: i32,
 }
 
+const TIMEOUT_SECS: u64 = 20;
+
+// Run with stdin, capturing output; the whole process is killed on timeout.
 fn run_cmd(cmd: &mut Command, stdin: &str) -> Outcome {
     let mut child = cmd
         .stdin(Stdio::piped())
@@ -27,16 +30,47 @@ fn run_cmd(cmd: &mut Command, stdin: &str) -> Outcome {
         .stderr(Stdio::piped())
         .spawn()
         .expect("spawn");
-    {
+    let mut si = child.stdin.take().unwrap();
+    let input = stdin.to_string();
+    let w = std::thread::spawn(move || {
         use std::io::Write;
-        let mut si = child.stdin.take().unwrap();
-        let _ = si.write_all(stdin.as_bytes());
+        let _ = si.write_all(input.as_bytes());
+    });
+    let mut so = child.stdout.take().unwrap();
+    let mut se = child.stderr.take().unwrap();
+    let ro = std::thread::spawn(move || {
+        let mut v = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut so, &mut v);
+        v
+    });
+    let re = std::thread::spawn(move || {
+        let mut v = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut se, &mut v);
+        v
+    });
+    let deadline = Instant::now() + std::time::Duration::from_secs(TIMEOUT_SECS);
+    let mut timed_out = false;
+    let status = loop {
+        if let Some(st) = child.try_wait().expect("wait") {
+            break st;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            timed_out = true;
+            break child.wait().expect("wait");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    };
+    let _ = w.join();
+    let stdout = ro.join().unwrap_or_default();
+    let mut stderr = String::from_utf8_lossy(&re.join().unwrap_or_default()).into_owned();
+    if timed_out {
+        stderr.push_str(&format!("<killed after {}s>\n", TIMEOUT_SECS));
     }
-    let out = child.wait_with_output().expect("wait");
     Outcome {
-        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        code: out.status.code().unwrap_or(-1),
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr,
+        code: status.code().unwrap_or(-1),
     }
 }
 

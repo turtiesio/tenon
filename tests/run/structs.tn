@@ -24,7 +24,7 @@ fn main(sys: Sys) {
     c.println(a.summary())
     c.println(before.summary())
     let b = Account { owner: "bob", ..a }
-    c.println("{b} {a == b} {a == Account { ..b, owner: "ann" }}")
+    c.println("{b} {a == b} {a == Account { owner: "ann", ..b }}")
     var accts = [Account.new(2, "x"), Account.new(3, "y")]
     accts[1].deposit(9)
     accts[1].history.push(1)

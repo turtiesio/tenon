@@ -994,8 +994,9 @@ static TN_UNUSED bool tn_read_line(tn_Str *out) {
         for (; scan < tn_in_len; scan++)
             if (tn_in_buf[scan] == '\n') goto found;
         int64_t off = scan - tn_in_pos;
-        if (!tn_in_fill()) break;
+        bool more = tn_in_fill(); /* may move the buffered bytes */
         scan = tn_in_pos + off;
+        if (!more) break;
     }
     if (tn_in_pos == tn_in_len) return false;
 found:;
@@ -1183,7 +1184,7 @@ static TN_UNUSED bool tn_fs_exists(tn_Fs f, tn_Str p) {
 }
 static TN_UNUSED int tn_fs_remove(tn_Fs f, tn_Str p, tn_Str *msg) {
     TN_FS_PRE(true)
-    if (unlink(full) != 0) TN_FS_FAIL(errno);
+    if (remove(full) != 0) TN_FS_FAIL(errno);
     free(pb.p);
     return TN_IO_OK;
 }
