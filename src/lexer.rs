@@ -204,7 +204,7 @@ impl<'a> Lexer<'a> {
         let mut is_float = false;
         if int_only {
             let text: String = std::str::from_utf8(&self.src[start..self.pos]).unwrap().chars().filter(|c| *c != '_').collect();
-            return text.parse::<i64>().map(Tok::Int).map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit)"));
+            return text.parse::<i64>().map(Tok::Int).map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)"));
         }
         if self.peek(0) == b'.' && self.peek(1).is_ascii_digit() {
             is_float = true;
@@ -240,7 +240,7 @@ impl<'a> Lexer<'a> {
         } else {
             text.parse::<i64>()
                 .map(Tok::Int)
-                .map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit)"))
+                .map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)"))
         }
     }
 

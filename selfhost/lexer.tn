@@ -119,7 +119,7 @@ fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
     if int_only {
         return match self.src.slice(start, self.pos).replace("_", "").to_int() {
             Some(i) => Ok(IntTok(i)),
-            None => Err(self.fail(line, col, "integer literal does not fit in Int (64-bit)")),
+            None => Err(self.fail(line, col, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)")),
         }
     }
     var is_float = false
@@ -150,7 +150,7 @@ fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
     } else {
         match text.to_int() {
             Some(i) => Ok(IntTok(i)),
-            None => Err(self.fail(line, col, "integer literal does not fit in Int (64-bit)")),
+            None => Err(self.fail(line, col, "integer literal does not fit in Int (64-bit, INT_MIN to INT_MAX)")),
         }
     }
 }
