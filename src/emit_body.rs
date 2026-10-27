@@ -501,7 +501,50 @@ impl<'a> Emitter<'a> {
         cur
     }
 
+    // `m[k] = m.get_or(k, d) OP x` with simple operands: one slot lookup
+    // instead of a lookup plus an insert. Same evaluation order and traps:
+    // operands are names or literals, so evaluating them has no effects.
+    fn counting_update(&mut self, target: &Expr, value: &Expr) -> bool {
+        let simple = |e: &Expr| matches!(e.kind, ExprKind::Name(_) | ExprKind::Int(_) | ExprKind::Str(_));
+        let ExprKind::Index(m1, k1) = &target.kind else { return false };
+        let ExprKind::Binary(op, l, x) = &value.kind else { return false };
+        let ExprKind::Method(m2, name, args) = &l.kind else { return false };
+        let (ExprKind::Name(a), ExprKind::Name(b)) = (&m1.kind, &m2.kind) else { return false };
+        if a != b || name != "get_or" || args.len() != 2 || !simple(k1) || !simple(&args[0]) || !simple(&args[1]) || !simple(x) {
+            return false;
+        }
+        let same_key = match (&k1.kind, &args[0].kind) {
+            (ExprKind::Name(p), ExprKind::Name(q)) => p == q,
+            _ => false,
+        };
+        let mt = self.ety(m1);
+        if !same_key || !mt.is("Map") || !mt.args()[1].is("Int") || !matches!(op, BinOp::Add | BinOp::Sub) {
+            return false;
+        }
+        if !matches!(self.c.res.get(&l.id), Some(Res::Method(fi, _)) if self.c.fns[*fi].name == "Map.get_or") {
+            return false;
+        }
+        if self.st.mut_params.contains(a) || (a == "self" && self.st.self_ptr) {
+            return false;
+        }
+        let kt = mt.args()[0].clone();
+        let (mn, kn) = (self.cty(&mt), self.cty(&kt));
+        let k = self.expr(k1).code;
+        let d = self.expr(&args[1]).code;
+        let xv = self.expr(x).code;
+        let (fr, slot) = (self.fresh("fresh"), self.fresh("slot"));
+        let f = if *op == BinOp::Add { "tn_add" } else { "tn_sub" };
+        let loc = self.loc(value.span);
+        self.line(&format!("bool {fr}; tn_Int *{slot} = {mn}_slot(&v_{a}, {kn}_retain({k}), &{fr});"));
+        self.line(&format!("if ({fr}) *{slot} = {d};"));
+        self.line(&format!("*{slot} = {f}(*{slot}, {xv}, {loc});"));
+        true
+    }
+
     pub(crate) fn assign(&mut self, target: &Expr, op: Option<BinOp>, value: &Expr, s: &Stmt) {
+        if op.is_none() && self.counting_update(target, value) {
+            return;
+        }
         let t = self.ety(target);
         let p = self.place(target);
         let cv = self.expr(value);
