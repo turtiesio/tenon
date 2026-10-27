@@ -138,6 +138,12 @@ extern fn Str.upper(self) -> Str
 extern fn Str.lower(self) -> Str
 extern fn Str.replace(self, from: Str, to: Str) -> Str
 extern fn Str.chars(self) -> List[Str]
+// Bytes are List[Int] with every element in 0..255. s.bytes() is the UTF-8 encoding of s.
+extern fn Str.bytes(self) -> List[Int]
+// Str.from_utf8(b): None if b is not valid UTF-8 or an element is outside 0..255.
+extern fn Str.from_utf8(bytes: List[Int]) -> Option[Str]
+// Each invalid sequence becomes U+FFFD (the rule console input uses); an element outside 0..255 traps.
+extern fn Str.from_utf8_lossy(bytes: List[Int]) -> Str
 fn Str.is_empty(self) -> Bool { self.len() == 0 }
 fn Str.is_digits(self) -> Bool {
     if self.is_empty() { return false }
@@ -454,15 +460,22 @@ fn Result[T, E].is_err_and(self, pred: fn(E) -> Bool) -> Bool {
 extern fn Console.print(self, s: Str)
 extern fn Console.println(self, s: Str)
 extern fn Console.eprintln(self, s: Str)
+// Text input replaces invalid UTF-8 with U+FFFD; read_line drops the "\n" and one "\r" before it.
 extern fn Console.read_line(self) -> Option[Str]
 extern fn Console.read_all(self) -> Str
+extern fn Console.read_all_bytes(self) -> List[Int] // the rest of stdin, unchanged
+extern fn Console.write_bytes(self, data: List[Int]) // raw bytes to stdout; an element outside 0..255 traps
 extern fn Console.flush(self) // output is also flushed before any blocking read and at exit
 
 // Paths are relative to the Fs root. `within` narrows the root; an attenuated
 // Fs rejects absolute paths and `..`. `read_only` drops write authority.
-extern fn Fs.read(self, path: Str) -> Result[Str, IoError]
+extern fn Fs.read(self, path: Str) -> Result[Str, IoError] // Err(Failed("path: invalid UTF-8")) if not UTF-8
 extern fn Fs.write(self, path: Str, data: Str) -> Result[Unit, IoError]
 extern fn Fs.append(self, path: Str, data: Str) -> Result[Unit, IoError]
+// Byte variants of read/write/append (same rules); writing an element outside 0..255 traps.
+extern fn Fs.read_bytes(self, path: Str) -> Result[List[Int], IoError]
+extern fn Fs.write_bytes(self, path: Str, data: List[Int]) -> Result[Unit, IoError]
+extern fn Fs.append_bytes(self, path: Str, data: List[Int]) -> Result[Unit, IoError]
 extern fn Fs.exists(self, path: Str) -> Bool
 extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError] // file or empty directory
 extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]

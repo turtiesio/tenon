@@ -1,0 +1,16 @@
+8 true 00 ff 61 80 c3 0a 00 00
+Err(Failed("bin: invalid UTF-8"))
+None 14
+00 ff 61 80 c3 0a 00 00 e2 82 ac 21
+prefix Some("\u{0}")
+true 68 c3 a9 6c 6c 6f 0d 0a
+Ok([]) Ok("")
+true Ok([])
+Err(NotFound("missing"))
+Err(Denied("read-only Fs: ro")) Err(Denied("read-only Fs: ro")) false
+true
+Err(Denied("path escapes the Fs root: ../bytes_fs.tn")) Err(Denied("path escapes the Fs root: /tmp/x")) Err(Denied("path escapes the Fs root: bin\u{0}x"))
+Err(Denied("path escapes the Fs root: up/bytes_fs.tn")) Ok("69 6e 73 69 64 65 0a")
+true
+false
+exit: 0

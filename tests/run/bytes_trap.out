@@ -1,0 +1,5 @@
+Err(Denied("read-only Fs: x"))
+hi
+exit: 70
+stderr: trap: byte 256 at index 1 is not in 0..255
+stderr:   at bytes_trap.tn:6:37

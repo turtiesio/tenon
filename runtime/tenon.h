@@ -1087,6 +1087,46 @@ typedef struct tn_List_Str_s *tn_List_Str;
 TN_LIST_TYPE(tn_List_Str, tn_Str)
 TN_LIST_FUNCS(tn_List_Str, tn_Str)
 
+/* List[Int] is the runtime's byte list (every element 0..255). */
+typedef struct tn_List_Int_s *tn_List_Int;
+TN_LIST_TYPE(tn_List_Int, tn_Int)
+TN_LIST_FUNCS(tn_List_Int, tn_Int)
+/* Append n bytes to a list whose capacity the caller has reserved. */
+static inline void tn_bytes_put(tn_List_Int l, const char *p, int64_t n) {
+    const unsigned char *s = (const unsigned char *)p;
+    tn_Int *d = l->data + l->len;
+    for (int64_t i = 0; i < n; i++) d[i] = s[i];
+    l->len += n;
+}
+static TN_UNUSED tn_List_Int tn_bytes_list(const char *p, int64_t n) {
+    if (n == 0) return NULL;
+    tn_List_Int l = tn_List_Int_alloc(n);
+    tn_bytes_put(l, p, n);
+    return l;
+}
+/* The bytes of l as a string; false (and *bad = the index) if an element is not in 0..255. */
+static TN_UNUSED bool tn_list_to_bytes(tn_List_Int l, tn_Str *out, int64_t *bad) {
+    int64_t n = tn_List_Int_len(l);
+    tn_rc *o = tn_alloc(sizeof(tn_rc) + (size_t)n);
+    unsigned char *d = (unsigned char *)(o + 1);
+    for (int64_t i = 0; i < n; i++) {
+        tn_Int v = l->data[i];
+        if ((uint64_t)v > 255) { tn_free(o); *bad = i; return false; }
+        d[i] = (unsigned char)v;
+    }
+    o->rc = 1;
+    o->cap = n;
+    *out = (tn_Str){(const char *)d, n, o};
+    return true;
+}
+static TN_UNUSED tn_Str tn_bytes_of(tn_List_Int l, const char *loc) {
+    tn_Str s;
+    int64_t i;
+    if (!tn_list_to_bytes(l, &s, &i))
+        tn_trapf(loc, "byte %lld at index %lld is not in 0..255", (long long)l->data[i], (long long)i);
+    return s;
+}
+
 /* ---------- string operations ---------- */
 
 static inline TN_UNUSED tn_Int tn_str_byte(tn_Str s, tn_Int i, const char *loc) {
@@ -1473,6 +1513,7 @@ static bool tn_utf8_valid(const char *p, int64_t n) {
     return true;
 }
 static TN_UNUSED tn_Str tn_read_all(void) {
+    tn_flush();
     while (tn_in_fill()) {}
     if (tn_in_mem && tn_in_pos == 0 && tn_utf8_valid(tn_in_buf, tn_in_len)) {
         tn_rc *o = (tn_rc *)tn_in_mem;
@@ -1487,6 +1528,32 @@ static TN_UNUSED tn_Str tn_read_all(void) {
     if (tn_in_mem) tn_utf8_lossy(tn_in_buf + tn_in_pos, tn_in_len - tn_in_pos, &b);
     tn_in_pos = tn_in_len;
     return tn_buf_finish(&b);
+}
+static TN_UNUSED tn_List_Int tn_read_all_bytes(void) {
+    tn_flush();
+    while (tn_in_fill()) {}
+    tn_List_Int l = tn_in_mem ? tn_bytes_list(tn_in_buf + tn_in_pos, tn_in_len - tn_in_pos) : NULL;
+    tn_in_pos = tn_in_len;
+    return l;
+}
+static TN_UNUSED bool tn_str_from_utf8(tn_List_Int l, tn_Str *out) {
+    int64_t bad;
+    if (!tn_list_to_bytes(l, out, &bad)) return false;
+    if (tn_utf8_valid(out->p, out->len)) return true;
+    tn_Str_release(*out);
+    return false;
+}
+static TN_UNUSED tn_Str tn_str_from_utf8_lossy(tn_List_Int l, const char *loc) {
+    tn_Str s = tn_bytes_of(l, loc);
+    tn_buf b = tn_buf_new();
+    tn_utf8_lossy(s.p, s.len, &b);
+    tn_Str_release(s);
+    return tn_buf_finish(&b);
+}
+static TN_UNUSED void tn_write_bytes(tn_List_Int l, const char *loc) {
+    tn_Str s = tn_bytes_of(l, loc);
+    tn_write(s.p, (size_t)s.len);
+    tn_Str_release(s);
 }
 static TN_UNUSED void tn_eprintln(tn_Str s) {
     tn_flush();
@@ -1633,6 +1700,30 @@ static TN_UNUSED int tn_fs_read(tn_Fs f, tn_Str p, tn_Str *res, tn_Str *msg) {
     *res = tn_buf_finish(&b);
     return TN_IO_OK;
 }
+/* One allocation: the list is sized from fstat and filled chunk by chunk. */
+static TN_UNUSED int tn_fs_read_bytes(tn_Fs f, tn_Str p, tn_List_Int *res, tn_Str *msg) {
+    TN_FS_PRE(false)
+    int fd = open(full, O_RDONLY);
+    if (fd < 0) TN_FS_FAIL(errno);
+    struct stat st;
+    if (fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) { close(fd); TN_FS_FAIL(EISDIR); }
+    tn_List_Int l = NULL;
+    if (st.st_size > 0) tn_List_Int_reserve(&l, (int64_t)st.st_size);
+    char chunk[1 << 16];
+    for (;;) {
+        ssize_t r = read(fd, chunk, sizeof chunk);
+        if (r < 0 && errno == EINTR) continue;
+        if (r < 0) { int e = errno; close(fd); tn_List_Int_release(l); TN_FS_FAIL(e); }
+        if (r == 0) break;
+        tn_List_Int_reserve(&l, r);
+        tn_bytes_put(l, chunk, r);
+    }
+    close(fd);
+    tn_free(pb.p);
+    if (l && l->len == 0) { tn_List_Int_release(l); l = NULL; }
+    *res = l;
+    return TN_IO_OK;
+}
 static TN_UNUSED bool tn_write_all(int fd, tn_Str d) {
     const char *q = d.p;
     int64_t n = d.len;
@@ -1747,7 +1838,9 @@ static TN_UNUSED int tn_fs_list(tn_Fs f, tn_Str p, tn_List_Str *res, tn_Str *msg
     struct dirent *e;
     while ((e = readdir(d))) {
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
-        tn_List_Str_push(&out, tn_str_new(e->d_name, (int64_t)strlen(e->d_name)));
+        tn_buf nb = tn_buf_new(); /* invalid UTF-8 becomes U+FFFD, as in the interpreter */
+        tn_utf8_lossy(e->d_name, (int64_t)strlen(e->d_name), &nb);
+        tn_List_Str_push(&out, tn_buf_finish(&nb));
     }
     closedir(d);
     if (out) qsort(out->data, (size_t)out->len, sizeof(tn_Str), tn_cmp_cstr);

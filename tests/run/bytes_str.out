@@ -1,0 +1,20 @@
+[] [97, 195, 169, 226, 130, 172, 240, 159, 152, 128] [97, 0, 98]
+true true
+empty: Some("") lossy="" (0 bytes, 0 chars)
+ascii: Some("hi") lossy="hi" (2 bytes, 2 chars)
+nul: Some("\u{0}") lossy="\u{0}" (1 bytes, 1 chars)
+truncated 2: None lossy="�" (3 bytes, 1 chars)
+truncated 3: None lossy="a�" (4 bytes, 2 chars)
+truncated 4: None lossy="�x" (4 bytes, 2 chars)
+lone continuation: None lossy="��" (6 bytes, 2 chars)
+overlong slash: None lossy="��" (6 bytes, 2 chars)
+overlong 3: None lossy="���" (9 bytes, 3 chars)
+overlong 4: None lossy="����" (12 bytes, 4 chars)
+surrogate: None lossy="���" (9 bytes, 3 chars)
+above U+10FFFF: None lossy="����" (12 bytes, 4 chars)
+ff fe: None lossy="��" (6 bytes, 2 chars)
+max: Some("􏿿") lossy="􏿿" (4 bytes, 1 chars)
+None None None
+exit: 70
+stderr: trap: byte 256 at index 2 is not in 0..255
+stderr:   at bytes_str.tn:27:34

@@ -109,6 +109,14 @@ impl<'a> Emitter<'a> {
             }
             "Str.replace" => self.tmp_owned(t, &format!("tn_str_replace({}, {}, {}, {})", a[0], a[1], a[2], loc)),
             "Str.chars" => self.tmp_owned(t, &format!("tn_str_chars({})", a[0])),
+            "Str.bytes" => self.tmp_owned(t, &format!("tn_bytes_list(({0}).p, ({0}).len)", a[0])),
+            "Str.from_utf8" => {
+                let s = self.fresh("s");
+                self.line(&format!("tn_Str {} = {{0}};", s));
+                let ok = self.tmp_val(&Ty::bool(), &format!("tn_str_from_utf8({}, &{})", a[0], s)).code;
+                self.some_none(t, &ok, &s)
+            }
+            "Str.from_utf8_lossy" => self.tmp_owned(t, &format!("tn_str_from_utf8_lossy({}, {})", a[0], loc)),
             "List.len" => {
                 let ln = self.cty(&ptys[0]);
                 self.tmp_val(t, &format!("{}_len({})", ln, a[0]))
@@ -192,20 +200,31 @@ impl<'a> Emitter<'a> {
                 self.some_none(t, &ok, &s)
             }
             "Console.read_all" => self.tmp_owned(t, "tn_read_all()"),
-            "Fs.read" | "Fs.list" => {
+            "Console.read_all_bytes" => self.tmp_owned(t, "tn_read_all_bytes()"),
+            "Console.write_bytes" => {
+                self.line(&format!("tn_write_bytes({}, {});", a[1], loc));
+                bor("0")
+            }
+            "Fs.read" | "Fs.list" | "Fs.read_bytes" => {
                 let okt = t.args()[0].clone();
                 let on = self.cty(&okt);
                 let (r, m) = (self.fresh("r"), self.fresh("m"));
                 self.line(&format!("{} {} = {{0}}; tn_Str {} = {{0}};", on, r, m));
-                let f = if name == "Fs.read" { "tn_fs_read" } else { "tn_fs_list" };
+                let f = format!("tn_fs_{}", &name[3..]);
                 let k = self.tmp_val(&Ty::int(), &format!("{}({}, {}, &{}, &{})", f, a[0], a[1], r, m)).code;
                 self.io_result(t, &k, &r, &m)
             }
-            "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" => {
+            "Fs.write" | "Fs.append" | "Fs.write_bytes" | "Fs.append_bytes" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" => {
+                // the byte variants convert first (an out-of-range byte traps before any check)
+                let data = match name {
+                    "Fs.write" | "Fs.append" => a[2].clone(),
+                    "Fs.write_bytes" | "Fs.append_bytes" => self.tmp_owned(&Ty::str(), &format!("tn_bytes_of({}, {})", a[2], loc)).code,
+                    _ => String::new(),
+                };
                 let m = self.fresh("m");
                 self.line(&format!("tn_Str {} = {{0}};", m));
-                let f = format!("tn_fs_{}", &name[3..]);
-                let extra = if name == "Fs.write" || name == "Fs.append" { format!("{}, ", a[2]) } else { String::new() };
+                let f = format!("tn_fs_{}", name[3..].trim_end_matches("_bytes"));
+                let extra = if data.is_empty() { String::new() } else { format!("{}, ", data) };
                 let k = self.tmp_val(&Ty::int(), &format!("{}({}, {}, {}&{})", f, a[0], a[1], extra, m)).code;
                 self.io_result(t, &k, "0", &m)
             }
