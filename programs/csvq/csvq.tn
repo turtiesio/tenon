@@ -1,0 +1,508 @@
+// csvq: query a CSV file from the command line.
+//
+//   csvq FILE [--where COL=VALUE]... [--select COL,COL] [--sort COL[:desc]]
+//             [--group COL (--count | --sum COL | --avg COL)] [--limit N]
+//
+// FILE `-` reads standard input. The first record is the header. A field may be
+// quoted with `"` (it can then hold commas, newlines and doubled quotes `""`).
+// Empty lines are ignored. A record with the wrong number of fields, or with
+// broken quoting, is skipped and counted: `skipped N malformed rows` goes to
+// stderr after the output. An unterminated quote swallows the rest of the input
+// as one malformed record.
+//
+// Every --where must hold (AND). --sort compares two values as integers when
+// both are integers, as finite floats when both are numbers, and as bytes of
+// text otherwise; the sort is stable (also with :desc). Grouping prints the
+// header `group,count` / `group,sum` / `group,avg`, then one row per group
+// ordered like --sort. Sums are exact decimals (scale of the most precise
+// value); averages print exactly two decimals, rounded half away from zero.
+// Without grouping the output is the header plus the selected columns, quoted
+// only when needed (a lone empty field is written `""` so it is not a blank line).
+//
+// --select splits on commas, so a column whose name has a comma can be used in
+// --where but not in --select.
+//
+// Every error is `csvq: message` on stderr with exit status 2.
+
+struct Rec { fields: List[Str], ok: Bool }
+
+struct Num { units: Int, scale: Int }   // units / 10^scale
+
+enum Agg { Count, Sum(Str), Avg(Str) }
+
+struct Opts {
+    file: Str,
+    wheres: List[(Str, Str)],
+    select: Option[List[Str]],
+    sort: Option[(Str, Bool)],   // column, descending
+    group: Option[Str],
+    agg: Option[Agg],
+    limit: Option[Int],
+}
+
+fn usage() -> Str {
+    "usage: csvq FILE [--where COL=VALUE]... [--select COL,COL] [--sort COL[:desc]] [--group COL (--count | --sum COL | --avg COL)] [--limit N]"
+}
+
+// ---- CSV reading ----
+
+// Reads one record starting at byte `start`; returns it and the offset after it.
+fn parse_record(text: Str, start: Int) -> (Rec, Int) {
+    let n = text.len()
+    var fields: List[Str] = []
+    var ok = true
+    var i = start
+    var done = false
+    while not done {
+        if i < n and text.byte(i) == '"' {
+            i += 1
+            var acc = ""
+            var closed = false
+            while i < n and not closed {
+                if text.byte(i) == '"' {
+                    if i + 1 < n and text.byte(i + 1) == '"' {
+                        acc += "\""
+                        i += 2
+                    } else {
+                        closed = true
+                        i += 1
+                    }
+                } else {
+                    var j = i
+                    while j < n and text.byte(j) != '"' { j += 1 }
+                    acc += text.slice(i, j)
+                    i = j
+                }
+            }
+            fields.push(acc)
+            if not closed {
+                ok = false
+                done = true
+            } else if i >= n {
+                done = true
+            } else if text.byte(i) == ',' {
+                i += 1
+            } else if text.byte(i) == '\n' {
+                i += 1
+                done = true
+            } else if text.byte(i) == '\r' and i + 1 < n and text.byte(i + 1) == '\n' {
+                i += 2
+                done = true
+            } else {
+                // text after the closing quote: broken record, drop the rest of the line
+                ok = false
+                while i < n and text.byte(i) != '\n' { i += 1 }
+                if i < n { i += 1 }
+                done = true
+            }
+        } else {
+            var j = i
+            while j < n and text.byte(j) != ',' and text.byte(j) != '\n' { j += 1 }
+            var e = j
+            if j < n and text.byte(j) == '\n' and e > i and text.byte(e - 1) == '\r' { e -= 1 }
+            fields.push(text.slice(i, e))
+            if j >= n {
+                i = n
+                done = true
+            } else if text.byte(j) == ',' {
+                i = j + 1
+            } else {
+                i = j + 1
+                done = true
+            }
+        }
+    }
+    (Rec { fields, ok }, i)
+}
+
+fn parse_csv(text: Str) -> List[Rec] {
+    let n = text.len()
+    var recs: List[Rec] = []
+    var i = 0
+    while i < n {
+        if text.byte(i) == '\n' {
+            i += 1
+        } else if text.byte(i) == '\r' and i + 1 < n and text.byte(i + 1) == '\n' {
+            i += 2
+        } else {
+            let (r, next) = parse_record(text, i)
+            recs.push(r)
+            i = next
+        }
+    }
+    recs
+}
+
+// ---- CSV writing ----
+
+fn csv_field(f: Str, alone: Bool) -> Str {
+    let needs = f.contains(",") or f.contains("\"") or f.contains("\n") or f.contains("\r")
+    if needs or (alone and f.is_empty()) {
+        "\"" + f.replace("\"", "\"\"") + "\""
+    } else {
+        f
+    }
+}
+
+fn csv_line(fields: List[Str]) -> Str {
+    fields.map(fn(f) => csv_field(f, fields.len() == 1)).join(",")
+}
+
+// ---- numbers ----
+
+fn int_max() -> Int { 9223372036854775807 }
+
+fn add_checked(a: Int, b: Int) -> Result[Int, Str] {
+    if (b > 0 and a > int_max() - b) or (b < 0 and a < -int_max() - b) {
+        return Err("sum is too large")
+    }
+    Ok(a + b)
+}
+
+fn mul_checked(a: Int, b: Int) -> Result[Int, Str] {
+    if a == 0 or b == 0 { return Ok(0) }
+    if a.abs() > int_max() / b.abs() { return Err("sum is too large") }
+    Ok(a * b)
+}
+
+fn parse_dec(s: Str, col: Str) -> Result[Num, Str] {
+    let bad = "column '{col}': '{s}' is not a number"
+    var i = 0
+    var neg = false
+    if s.starts_with("-") {
+        neg = true
+        i = 1
+    } else if s.starts_with("+") {
+        i = 1
+    }
+    var units = 0
+    var scale = 0
+    var digits = 0
+    var seen_dot = false
+    while i < s.len() {
+        let c = s.byte(i)
+        if c == '.' and not seen_dot {
+            seen_dot = true
+        } else if c >= '0' and c <= '9' {
+            if units > (int_max() - (c - '0')) / 10 { return Err("column '{col}': '{s}' is too large") }
+            units = units * 10 + (c - '0')
+            digits += 1
+            if seen_dot { scale += 1 }
+        } else {
+            return Err(bad)
+        }
+        i += 1
+    }
+    if digits == 0 { return Err(bad) }
+    Ok(Num { units: if neg { -units } else { units }, scale })
+}
+
+fn rescale(x: Num, scale: Int) -> Result[Int, Str] {
+    var u = x.units
+    for _ in x.scale..scale { u = mul_checked(u, 10)? }
+    Ok(u)
+}
+
+fn sum_nums(xs: List[Num]) -> Result[Num, Str] {
+    var scale = 0
+    for x in xs { scale = scale.max(x.scale) }
+    var total = 0
+    for x in xs { total = add_checked(total, rescale(x, scale)?)? }
+    Ok(Num { units: total, scale })
+}
+
+fn fmt_num(x: Num) -> Str {
+    let sign = if x.units < 0 { "-" } else { "" }
+    var d = x.units.abs().to_str()
+    if x.scale == 0 { return sign + d }
+    d = d.pad_left(x.scale + 1, "0")
+    sign + d.slice(0, d.len() - x.scale) + "." + d.slice(d.len() - x.scale, d.len())
+}
+
+// total / n with exactly two decimals, ties away from zero.
+fn avg_str(total: Num, n: Int) -> Result[Str, Str] {
+    let scaled = mul_checked(total.units, 100)?
+    var den = n
+    for _ in 0..total.scale { den = mul_checked(den, 10)? }
+    let mag = scaled.abs()
+    var q = mag / den
+    if mag % den >= den - mag % den { q += 1 }
+    Ok(fmt_num(Num { units: if scaled < 0 { -q } else { q }, scale: 2 }))
+}
+
+// ---- ordering ----
+
+fn cmp[T](x: T, y: T) -> Int { if x < y { -1 } else if x > y { 1 } else { 0 } }
+
+fn finite(s: Str) -> Option[Float] {
+    match s.to_float() {
+        Some(f) if f - f == 0.0 => Some(f),   // rejects inf and nan
+        _ => None,
+    }
+}
+
+fn cmp_vals(a: Str, b: Str) -> Int {
+    match (a.to_int(), b.to_int()) {
+        (Some(x), Some(y)) => cmp(x, y),
+        _ => match (finite(a), finite(b)) {
+            (Some(x), Some(y)) => cmp(x, y),
+            _ => cmp(a, b),
+        },
+    }
+}
+
+// Stable merge sort; `le(a, b)` must be true when a may stay before b.
+fn msort[T](xs: List[T], le: fn(T, T) -> Bool) -> List[T] {
+    if xs.len() < 2 { return xs }
+    let mid = xs.len() / 2
+    let l = msort(xs.slice(0, mid), le)
+    let r = msort(xs.slice(mid, xs.len()), le)
+    var out: List[T] = []
+    var i = 0
+    var j = 0
+    while i < l.len() and j < r.len() {
+        if le(l[i], r[j]) {
+            out.push(l[i])
+            i += 1
+        } else {
+            out.push(r[j])
+            j += 1
+        }
+    }
+    while i < l.len() {
+        out.push(l[i])
+        i += 1
+    }
+    while j < r.len() {
+        out.push(r[j])
+        j += 1
+    }
+    out
+}
+
+// ---- command line ----
+
+fn flag_value(args: List[Str], i: Int, flag: Str) -> Result[Str, Str] {
+    if i >= args.len() { return Err("{flag} needs a value") }
+    Ok(args[i])
+}
+
+fn set_agg(cur: Option[Agg], a: Agg) -> Result[Option[Agg], Str] {
+    if cur.is_some() { return Err("only one of --count, --sum and --avg may be given") }
+    Ok(Some(a))
+}
+
+fn parse_args(args: List[Str]) -> Result[Opts, Str] {
+    var o = Opts { file: "", wheres: [], select: None, sort: None, group: None, agg: None, limit: None }
+    var have_file = false
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        i += 1
+        match a {
+            "--count" => { o.agg = set_agg(o.agg, Count)? }
+            "--where" => {
+                let v = flag_value(args, i, a)?
+                i += 1
+                let eq = v.find("=").ok_or("--where expects COL=VALUE, got '{v}'")?
+                o.wheres.push((v.slice(0, eq), v.slice(eq + 1, v.len())))
+            }
+            "--select" => {
+                let v = flag_value(args, i, a)?
+                i += 1
+                if o.select.is_some() { return Err("--select given twice") }
+                o.select = Some(v.split(","))
+            }
+            "--sort" => {
+                let v = flag_value(args, i, a)?
+                i += 1
+                if o.sort.is_some() { return Err("--sort given twice") }
+                if v.ends_with(":desc") {
+                    o.sort = Some((v.slice(0, v.len() - 5), true))
+                } else if v.ends_with(":asc") {
+                    o.sort = Some((v.slice(0, v.len() - 4), false))
+                } else {
+                    o.sort = Some((v, false))
+                }
+            }
+            "--group" => {
+                let v = flag_value(args, i, a)?
+                i += 1
+                if o.group.is_some() { return Err("--group given twice") }
+                o.group = Some(v)
+            }
+            "--sum" => {
+                let v = flag_value(args, i, a)?
+                i += 1
+                o.agg = set_agg(o.agg, Sum(v))?
+            }
+            "--avg" => {
+                let v = flag_value(args, i, a)?
+                i += 1
+                o.agg = set_agg(o.agg, Avg(v))?
+            }
+            "--limit" => {
+                let v = flag_value(args, i, a)?
+                i += 1
+                if o.limit.is_some() { return Err("--limit given twice") }
+                match v.to_int() {
+                    Some(n) if n >= 0 => { o.limit = Some(n) }
+                    _ => return Err("--limit expects a non-negative integer, got '{v}'"),
+                }
+            }
+            _ => {
+                if a.starts_with("-") and a != "-" { return Err("unknown option '{a}'") }
+                if have_file { return Err("unexpected argument '{a}'") }
+                o.file = a
+                have_file = true
+            }
+        }
+    }
+    if not have_file { return Err(usage()) }
+    if o.group.is_some() and o.agg.is_none() { return Err("--group needs one of --count, --sum or --avg") }
+    if o.group.is_none() and o.agg.is_some() { return Err("--count, --sum and --avg need --group") }
+    if o.group.is_some() and o.select.is_some() { return Err("--select cannot be used with --group") }
+    if o.group.is_some() and o.sort.is_some() { return Err("--sort cannot be used with --group") }
+    Ok(o)
+}
+
+// ---- queries ----
+
+fn col_index(header: List[Str], name: Str) -> Result[Int, Str] {
+    header.index_of(name).ok_or("unknown column '{name}'")
+}
+
+fn row_matches(row: List[Str], conds: List[(Int, Str)]) -> Bool {
+    for (c, want) in conds {
+        if row[c] != want { return false }
+    }
+    true
+}
+
+fn take(n: Int, limit: Option[Int]) -> Int {
+    match limit {
+        Some(l) => l.min(n),
+        None => n,
+    }
+}
+
+fn plain(header: List[Str], rows: List[List[Str]], o: Opts) -> Result[List[Str], Str] {
+    var sel: List[Int] = []
+    match o.select {
+        Some(names) => {
+            for name in names { sel.push(col_index(header, name)?) }
+        }
+        None => {
+            for c in 0..header.len() { sel.push(c) }
+        }
+    }
+    var ordered = rows
+    match o.sort {
+        Some((name, desc)) => {
+            let c = col_index(header, name)?
+            ordered = msort(rows, fn(a, b) => if desc { cmp_vals(b[c], a[c]) <= 0 } else { cmp_vals(a[c], b[c]) <= 0 })
+        }
+        None => {}
+    }
+    var out = [csv_line(sel.map(fn(c) => header[c]))]
+    for r in ordered.slice(0, take(ordered.len(), o.limit)) {
+        out.push(csv_line(sel.map(fn(c) => r[c])))
+    }
+    Ok(out)
+}
+
+fn aggregate(vals: List[Str], agg: Agg) -> Result[Str, Str] {
+    match agg {
+        Count => Ok(vals.len().to_str()),
+        Sum(col) => {
+            var nums: List[Num] = []
+            for v in vals { nums.push(parse_dec(v, col)?) }
+            Ok(fmt_num(sum_nums(nums)?))
+        }
+        Avg(col) => {
+            var nums: List[Num] = []
+            for v in vals { nums.push(parse_dec(v, col)?) }
+            avg_str(sum_nums(nums)?, vals.len())
+        }
+    }
+}
+
+fn grouped(header: List[Str], rows: List[List[Str]], o: Opts, group: Str, agg: Agg) -> Result[List[Str], Str] {
+    let gc = col_index(header, group)?
+    var ac = 0
+    var label = "count"
+    match agg {
+        Count => {}
+        Sum(col) => {
+            ac = col_index(header, col)?
+            label = "sum"
+        }
+        Avg(col) => {
+            ac = col_index(header, col)?
+            label = "avg"
+        }
+    }
+    var groups: Map[Str, List[Str]] = [:]
+    for r in rows {
+        let k = r[gc]
+        if not groups.contains(k) { groups[k] = [] }
+        groups[k].push(r[ac])
+    }
+    let keys = msort(groups.keys(), fn(a, b) => cmp_vals(a, b) <= 0)
+    var out = ["group," + label]
+    for k in keys.slice(0, take(keys.len(), o.limit)) {
+        out.push(csv_line([k, aggregate(groups[k], agg)?]))
+    }
+    Ok(out)
+}
+
+fn read_input(sys: Sys, file: Str) -> Result[Str, Str] {
+    if file == "-" { return Ok(sys.console.read_all()) }
+    match sys.fs.read(file) {
+        Ok(t) => Ok(t),
+        Err(NotFound(p)) => Err("cannot read {p}: no such file"),
+        Err(Denied(p)) => Err("cannot read {p}: permission denied"),
+        Err(Failed(m)) => Err("cannot read {m}"),
+    }
+}
+
+fn run(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    let o = parse_args(sys.args)?
+    let recs = parse_csv(read_input(sys, o.file)?)
+    if recs.is_empty() { return Err("input has no header line") }
+    if not recs[0].ok { return Err("malformed header line") }
+    let header = recs[0].fields
+    var rows: List[List[Str]] = []
+    var skipped = 0
+    for k in 1..recs.len() {
+        if recs[k].ok and recs[k].fields.len() == header.len() {
+            rows.push(recs[k].fields)
+        } else {
+            skipped += 1
+        }
+    }
+    var conds: List[(Int, Str)] = []
+    for (name, want) in o.wheres { conds.push((col_index(header, name)?, want)) }
+    let kept = rows.filter(fn(r) => row_matches(r, conds))
+    let lines = match (o.group, o.agg) {
+        (Some(g), Some(agg)) => grouped(header, kept, o, g, agg)?,
+        _ => plain(header, kept, o)?,
+    }
+    for l in lines { con.println(l) }
+    if skipped > 0 {
+        con.flush()
+        con.eprintln("skipped {skipped} malformed rows")
+    }
+    Ok(())
+}
+
+fn main(sys: Sys) -> Int {
+    match run(sys) {
+        Ok(_) => 0,
+        Err(msg) => {
+            sys.console.eprintln("csvq: {msg}")
+            2
+        }
+    }
+}

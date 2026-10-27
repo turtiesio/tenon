@@ -1,0 +1,514 @@
+# plain output and --select
+$ csvq people.csv
+name,city,age,dept,salary
+Alice,Paris,30,eng,5000.50
+Bob,London,25,ops,3000
+"Smith, Jo",Paris,41,eng,7000.25
+"Dee ""D"" Day",Rome,25,hr,2500
+Eve,London,30,ops,4000.75
+Carl,Paris,9,eng,1999.99
+Fay,Rome,100,hr,3500
+[exit 0]
+$ csvq people.csv --select name\,age
+name,age
+Alice,30
+Bob,25
+"Smith, Jo",41
+"Dee ""D"" Day",25
+Eve,30
+Carl,9
+Fay,100
+[exit 0]
+$ csvq people.csv --select salary\,name\,salary
+salary,name,salary
+5000.50,Alice,5000.50
+3000,Bob,3000
+7000.25,"Smith, Jo",7000.25
+2500,"Dee ""D"" Day",2500
+4000.75,Eve,4000.75
+1999.99,Carl,1999.99
+3500,Fay,3500
+[exit 0]
+$ csvq people.csv --select city
+city
+Paris
+London
+Paris
+Rome
+London
+Paris
+Rome
+[exit 0]
+# --where: AND of conditions, exact match, quoted values
+$ csvq people.csv --where city=Paris
+name,city,age,dept,salary
+Alice,Paris,30,eng,5000.50
+"Smith, Jo",Paris,41,eng,7000.25
+Carl,Paris,9,eng,1999.99
+[exit 0]
+$ csvq people.csv --where city=Paris --where dept=eng --where age=30
+name,city,age,dept,salary
+Alice,Paris,30,eng,5000.50
+[exit 0]
+$ csvq people.csv --where city=Paris --where city=Rome
+name,city,age,dept,salary
+[exit 0]
+$ csvq people.csv --where city=paris
+name,city,age,dept,salary
+[exit 0]
+$ csvq people.csv --where name=Smith\,\ Jo --select name\,city
+name,city
+"Smith, Jo",Paris
+[exit 0]
+$ csvq people.csv --where name=Dee\ \"D\"\ Day
+name,city,age,dept,salary
+"Dee ""D"" Day",Rome,25,hr,2500
+[exit 0]
+$ csvq people.csv --where age=25 --select name
+name
+Bob
+"Dee ""D"" Day"
+[exit 0]
+# --sort: numeric when both are numbers, stable, :desc
+$ csvq people.csv --sort age --select name\,age
+name,age
+Carl,9
+Bob,25
+"Dee ""D"" Day",25
+Alice,30
+Eve,30
+"Smith, Jo",41
+Fay,100
+[exit 0]
+$ csvq people.csv --sort age:desc --select name\,age
+name,age
+Fay,100
+"Smith, Jo",41
+Alice,30
+Eve,30
+Bob,25
+"Dee ""D"" Day",25
+Carl,9
+[exit 0]
+$ csvq people.csv --sort age:asc --select name\,age
+name,age
+Carl,9
+Bob,25
+"Dee ""D"" Day",25
+Alice,30
+Eve,30
+"Smith, Jo",41
+Fay,100
+[exit 0]
+$ csvq people.csv --sort name --select name
+name
+Alice
+Bob
+Carl
+"Dee ""D"" Day"
+Eve
+Fay
+"Smith, Jo"
+[exit 0]
+$ csvq people.csv --sort city --select city\,name
+city,name
+London,Bob
+London,Eve
+Paris,Alice
+Paris,"Smith, Jo"
+Paris,Carl
+Rome,"Dee ""D"" Day"
+Rome,Fay
+[exit 0]
+$ csvq people.csv --sort city:desc --select city\,name
+city,name
+Rome,"Dee ""D"" Day"
+Rome,Fay
+Paris,Alice
+Paris,"Smith, Jo"
+Paris,Carl
+London,Bob
+London,Eve
+[exit 0]
+$ csvq people.csv --sort salary:desc --select name\,salary
+name,salary
+"Smith, Jo",7000.25
+Alice,5000.50
+Eve,4000.75
+Fay,3500
+Bob,3000
+"Dee ""D"" Day",2500
+Carl,1999.99
+[exit 0]
+# --sort on mixed and unusual values
+$ csvq mixed.csv --sort v --select k\,v
+k,v
+g,
+d,-5
+e,2.5
+b,9
+a,10
+f,1e3
+i,9007199254740992
+h,9007199254740993
+c,abc
+[exit 0]
+$ csvq mixed.csv --sort v:desc --select k\,v
+k,v
+c,abc
+h,9007199254740993
+i,9007199254740992
+f,1e3
+a,10
+b,9
+e,2.5
+d,-5
+g,
+[exit 0]
+# options in any position, quoted header names
+$ csvq --limit 1 people.csv --select name
+name
+Alice
+[exit 0]
+$ csvq hq.csv
+first name,"a,b"
+x,y
+[exit 0]
+$ csvq hq.csv --select first\ name --where a\,b=y
+first name
+x
+[exit 0]
+# --limit
+$ csvq people.csv --limit 2
+name,city,age,dept,salary
+Alice,Paris,30,eng,5000.50
+Bob,London,25,ops,3000
+[exit 0]
+$ csvq people.csv --limit 0
+name,city,age,dept,salary
+[exit 0]
+$ csvq people.csv --limit 100 --select name --where dept=hr
+name
+"Dee ""D"" Day"
+Fay
+[exit 0]
+$ csvq people.csv --sort salary:desc --limit 3 --select name\,salary
+name,salary
+"Smith, Jo",7000.25
+Alice,5000.50
+Eve,4000.75
+[exit 0]
+# --group with --count, --sum, --avg
+$ csvq people.csv --group city --count
+group,count
+London,2
+Paris,3
+Rome,2
+[exit 0]
+$ csvq people.csv --group dept --count
+group,count
+eng,3
+hr,2
+ops,2
+[exit 0]
+$ csvq people.csv --group city --sum salary
+group,sum
+London,7000.75
+Paris,14000.74
+Rome,6000
+[exit 0]
+$ csvq people.csv --group dept --sum age
+group,sum
+eng,80
+hr,125
+ops,55
+[exit 0]
+$ csvq people.csv --group city --avg salary
+group,avg
+London,3500.38
+Paris,4666.91
+Rome,3000.00
+[exit 0]
+$ csvq people.csv --group dept --avg age
+group,avg
+eng,26.67
+hr,62.50
+ops,27.50
+[exit 0]
+$ csvq people.csv --group age --count
+group,count
+9,1
+25,2
+30,2
+41,1
+100,1
+[exit 0]
+$ csvq people.csv --group city --count --where dept=eng
+group,count
+Paris,3
+[exit 0]
+$ csvq people.csv --group city --count --limit 2
+group,count
+London,2
+Paris,3
+[exit 0]
+$ csvq people.csv --group city --count --where dept=nope
+group,count
+[exit 0]
+# decimals: exact sums, half-up averages
+$ csvq money.csv --group k --sum v
+group,sum
+a,0.3
+b,5
+c,-3.345
+d,0.009
+e,7.5
+f,0.03
+g,-0.03
+[exit 0]
+$ csvq money.csv --group k --avg v
+group,avg
+a,0.15
+b,1.67
+c,-1.67
+d,0.00
+e,3.75
+f,0.02
+g,-0.02
+[exit 0]
+# quoting on output: commas, quotes, newlines, empty single column
+$ csvq quotes.csv
+id,text,note
+1,"a,b","say ""hi"""
+2,"line1
+line2",plain
+3,,
+4,  spaced  ,x
+5,eq,a=b
+[exit 0]
+$ csvq quotes.csv --select text
+text
+"a,b"
+"line1
+line2"
+""
+  spaced  
+eq
+[exit 0]
+$ csvq quotes.csv --select note --where id=3
+note
+""
+[exit 0]
+$ csvq quotes.csv --where note=a=b --select id\,text
+id,text
+5,eq
+[exit 0]
+$ csvq quotes.csv --group text --count
+group,count
+,1
+  spaced  ,1
+"a,b",1
+eq,1
+"line1
+line2",1
+[exit 0]
+$ csvq single.csv
+v
+"a,b"
+""
+c
+[exit 0]
+$ csvq single.csv --where v=
+v
+""
+[exit 0]
+# CRLF, blank lines, missing final newline
+$ csvq crlf.csv
+a,b
+1,2
+3,4
+[exit 0]
+$ csvq crlf.csv --where b=4
+a,b
+3,4
+[exit 0]
+# malformed rows are skipped and counted
+$ csvq bad1.csv
+a,b
+1,2
+7,8
+skipped 3 malformed rows
+[exit 0]
+$ csvq bad2.csv
+a,b
+1,2
+"p""q",4
+"foo""bar",5
+5,6
+skipped 1 malformed rows
+[exit 0]
+$ csvq bad2.csv --group a --count
+group,count
+1,1
+5,1
+"foo""bar",1
+"p""q",1
+skipped 1 malformed rows
+[exit 0]
+$ csvq bad3.csv --where a=nope
+a,b
+skipped 1 malformed rows
+[exit 0]
+$ csvq empties.csv
+a,b
+1,2
+,
+,3
+5,
+[exit 0]
+$ csvq empties.csv --where a=
+a,b
+,
+,3
+[exit 0]
+$ csvq empties.csv --sort b:desc
+a,b
+,3
+1,2
+,
+5,
+[exit 0]
+# standard input
+$ csvq - --where dept=hr --select name < people.csv
+name
+"Dee ""D"" Day"
+Fay
+[exit 0]
+$ csvq - --group city --count < people.csv
+group,count
+London,2
+Paris,3
+Rome,2
+[exit 0]
+$ csvq - --select a < bad1.csv
+a
+1
+7
+skipped 3 malformed rows
+[exit 0]
+$ csvq - < empty.csv
+csvq: input has no header line
+[exit 2]
+$ csvq - --sort a < header_only.csv
+a,b
+[exit 0]
+$ csvq header_only.csv --group a --sum b
+group,sum
+[exit 0]
+# errors (exit status 2)
+$ csvq
+csvq: usage: csvq FILE [--where COL=VALUE]... [--select COL,COL] [--sort COL[:desc]] [--group COL (--count | --sum COL | --avg COL)] [--limit N]
+[exit 2]
+$ csvq people.csv --where nocolumn=1
+csvq: unknown column 'nocolumn'
+[exit 2]
+$ csvq people.csv --where city
+csvq: --where expects COL=VALUE, got 'city'
+[exit 2]
+$ csvq people.csv --select name\,bogus
+csvq: unknown column 'bogus'
+[exit 2]
+$ csvq people.csv --sort bogus
+csvq: unknown column 'bogus'
+[exit 2]
+$ csvq people.csv --sort bogus:desc
+csvq: unknown column 'bogus'
+[exit 2]
+$ csvq people.csv --group bogus --count
+csvq: unknown column 'bogus'
+[exit 2]
+$ csvq people.csv --group city --sum bogus
+csvq: unknown column 'bogus'
+[exit 2]
+$ csvq people.csv --group city --avg bogus
+csvq: unknown column 'bogus'
+[exit 2]
+$ csvq people.csv --group city --sum name
+csvq: column 'name': 'Bob' is not a number
+[exit 2]
+$ csvq people.csv --group city --avg dept
+csvq: column 'dept': 'ops' is not a number
+[exit 2]
+$ csvq people.csv --limit x
+csvq: --limit expects a non-negative integer, got 'x'
+[exit 2]
+$ csvq people.csv --limit -1
+csvq: --limit expects a non-negative integer, got '-1'
+[exit 2]
+$ csvq people.csv --limit 1.5
+csvq: --limit expects a non-negative integer, got '1.5'
+[exit 2]
+$ csvq people.csv --limit
+csvq: --limit needs a value
+[exit 2]
+$ csvq people.csv --where
+csvq: --where needs a value
+[exit 2]
+$ csvq people.csv --bogus
+csvq: unknown option '--bogus'
+[exit 2]
+$ csvq people.csv -x
+csvq: unknown option '-x'
+[exit 2]
+$ csvq people.csv other.csv
+csvq: unexpected argument 'other.csv'
+[exit 2]
+$ csvq people.csv --group city
+csvq: --group needs one of --count, --sum or --avg
+[exit 2]
+$ csvq people.csv --count
+csvq: --count, --sum and --avg need --group
+[exit 2]
+$ csvq people.csv --sum salary
+csvq: --count, --sum and --avg need --group
+[exit 2]
+$ csvq people.csv --group city --count --sum salary
+csvq: only one of --count, --sum and --avg may be given
+[exit 2]
+$ csvq people.csv --group city --sum salary --avg salary
+csvq: only one of --count, --sum and --avg may be given
+[exit 2]
+$ csvq people.csv --group city --count --select name
+csvq: --select cannot be used with --group
+[exit 2]
+$ csvq people.csv --group city --count --sort city
+csvq: --sort cannot be used with --group
+[exit 2]
+$ csvq people.csv --select a --select b
+csvq: --select given twice
+[exit 2]
+$ csvq people.csv --sort a --sort b
+csvq: --sort given twice
+[exit 2]
+$ csvq people.csv --limit 1 --limit 2
+csvq: --limit given twice
+[exit 2]
+$ csvq --count
+csvq: usage: csvq FILE [--where COL=VALUE]... [--select COL,COL] [--sort COL[:desc]] [--group COL (--count | --sum COL | --avg COL)] [--limit N]
+[exit 2]
+$ csvq missing.csv
+csvq: cannot read missing.csv: no such file
+[exit 2]
+# errors in the data
+$ csvq emptyval.csv --group g --sum v
+csvq: column 'v': '' is not a number
+[exit 2]
+$ csvq big.csv --group g --sum v
+csvq: sum is too large
+[exit 2]
+$ csvq huge.csv --group g --avg v
+csvq: column 'v': '99999999999999999999' is too large
+[exit 2]
+$ csvq bad_header.csv
+csvq: malformed header line
+[exit 2]
