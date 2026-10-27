@@ -340,6 +340,7 @@ impl<'a> Interp<'a> {
                 strv(&String::from_utf8_lossy(&buf))
             }
             n if n.starts_with("Fs.") => return self.fs_op(n, &args, sp),
+            n if n.starts_with("Poller.") || n == "Net.poller" => return Ok(self.poller_op(n, &args)),
             n if n.starts_with("Net.") || n.starts_with("Listener.") || n.starts_with("Conn.") => return Ok(self.net_op(n, &args)),
             "Clock.now_ms" => Int(std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -444,6 +445,130 @@ impl<'a> Interp<'a> {
                 self.io_result("write", r, |_| V::Unit)
             }
             _ => unreachable!("net op {}", name),
+        }
+    }
+
+    // The event loop (runtime/tenon.h tn_poller_* does the same in C).
+    fn poller_op(&mut self, name: &str, a: &[V]) -> V {
+        use std::os::fd::AsRawFd;
+        let _ = self.out.flush();
+        if name == "Net.poller" {
+            return V::Cap(Rc::new(Cap::Poller(std::cell::RefCell::new(PollerState::default()))));
+        }
+        let V::Cap(cap) = &a[0] else { unreachable!() };
+        let Cap::Poller(ps) = &**cap else { unreachable!() };
+        let arg_i = |i: usize| match &a[i] {
+            V::Int(x) => *x,
+            _ => unreachable!(),
+        };
+        let arg_s = |i: usize| match &a[i] {
+            V::Str(s) => s.to_string(),
+            _ => unreachable!(),
+        };
+        match name {
+            "Poller.listen" => {
+                let port = arg_i(1);
+                let what = format!("127.0.0.1:{}", port);
+                if !(0..=65535).contains(&port) {
+                    return self.io_err("Failed", format!("{}: port must be 0-65535", what));
+                }
+                let r = std::net::TcpListener::bind(("127.0.0.1", port as u16));
+                self.io_result(&what, r, |l| {
+                    let mut st = ps.borrow_mut();
+                    st.next += 1;
+                    let id = st.next;
+                    st.listeners.insert(id, l);
+                    V::Int(id)
+                })
+            }
+            "Poller.connect" => {
+                let (h, port) = (arg_s(1), arg_i(2));
+                let what = format!("{}:{}", h, port);
+                if !(0..=65535).contains(&port) {
+                    return self.io_err("Failed", format!("{}: port must be 0-65535", what));
+                }
+                if h.contains('\0') || h.is_empty() {
+                    return self.io_err("Failed", format!("{}: invalid host name", what));
+                }
+                let addrs: Vec<std::net::SocketAddr> = match std::net::ToSocketAddrs::to_socket_addrs(&(h.as_str(), port as u16)) {
+                    Ok(x) => x.collect(),
+                    Err(_) => return self.io_err("Failed", format!("{}: host not found", what)),
+                };
+                let r = std::net::TcpStream::connect(&addrs[..]);
+                self.io_result(&what, r, |c| {
+                    let mut st = ps.borrow_mut();
+                    st.next += 1;
+                    let id = st.next;
+                    st.conns.insert(id, c);
+                    V::Int(id)
+                })
+            }
+            "Poller.port" => {
+                let st = ps.borrow();
+                V::Int(st.listeners.get(&arg_i(1)).and_then(|l| l.local_addr().ok()).map(|x| x.port() as i64).unwrap_or(0))
+            }
+            "Poller.send" => {
+                let (id, data) = (arg_i(1), arg_s(2));
+                let mut st = ps.borrow_mut();
+                let r = match st.conns.get_mut(&id) {
+                    Some(c) => std::io::Write::write_all(c, data.as_bytes()),
+                    None => Err(std::io::Error::from_raw_os_error(9)), // EBADF
+                };
+                drop(st);
+                self.io_result("send", r, |_| V::Unit)
+            }
+            "Poller.close" => {
+                let id = arg_i(1);
+                let mut st = ps.borrow_mut();
+                st.conns.remove(&id);
+                st.listeners.remove(&id);
+                V::Unit
+            }
+            "Poller.wait" => {
+                let timeout = arg_i(1);
+                let ev = |n: &str, p: Vec<V>| self.variant("NetEvent", n, p);
+                let mut st = ps.borrow_mut();
+                // ids in ascending order, listeners and connections together
+                let mut ids: Vec<(i64, i32)> = st.listeners.iter().map(|(i, l)| (*i, l.as_raw_fd()))
+                    .chain(st.conns.iter().map(|(i, c)| (*i, c.as_raw_fd()))).collect();
+                ids.sort();
+                let mut fds: Vec<PollFd> = ids.iter().map(|(_, fd)| PollFd { fd: *fd, events: 1, revents: 0 }).collect();
+                let t = if timeout < 0 { -1 } else { timeout.min(i32::MAX as i64) as i32 };
+                let n = unsafe { poll(fds.as_mut_ptr(), fds.len() as NfdsT, t) };
+                let mut out = Vec::new();
+                if n <= 0 {
+                    out.push(ev("Timeout", vec![]));
+                    return V::List(Rc::new(out));
+                }
+                for ((id, _), f) in ids.iter().zip(&fds) {
+                    if f.revents == 0 {
+                        continue;
+                    }
+                    if st.listeners.contains_key(id) {
+                        if let Ok((c, _)) = st.listeners[id].accept() {
+                            st.next += 1;
+                            let cid = st.next;
+                            st.conns.insert(cid, c);
+                            out.push(ev("Accepted", vec![V::Int(*id), V::Int(cid)]));
+                        }
+                    } else {
+                        let mut buf = vec![0u8; 65536];
+                        let r = std::io::Read::read(st.conns.get_mut(id).unwrap(), &mut buf);
+                        match r {
+                            Ok(k) if k > 0 => {
+                                buf.truncate(k);
+                                out.push(ev("Data", vec![V::Int(*id), V::Str(String::from_utf8_lossy(&buf).into_owned().into())]));
+                            }
+                            _ => {
+                                st.conns.remove(id);
+                                out.push(ev("Closed", vec![V::Int(*id)]));
+                            }
+                        }
+                    }
+                }
+                V::List(Rc::new(out))
+            }
+            _ => unreachable!("poller op {}", name),
         }
     }
     fn fs_op(&mut self, name: &str, a: &[V], _sp: Span) -> R {
@@ -630,4 +755,19 @@ pub fn parse_float(s: &str) -> Option<f64> {
         return None;
     }
     s.parse().ok()
+}
+
+// poll(2), declared directly (the bootstrap uses no crates).
+#[repr(C)]
+struct PollFd {
+    fd: i32,
+    events: i16,
+    revents: i16,
+}
+#[cfg(target_os = "linux")]
+type NfdsT = u64;
+#[cfg(not(target_os = "linux"))]
+type NfdsT = u32;
+unsafe extern "C" {
+    fn poll(fds: *mut PollFd, nfds: NfdsT, timeout: i32) -> i32;
 }

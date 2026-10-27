@@ -425,6 +425,34 @@ let d = sys.net.connect("localhost", 8080)?
 one closes it. Operations block; before blocking (`accept`, `connect`, reads,
 `sleep_ms`, reading the console) the program's standard output is flushed.
 
+### Many connections: the event loop
+
+Concurrency in Tenon is a single-threaded event loop: no data races are
+possible, and events arrive in a deterministic order. A `Poller` (a unique
+handle from `sys.net.poller()`) owns many sockets, named by `Int` ids:
+
+```tenon
+let p = sys.net.poller()
+let lid = p.listen(8080)?                   // listener id; p.port(lid) for port 0
+while true {
+    for ev in p.wait(-1) {                  // -1: wait without a timeout (ms otherwise)
+        match ev {
+            Accepted(_, id) => { let _ = p.send(id, "hello\n") }
+            Data(id, text) => { let _ = p.send(id, text) }   // echo
+            Closed(id) => {}
+            Timeout => {}
+        }
+    }
+}
+```
+
+`wait` accepts new connections for you, reports received bytes as text
+(invalid UTF-8 becomes U+FFFD; a multi-byte character can be split across two
+`Data` events), and reports peers that closed. `send` writes everything (it may
+block on a slow peer); `close(id)` closes a connection or listener. Events are
+reported in increasing id order. A struct holding a `Poller` must be declared
+`unique struct`. See programs/chat for a complete server.
+
 ## 16. Not yet implemented
 
-Concurrency (one connection at a time today); see `docs/log.md`.
+Multi-core parallelism; see `docs/log.md`.

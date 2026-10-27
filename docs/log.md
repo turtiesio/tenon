@@ -170,3 +170,11 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   Option.and_then/is_some_and, rem/div_euclid, strip_prefix/suffix, is_digits,
   trim_chars. Structural costs remain: braces add ~1 line per block against Python,
   and Python's `re` compresses input validation.
+
+## 2026-10-28 — product decisions (by the user)
+
+- **Syntax: keep braces.** The line-count gap against Python is accepted as a cost;
+  attack the remainder through the library (std/regex) and idioms.
+- **Concurrency: single-threaded event loop** (readiness API over many connections).
+  No data races by construction with non-atomic reference counts; deterministic
+  event order; no multi-core speedup.

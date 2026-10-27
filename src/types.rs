@@ -27,11 +27,12 @@ pub const BUILTIN_TYPES: &[(&str, usize, bool)] = &[
     ("Net", 0, true),
     ("Listener", 0, true),
     ("Conn", 0, true),
+    ("Poller", 0, true),
 ];
 
 // Builtin handles that own an OS resource: never copied; dropping one closes it.
 pub fn is_unique_builtin(name: &str) -> bool {
-    name == "Listener" || name == "Conn"
+    name == "Listener" || name == "Conn" || name == "Poller"
 }
 
 pub fn is_capability(name: &str) -> bool {

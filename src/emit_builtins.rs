@@ -246,6 +246,40 @@ impl<'a> Emitter<'a> {
                 self.io_result(t, &k, &o, &m)
             }
             "Listener.port" => self.tmp_val(t, &format!("tn_listener_port({})", a[0])),
+            "Net.poller" => self.tmp_owned(t, "tn_net_poller()"),
+            "Poller.port" => self.tmp_val(t, &format!("tn_poller_port({}, {})", a[0], a[1])),
+            "Poller.close" => {
+                self.line(&format!("tn_poller_close({}, {});", a[0], a[1]));
+                bor("0")
+            }
+            "Poller.listen" | "Poller.connect" | "Poller.send" => {
+                let (r, m) = (self.fresh("r"), self.fresh("m"));
+                self.line(&format!("tn_Int {} = 0; tn_Str {} = {{0}};", r, m));
+                let call = match name {
+                    "Poller.listen" => format!("tn_poller_listen({}, {}, &{}, &{})", a[0], a[1], r, m),
+                    "Poller.connect" => format!("tn_poller_connect({}, {}, {}, &{}, &{})", a[0], a[1], a[2], r, m),
+                    _ => format!("tn_poller_send({}, {}, {}, &{})", a[0], a[1], a[2], m),
+                };
+                let k = self.tmp_val(&Ty::int(), &call).code;
+                let okv = if name == "Poller.send" { "0".to_string() } else { r };
+                self.io_result(t, &k, &okv, &m)
+            }
+            "Poller.wait" => {
+                let et = t.args()[0].clone();
+                let ln = self.cty(t);
+                let (ev, n, i) = (self.fresh("ev"), self.fresh("n"), self.fresh("i"));
+                self.line(&format!("tn_rawev *{ev}; int64_t {n} = tn_poller_wait({}, {}, &{ev});", a[0], a[1]));
+                let l = self.tmp_owned(t, "NULL").code;
+                let acc = self.ctor(&et, 0, &[format!("{ev}[{i}].a"), format!("{ev}[{i}].b")]);
+                let dat = self.ctor(&et, 1, &[format!("{ev}[{i}].a"), format!("{ev}[{i}].data")]);
+                let clo = self.ctor(&et, 2, &[format!("{ev}[{i}].a")]);
+                let tmo = self.ctor(&et, 3, &[]);
+                self.line(&format!(
+                    "for (int64_t {i} = 0; {i} < {n}; {i}++) {ln}_push(&{l}, {ev}[{i}].kind == 0 ? {acc} : {ev}[{i}].kind == 1 ? {dat} : {ev}[{i}].kind == 2 ? {clo} : {tmo});"
+                ));
+                self.line(&format!("tn_free({ev});"));
+                bor(l)
+            }
             "Clock.now_ms" => self.tmp_val(t, "tn_now_ms()"),
             "Clock.mono_ns" => self.tmp_val(t, "tn_mono_ns()"),
             "Clock.sleep_ms" => {

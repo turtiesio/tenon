@@ -207,7 +207,7 @@ impl<'a> Emitter<'a> {
             polymorphic_recursion(&format!("the type {} keeps growing", crate::interp::display(&t.to_string())));
         }
         let name = match t {
-            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn") => {
+            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn" | "Poller") => {
                 format!("tn_{}", n)
             }
             Ty::Con(n, a) if n == "List" && a[0].is("Str") => "tn_List_Str".to_string(),

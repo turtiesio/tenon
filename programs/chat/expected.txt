@@ -1,0 +1,40 @@
+ann > SAY hi
+ann < error: set a NICK first
+ann > NICK ann
+ann < ok
+bob > NICK ann
+bob < * ann joined
+bob > NICK bob
+bob < error: nick taken
+ann < * bob joined
+cy > NICK cy
+cy < ok
+ann < * cy joined
+bob < ok
+bob > SAY hello all
+ann < <bob> hello all
+cy < <bob> hello all
+bob < * cy joined
+cy > WHO
+cy < users ann bob cy
+ann > DANCE
+ann < error: unknown command DANCE
+cy > SAY one + SAY two in one packet
+ann < <cy> one
+ann < <cy> two
+bob < ok
+bob < <cy> one
+cy < ok
+cy < ok
+bob > QUIT
+bob < <cy> two
+bob < bye
+ann < * bob left
+cy < * bob left
+cy disconnects
+ann < * cy left
+ann > WHO
+ann < users ann
+ann > SHUTDOWN
+ann < ok
+[server exit 0]

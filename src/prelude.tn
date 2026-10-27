@@ -361,6 +361,17 @@ extern fn Conn.read_line(self) -> Result[Option[Str], IoError] // None at end of
 extern fn Conn.read(self, n: Int) -> Result[Str, IoError]       // up to n bytes; fewer only at end
 extern fn Conn.write(self, s: Str) -> Result[Unit, IoError]
 
+// Event loop: one Poller owns many sockets, named by Int ids. wait() returns
+// what happened, in id order: new connections are accepted for you.
+pub enum NetEvent { Accepted(Int, Int), Data(Int, Str), Closed(Int), Timeout }
+extern fn Net.poller(self) -> Poller
+extern fn Poller.listen(self, port: Int) -> Result[Int, IoError] // a listener id
+extern fn Poller.connect(self, host: Str, port: Int) -> Result[Int, IoError] // a connection id
+extern fn Poller.port(self, id: Int) -> Int
+extern fn Poller.wait(self, timeout_ms: Int) -> List[NetEvent] // -1: no timeout
+extern fn Poller.send(self, id: Int, data: Str) -> Result[Unit, IoError]
+extern fn Poller.close(self, id: Int)
+
 extern fn Clock.now_ms(self) -> Int
 extern fn Clock.mono_ns(self) -> Int
 extern fn Clock.sleep_ms(self, ms: Int)

@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <math.h>
+#include <poll.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -1908,6 +1909,135 @@ static TN_UNUSED int tn_conn_read(tn_Conn c, tn_Int n, tn_Str *out, tn_Str *msg)
 static TN_UNUSED int tn_conn_write(tn_Conn c, tn_Str s, tn_Str *msg) {
     if (!tn_write_all(c->fd, s)) return tn_net_err("write", errno, msg);
     return TN_IO_OK;
+}
+
+/* ---------- event loop: one Poller owns sockets named by increasing ids ---------- */
+
+typedef struct { int64_t id; int fd; bool listener; } tn_psock;
+typedef struct tn_Poller_s { int64_t rc, next, n, cap; tn_psock *s; } *tn_Poller;
+typedef struct { int kind; int64_t a, b; tn_Str data; } tn_rawev; /* kind: 0 Accepted 1 Data 2 Closed 3 Timeout */
+static TN_UNUSED tn_Poller tn_Poller_retain(tn_Poller p) { p->rc++; return p; }
+static TN_UNUSED void tn_Poller_release(tn_Poller p) {
+    if (p && --p->rc == 0) {
+        for (int64_t i = 0; i < p->n; i++) close(p->s[i].fd);
+        tn_free(p->s);
+        tn_free(p);
+    }
+}
+static TN_UNUSED void tn_Poller_show(tn_buf *b, tn_Poller p, int mode) { (void)p; (void)mode; tn_buf_cstr(b, "<Poller>"); }
+TN_INCOMPARABLE(tn_Poller)
+static TN_UNUSED tn_Poller tn_net_poller(void) {
+    tn_Poller p = tn_alloc(sizeof *p);
+    p->rc = 1; p->next = 0; p->n = 0; p->cap = 0; p->s = NULL;
+    return p;
+}
+static int64_t tn_poller_add(tn_Poller p, int fd, bool listener) {
+    if (p->n == p->cap) {
+        p->cap = p->cap ? p->cap * 2 : 8;
+        p->s = tn_realloc(p->s, sizeof(tn_psock) * (size_t)p->cap);
+    }
+    p->s[p->n++] = (tn_psock){++p->next, fd, listener};
+    return p->next;
+}
+static int64_t tn_poller_find(tn_Poller p, int64_t id) {
+    for (int64_t i = 0; i < p->n; i++)
+        if (p->s[i].id == id) return i;
+    return -1;
+}
+static TN_UNUSED int tn_poller_listen(tn_Poller p, tn_Int port, tn_Int *id, tn_Str *msg) {
+    tn_Listener l;
+    int k = tn_net_listen(port, &l, msg);
+    if (k != TN_IO_OK) return k;
+    *id = tn_poller_add(p, l->fd, true);
+    l->fd = -1; /* the poller owns the socket now */
+    tn_Listener_release(l);
+    return TN_IO_OK;
+}
+static TN_UNUSED int tn_poller_connect(tn_Poller p, tn_Str host, tn_Int port, tn_Int *id, tn_Str *msg) {
+    tn_Conn c;
+    int k = tn_net_connect(host, port, &c, msg);
+    if (k != TN_IO_OK) return k;
+    *id = tn_poller_add(p, c->fd, false);
+    c->fd = -1;
+    tn_Conn_release(c);
+    return TN_IO_OK;
+}
+static TN_UNUSED tn_Int tn_poller_port(tn_Poller p, tn_Int id) {
+    int64_t i = tn_poller_find(p, id);
+    if (i < 0 || !p->s[i].listener) return 0;
+    struct sockaddr_in a;
+    socklen_t n = sizeof a;
+    if (getsockname(p->s[i].fd, (struct sockaddr *)&a, &n) != 0) return 0;
+    return ntohs(a.sin_port);
+}
+static TN_UNUSED int tn_poller_send(tn_Poller p, tn_Int id, tn_Str data, tn_Str *msg) {
+    int64_t i = tn_poller_find(p, id);
+    if (i < 0 || p->s[i].listener) return tn_net_err("send", EBADF, msg);
+    if (!tn_write_all(p->s[i].fd, data)) return tn_net_err("send", errno, msg);
+    return TN_IO_OK;
+}
+static void tn_poller_drop(tn_Poller p, int64_t i) {
+    close(p->s[i].fd);
+    memmove(&p->s[i], &p->s[i + 1], sizeof(tn_psock) * (size_t)(p->n - i - 1));
+    p->n--;
+}
+static TN_UNUSED void tn_poller_close(tn_Poller p, tn_Int id) {
+    int64_t i = tn_poller_find(p, id);
+    if (i >= 0) tn_poller_drop(p, i);
+}
+/* Events in ascending id order; *out is a tn_alloc'd array the caller frees. */
+static TN_UNUSED int64_t tn_poller_wait(tn_Poller p, tn_Int timeout, tn_rawev **out) {
+    tn_flush();
+    int64_t n = p->n;
+    struct pollfd *fds = tn_alloc(sizeof(struct pollfd) * (size_t)(n ? n : 1));
+    for (int64_t i = 0; i < n; i++) fds[i] = (struct pollfd){p->s[i].fd, POLLIN, 0};
+    int t = timeout < 0 ? -1 : timeout > INT32_MAX ? INT32_MAX : (int)timeout;
+    int r;
+    do r = poll(fds, (nfds_t)n, t);
+    while (r < 0 && errno == EINTR);
+    tn_rawev *ev = tn_alloc(sizeof(tn_rawev) * (size_t)(n + 1));
+    int64_t k = 0;
+    if (r <= 0) {
+        ev[k++] = (tn_rawev){3, 0, 0, {0}};
+        tn_free(fds);
+        *out = ev;
+        return k;
+    }
+    /* snapshot of ids: accepting adds sockets, closing removes them */
+    int64_t *ids = tn_alloc(sizeof(int64_t) * (size_t)(n ? n : 1));
+    for (int64_t i = 0; i < n; i++) ids[i] = p->s[i].id;
+    for (int64_t j = 0; j < n; j++) {
+        if (!fds[j].revents) continue;
+        int64_t i = tn_poller_find(p, ids[j]);
+        if (i < 0) continue;
+        if (p->s[i].listener) {
+            int fd;
+            do fd = accept(p->s[i].fd, NULL, NULL);
+            while (fd < 0 && errno == EINTR);
+            if (fd >= 0) {
+                int64_t cid = tn_poller_add(p, fd, false);
+                ev[k++] = (tn_rawev){0, ids[j], cid, {0}};
+                ev = tn_realloc(ev, sizeof(tn_rawev) * (size_t)(k + n + 1));
+            }
+        } else {
+            char buf[65536];
+            ssize_t got;
+            do got = read(p->s[i].fd, buf, sizeof buf);
+            while (got < 0 && errno == EINTR);
+            if (got > 0) {
+                tn_buf b = tn_buf_new();
+                tn_utf8_lossy(buf, got, &b);
+                ev[k++] = (tn_rawev){1, ids[j], 0, tn_buf_finish(&b)};
+            } else {
+                tn_poller_drop(p, i);
+                ev[k++] = (tn_rawev){2, ids[j], 0, {0}};
+            }
+        }
+    }
+    tn_free(ids);
+    tn_free(fds);
+    *out = ev;
+    return k;
 }
 
 /* ---------- clock ---------- */
