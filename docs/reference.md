@@ -27,6 +27,9 @@ fn main(sys: Sys) -> Result[Unit, Str] {
 Run it with the reference interpreter (`tenon run prog.tn`) or compile it to a
 native executable through C (`tenon build prog.tn -o prog`). Both must behave
 identically; the test suite checks this for every test program.
+`tenon build` caches executables by their generated C, so rebuilding an
+unchanged program is instant (cache in `$TENON_CACHE`, default
+`<tmp>/tenon-cache`; `TENON_CACHE=off` disables it).
 
 ## 2. Lexical structure
 
