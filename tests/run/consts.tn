@@ -1,0 +1,23 @@
+const LIMIT: Int = 3
+const GREETING: Str = "hi " + "there"
+const PRIMES: List[Int] = [2, 3, 5, 7]
+
+fn main(sys: Sys) {
+    let c = sys.console
+    let xs = ["b", "a", "c", "a"]
+    var by = xs
+    by.sort_by_desc(fn(s) => s)
+    let total = PRIMES.slice(0, LIMIT).sum()
+    c.println("{GREETING} {total} {by} {INT_MAX} {INT_MIN}")
+    c.println("{INT_MAX.checked_add(1)} {5.checked_add(1)} {INT_MIN.checked_div(-1)} {7.checked_div(0)} {6.checked_mul(7)}")
+    let pairs = [(2, "x"), (1, "y"), (2, "z")]
+    var p2 = pairs
+    p2.sort_by_desc(fn(p) => p.0)
+    let ones = PRIMES.map(fn(_) => 1)
+    let long = 1
+        + 2
+        * 3
+    let ok = true
+        and long == 7
+    c.println("{p2} {ones} {long} {ok}")
+}

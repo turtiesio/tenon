@@ -10,7 +10,7 @@ use std::rc::Rc;
 impl<'a> Interp<'a> {
     pub(crate) fn extern_mut(&mut self, name: &str, root: &str, steps: &[Step], args: Vec<V>, sp: Span) -> R {
         // Evaluate anything that needs &self before borrowing the slot.
-        let keys: Option<Vec<V>> = if name == "List.sort_by" {
+        let keys: Option<Vec<V>> = if name == "List.sort_by" || name == "List.sort_by_desc" {
             let xs = match navigate(self.local_mut(root), steps, false, sp)? {
                 V::List(xs) => xs.clone(),
                 _ => unreachable!(),
@@ -76,12 +76,13 @@ impl<'a> Interp<'a> {
                     None => Ok(V::Unit),
                 }
             }
-            ("List.sort_by", V::List(xs)) => {
+            ("List.sort_by" | "List.sort_by_desc", V::List(xs)) => {
                 let keys = keys.unwrap();
+                let desc = name == "List.sort_by_desc";
                 let mut idx: Vec<usize> = (0..xs.len()).collect();
                 let mut bad = None;
                 idx.sort_by(|a, b| match cmp(&keys[*a], &keys[*b]) {
-                    Ok(c) => c.cmp(&0),
+                    Ok(c) => if desc { 0.cmp(&c) } else { c.cmp(&0) },
                     Err(m) => {
                         bad = Some(m);
                         std::cmp::Ordering::Equal
@@ -171,6 +172,10 @@ impl<'a> Interp<'a> {
                 Unit
             }
             "Int.to_float" => Float(int(0) as f64),
+            "Int.checked_add" => self.opt(int(0).checked_add(int(1)).map(Int)),
+            "Int.checked_sub" => self.opt(int(0).checked_sub(int(1)).map(Int)),
+            "Int.checked_mul" => self.opt(int(0).checked_mul(int(1)).map(Int)),
+            "Int.checked_div" => self.opt(int(0).checked_div(int(1)).map(Int)),
             "Int.char" => match u32::try_from(int(0)).ok().and_then(char::from_u32) {
                 Some(c) => strv(&c.to_string()),
                 None => return trap(format!("invalid character code {}", int(0)), sp),

@@ -30,7 +30,8 @@ identically; the test suite checks this for every test program.
 ## 2. Lexical structure
 
 - Comments: `// to end of line`.
-- Statements end at a newline (or `;`). A line that begins with `.` or `else`
+- Statements end at a newline (or `;`). A line that begins with `.`, `else`,
+  `and`, `or` or a binary operator other than `-` (`+ * / % == != < <= > >=`)
   continues the previous line, and so does anything inside `( )` or `[ ]`.
 - Names: types and enum variants start with an uppercase letter; functions,
   variables and fields start with a lowercase letter. The compiler enforces this.
@@ -83,6 +84,7 @@ enum Tree[T] { Leaf, Node(Tree[T], T, Tree[T]) }   // recursion through enums is
 fn area(s: Shape) -> Int { ... }                    // return type Unit if omitted
 fn largest[T](xs: List[T]) -> Option[T] { ... }      // generic function
 
+const MAX_USERS: Int = 1000                          // constant: capitals; any expression
 fn Point.origin() -> Point { Point { x: 0, y: 0 } }  // associated function: Point.origin()
 fn Point.norm1(self) -> Int { self.x.abs() + self.y.abs() }   // method: p.norm1()
 fn Point.shift(mut self, d: Int) { self.x += d }     // mutating method: needs a `var` receiver
@@ -117,7 +119,7 @@ let names = people.map(fn(p) => p.name)
 ```
 
 Closures capture variables **by value** at creation; they cannot assign to
-captured variables. Named functions and variants can be used as values:
+captured variables. A parameter named `_` is ignored (`xs.map(fn(_) => 0)`). Named functions and variants can be used as values:
 `xs.map(Some)`, `words.map(Str.len)`.
 
 ## 6. Variables and mutation
@@ -276,13 +278,15 @@ Highlights:
     `.5`, `5.`, `1e-3`, `inf` and `nan`.
   - `trim` removes ASCII whitespace; `upper`/`lower` change ASCII letters only.
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
-  first last index_of contains extend sorted reversed map filter any all count
+  sort_by_desc first last index_of contains extend sorted reversed map filter any all count
   is_empty`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
 - `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`, `insert`,
   `remove`, `contains`, `keys`, `values`, `entries`, `len`, `is_empty`.
 - `Option[T]`: `unwrap expect unwrap_or is_some is_none map ok_or`.
 - `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok map_err`.
-- `Int`: `abs min max to_float to_str char`, and for code points
+- `Int`: `abs min max to_float to_str char`; `checked_add checked_sub
+  checked_mul checked_div` give `None` instead of trapping; constants
+  `INT_MAX`, `INT_MIN`; and for code points
   `is_digit is_alpha is_alnum is_space is_upper is_lower`
   (`s.byte(i).is_digit()`, `'7' - '0'`); `Float`: `to_int floor ceil round
   sqrt abs min max`.

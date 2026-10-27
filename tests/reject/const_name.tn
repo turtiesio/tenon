@@ -1,0 +1,3 @@
+// error: constant names are written in capitals
+const limit: Int = 3
+fn main() {}

@@ -141,7 +141,7 @@ fn dump(p: parser.Program) -> Str {
             Some(b) => " " + block(b),
             None => " extern",
         }
-        out.push("(fn" + vis(f.public) + " " + owner + f.name + tps(f.tparams) + selfk + ps.join("") + ret + body + ")")
+        out.push("(" + (if f.is_const { "const" } else { "fn" }) + vis(f.public) + " " + owner + f.name + tps(f.tparams) + selfk + ps.join("") + ret + body + ")")
     }
     out.map(fn(l) => l + "\n").join("")
 }

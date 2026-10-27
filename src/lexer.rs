@@ -29,7 +29,7 @@ pub struct Token {
 const KEYWORDS: &[&str] = &[
     "fn", "let", "var", "if", "else", "while", "for", "in", "match", "return", "break",
     "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
-    "unique", "import", "extern", "pub", "ref",
+    "unique", "import", "extern", "pub", "ref", "const",
 ];
 
 // Longest first so that greedy matching works.
@@ -72,9 +72,12 @@ fn insert_semis(raw: Vec<Token>) -> Vec<Token> {
                 let in_braces = matches!(stack.last(), None | Some(&"{"));
                 let prev_ends = out.last().map(|p| is_ender(&p.tok)).unwrap_or(false);
                 let next = raw[i + 1..].iter().find(|n| n.tok != Tok::Sym("\n"));
+                // A line continues the previous one when it starts with `.`, `else`
+                // or a binary operator other than `-` (which may be a negation).
                 let next_continues = matches!(
                     next.map(|n| &n.tok),
-                    Some(Tok::Sym(".")) | Some(Tok::Kw("else"))
+                    Some(Tok::Sym(".")) | Some(Tok::Kw("else" | "and" | "or"))
+                        | Some(Tok::Sym("+" | "*" | "/" | "%" | "==" | "!=" | "<" | "<=" | ">" | ">="))
                 );
                 if in_braces && prev_ends && !next_continues {
                     out.push(Token { tok: Tok::Sym(";"), span: t.span });

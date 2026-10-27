@@ -77,7 +77,7 @@ pub struct Block { pub at: Pos, pub stmts: List[Stmt] }
 pub struct Param { pub name: Str, pub by_ref: Bool, pub ty: Ty }
 
 pub struct FnDecl {
-    pub public: Bool, pub owner: Option[Ty], pub name: Str, pub tparams: List[Str],
+    pub is_const: Bool, pub public: Bool, pub owner: Option[Ty], pub name: Str, pub tparams: List[Str],
     pub self_kind: Str, pub params: List[Param], pub ret: Option[Ty], pub body: Option[Block],
 }
 
@@ -185,12 +185,22 @@ fn Parser.item(mut self, prog: Program) -> Result[Program, ParseError] {
         var d = self.fn_decl(false)?
         d.public = public
         pr.fns.push(d)
+    } else if self.is_kw("const") and kind == "" {
+        self.advance()
+        let name = self.ident()?
+        self.expect_sym(":")?
+        let ret = self.type_expr()?
+        self.expect_sym("=")?
+        let bat = self.here()
+        let value = self.expr()?
+        let body = Block { at: bat, stmts: [Stmt { at: bat, kind: ExprStmt(value) }] }
+        pr.fns.push(FnDecl { is_const: true, public, owner: None, name, tparams: [], self_kind: "", params: [], ret: Some(ret), body: Some(body) })
     } else if self.is_kw("extern") and kind == "" {
         self.advance()
         if not self.is_kw("fn") { return Err(self.fail("'fn'")) }
         pr.fns.push(self.fn_decl(true)?)
     } else {
-        return Err(self.fail("'fn', 'struct' or 'enum'"))
+        return Err(self.fail("'fn', 'const', 'struct' or 'enum'"))
     }
     Ok(pr)
 }
@@ -314,7 +324,7 @@ fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
     }
     let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None }
     let body = if is_extern { None } else { Some(self.block()?) }
-    Ok(FnDecl { public: false, owner, name, tparams, self_kind, params, ret, body })
+    Ok(FnDecl { is_const: false, public: false, owner, name, tparams, self_kind, params, ret, body })
 }
 
 fn Parser.type_list(mut self, close: Str) -> Result[List[Ty], ParseError] {
@@ -795,7 +805,7 @@ fn Parser.lambda(mut self, at: Pos) -> Result[Expr, ParseError] {
     self.expect_sym("(")?
     var params: List[(Str, Option[Ty])] = []
     while not self.eat_sym(")") {
-        let n = self.ident()?
+        let n = if self.eat_sym("_") { "_" } else { self.ident()? }
         let t = if self.eat_sym(":") { Some(self.type_expr()?) } else { None }
         params.push((n, t))
         if not self.is_sym(")") { self.expect_sym(",")? }

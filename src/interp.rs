@@ -656,6 +656,7 @@ impl<'a> Interp<'a> {
             }
             ExprKind::Name(_) | ExprKind::Path(..) => match &self.c.res[&e.id] {
                 Res::Local(n) => Ok(self.lookup(n)),
+                Res::Const(fi) => self.call_fn(*fi, vec![], e.span),
                 Res::Fn(fi, _) => Ok(V::Fn(Rc::new(Closure::Named(*fi)))),
                 Res::Variant(ei, vi, _) => {
                     let n = self.c.enums[*ei].variants[*vi].1.len();

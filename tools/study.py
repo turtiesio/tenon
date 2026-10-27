@@ -29,7 +29,12 @@ cd "$(dirname "$0")"
 now() { python3 -c 'import time; print(time.time())'; }
 log() { printf '%s\n' "$1" >> attempts.jsonl; }
 case "${1:-}" in
-  --start|--done|--give-up) log "{\"event\": \"${1#--}\", \"task\": \"$2\", \"t\": $(now)}"; exit 0 ;;
+  --start)
+    # The specification is revealed only when its clock starts.
+    [ -f "tasks/$2.md" ] || cp ".specs/$2.md" "tasks/$2.md"
+    log "{\"event\": \"start\", \"task\": \"$2\", \"t\": $(now)}"
+    echo "started $2: read tasks/$2.md"; exit 0 ;;
+  --done|--give-up) log "{\"event\": \"${1#--}\", \"task\": \"$2\", \"t\": $(now)}"; exit 0 ;;
 esac
 task=$1; shift
 dir=solutions/$task
@@ -60,9 +65,15 @@ def kit(lang, author):
     if os.path.exists(d):
         raise SystemExit(f"{d} exists")
     os.makedirs(os.path.join(d, "tasks"))
-    for t in sorted(glob.glob(os.path.join(ROOT, "study", "tasks", "*.md"))):
-        shutil.copy(t, os.path.join(d, "tasks"))
-        os.makedirs(os.path.join(d, "solutions", os.path.basename(t)[:-3]))
+    os.makedirs(os.path.join(d, ".specs"))
+    tasks_dir = os.environ.get("STUDY_TASKS", os.path.join(ROOT, "study", "tasks"))
+    names = []
+    for t in sorted(glob.glob(os.path.join(tasks_dir, "*.md"))):
+        shutil.copy(t, os.path.join(d, ".specs"))
+        names.append(os.path.basename(t)[:-3])
+        os.makedirs(os.path.join(d, "solutions", names[-1]))
+    open(os.path.join(d, "tasks", "INDEX.md"), "w").write(
+        "Tasks (run ./try.sh --start NAME to reveal a specification and start its clock):\n" + "".join(f"- {n}\n" for n in names))
     if lang == "tenon":
         if not os.path.exists(TENON):
             os.makedirs(os.path.dirname(TENON), exist_ok=True)

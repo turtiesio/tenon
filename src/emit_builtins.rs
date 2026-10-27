@@ -53,6 +53,18 @@ impl<'a> Emitter<'a> {
                 bor("0")
             }
             "Int.to_float" => self.tmp_val(t, &format!("(double)({})", a[0])),
+            "Int.checked_add" | "Int.checked_sub" | "Int.checked_mul" | "Int.checked_div" => {
+                let r = self.fresh("r");
+                self.line(&format!("tn_Int {} = 0;", r));
+                let ok = match name {
+                    "Int.checked_add" => format!("!__builtin_add_overflow({}, {}, &{})", a[0], a[1], r),
+                    "Int.checked_sub" => format!("!__builtin_sub_overflow({}, {}, &{})", a[0], a[1], r),
+                    "Int.checked_mul" => format!("!__builtin_mul_overflow({}, {}, &{})", a[0], a[1], r),
+                    _ => format!("(({1}) != 0 && !(({0}) == INT64_MIN && ({1}) == -1) && (({r} = ({0}) / ({1})), 1))", a[0], a[1], r = r),
+                };
+                let okv = self.tmp_val(&Ty::bool(), &ok).code;
+                self.some_none(t, &okv, &r)
+            }
             "Int.char" => self.tmp_owned(t, &format!("tn_int_char({}, {})", a[0], loc)),
             "Float.to_int" => self.tmp_val(t, &format!("tn_float_to_int({}, {})", a[0], loc)),
             "Float.sqrt" | "Float.floor" | "Float.ceil" | "Float.round" => {
@@ -252,12 +264,12 @@ impl<'a> Emitter<'a> {
         let tys: Vec<Ty> = match name {
             "List.push" => vec![rt.args()[0].clone()],
             "List.insert" => vec![Ty::int(), rt.args()[0].clone()],
-            "List.sort_by" => vec![Ty::unit()],
+            "List.sort_by" | "List.sort_by_desc" => vec![Ty::unit()],
             "Map.insert" => vec![rt.args()[0].clone(), rt.args()[1].clone()],
             _ => args.iter().map(|_| Ty::unit()).collect(),
         };
         for (v, ty) in args.into_iter().zip(tys) {
-            if name == "List.sort_by" || name == "Map.remove" || name == "List.remove" {
+            if name == "List.sort_by" || name == "List.sort_by_desc" || name == "Map.remove" || name == "List.remove" {
                 a.push(v.code);
             } else {
                 a.push(self.own(v, &ty));
@@ -288,9 +300,9 @@ impl<'a> Emitter<'a> {
                 self.line(&format!("{}_{}({});", ln, &name[5..], p));
                 bor("0")
             }
-            "List.sort_by" => {
+            "List.sort_by" | "List.sort_by_desc" => {
                 let Ty::Fn(_, kt) = ptys[1].clone() else { unreachable!() };
-                let h = self.sort_by_helper(rt, &kt);
+                let h = self.sort_by_helper(rt, &kt, name == "List.sort_by_desc");
                 if kt.any(&|x| x.is("Map")) {
                     self.line(&format!("tn_cur_loc = {};", loc));
                 }
@@ -312,8 +324,8 @@ impl<'a> Emitter<'a> {
             _ => panic!("emit: missing mutating builtin {}", name),
         }
     }
-    fn sort_by_helper(&mut self, lt: &Ty, kt: &Ty) -> String {
-        let key = format!("sortby{:?}{:?}", lt, kt);
+    fn sort_by_helper(&mut self, lt: &Ty, kt: &Ty, desc: bool) -> String {
+        let key = format!("sortby{:?}{:?}{}", lt, kt, desc);
         if let Some(w) = self.wrappers.get(&key) {
             return w.clone();
         }
@@ -325,7 +337,8 @@ impl<'a> Emitter<'a> {
         let _ = writeln!(self.protos, "static void {}({} *p, tn_fn f);", h, ln);
         let _ = writeln!(
             self.helpers,
-            "static int {h}_cmp(void *ctx, int64_t a, int64_t b) {{ {kn} *k = ctx; return {kn}_cmp(k[a], k[b]); }}"
+            "static int {h}_cmp(void *ctx, int64_t a, int64_t b) {{ {kn} *k = ctx; return {}{kn}_cmp(k[a], k[b]); }}",
+            if desc { "-" } else { "" }
         );
         let _ = writeln!(
             self.bodies,

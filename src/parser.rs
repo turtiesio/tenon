@@ -137,6 +137,20 @@ impl<'a> Parser<'a> {
             let mut d = self.fn_decl(false)?;
             d.public = public;
             prog.fns.push(d);
+        } else if self.is_kw("const") && kind == Kind::Plain {
+            let span = self.span();
+            self.advance();
+            let name = self.ident()?;
+            self.expect_sym(":")?;
+            let ret = self.type_expr()?;
+            self.expect_sym("=")?;
+            let bspan = self.span();
+            let value = self.expr()?;
+            let body = Block { stmts: vec![Stmt { kind: StmtKind::Expr(value), span: bspan }], span: bspan };
+            prog.fns.push(FnDecl {
+                name, owner: None, tparams: vec![], self_kind: None, params: vec![], ret: Some(ret),
+                body: Some(body), public, is_const: true, span,
+            });
         } else if self.is_kw("extern") && kind == Kind::Plain {
             self.advance();
             if !self.is_kw("fn") {
@@ -144,7 +158,7 @@ impl<'a> Parser<'a> {
             }
             prog.fns.push(self.fn_decl(true)?);
         } else {
-            return self.err("'fn', 'struct' or 'enum'");
+            return self.err("'fn', 'const', 'struct' or 'enum'");
         }
         Ok(())
     }
@@ -270,7 +284,7 @@ impl<'a> Parser<'a> {
         }
         let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None };
         let body = if is_extern { None } else { Some(self.block()?) };
-        Ok(FnDecl { name, owner, tparams, self_kind, params, ret, body, public: false, span })
+        Ok(FnDecl { name, owner, tparams, self_kind, params, ret, body, public: false, is_const: false, span })
     }
 
     // After `fn Name`, is `[...]` followed by `.`? (owner type args vs fn type params)
@@ -793,7 +807,7 @@ impl<'a> Parser<'a> {
                 self.expect_sym("(")?;
                 let mut params = Vec::new();
                 while !self.eat_sym(")") {
-                    let n = self.ident()?;
+                    let n = if self.eat_sym("_") { "_".to_string() } else { self.ident()? };
                     let t = if self.eat_sym(":") { Some(self.type_expr()?) } else { None };
                     params.push((n, t));
                     if !self.is_sym(")") {

@@ -85,6 +85,7 @@ pub struct FnDecl {
     pub ret: Option<TypeExpr>,
     pub body: Option<Block>, // None: `extern`, implemented by each backend
     pub public: bool,
+    pub is_const: bool, // `const NAME: T = expr`: a zero-parameter function used as a value
     pub span: Span,
 }
 
