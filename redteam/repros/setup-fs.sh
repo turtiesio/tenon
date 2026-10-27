@@ -6,3 +6,4 @@ rm -rf /tmp/tq && mkdir -p /tmp/tq/jail /tmp/tq/outside
 echo hi > /tmp/tq/jail/in.txt
 echo SECRET > /tmp/tq/outside/secret.txt
 ln -s ../outside /tmp/tq/jail/link
+ln -s ../outside/target.txt /tmp/tq/jail/f.txt.tmp   # planted temp-file name (repro 21)

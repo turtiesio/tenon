@@ -1,0 +1,19 @@
+// Fix for repro 06 only covers `==`/`<` written directly and Map/Set keys. A function (or a struct holding one)
+// is still compared through generics: List.contains/index_of (prelude), a user-written `fn same[A](a: A, b: A)`,
+// List.sort/sorted, sort_by with a function-valued key, and capabilities likewise (`[console].contains(console)`).
+// run: true Some(0) / false  — native: false None / false   (exit 0 in both).
+struct Hf { f: fn() -> Int }
+fn one() -> Int { 1 }
+fn same[A](a: A, b: A) -> Bool { a == b }
+fn main(sys: Sys) {
+    let a = Hf { f: one }
+    let xs = [a]
+    sys.console.println("{xs.contains(a)} {xs.index_of(a)}")
+    sys.console.println("{same(one, one)}")
+    var ys = [Hf { f: one }, Hf { f: one }]
+    ys.sort()
+    var zs = [1, 2]
+    zs.sort_by(fn(x) => one)
+    let cs = [sys.console]
+    sys.console.println("{cs.contains(sys.console)}")
+}

@@ -13,7 +13,7 @@ for tn in tests/run/*.tn; do
   n=$((n+1))
   ( cd "$dir" && TENON_KEEP_C=1 "$T" build "$name.tn" -o "$tmp/$name" -O0 ) > /dev/null 2>&1 || { echo "FAIL $name: build"; fail=$((fail+1)); continue; }
   mv "$tmp/$name.c" "$tmp/$name.c" 2>/dev/null || true
-  cc -g -O0 -fsanitize=address,undefined -fno-sanitize-recover=undefined -w "$tmp/$name.c" -o "$tmp/$name.asan" -lm 2>/dev/null || { echo "FAIL $name: sanitizer build"; fail=$((fail+1)); continue; }
+  cc -g -O0 -DTN_POOL_MAX=0 -fsanitize=address,undefined -fno-sanitize-recover=undefined -w "$tmp/$name.c" -o "$tmp/$name.asan" -lm 2>/dev/null || { echo "FAIL $name: sanitizer build"; fail=$((fail+1)); continue; }
   stdin=$(sed -n 's#^// stdin: ##p' "$tn" | head -1 | sed 's/\\n/\n/g')
   args=$(sed -n 's#^// args: ##p' "$tn" | head -1)
   ( cd "$dir" && printf '%b' "$stdin" | ASAN_OPTIONS=detect_leaks=0 "$tmp/$name.asan" $args ) > "$tmp/out" 2> "$tmp/err"

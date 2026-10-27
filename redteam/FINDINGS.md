@@ -1,5 +1,11 @@
 # Tenon red-team findings
 
+**Status update (re-verified after commit `1b2420c`, "Fix 9 QA findings").** Findings 1, 3, 4, 5, 6, 7, 8, 9 and 10 below were
+fixed while this report was being written; I re-ran every repro against the fixed binary (marked **FIXED**) and then
+tried to bypass each fix. The fixes for 5, 7 and 10 are incomplete and the NUL fix has a sibling hole in `Net`; those residues are
+findings **20-24** (all open). Still open overall: **2** (high); **11, 20, 21, 22, 23** (medium); **12-18, 24** (low). Findings 1, 3, 4, 6, 8 and 9
+held up against every bypass I tried.
+
 Scope: correctness/soundness of the bootstrap compiler (`tenon run` interpreter and `tenon build` via C) at
 commit `4b66990` plus working-tree state on 2026-10-28. Everything below was found by writing small Tenon
 programs; nothing outside `redteam/` was modified. Each finding has a minimal reproduction in `repros/`.
@@ -8,32 +14,39 @@ programs; nothing outside `redteam/` was modified. Each finding has a minimal re
 
 ## Summary, ranked
 
-| # | Sev | Property violated | Finding | Repro |
-|---|---|---|---|---|
-| 1 | **high** | explicit authority; interpreter = compiler | A NUL byte in a path defeats `Fs.within`: the native build lists/stats the *parent* of the jail (`"..\0"`), and silently truncates paths. Interpreter says something else. | 01 |
-| 2 | **high** | linear/unique types; module privacy as unforgeability | A client-defined generic wrapper (`struct Wrap[A]`) drops or duplicates another module's `linear` value and duplicates `unique` handles (`Listener`/`Conn`). | 19 (+`vaultlib.tn`) |
-| 3 | **high** | linear: used exactly once | A `match` guard can consume a linear value and the following arm consumes it again. | 03 |
-| 4 | **high** | linear: no loss | A linear value that exists only as a temporary is silently dropped by `mk().field`, `mk() == mk()`, `"{mk()}"`, and `f(mk())` with a `ref` parameter. | 04 |
-| 5 | medium | explicit authority | `Fs.within` / `read_only` follow symlinks out of the root (read, write, rename, remove, mkdir, list). Both backends. | 02 |
-| 6 | medium | linear: no loss | `Two { a: x, ..base }` silently drops the replaced linear field of `base`. | 05 |
-| 7 | medium | "functions cannot be compared"; interpreter = compiler | A struct containing a `fn` can be `==`-compared and used where a `fn` key is hashed; `run` and native give different answers/exit codes. | 06 |
-| 8 | medium | interpreter = compiler; no silent failure | NaN as a `Map[Float,_]` key: `run` traps, native inserts unreachable duplicate entries. | 07 |
-| 9 | medium | no silent failure | `Net.listen`/`connect` reduce ports mod 65536: `listen(73616)` binds 8080, `listen(-1)` binds 65535. | 08 |
-| 10 | medium | interpreter = compiler | Dropping (or `==` on) a 1,000,000-long recursive enum overflows the C stack in native (exit 72); the interpreter succeeds. | 09 |
-| 11 | medium | compiler robustness | Polymorphic recursion makes `tenon build` run forever; a polymorphic recursive type crashes it with a Rust stack overflow (exit 134). | 10, 11 |
-| 12 | low | allow-only (reject at check time) | `Map < Map` type-checks and traps at run time. | 12 |
-| 13 | low | check early | A cycle between `const`s is accepted; using one traps `stack overflow` at run time. | 13 |
-| 14 | low | no hidden surprises | `x += e` reads `x` after `e` runs, `x = x + e` before. | 14 |
-| 15 | low | allow-only | `let xs = []` / `let o = None` (type never determined) is accepted. | 15 |
-| 16 | low | interpreter = compiler | `tenon run F.tn $'\xff'` panics the interpreter (Rust, exit 101); native runs. | 16 |
-| 17 | low | located traps | Traps inside prelude-defined methods (`Int.abs`, `List.sum`, ...) report `<prelude>:L:C`, not the user's call site. | 17 |
-| 18 | low | usability | Nested tuple access `t.0.1` does not parse. | 18 |
+| # | Sev | Property violated | Finding | Repro | Status |
+|---|---|---|---|---|---|
+| 1 | **high** | explicit authority; interpreter = compiler | A NUL byte in a path defeats `Fs.within`: the native build lists/stats the *parent* of the jail (`"..\0"`), and silently truncates paths. Interpreter says something else. | 01 | FIXED |
+| 2 | **high** | linear/unique types; module privacy as unforgeability | A client-defined generic wrapper (`struct Wrap[A]`) drops or duplicates another module's `linear` value and duplicates `unique` handles (`Listener`/`Conn`). | 19 (+`vaultlib.tn`) | **open** |
+| 3 | **high** | linear: used exactly once | A `match` guard can consume a linear value and the following arm consumes it again. | 03 | FIXED |
+| 4 | **high** | linear: no loss | A linear value that exists only as a temporary is silently dropped by `mk().field`, `mk() == mk()`, `"{mk()}"`, and `f(mk())` with a `ref` parameter. | 04 | FIXED |
+| 5 | medium | explicit authority | `Fs.within` / `read_only` follow symlinks out of the root (read, write, rename, remove, mkdir, list). Both backends. | 02 | FIXED (bypass: 21) |
+| 6 | medium | linear: no loss | `Two { a: x, ..base }` silently drops the replaced linear field of `base`. | 05 | FIXED |
+| 7 | medium | "functions cannot be compared"; interpreter = compiler | A struct containing a `fn` can be `==`-compared and used where a `fn` key is hashed; `run` and native give different answers/exit codes. | 06 | FIXED (bypass: 20) |
+| 8 | medium | interpreter = compiler; no silent failure | NaN as a `Map[Float,_]` key: `run` traps, native inserts unreachable duplicate entries. | 07 | FIXED |
+| 9 | medium | no silent failure | `Net.listen`/`connect` reduce ports mod 65536: `listen(73616)` binds 8080, `listen(-1)` binds 65535. | 08 | FIXED |
+| 10 | medium | interpreter = compiler | Dropping (or `==` on) a 1,000,000-long recursive enum overflows the C stack in native (exit 72); the interpreter succeeds. | 09 | FIXED for enums only (rest: 22, 23) |
+| 11 | medium | compiler robustness | Polymorphic recursion makes `tenon build` run forever; a polymorphic recursive type crashes it with a Rust stack overflow (exit 134). | 10, 11 | **open** |
+| 12 | low | allow-only (reject at check time) | `Map < Map` type-checks and traps at run time. | 12 | open |
+| 13 | low | check early | A cycle between `const`s is accepted; using one traps `stack overflow` at run time. | 13 | open |
+| 14 | low | no hidden surprises | `x += e` reads `x` after `e` runs, `x = x + e` before. | 14 | open |
+| 15 | low | allow-only | `let xs = []` / `let o = None` (type never determined) is accepted. | 15 | open |
+| 16 | low | interpreter = compiler | `tenon run F.tn $'\xff'` panics the interpreter (Rust, exit 101); native runs. | 16 | open |
+| 17 | low | located traps | Traps inside prelude-defined methods (`Int.abs`, `List.sum`, ...) report `<prelude>:L:C`, not the user's call site. | 17 | open |
+| 18 | low | usability | Nested tuple access `t.0.1` does not parse. | 18 | open |
+| 20 | medium | "functions cannot be compared"; interpreter = compiler | Fix for 7 covers only `==`/`<` and map keys: `List.contains`/`index_of`, a user generic `a == b`, `sort`, `sort_by` with a fn key, and capabilities are still comparable; `run` and native disagree. | 20 | **open** |
+| 21 | medium | explicit authority | `Fs.write` opens `<path>.tmp`; a symlink planted there writes outside the root (fix for 5 checks only `path`). Both backends. | 21 | **open** |
+| 22 | medium | interpreter = compiler | 1M-deep chain through a struct's `List` (or a `Map`) still overflows the C stack on release (fix for 10 covers enums only). | 22 | **open** |
+| 23 | medium | interpreter = compiler | Derived `==`, `<`, hashing, `to_str`, `encode`/`decode` of a deep enum chain overflow the C stack in native; the interpreter succeeds. | 23 | **open** |
+| 24 | low | interpreter = compiler | Native `Net.connect` truncates the host at a NUL byte and resolves `""` locally; the interpreter rejects/fails. | 24 | **open** |
 
 Areas that held up are listed at the end.
 
 ---
 
 ## 1. NUL byte in a path escapes `Fs.within` in the native build (high)
+
+**Status: FIXED in 1b2420c (re-verified: every NUL path is now `Denied("path escapes the Fs root: ...")` in both backends, for read/list/is_dir/exists/write/append/mkdir/rename (both arguments)/within/remove).**
 
 **Property:** "An attenuated Fs rejects absolute paths and `..`" (reference §10); interpreter and compiled program behave identically.
 
@@ -78,6 +91,8 @@ the generic-parameter analysis; the user-method path skips it.)
 
 ## 3. Match guard consumes a linear value that a later arm consumes again (high)
 
+**Status: FIXED in 1b2420c (`a match guard cannot consume 't'`; bound variables, nested blocks and `if` in guards also rejected).**
+
 **Property:** §12 "must be consumed exactly once"; the task list names "match guards".
 
 **Repro:** `repros/03-linear-guard-double-consume.tn`. `tenon check`: accepted.
@@ -85,6 +100,8 @@ the generic-parameter analysis; the user-method path skips it.)
 **Expected:** error: `t` is consumed in a guard that may fall through. (Variants where the guard merely *inspects* are correctly accepted.)
 
 ## 4. Linear temporaries are dropped by "inspecting" operations (high)
+
+**Status: FIXED in 1b2420c (`this linear value is created here and never consumed`; paren, block, `if`, tuple, `unwrap()`, `match`, index, `while` condition, range and interpolation variants of the temporary all rejected).**
 
 **Property:** §12 "reading fields, comparing and formatting do not consume it ... every path must consume it"; no silent loss.
 
@@ -97,6 +114,8 @@ loses a value that has no variable.
 **Expected:** error "linear value would be dropped" for each.
 
 ## 5. `within` / `read_only` follow symlinks (medium)
+
+**Status: FIXED in 1b2420c for paths (symlink anywhere along `path`, incl. file links, absolute links, `link/`, `./link`, `within(link)` -> denied, both backends). Residual: `.tmp` of `Fs.write` -> finding 21; the check/use race is acknowledged in the code comment.**
 
 **Property:** "An attenuated `Fs` can only reach paths under its root".
 
@@ -112,11 +131,15 @@ the code (not tested), the temp file of `Fs.write` (`<path>.tmp`, `O_CREAT|O_TRU
 
 ## 6. `..base` drops the replaced linear field (medium)
 
+**Status: FIXED in 1b2420c (`'..' would drop the base's linear field`).**
+
 **Repro:** `repros/05-linear-struct-update-drops-field.tn`: `Two { a: Tok { id: 3 }, ..t }` discards `t.a`.
 `check` accepts; `run` and native exit 0 with no output. `let _ = t.a` is rejected, `t.a = ...` is rejected ("cannot overwrite a linear value in place").
 **Expected:** reject struct update that replaces a linear field of `base` (or require the old field to be consumed first).
 
 ## 7. A struct holding a `fn` is comparable / hashable (medium)
+
+**Status: FIXED in 1b2420c for `==`/`<` through struct/enum fields and for map/set keys (`Hf cannot be compared: they contain the function type`); still reachable through generics: finding 20.**
 
 **Property:** §4 "Functions and capabilities cannot be compared"; `Option[fn]`, `List[fn]`, `(Console, Int)` are rejected correctly.
 
@@ -128,6 +151,8 @@ the code (not tested), the temp file of `Fs.write` (`<path>.tmp`, `O_CREAT|O_TRU
 
 ## 8. NaN as a map key (medium)
 
+**Status: FIXED in 1b2420c (`Float cannot be a map or set key`; also found through inference, generic helpers and tuples/lists/structs of Float). NaN in `List[Float].sort()` is unchanged (unsorted result, silently).**
+
 **Repro:** `repros/07-nan-map-key.tn` (`m[nan] = 1; m[nan] = 2`).
 `tenon run`: `trap: key not found: nan` at `07-nan-map-key.tn:6:6`, **exit 70**. Native: `[nan: 1, nan: 2] 2 None`, **exit 0** (entries that can never be found or removed; the map grows on every insert).
 **Expected:** one behaviour in both backends; best a check-time rejection of `Float` keys, or a defined NaN-key rule.
@@ -135,12 +160,16 @@ Related, same on both backends: `List[Float].sort()` with NaN returns an unsorte
 
 ## 9. Network ports are truncated (medium)
 
+**Status: FIXED in 1b2420c (both `listen` and `connect` return `Failed("...: port must be 0-65535")`, both backends).**
+
 **Repro:** `repros/08-net-port-truncation.tn`. Identical in both backends, exit 0:
 `listen(73616)` -> bound port **8080**; `listen(-1)` -> **65535**; `listen(65536)` and `listen(4294967296)` -> a random port (they became port 0).
 `connect(host, p)` truncates the same way, and its error texts differ between backends (`connect("", 80)`: run `failed to lookup address information...`, native `Connection refused`).
 **Expected:** `Err(Failed("port out of range"))` (or a trap) for ports outside 0..65535.
 
 ## 10. Native stack overflow on a deep recursive value (medium)
+
+**Status: FIXED in 1b2420c for boxed enums (`Cons` chain drop and the copy/COW paths now work). Not fixed: struct `List`/`Map` chains (22) and derived ==/</hash/fmt/codec (23).**
 
 **Property:** native = interpreter; resource limits are the traps in §9, not behavioural differences.
 **Repro:** `repros/09-deep-enum-native-stack-overflow.tn` (1,000,000 `Cons` cells, no user recursion).
@@ -153,6 +182,45 @@ Related, same on both backends: `List[Float].sort()` with NaN returns an unsorte
 * `repros/10-polymorphic-recursion-hangs-build.tn` — `check` and `run` fine (`0`, exit 0). `build`: no output, runs until killed (still running after 15 s; infinite monomorphization).
 * `repros/11-polymorphic-recursive-type-crashes-build.tn` — `check` and `run` fine (`Wrap(Leaf([1]))`). `build`: after ~26 s `thread 'main' has overflowed its stack / fatal runtime error: stack overflow, aborting`, **exit 134**.
 **Expected:** an instantiation-depth limit with a diagnostic.
+
+## 20. Function/capability comparison still reachable through generics (medium; fix for 7 incomplete)
+
+**Repro:** `repros/20-fn-compare-via-generics.tn` (`check` accepts). Output, exit 0 in both:
+```
+run:    true Some(0)      native: false None      <- xs.contains(a) / xs.index_of(a), a = Hf { f: one }
+        false false               false false      <- same(one, one) via `fn same[A](a: A, b: A) -> Bool { a == b }`, and [console].contains(console)
+```
+`xs.sort()` on `List[Hf]`, `zs.sort_by(fn(x) => one)` (function-valued key) and `[console, console].sort()` are accepted too.
+The comparability check runs on the binary operator at its use site; generic bodies (`List.contains` in the prelude, user generics) are
+checked with an abstract `T`, and the instantiation is never re-checked. **Expected:** reject at the instantiation (`contains` on `List[Hf]` etc.),
+or check `T`'s comparability in the generic call.
+
+## 21. `Fs.write` temp file follows a planted symlink (medium; fix for 5 incomplete)
+
+**Repro:** `repros/21-fs-tmp-symlink-write.tn` + `setup-fs.sh` (plants `jail/f.txt.tmp -> ../outside/target.txt`; run from `/tmp/tq`).
+`jail.write("f.txt", "PWNED")` -> `Ok(())` in both backends; afterwards `/tmp/tq/outside/target.txt` contains `PWNED` and `jail/f.txt` is itself a
+symlink to it (`rename` moved the planted link over `f.txt`). The symlink check runs on the components of `path` only, not on `path + ".tmp"`.
+**Expected:** `O_NOFOLLOW|O_EXCL` for the temp file with a unique name (or `mkstemp` in the target directory), and refuse if it already exists.
+
+## 22. Deep chain through a struct's `List` or a `Map` still overflows on release (medium; remainder of 10)
+
+**Repro:** `repros/22-deep-struct-list-release.tn` (1,000,000 nested `Tree { kids: [t] }`). run: `built` / `dropped`, exit 0. Native: `built` / `trap: stack overflow`, **exit 72**.
+Same for `enum Chain { End, Next(Map[Int, Chain]) }` (500,000 deep). The deferral added in `1b2420c` is only in the boxed-enum release.
+(`Next(Option[Chain])`, `Cons(Int, Chain)` and the copy-on-write paths now work.)
+
+## 23. Derived ==, <, hash, to_str, encode, decode recurse on the native stack (medium; remainder of 10)
+
+**Repro:** `repros/23-deep-enum-eq-hash-fmt-codec.tn`. run: `true`, exit 0. Native: `trap: stack overflow`, **exit 72**, no output.
+With the same 1,000,000-deep `Cons` chain: `<`, using it as a `Map` key, `c.to_str()` and (300,000 deep) `encode` + `decode` give the identical
+split (run succeeds: `false`, `1`, `13888893`, `4088893 true`; native exit 72). Either make the generated code iterative, or give the interpreter the same
+depth limit so the two backends at least agree (and document the limit next to exit code 72).
+
+## 24. Native `Net.connect` truncates the host at NUL (low)
+
+**Repro:** `repros/24-net-connect-nul-host.tn`. run: `Err(Failed("127.0.0.1\u{0}evil.example:9: file name contained an unexpected NUL byte"))` and
+`Err(Failed(":80: failed to lookup address information: ..."))`. Native: `Err(Failed("127.0.0.1:9: Connection refused"))` (host truncated; it really connected)
+and `Err(Failed(":80: Connection refused"))`. `Net` has no host attenuation, so this is a divergence, not an escape. Messages for unresolvable names also differ
+(`no.such.host.invalid:80`: run `failed to lookup address information...`, native `No route to host`).
 
 ## 12-18. Low severity
 
@@ -184,6 +252,14 @@ Method: ASan+UBSan builds of the generated C (`-fsanitize=address,undefined`), a
 * **Module privacy:** construction, field read/write, struct update, private functions/methods, `encode`/`decode` of private-field types, foreign method definitions. (Derived `==`/`<` on a foreign type compares private fields, which §4 specifies.)
 * **Traps:** location, message, exit code 70/72, and flushed stdout/stderr ordering are identical in both backends for overflow (all operators incl. `INT_MIN / -1`), division, slices (byte boundaries), indices, map keys, `unwrap`/`expect`/`panic`/`assert`, float-to-int, `char`, and for `main` returning `Int`/`Err`.
 * **Codec:** `decode` is canonical-only and identical in both backends across ~100 malformed/non-canonical inputs.
+
+## Fix verification notes
+
+After `1b2420c` I re-ran repros 01-09 (all FIXED in both backends) and the earlier probe batteries: ~20 guard/temporary/struct-update variants
+(all rejected as intended), 12 Fs NUL variants and 17 symlink variants (all denied identically in both backends except 21), the port range for
+`listen` and `connect`, and Float/fn/capability map keys (rejected, including through inference and generic helpers). The temporary deferral
+used for the enum-release fix also shows one extra live allocation at exit under the counting `malloc` (live=2 vs 1 for `Next(Some(t))` and
+`Cons` chains; the counter is not a leak detector for allocations that stay reachable, so treat as unconfirmed).
 
 ## Caveats
 

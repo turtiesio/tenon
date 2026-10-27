@@ -1,0 +1,10 @@
+// Fix for repro 02 checks the symlinks along `path`, but Fs.write also opens "<path>.tmp" (O_CREAT|O_TRUNC) and
+// renames it over <path>.  A symlink planted at "<path>.tmp" sends the write outside the root.
+// Fixture: setup-fs.sh (creates jail/f.txt.tmp -> ../outside/target.txt); run from /tmp/tq.
+// Both backends: write returns Ok(()), /tmp/tq/outside/target.txt now contains "PWNED", and jail/f.txt is now
+// a symlink to it (the later read is denied).
+fn main(sys: Sys) {
+    let jail = sys.fs.within("jail")
+    sys.console.println("{jail.write("f.txt", "PWNED")}")
+    sys.console.println("{sys.fs.read("outside/target.txt")}")
+}

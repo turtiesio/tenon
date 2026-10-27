@@ -1,0 +1,8 @@
+// A NUL in the host name: the interpreter rejects it; the native build truncates it ("127.0.0.1\0evil" -> "127.0.0.1")
+// and "" is resolved as a local host instead of failing.
+// run:    Err(Failed("127.0.0.1\u{0}evil.example:9: file name contained an unexpected NUL byte")) / Err(Failed(":80: failed to lookup address information: ...))
+// native: Err(Failed("127.0.0.1:9: Connection refused"))                                          / Err(Failed(":80: Connection refused"))
+fn main(sys: Sys) {
+    sys.console.println("{sys.net.connect("127.0.0.1\0evil.example", 9)}")
+    sys.console.println("{sys.net.connect("", 80)}")
+}
