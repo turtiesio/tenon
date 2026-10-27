@@ -12,7 +12,7 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 for attempt in 1 2 3; do
   git fetch -q origin main
-  git rebase -q origin/main
+  git rebase -q --autostash origin/main
   if ! python3 tools/approvals.py origin/main; then
     echo "land: unapproved weakening of a guarded test; nothing pushed (governance/README.md)"
     exit 1

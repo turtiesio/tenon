@@ -53,8 +53,9 @@ Any bytes after the NUL are ignored (`"in.txt\0anything"` reads `in.txt`). The i
 
 **Expected:** every path containing NUL is rejected with the same `Denied`/`Failed` error in both backends.
 **Impact:** an attenuated `Fs` leaks the existence and names of everything next to its root (one level up). Reading outside
-needs more than a single component, so only listing/stat of the parent escapes. Same hole applies to `rename`, `mkdir`, `remove`
-(`mkdir("..\0/zz")` returns `Ok(())` native, an error in `run`).
+needs more than a single component, so only listing/stat of the parent escapes. The other operations go through the same
+`tn_fs_path` + C-string path; I verified `mkdir("..\0/zz")` (`Ok(())` native, `Err(Failed(..))` in `run`) and `rename` (native attempts the
+rename, `run` refuses), not the rest.
 
 ## 2. Generic wrapper bypasses linear/unique rules (high)
 
@@ -80,7 +81,7 @@ the generic-parameter analysis; the user-method path skips it.)
 **Property:** §12 "must be consumed exactly once"; the task list names "match guards".
 
 **Repro:** `repros/03-linear-guard-double-consume.tn`. `tenon check`: accepted.
-`tenon run`: stdout `closed 7` / `closed 7`, exit 0. Native: the same, exit 0 (ASan clean; the object is released twice by the program's own logic).
+`tenon run`: stdout `closed 7` / `closed 7`, exit 0. Native: the same, exit 0. The one `Tok` was consumed (`close`) twice.
 **Expected:** error: `t` is consumed in a guard that may fall through. (Variants where the guard merely *inspects* are correctly accepted.)
 
 ## 4. Linear temporaries are dropped by "inspecting" operations (high)
@@ -92,7 +93,7 @@ loses a value that has no variable.
 
 **Repro:** `repros/04-linear-temporary-dropped.tn` — four lines, all accepted by `check`:
 `mk().id`, `mk() == mk()`, `"{mk()}"`, `peek(mk())` (`peek(t: ref Tok)`).
-`tenon run`: `1 true Tok { id: 1 } 1`, exit 0. Native: identical, exit 0. Plain `mk()` as a statement and `let _ = mk()` are correctly rejected.
+`tenon run`: `1 true Tok { id: 1 } 1`, exit 0. Native: identical, exit 0. A plain `mk()` statement and `let _ = Some(mk())` are correctly rejected.
 **Expected:** error "linear value would be dropped" for each.
 
 ## 5. `within` / `read_only` follow symlinks (medium)
@@ -105,9 +106,9 @@ read:   Ok("SECRET\n")        write:  Ok(())     rename: Ok(())
 mkdir:  Ok(())                remove: Ok(())     list:   Ok(["newdir"])
 ```
 (file `outside/secret.txt` is read, then moved into the jail by `rename`; `outside/pwned.txt` and `outside/newdir` are created/removed).
-`read_only()` does stop writes through the link (it denies by operation, not path), but reads cross.
-**Expected:** resolve and re-check, or open with `O_NOFOLLOW`/`openat` per component; or document that symlinks are out of scope. The
-temp file of `Fs.write` (`<path>.tmp`, `O_CREAT|O_TRUNC`) also follows a pre-planted symlink.
+`read_only()` denies by operation (not tested through the link), but reads cross.
+**Expected:** resolve and re-check, or open with `O_NOFOLLOW`/`openat` per component; or document that symlinks are out of scope. By reading
+the code (not tested), the temp file of `Fs.write` (`<path>.tmp`, `O_CREAT|O_TRUNC`) would also follow a pre-planted symlink.
 
 ## 6. `..base` drops the replaced linear field (medium)
 
