@@ -21,6 +21,13 @@ extern fn encode[T](x: T) -> Str
 extern fn decode[T](s: Str) -> Result[T, Str]
 
 // ---- Int / Float ----
+pub const INT_MAX: Int = 9223372036854775807
+pub const INT_MIN: Int = -9223372036854775807 - 1
+// Arithmetic that reports overflow (and division by zero) as None instead of trapping.
+extern fn Int.checked_add(self, o: Int) -> Option[Int]
+extern fn Int.checked_sub(self, o: Int) -> Option[Int]
+extern fn Int.checked_mul(self, o: Int) -> Option[Int]
+extern fn Int.checked_div(self, o: Int) -> Option[Int]
 extern fn Int.to_float(self) -> Float
 fn Int.abs(self) -> Int { if self < 0 { -self } else { self } }
 fn Int.min(self, o: Int) -> Int { if self < o { self } else { o } }
@@ -88,6 +95,7 @@ extern fn List[T].clear(mut self)
 extern fn List[T].slice(self, start: Int, end: Int) -> List[T]
 extern fn List[T].sort(mut self)
 extern fn List[T].sort_by[K](mut self, key: fn(T) -> K)
+extern fn List[T].sort_by_desc[K](mut self, key: fn(T) -> K) // stable: equal keys keep their order
 extern fn List[T].reverse(mut self)
 extern fn List[Str].join(self, sep: Str) -> Str
 fn List[T].is_empty(self) -> Bool { self.len() == 0 }

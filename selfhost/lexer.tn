@@ -16,7 +16,7 @@ struct Lx { src: Str, pos: Int, line: Int, col: Int }
 fn keywords() -> List[Str] {
     ["fn", "let", "var", "if", "else", "while", "for", "in", "match", "return", "break",
      "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
-     "unique", "import", "extern", "pub", "ref"]
+     "unique", "import", "extern", "pub", "ref", "const"]
 }
 
 // Longest first so that greedy matching works.
@@ -245,6 +245,14 @@ fn is_ender(t: Tok) -> Bool {
     }
 }
 
+fn continues(t: Tok) -> Bool {
+    match t {
+        Sym(s) => [".", "+", "*", "/", "%", "==", "!=", "<", "<=", ">", ">="].contains(s),
+        Kw(k) => k == "else" or k == "and" or k == "or",
+        _ => false,
+    }
+}
+
 // Newlines end statements, except before `.`/`else` and inside ( ) and [ ].
 fn insert_semis(raw: List[Token]) -> List[Token] {
     var out: List[Token] = []
@@ -261,7 +269,9 @@ fn insert_semis(raw: List[Token]) -> List[Token] {
                 }
                 var j = i + 1
                 while j < raw.len() and raw[j].tok == Sym("\n") { j += 1 }
-                let next_continues = j < raw.len() and (raw[j].tok == Sym(".") or raw[j].tok == Kw("else"))
+                // A line continues the previous one when it starts with `.`, `else`
+                // or a binary operator other than `-` (which may be a negation).
+                let next_continues = j < raw.len() and continues(raw[j].tok)
                 if in_braces and prev_ends and not next_continues {
                     out.push(Token { tok: Sym(";"), line: t.line, col: t.col })
                 }

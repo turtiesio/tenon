@@ -15,6 +15,7 @@ pub enum Res {
     Field(usize),                     // struct field index
     Method(usize, Vec<Ty>),           // method call resolved to function
     Struct(usize),                    // struct literal
+    Const(usize),                     // a `const`: evaluate its function
     ToStr,                            // derived `x.to_str()`
     CallValue,                        // calling a function value
 }
@@ -46,6 +47,7 @@ pub struct FnInfo {
     pub ret: Ty,
     pub self_kind: Option<SelfKind>,
     pub is_extern: bool,
+    pub is_const: bool,
     pub public: bool,
     pub span: Span,
 }
@@ -227,6 +229,13 @@ fn fix_paths(prog: &mut Program) {
             },
             _ => None,
         };
+        if let ExprKind::Field(b, c) = &e.kind {
+            if let ExprKind::Name(m) = &b.kind {
+                if is_mod(m) && c.chars().all(|x| x.is_ascii_uppercase() || x.is_ascii_digit() || x == '_') {
+                    e.kind = ExprKind::Path(format!("@{}", m), c.clone());
+                }
+            }
+        }
         if let Some((t, f, args, id, span)) = module_call {
             let callee = Expr { id, span, kind: ExprKind::Path(t, f) };
             e.kind = ExprKind::Call(Box::new(callee), args);
@@ -497,7 +506,12 @@ impl Checker {
                 return err(f.span, format!("function '{}' is already defined", full));
             }
             fseen.insert(full.clone(), f.span);
-            if upper(&f.name) {
+            if f.is_const {
+                let ok = f.name.len() >= 2 && f.name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_');
+                if !ok {
+                    return err(f.span, format!("constant names are written in capitals, like MAX_SIZE: '{}'", f.name));
+                }
+            } else if upper(&f.name) {
                 return err(f.span, format!("function names start with a lowercase letter: '{}'", f.name));
             }
             if f.body.is_none() && f.span.file != 0 {
@@ -537,6 +551,7 @@ impl Checker {
                 ret,
                 self_kind: f.self_kind,
                 is_extern: f.body.is_none(),
+                is_const: f.is_const,
                 public: f.public,
                 span: f.span,
             });
@@ -678,6 +693,9 @@ impl Checker {
     }
 
     pub(crate) fn bind(&mut self, n: &str, ty: Ty, mutable: bool, span: Span) -> CResult<()> {
+        if n == "_" {
+            return Ok(());
+        }
         if self.lookup(n).is_some() {
             return err(span, format!("'{}' is already defined in this function (shadowing is not allowed)", n));
         }

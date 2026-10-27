@@ -38,7 +38,8 @@ pub fn dump(src: &str) -> String {
             Some(SelfKind::Mut) => " mut-self",
             None => "",
         };
-        out.push_str(&format!("(fn{} {}{}{}{}", vis(f.public), owner, f.name, tps(&f.tparams), selfk));
+        let head = if f.is_const { "const" } else { "fn" };
+        out.push_str(&format!("({}{} {}{}{}{}", head, vis(f.public), owner, f.name, tps(&f.tparams), selfk));
         for p in &f.params {
             out.push_str(&format!(" ({}{} {})", p.name, if p.by_ref { " ref" } else { "" }, ty(&p.ty)));
         }

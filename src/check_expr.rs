@@ -110,6 +110,10 @@ impl Checker {
                     return Ok(ty);
                 }
                 if let Some(fi) = self.lookup_fn(n) {
+                    if self.out.fns[fi].is_const {
+                        self.pending_res.push((e.id, Res::Const(fi)));
+                        return Ok(self.out.fns[fi].ret.clone());
+                    }
                     let (targs, m) = self.instantiate(fi);
                     let f = &self.out.fns[fi];
                     let t = Ty::Fn(f.params.iter().map(|(_, t)| t.subst(&m)).collect(), Box::new(f.ret.subst(&m)));
@@ -141,6 +145,10 @@ impl Checker {
                     return err(e.span, format!("'{}' has no member '{}'", t, m));
                 };
                 self.visible(fi, e.span)?;
+                if self.out.fns[fi].is_const {
+                    self.pending_res.push((e.id, Res::Const(fi)));
+                    return Ok(self.out.fns[fi].ret.clone());
+                }
                 let (targs, mm) = self.instantiate(fi);
                 let f = &self.out.fns[fi];
                 let ty = Ty::Fn(f.params.iter().map(|(_, t)| t.subst(&mm)).collect(), Box::new(f.ret.subst(&mm)));

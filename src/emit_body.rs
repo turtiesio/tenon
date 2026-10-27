@@ -723,6 +723,10 @@ impl<'a> Emitter<'a> {
     pub(crate) fn name_value(&mut self, e: &Expr, t: &Ty) -> CV {
         match self.c.res[&e.id].clone() {
             Res::Local(n) => bor(self.local_code(&n)),
+            Res::Const(fi) => {
+                let f = self.fn_inst(fi, vec![]);
+                self.tmp_owned(t, &format!("{}()", f))
+            }
             Res::Fn(fi, targs) => {
                 let targs: Vec<Ty> = targs.iter().map(|x| self.sub(x)).collect();
                 let w = self.fn_wrapper(fi, targs);
