@@ -30,6 +30,11 @@ fn usage() -> ! {
     exit(2)
 }
 
+// Standard library modules, embedded so the compiler is a single file.
+const STD: &[(&str, &str)] = &[("journal", include_str!("../std/journal.tn"))];
+
+// Load the program: prelude, the main file, then every imported module
+// (from the importing file's directory, else the standard library).
 pub fn front(path: &str) -> (check::Checked, SourceMap) {
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -38,15 +43,37 @@ pub fn front(path: &str) -> (check::Checked, SourceMap) {
             exit(2)
         }
     };
-    let sm = SourceMap { files: vec![("<prelude>".into(), PRELUDE.into()), (path.into(), src)] };
-    let mut prog = ast::Program { structs: vec![], enums: vec![], fns: vec![] };
+    let mut sm = SourceMap { files: vec![("<prelude>".into(), PRELUDE.into()), (path.into(), src)] };
+    let mut prog = ast::Program { structs: vec![], enums: vec![], fns: vec![], imports: vec![], modules: vec![String::new(), String::new()] };
     let mut next_id = 0;
-    for (i, (_, text)) in sm.files.iter().enumerate() {
-        let r = lexer::lex(text, i as u16).and_then(|t| parser::parse_program(&t, &mut next_id, &mut prog));
+    let mut i = 0;
+    while i < sm.files.len() {
+        let text = sm.files[i].1.clone();
+        let r = lexer::lex(&text, i as u16).and_then(|t| parser::parse_program(&t, &mut next_id, &mut prog));
         if let Err(d) = r {
             eprintln!("{}", sm.render(&d));
             exit(1)
         }
+        let imports: Vec<ast::Import> = prog.imports.iter().filter(|im| im.file == i as u16).cloned().collect();
+        for im in imports {
+            if prog.modules.contains(&im.name) {
+                continue;
+            }
+            let dir = std::path::Path::new(&sm.files[i].0).parent().map(|p| p.to_path_buf()).unwrap_or_default();
+            let local = dir.join(format!("{}.tn", im.name));
+            let found = match std::fs::read_to_string(&local) {
+                Ok(t) => Some((local.to_string_lossy().into_owned(), t)),
+                Err(_) => STD.iter().find(|(n, _)| *n == im.name).map(|(n, t)| (format!("<std>/{}.tn", n), t.to_string())),
+            };
+            let Some(f) = found else {
+                let d = diag::Diag::new(im.span, &format!("cannot find module '{}' ({} or the standard library)", im.name, local.display()));
+                eprintln!("{}", sm.render(&d));
+                exit(1)
+            };
+            sm.files.push(f);
+            prog.modules.push(im.name.clone());
+        }
+        i += 1;
     }
     match check::check(prog) {
         Ok(c) => (c, sm),

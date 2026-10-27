@@ -1,7 +1,7 @@
-- 10 real programs: 1 of 10 written (ledger).
+- 10 real programs: 2 of 10 written (ledger, jobq).
 - Blind usability study: tasks not yet written; not run.
 - Performance: wordfreq at 1.7x C (map update path); Rust/TypeScript baselines missing.
 - Self-hosted lexer/parser/checker: not started.
 - Approvals log and checker: not started.
-- Modules, concurrency, networking, codecs: not implemented. Linear/unique types: implemented (no modules yet, so any code can add a disposing method).
+- Concurrency, networking, codecs: not implemented.
 - CI runs on macOS and Linux; a week of loop-time history does not exist yet.

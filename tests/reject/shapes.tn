@@ -1,0 +1,21 @@
+// module: imported by modules.tn
+pub enum Shape { Circle(Int), Square(Int) }
+
+pub struct Canvas { pub title: Str, shapes: List[Shape], secret: Int }
+
+pub fn Canvas.new(title: Str) -> Canvas { Canvas { title, shapes: [], secret: 42 } }
+pub fn Canvas.add(mut self, s: Shape) { self.shapes.push(s) }
+pub fn Canvas.total(self) -> Int {
+    var t = 0
+    for s in self.shapes { t += area(s) }
+    t
+}
+
+fn area(s: Shape) -> Int {
+    match s {
+        Circle(r) => 3 * r * r,
+        Square(w) => w * w,
+    }
+}
+
+pub fn describe(s: Shape) -> Str { "{s} has area {area(s)}" }

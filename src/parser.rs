@@ -110,6 +110,14 @@ impl<'a> Parser<'a> {
     // ---- items ----
 
     fn item(&mut self, prog: &mut Program) -> PResult<()> {
+        if self.is_kw("import") {
+            let span = self.span();
+            self.advance();
+            let name = self.ident()?;
+            prog.imports.push(Import { file: span.file, name, span });
+            return Ok(());
+        }
+        let public = self.eat_kw("pub");
         let kind = if self.eat_kw("linear") {
             Kind::Linear
         } else if self.eat_kw("unique") {
@@ -118,11 +126,17 @@ impl<'a> Parser<'a> {
             Kind::Plain
         };
         if self.is_kw("struct") {
-            prog.structs.push(self.struct_decl(kind)?);
+            let mut d = self.struct_decl(kind)?;
+            d.public = public;
+            prog.structs.push(d);
         } else if self.is_kw("enum") {
-            prog.enums.push(self.enum_decl(kind)?);
+            let mut d = self.enum_decl(kind)?;
+            d.public = public;
+            prog.enums.push(d);
         } else if self.is_kw("fn") && kind == Kind::Plain {
-            prog.fns.push(self.fn_decl(false)?);
+            let mut d = self.fn_decl(false)?;
+            d.public = public;
+            prog.fns.push(d);
         } else if self.is_kw("extern") && kind == Kind::Plain {
             self.advance();
             if !self.is_kw("fn") {
@@ -155,8 +169,10 @@ impl<'a> Parser<'a> {
         let tparams = self.tparams()?;
         self.expect_sym("{")?;
         let mut fields = Vec::new();
+        let mut pub_fields = Vec::new();
         self.skip_seps();
         while !self.eat_sym("}") {
+            pub_fields.push(self.eat_kw("pub"));
             let f = self.ident()?;
             self.expect_sym(":")?;
             let t = self.type_expr()?;
@@ -166,7 +182,7 @@ impl<'a> Parser<'a> {
             }
             self.skip_seps();
         }
-        Ok(StructDecl { name, tparams, fields, kind, span })
+        Ok(StructDecl { name, tparams, fields, pub_fields, kind, public: false, span })
     }
 
     fn enum_decl(&mut self, kind: Kind) -> PResult<EnumDecl> {
@@ -195,7 +211,7 @@ impl<'a> Parser<'a> {
             }
             self.skip_seps();
         }
-        Ok(EnumDecl { name, tparams, variants, kind, span })
+        Ok(EnumDecl { name, tparams, variants, kind, public: false, span })
     }
 
     fn fn_decl(&mut self, is_extern: bool) -> PResult<FnDecl> {
@@ -218,6 +234,9 @@ impl<'a> Parser<'a> {
             (Some(own), n, self.tparams()?)
         } else if self.eat_sym(".") {
             let n = self.ident()?;
+            if self.is_sym(".") {
+                return Err(Diag::new(first_span, "methods can only be defined in the module that defines the type"));
+            }
             let own = TypeExpr { kind: TypeExprKind::Named(first, vec![]), span: first_span };
             (Some(own), n, self.tparams()?)
         } else {
@@ -250,7 +269,7 @@ impl<'a> Parser<'a> {
         }
         let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None };
         let body = if is_extern { None } else { Some(self.block()?) };
-        Ok(FnDecl { name, owner, tparams, self_kind, params, ret, body, span })
+        Ok(FnDecl { name, owner, tparams, self_kind, params, ret, body, public: false, span })
     }
 
     // After `fn Name`, is `[...]` followed by `.`? (owner type args vs fn type params)
@@ -307,7 +326,14 @@ impl<'a> Parser<'a> {
             }
             return Ok(TypeExpr { kind: TypeExprKind::Tuple(elems), span });
         }
-        let name = self.ident()?;
+        let mut name = self.ident()?;
+        if self.is_sym(".") {
+            if let Tok::Ident(t) = self.peek_at(1).clone() {
+                self.advance();
+                self.advance();
+                name = format!("{}.{}", name, t);
+            }
+        }
         let mut args = Vec::new();
         if self.eat_sym("[") {
             while !self.eat_sym("]") {
@@ -798,6 +824,16 @@ impl<'a> Parser<'a> {
                 }
                 if upper && !self.no_struct && self.is_sym("{") {
                     return self.struct_lit(span, name);
+                }
+                // module.Type { ... }
+                if !upper && !self.no_struct && self.is_sym(".") && matches!(self.peek_at(2), Tok::Sym("{")) {
+                    if let Tok::Ident(t) = self.peek_at(1).clone() {
+                        if t.chars().next().unwrap().is_ascii_uppercase() {
+                            self.advance();
+                            self.advance();
+                            return self.struct_lit(span, format!("{}.{}", name, t));
+                        }
+                    }
                 }
                 Ok(self.mk(span, ExprKind::Name(name)))
             }

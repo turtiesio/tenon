@@ -53,3 +53,20 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   `lower`). Remaining gap is the two-level map layout plus two lookups per
   update in the idiomatic program. trees 2.55x → 1.35x (shared nullary variants,
   borrowed match bindings).
+
+## 2026-10-27 — job queue, generic linear safety, modules
+
+- **Job queue** (second program) uses `linear struct Claim`. It needed `map_err` on
+  `Result[Option[Claim], _]`, which the first rule (no generic calls with linear
+  type arguments) rejected. Replaced the rule with an analysis: a generic function
+  accepts a linear argument for parameter P iff its body passes the linear check
+  with P assumed linear (cached per function and parameter). `map_err` passes;
+  `unwrap_or` is still rejected (it would drop the default).
+- **Usability gap noted**: threading a linear value through an inspecting
+  function (`let (c2, r) = run(c)`) is clumsy; an inspect-only parameter mode
+  would remove it. Deferred until a second program needs it.
+- **Modules** (trigger: the checksummed journal was duplicated verbatim in two
+  programs). `import name`, `pub` items and fields, `module.item` access, methods
+  only in the defining module. Extracted `std/journal.tn`; both programs shrank
+  and their transcripts are unchanged. A test found derived formatting leaking
+  private fields; foreign types now show private fields as `..`.

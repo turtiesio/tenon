@@ -8,7 +8,7 @@ enum Result[T, E] { Ok(T), Err(E) }
 enum IoError { NotFound(Str), Denied(Str), Failed(Str) }
 
 // The authority a program starts with; only `main` receives one.
-struct Sys { console: Console, fs: Fs, clock: Clock, args: List[Str] }
+pub struct Sys { pub console: Console, pub fs: Fs, pub clock: Clock, pub args: List[Str] }
 
 extern fn panic[T](msg: Str) -> T
 extern fn assert(cond: Bool)

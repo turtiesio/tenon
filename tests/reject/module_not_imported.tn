@@ -1,0 +1,3 @@
+// error: unknown module 'shapes'
+fn f(c: shapes.Canvas) {}
+fn main() {}

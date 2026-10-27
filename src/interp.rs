@@ -40,7 +40,7 @@ pub struct Interp<'a> {
     env: Vec<(String, V)>,
     depth: usize,
     out: std::io::BufWriter<std::io::Stdout>,
-    snames: Vec<(String, Vec<String>)>,
+    snames: Vec<(String, Vec<Option<String>>)>,
     enames: Vec<(String, Vec<String>)>,
     mono_origin: std::time::Instant,
     args: Vec<String>,
@@ -229,6 +229,25 @@ pub fn visit_stmt<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
     }
 }
 
+// Fields shown by derived formatting: a module's private fields are hidden
+// (shown as `..`) so formatting cannot leak them.
+pub fn shown_fields(s: &crate::check::StructInfo) -> Vec<Option<String>> {
+    let mut v: Vec<Option<String>> = Vec::new();
+    for (i, (f, _)) in s.fields.iter().enumerate() {
+        if s.file > 1 && !s.pub_fields[i] {
+            v.push(None);
+            break;
+        }
+        v.push(Some(f.clone()));
+    }
+    v
+}
+
+// Type names as users write them (without the module prefix).
+pub fn display(n: &str) -> &str {
+    n.rsplit('.').next().unwrap()
+}
+
 pub fn run(c: &Checked, sm: &SourceMap, args: Vec<String>) -> i32 {
     let mut lambdas = HashMap::new();
     for f in &c.prog.fns {
@@ -244,8 +263,8 @@ pub fn run(c: &Checked, sm: &SourceMap, args: Vec<String>) -> i32 {
         env: vec![],
         depth: 0,
         out: std::io::BufWriter::with_capacity(1 << 16, std::io::stdout()),
-        snames: c.structs.iter().map(|s| (s.name.clone(), s.fields.iter().map(|f| f.0.clone()).collect())).collect(),
-        enames: c.enums.iter().map(|e| (e.name.clone(), e.variants.iter().map(|v| v.0.clone()).collect())).collect(),
+        snames: c.structs.iter().map(|s| (display(&s.name).to_string(), shown_fields(s))).collect(),
+        enames: c.enums.iter().map(|e| (display(&e.name).to_string(), e.variants.iter().map(|v| v.0.clone()).collect())).collect(),
         mono_origin: std::time::Instant::now(),
         args,
     };
@@ -749,8 +768,8 @@ impl<'a> Interp<'a> {
                 }
                 Ok(V::Map(Rc::new(m)))
             }
-            ExprKind::StructLit(name, fields, base) => {
-                let si = self.c.struct_idx(name).unwrap();
+            ExprKind::StructLit(_, fields, base) => {
+                let Some(Res::Struct(si)) = self.c.res.get(&e.id).cloned() else { unreachable!() };
                 let decl = &self.c.structs[si];
                 let mut given: Vec<(usize, V)> = Vec::new();
                 for (f, x) in fields {

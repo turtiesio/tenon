@@ -10,6 +10,15 @@ pub struct Program {
     pub structs: Vec<StructDecl>,
     pub enums: Vec<EnumDecl>,
     pub fns: Vec<FnDecl>,
+    pub imports: Vec<Import>,
+    pub modules: Vec<String>, // module name per source file id ("" for prelude and main)
+}
+
+#[derive(Debug, Clone)]
+pub struct Import {
+    pub file: u16, // importing file
+    pub name: String,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +46,9 @@ pub struct StructDecl {
     pub name: String,
     pub tparams: Vec<String>,
     pub fields: Vec<(String, TypeExpr)>,
+    pub pub_fields: Vec<bool>,
     pub kind: Kind,
+    pub public: bool,
     pub span: Span,
 }
 
@@ -47,6 +58,7 @@ pub struct EnumDecl {
     pub tparams: Vec<String>,
     pub variants: Vec<VariantDecl>,
     pub kind: Kind,
+    pub public: bool,
     pub span: Span,
 }
 
@@ -72,6 +84,7 @@ pub struct FnDecl {
     pub params: Vec<Param>,
     pub ret: Option<TypeExpr>,
     pub body: Option<Block>, // None: `extern`, implemented by each backend
+    pub public: bool,
     pub span: Span,
 }
 
