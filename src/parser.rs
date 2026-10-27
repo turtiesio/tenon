@@ -744,7 +744,13 @@ impl<'a> Parser<'a> {
                     let pat = self.pattern()?;
                     let guard = if self.eat_kw("if") { Some(self.expr()?) } else { None };
                     self.expect_sym("=>")?;
-                    let body = self.expr()?;
+                    // An arm body is an expression or an assignment (`None => n += 1`).
+                    let bspan = self.span();
+                    let st = self.stmt()?;
+                    let body = match st.kind {
+                        StmtKind::Expr(e) => e,
+                        _ => self.mk(bspan, ExprKind::Block(Block { stmts: vec![st], span: bspan })),
+                    };
                     arms.push(Arm { pat, guard, body });
                     if !self.is_sym("}") && !self.is_sym(",") && !self.is_sym(";") {
                         return self.err("',' or '}' after match arm");
