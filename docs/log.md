@@ -178,3 +178,25 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 - **Concurrency: single-threaded event loop** (readiness API over many connections).
   No data races by construction with non-atomic reference counts; deterministic
   event order; no multi-core speedup.
+
+## 2026-10-28 (evening) — event loop, regex, performance, self-hosting complete
+
+- **Event loop** (user decision): `Poller` owns sockets by id; `wait` returns
+  Accepted/Data/Closed/Timeout in id order, via poll(2) in both backends (the
+  interpreter declares poll through FFI to libc; still no crates).
+  programs/chat serves concurrent clients; stable across repeated runs.
+- **std/regex** (worker): backtracking regex in Tenon with a step limit; 906
+  cases cross-checked against Python's `re` (3 documented differences). Found
+  a module-resolution pitfall: a file named like a std module imported itself.
+  Fixed: a file never imports itself (both checkers).
+- **Performance**: hash-free lookups in small maps (calc 1.77x -> 1.52x of C;
+  Tenon now matches idiomatic Rust on calc). mdhtml stays at ~1.9x of C:
+  per-character work and string copying that hand-written C avoids.
+- **Self-hosted checker complete** (worker): agrees with the bootstrap on all
+  corpus files; 30,000 mutated programs, 0 disagreements. Every checker change
+  since has to be mirrored (it caught three drifts the same day: Poller type,
+  std module list, the while-true quirk).
+- **Loop time**: check --fast reached 26.6 s (self-hosting cross-check over 420+
+  files); parallelized to ~20 s.
+- **Wave-2 notes, second batch**: enumerate, Map.update, Option.map_or/filter,
+  Int.fmt_fixed, Float.to_fixed, clearer range error, kit-relative doc paths.
