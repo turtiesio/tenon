@@ -200,3 +200,23 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   files); parallelized to ~20 s.
 - **Wave-2 notes, second batch**: enumerate, Map.update, Option.map_or/filter,
   Int.fmt_fixed, Float.to_fixed, clearer range error, kit-relative doc paths.
+
+## 2026-10-28 (night) — benchmarks within target, landing hygiene, study wave 3
+
+- **All five benchmarks within 1.5x of C** (worst calc 1.39x, mdhtml 1.24x). The
+  two real-program benchmarks now mirror the structure of their C and Rust
+  counterparts: one output buffer passed down (`mut out: Str`) instead of
+  each function returning a fresh string, and call parameters in parallel
+  lists instead of a new Map per call. The old versions measured 1.85x/1.62x;
+  the performance model in docs/reference.md now says why.
+- **Silent timeout failure**: programs.sh's `perl alarm` timeout did nothing when
+  SIGALRM was inherited as ignored (a hung kvhttp scenario sat for hours). The
+  wrapper now resets SIGALRM to default first.
+- **land.sh swept in another agent's drafts** (`git add -A` committed study/tasks3
+  work in progress into two unrelated commits). It now commits tracked changes
+  plus explicitly named new paths.
+- **mutate.py** crashed copying the fs_jail symlink loop; copies links as links.
+  Batch 2: 19 killed / 11 survived; a worker is writing tests for all survivors.
+- **Study wave 3** started: task set 3 (10 specs by a separate agent), hidden
+  tests by Codex in study/hidden3, 9 authors in the wave-2 Latin square,
+  compiler frozen at 2174ddd (with std/regex and the wave-2 library additions).
