@@ -160,7 +160,7 @@ C(t,'example-5',stdout='total=0 malformed=0\n')
 C(t,'example-5-sort',['--sort=speed'],exit=2)
 C(t,'example-5-min',['--min-count=0'],exit=2)
 C(t,'example-5-missing',['nope.log'],exit=1)
-stamp='2026-99-99T99:99:99Z'
+stamp='2026-03-01T00:00:00Z'
 def L(method,path,status,ms): return '%s %s %s %s %s\n'%(stamp,method,path,status,ms)
 def LR(name,count,errors,p50,p90,p99,maxval,pct='0.0'):
     return '%s count=%d errors=%d err_pct=%s p50=%d p90=%d p99=%d max=%d\n'%(name,count,errors,pct,p50,p90,p99,maxval)

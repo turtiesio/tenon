@@ -61,4 +61,4 @@ transfers 2
 [exit 0]
 # archived records:
 transfer t7 mint bob 5 #12
-transfer t2 alice bob 99 #948125353
+Transfer("t2", "alice", "bob", 99) #855083815
