@@ -937,6 +937,11 @@ TN_INCOMPARABLE(tn_fn)
     }                                                                                    \
     static TN_UNUSED V *M##_get(M m, K k) {                                              \
         if (!m || !m->len) return NULL;                                                  \
+        if (!m->idx) { /* small map: compare keys, no hashing */                         \
+            for (int64_t j = 0; j < m->n; j++)                                           \
+                if (m->e[j].live && K##_eq(m->e[j].k, k)) return &m->e[j].v;             \
+            return NULL;                                                                 \
+        }                                                                                \
         int64_t j = M##_find(m, k, M##_khash(m, k), NULL);                                \
         return j < 0 ? NULL : &m->e[j].v;                                                \
     }                                                                                    \
