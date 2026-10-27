@@ -7,6 +7,15 @@ Milestone 1 (tenon.md §4), item by item:
   time not met.** Wave 3, lines without closer-only lines (user decision, see
   docs/log.md): Tenon 1289, Python 1293, TypeScript 1241 (raw: 1612 / 1296 /
   1511). Time: Tenon 7.0 min, Python 4.8, TypeScript 4.4.
+  Why time lags (same-model token diffs): Tenon's extra tokens are braces,
+  `let`/`var`, parameter types, `->`/`=>` and `sys.console`, i.e. the explicit
+  types, mutability and authority the language is built on. But TypeScript
+  authors wrote more tokens than Tenon's (14614 vs 13610) and were faster
+  (4.4 vs 7.0 min), and builds cost 0.25 s with similar run counts, so the gap is
+  mostly unfamiliarity (lookups in docs, compile errors: median 11 vs 0 for
+  Python). Levers in progress: if-let/while-let, hex literals, library gaps the
+  authors hit (radix, Map.or_insert, split_once, path helpers), doc fixes, and a
+  one-page quick start for Python/TypeScript programmers in the kit.
   Wave 2 (task set 2, hidden tests written by Codex, 3 authors per language from
   Claude Opus, Claude Sonnet and Codex in a Latin square, compiler frozen at f6b8396;
   medians): hidden tests ~100% in all three languages; Tenon 1610 lines / 14640
