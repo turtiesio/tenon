@@ -37,6 +37,14 @@ pub enum Cap {
     Net,
     Listener(std::net::TcpListener),
     Conn(std::cell::RefCell<std::io::BufReader<std::net::TcpStream>>),
+    Poller(std::cell::RefCell<PollerState>),
+}
+
+#[derive(Debug, Default)]
+pub struct PollerState {
+    pub next: i64,
+    pub listeners: std::collections::BTreeMap<i64, std::net::TcpListener>,
+    pub conns: std::collections::BTreeMap<i64, std::net::TcpStream>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -322,6 +330,7 @@ pub fn show(v: &V, top: bool, n: &Names, out: &mut String) {
             self::Cap::Net => "<Net>",
             self::Cap::Listener(_) => "<Listener>",
             self::Cap::Conn(_) => "<Conn>",
+            self::Cap::Poller(_) => "<Poller>",
         }),
     }
 }

@@ -1,0 +1,93 @@
+// chat: a line-protocol chat server for many concurrent clients, on one
+// event loop (no threads).
+//
+//   chat PORT        (0 picks a free port; prints "listening on PORT")
+//
+// Client lines: NICK name | SAY text | WHO | QUIT | SHUTDOWN
+// Server lines: "ok", "error: ...", "<name> text" (to everyone else), "users a b c".
+
+struct Client { nick: Str, buf: Str }
+
+unique struct Server { p: Poller, clients: Map[Int, Client], running: Bool }
+
+fn Server.send(self, id: Int, line: Str) {
+    // A failed send means the client is gone; its Closed event follows.
+    let _ = self.p.send(id, line + "\n")
+}
+
+fn Server.broadcast(self, from: Int, line: Str) {
+    for (id, _) in self.clients {
+        if id != from { self.send(id, line) }
+    }
+}
+
+fn Server.command(mut self, id: Int, line: Str) {
+    let words = line.words()
+    let Some(cmd) = words.first() else { return self.send(id, "error: empty command") }
+    let rest = line.trim().slice(cmd.len(), line.trim().len()).trim()
+    let nick = self.clients[id].nick
+    match cmd {
+        "NICK" => {
+            if rest == "" or rest.contains(" ") { return self.send(id, "error: NICK needs one word") }
+            if self.clients.values().any(fn(c) => c.nick == rest) { return self.send(id, "error: nick taken") }
+            self.clients[id].nick = rest
+            self.send(id, "ok")
+            if nick != "" { self.broadcast(id, "* {nick} is now {rest}") } else { self.broadcast(id, "* {rest} joined") }
+        }
+        "SAY" => {
+            if nick == "" { return self.send(id, "error: set a NICK first") }
+            self.broadcast(id, "<{nick}> {rest}")
+            self.send(id, "ok")
+        }
+        "WHO" => {
+            let names = self.clients.values().map(fn(c) => c.nick).filter(fn(n) => n != "").sorted()
+            self.send(id, "users " + names.join(" "))
+        }
+        "QUIT" => {
+            self.send(id, "bye")
+            self.p.close(id)
+            self.leave(id)
+        }
+        "SHUTDOWN" => {
+            self.broadcast(id, "* server shutting down")
+            self.send(id, "ok")
+            self.running = false
+        }
+        _ => self.send(id, "error: unknown command {cmd}"),
+    }
+}
+
+fn Server.leave(mut self, id: Int) {
+    let Some(c) = self.clients.remove(id) else { return }
+    if c.nick != "" { self.broadcast(id, "* {c.nick} left") }
+}
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    if sys.args.len() != 1 { return Err("usage: chat PORT") }
+    let port = sys.args[0].to_int().ok_or("PORT must be a number")?
+    let p = sys.net.poller()
+    let lid = p.listen(port).map_err(fn(e) => "listen: {e}")?
+    sys.console.println("listening on {p.port(lid)}")
+    var s = Server { p, clients: [:], running: true }
+    while s.running {
+        for ev in s.p.wait(-1) {
+            match ev {
+                Accepted(_, id) => s.clients[id] = Client { nick: "", buf: "" },
+                Data(id, text) => {
+                    if not s.clients.contains(id) { continue }
+                    s.clients[id].buf += text
+                    while true {
+                        let buf = s.clients[id].buf
+                        let Some(i) = buf.find("\n") else { break }
+                        s.clients[id].buf = buf.slice(i + 1, buf.len())
+                        s.command(id, buf.slice(0, i).trim_chars("\r"))
+                        if not s.clients.contains(id) or not s.running { break }
+                    }
+                }
+                Closed(id) => s.leave(id),
+                Timeout => {}
+            }
+        }
+    }
+    Ok(())
+}
