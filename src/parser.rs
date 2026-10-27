@@ -72,7 +72,7 @@ impl<'a> Parser<'a> {
             Tok::Sym(";") => "end of statement".to_string(),
             Tok::Sym(s) => format!("'{}'", s),
             Tok::Int(i) => format!("'{}'", i),
-            Tok::Float(f) => format!("'{}'", f),
+            Tok::Float(f) => format!("'{}'", crate::value::fmt_float(*f)),
             Tok::Str(_) => "string".to_string(),
             Tok::Eof => "end of file".to_string(),
         }

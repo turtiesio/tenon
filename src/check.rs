@@ -358,7 +358,7 @@ impl Checker {
                 return err(sp, format!("type names start with an uppercase letter: '{}'", n0));
             }
             if is_tparam_name(n0) {
-                return err(sp, format!("'{}' is reserved for type parameters (one capital letter, optional digits); use a longer type name", n));
+                return err(sp, format!("'{}' is reserved for type parameters (one capital letter, optional digits); use a longer type name", n0));
             }
             if seen.contains_key(n) || BUILTIN_TYPES.iter().any(|(b, _, _)| b == n) {
                 return err(sp, format!("type '{}' is already defined", n));
