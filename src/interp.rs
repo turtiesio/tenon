@@ -244,6 +244,14 @@ pub fn shown_fields(s: &crate::check::StructInfo) -> Vec<Option<String>> {
     v
 }
 
+// `main` returning Int: 0-255, except the codes reserved for traps.
+pub fn exit_status(code: i64) -> Result<i32, String> {
+    if !(0..=255).contains(&code) || [EXIT_TRAP, 71, EXIT_STACK, EXIT_OUTPUT].contains(&(code as i32)) {
+        return Err(format!("exit status {} is out of range or reserved", code));
+    }
+    Ok(code as i32)
+}
+
 // Type names as users write them (without the module prefix).
 pub fn display(n: &str) -> &str {
     n.rsplit('.').next().unwrap()
@@ -275,6 +283,14 @@ pub fn run(c: &Checked, sm: &SourceMap, args: Vec<String>) -> i32 {
     let r = it.call_fn(c.main, margs, Span::default());
     let code = match r {
         Ok(v) => match v {
+            V::Int(code) => match exit_status(code) {
+                Ok(c) => c,
+                Err(m) => {
+                    let _ = it.out.flush();
+                    eprintln!("trap: {}\n  at {}", m, sm.loc(c.prog.fns[c.main].span));
+                    EXIT_TRAP
+                }
+            },
             V::Enum(_, 1, payload) => {
                 let msg = it.show_top(&payload[0]);
                 let _ = it.out.flush();

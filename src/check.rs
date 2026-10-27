@@ -551,9 +551,9 @@ impl Checker {
             [(_, t)] if t.is("Sys") => {}
             _ => return err(f.span, "'main' takes no parameters or a single 'Sys'"),
         }
-        let ok = f.ret.is("Unit") || (f.ret.is("Result") && f.ret.args()[0].is("Unit"));
+        let ok = f.ret.is("Unit") || f.ret.is("Int") || (f.ret.is("Result") && f.ret.args()[0].is("Unit"));
         if !ok {
-            return err(f.span, "'main' returns Unit or Result[Unit, E]");
+            return err(f.span, "'main' returns Unit, Int (the exit status) or Result[Unit, E]");
         }
         Ok(())
     }

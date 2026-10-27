@@ -624,6 +624,16 @@ impl<'a> Emitter<'a> {
             "sys".to_string()
         };
         let ret = f.ret.clone();
+        if ret.is("Int") {
+            let loc = c_string(&self.sm.loc(f.span));
+            let _ = writeln!(
+                s,
+                "    tn_Int code = {main_name}({args});\n    if (code < 0 || code > 255 || code == 70 || code == 71 || code == 72 || code == 74)\n        \
+                 tn_trapf({loc}, \"exit status %lld is out of range or reserved\", (long long)code);\n    tn_exit((int)code);"
+            );
+            s.push_str("}\n");
+            return s;
+        }
         if ret.is("Result") {
             let rn = self.cty(&ret);
             let en = self.cty(&ret.args()[1]);

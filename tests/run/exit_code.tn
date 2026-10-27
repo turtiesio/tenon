@@ -1,0 +1,5 @@
+// args: 3
+fn main(sys: Sys) -> Int {
+    sys.console.println("exiting with {sys.args[0]}")
+    sys.args[0].to_int().unwrap_or(0)
+}

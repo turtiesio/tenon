@@ -1,0 +1,4 @@
+fn main(sys: Sys) -> Int {
+    sys.console.println("trying 70")
+    70
+}

@@ -188,8 +188,9 @@ missing map key in `m[k]`, `unwrap()` on `None`/`Err`, `panic(msg)`, failed
 `assert(cond)`. A trap prints `trap: <message>` and `at file:line:col` to
 stderr and exits. Traps cannot be caught.
 
-`main` returns `Unit` or `Result[Unit, E]`; returning `Err(e)` prints
-`error: <e>` to stderr and exits with code 1.
+`main` returns `Unit`, `Int` or `Result[Unit, E]`. Returning `Err(e)` prints
+`error: <e>` to stderr and exits with code 1; returning an `Int` exits with that
+status (0-255; the reserved codes below trap instead).
 
 Reserved exit codes:
 
