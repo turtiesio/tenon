@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <math.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -131,12 +132,32 @@ static int tn_argc;
 static char **tn_argv;
 static struct timespec tn_mono0;
 
+/* The program runs on a thread with a 1 GB stack (reserved, committed only as
+ * used), like the interpreter, so deep recursion behaves the same in both. */
+static void (*tn_main_fn)(void);
+static void *tn_main_thread(void *arg) {
+    (void)arg;
+    static char altstack[1 << 16]; /* the overflow handler runs here */
+    stack_t ss = {.ss_sp = altstack, .ss_size = sizeof altstack, .ss_flags = 0};
+    sigaltstack(&ss, NULL);
+    tn_main_fn();
+    return NULL;
+}
+static TN_UNUSED void tn_run_main(void (*f)(void)) {
+    tn_main_fn = f;
+    pthread_attr_t at;
+    pthread_attr_init(&at);
+    pthread_attr_setstacksize(&at, (size_t)1 << 30);
+    pthread_t th;
+    if (pthread_create(&th, &at, tn_main_thread, NULL) != 0) {
+        tn_main_thread(NULL); /* fall back to the process stack */
+        return;
+    }
+    pthread_join(th, NULL);
+}
 static TN_UNUSED void tn_init(int argc, char **argv) {
     tn_argc = argc;
     tn_argv = argv;
-    static char altstack[1 << 16];
-    stack_t ss = {.ss_sp = altstack, .ss_size = sizeof altstack, .ss_flags = 0};
-    sigaltstack(&ss, NULL);
     struct sigaction sa;
     memset(&sa, 0, sizeof sa);
     sa.sa_handler = tn_on_segv;

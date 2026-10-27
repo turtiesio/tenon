@@ -86,9 +86,11 @@ impl PartialEq for V {
             (Float(a), Float(b)) => a == b,
             (Bool(a), Bool(b)) => a == b,
             (Str(a), Str(b)) => a == b,
-            (List(a), List(b)) | (Tuple(a), Tuple(b)) => a == b,
-            (Struct(_, a), Struct(_, b)) => a == b,
-            (Enum(_, v, a), Enum(_, w, b)) => v == w && a == b,
+            // Compare contents, never `Rc` identity (Rc's == short-circuits on the
+            // same pointer, which would make NaN or a function equal to itself).
+            (List(a), List(b)) | (Tuple(a), Tuple(b)) => a.as_slice() == b.as_slice(),
+            (Struct(_, a), Struct(_, b)) => a.as_slice() == b.as_slice(),
+            (Enum(_, v, a), Enum(_, w, b)) => v == w && a.as_slice() == b.as_slice(),
             (Map(a), Map(b)) => a.len() == b.len() && a.iter().all(|(k, v)| b.get(k) == Some(v)),
             _ => false,
         }

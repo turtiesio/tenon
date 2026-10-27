@@ -1,0 +1,8 @@
+struct Pt { x: Float }
+fn same[A](a: A, b: A) -> Bool { a == b }
+fn one() -> Int { 1 }
+fn main(sys: Sys) {
+    let p = Pt { x: 0.0 / 0.0 }
+    let xs = [p]
+    sys.console.println("{p == p} {xs.contains(p)} {[0.0 / 0.0] == [0.0 / 0.0]} {same(one, one)} {[one].contains(one)}")
+}
