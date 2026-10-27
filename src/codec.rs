@@ -65,14 +65,14 @@ impl<'a> Dec<'a> {
             Ty::Con(n, a) => match n.as_str() {
                 "Int" => {
                     let text = self.run(|c| c == b'-' || c.is_ascii_digit());
-                    match crate::interp::parse_int(text) {
+                    match crate::builtins::parse_int(text) {
                         Some(i) => self.canonical(V::Int(i), text, start),
                         None => self.fail(start),
                     }
                 }
                 "Float" => {
                     let text = self.run(|c| c == b'-' || c == b'+' || c == b'.' || c.is_ascii_alphanumeric());
-                    match crate::interp::parse_float(text) {
+                    match crate::builtins::parse_float(text) {
                         Some(f) => self.canonical(V::Float(f), text, start),
                         None => self.fail(start),
                     }
