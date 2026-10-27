@@ -1,0 +1,5 @@
+SELL z 5 10
+SELL a 3 10
+BUY b 2 10
+BUY c 5 10
+BOOK

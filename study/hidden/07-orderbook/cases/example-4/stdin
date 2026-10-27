@@ -1,0 +1,8 @@
+BUY x 3 50
+BUY y 4 50
+BUY z 2 49
+SELL w 3 51
+SELL v 3 50
+CANCEL x
+BUY x 1 10
+BOOK

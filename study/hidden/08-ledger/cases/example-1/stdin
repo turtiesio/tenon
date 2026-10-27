@@ -1,0 +1,8 @@
+r1 OPEN alice
+r2 OPEN bob
+r3 DEPOSIT alice 100
+r4 TRANSFER alice bob 30
+r5 WITHDRAW bob 50
+r3 DEPOSIT alice 100
+BALANCE alice
+ACCOUNTS

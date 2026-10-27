@@ -1,0 +1,9 @@
+OK r
+ERR s same account
+ERR s no such account
+ERR s no such account
+OK b
+ERR s insufficient
+OK d 2
+OK s
+a=0 b=2

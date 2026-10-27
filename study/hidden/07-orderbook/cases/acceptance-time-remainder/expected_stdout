@@ -1,0 +1,5 @@
+OK s filled=0 resting=2 trades=-
+OK z filled=2 resting=2 trades=s:2@5
+OK a filled=0 resting=2 trades=-
+OK t filled=3 resting=0 trades=z:2@5,a:1@5
+BOOK bids=5:1 asks=-

@@ -1,0 +1,13 @@
+
+   
+set a b
+SET a
+SET a b c
+GET
+DEL a b
+COUNT
+KEYS x
+BEGIN x
+COMMIT x
+ROLLBACK x
+INCR k 1 2

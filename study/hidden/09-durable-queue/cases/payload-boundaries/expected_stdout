@@ -1,0 +1,8 @@
+OK 1
+OK 2
+ERR bad command
+ERR bad command
+ERR bad command
+JOB 1 1 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+JOB 2 1 ~
+ready=0 inflight=2 acked=0 next=3

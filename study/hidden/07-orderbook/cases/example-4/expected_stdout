@@ -1,0 +1,8 @@
+OK x filled=0 resting=3 trades=-
+OK y filled=0 resting=4 trades=-
+OK z filled=0 resting=2 trades=-
+OK w filled=0 resting=3 trades=-
+OK v filled=3 resting=0 trades=x:3@50
+ERR unknown order
+ERR duplicate id
+BOOK bids=50:4,49:2 asks=51:3

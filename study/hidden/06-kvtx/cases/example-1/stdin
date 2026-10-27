@@ -1,0 +1,7 @@
+SET a 10
+GET a
+INCR a 5
+GET b
+DEL a
+DEL a
+KEYS

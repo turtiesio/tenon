@@ -1,0 +1,2 @@
+GET / count=101 errors=0 err_pct=0.0 p50=51 p90=91 p99=100 max=101
+total=101 malformed=0

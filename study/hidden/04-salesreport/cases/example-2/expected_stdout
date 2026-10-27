@@ -1,0 +1,5 @@
+region,units,revenue,avg_price,top_product
+East,1,30.00,30.00,Gizmo
+West,3,59.97,19.99,"Gadget, large"
+TOTAL,4,89.97,22.49,"Gadget, large"
+skipped 2

@@ -1,0 +1,7 @@
+x DEPOSIT alice 1
+y TRANSFER bob alice 2
+z TRANSFER bob alice 1
+x WITHDRAW alice 1
+z TRANSFER bob alice 1
+BALANCE alice
+BALANCE bob

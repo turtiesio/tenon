@@ -1,0 +1,5 @@
+GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90=90 p99=90 max=90
+POST /users count=1 errors=0 err_pct=0.0 p50=50 p90=50 p99=50 max=50
+GET /users/x1 count=1 errors=0 err_pct=0.0 p50=5 p90=5 p99=5 max=5
+GET /health count=1 errors=0 err_pct=0.0 p50=1 p90=1 p99=1 max=1
+total=6 malformed=2

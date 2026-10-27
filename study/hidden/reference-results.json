@@ -1,0 +1,4965 @@
+{
+  "passed": 250,
+  "total": 250,
+  "results": [
+    {
+      "task": "01-wordfreq",
+      "case": "all-missing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "all-missing",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0168
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "ascii-ties",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "ascii-ties",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MSAwCjEgOQoxIEEKMSBBOQoxIFoKMSBhCjEgYTkKMSB6Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "combined-short",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "combined-short",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "default-ten",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "default-ten",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MSBhCjEgYgoxIGMKMSBkCjEgZQoxIGYKMSBnCjEgaAoxIGkKMSBqCg==",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "empty-top",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-top",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "end-options",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "end-options",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MiBDYXNlCjEgY2FzZQo=",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MiB0aGUKMSBUaGUKMSBhbmQKMSBjYXQKMSBlbmQKMSBoYXQK",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MyB0aGUKMSBhbmQK",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "MSBUT1dFTFMKMSBwYW5pYwoxIHRvd2Vscwo=",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MiBhMQoxIGIyCg==",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "file-stdin-repeat",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "file-stdin-repeat",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MyBhCjIgegoxIHMK",
+          "stderr_b64": "",
+          "seconds": 0.0164
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "flag-value",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "flag-value",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0168
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "last-options",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "last-options",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MiBiYgoxIGFhCg==",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "length-boundary",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "length-boundary",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MSBiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiCg==",
+          "stderr_b64": "",
+          "seconds": 0.0165
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "min-too-large",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "min-too-large",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0164
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "min-zero",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "min-zero",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0165
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "missing-between",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "missing-between",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "MiB4CjEgeQo=",
+          "stderr_b64": "",
+          "seconds": 0.0158
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "missing-value",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "missing-value",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "negative-value",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "negative-value",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "separators",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "separators",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MiAwMDcKMSBkb24KMSB0CjEgeAoxIHkKMSB6Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "signed-number",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "signed-number",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "top-too-large",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "top-too-large",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "usage-after-file",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "usage-after-file",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "all-invalid",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "all-invalid",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "build-alphabet",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "build-alphabet",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAtMDAwYSswCjEuMC4wKzAwMC5aLWEuLS0tCg==",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "dash-is-option",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "dash-is-option",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "empty-identifiers",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-identifiers",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MC45LjEyCjEuMC4wLWFscGhhCjEuMC4wLWFscGhhLjEKMS4wLjAtYWxwaGEuYmV0YQoxLjAuMC1iZXRhCjEuMC4wLWJldGEuMgoxLjAuMC1iZXRhLjExCjEuMC4wLXJjLjEKMS4wLjAK",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Mi4wLjArYnVpbGQuMQoxLjEwLjAKMS4yLjAK",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAtcmMuMSswMDEKMS4yLjMK",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MC4xLjArbWV0YQoxLjAuMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-5-missing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-missing",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-5-option",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-option",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "filter-all",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "filter-all",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0145
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "filter-unique-reverse",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "filter-unique-reverse",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAreAowLjAuMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "invalid-characters",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-characters",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "invalid-core-numbers",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-core-numbers",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAK",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "invalid-pre-numbers",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-pre-numbers",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAtMDBhCg==",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "max-numbers",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "max-numbers",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MC4wLjAtMAo5OTk5OTk5OTkuOTk5OTk5OTk5Ljk5OTk5OTk5OS05OTk5OTk5OTkrMDAwMDAwMDAwMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "numeric-cores",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "numeric-cores",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MS4yLjIKMS4yLjEwCjEuMTAuMAoyLjAuMAoxMC4wLjAK",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "pre-identifier-types",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "pre-identifier-types",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAtMgoxLjAuMC0yLjAKMS4wLjAtMi5hCjEuMC4wLTEwCjEuMC4wLS0KMS4wLjAtWgoxLjAuMC1hCg==",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "repeat-options-after-file",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "repeat-options-after-file",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAK",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "reverse-equals",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "reverse-equals",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjArYgoxLjAuMCthCjAuMC4wCg==",
+          "stderr_b64": "",
+          "seconds": 0.0145
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "stable-build",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "stable-build",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAregoxLjAuMCthCjEuMC4wCjEuMC4wK3oK",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "trim-crlf-final",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "trim-crlf-final",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MC4wLjAKMS4wLjArWAo=",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "unique-first",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "unique-first",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MS4wLjAtcmMregoxLjAuMCt6Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "cr-is-data",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "cr-is-data",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Yg0sYQoNLApuby1uZXdsaW5lLGxhc3QK",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-delimiter",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-delimiter",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-element",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-element",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0164
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-fields-repeat",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-fields-repeat",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "LCxhLGIsCg==",
+          "stderr_b64": "",
+          "seconds": 0.0158
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-list",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-list",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0162
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-output-delimiter",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-output-delimiter",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YmEK",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "end-options",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "end-options",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "eApwbGFpbgo=",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YyxhCmQKbm9kZWxpbQo=",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "eQl6Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cm9vdCB8IHggfCB4Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "MQo=",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5-delimiter",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-delimiter",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5-descending",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-descending",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5-missing-fields",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-missing-fields",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "files-stdin-repeat",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "files-stdin-repeat",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "eApzCngK",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "last-options",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "last-options",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Ygo=",
+          "stderr_b64": "",
+          "seconds": 0.0145
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "leading-zero-range",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "leading-zero-range",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YSxiLGIsYwo=",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "lone-range",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "lone-range",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "missing-all",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "missing-all",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "CnBsYWluCgo=",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "output-missing-equals",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "output-missing-equals",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "range-order",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "range-order",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Yy9kL2EvYi9iCg==",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "range-too-large",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "range-too-large",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "skip-only",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "skip-only",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "CngK",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "crlf-last-line",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "crlf-last-line",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClIsMSwwLjAxLDAuMDEscApUT1RBTCwxLDAuMDEsMC4wMSxwCnNraXBwZWQgMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "csv-output-and-spaces",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "csv-output-and-spaces",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0CiIgQSwiLDIsMi4wMCwxLjAwLCJQIiJxIgogWiwxLDEuMDAsMS4wMCxwClRPVEFMLDMsMy4wMCwxLjAwLCJQIiJxIgpza2lwcGVkIDAK",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "dates-leap-and-bounds",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "dates-leap-and-bounds",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClIsNCw0LjAwLDEuMDAscApUT1RBTCw0LDQuMDAsMS4wMCxwCnNraXBwZWQgNgo=",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0CkVhc3QsMTEsNTUuMDAsNS4wMCxHaXptbwpXZXN0LDcsNjkuOTcsMTAuMDAsIkdhZGdldCwgbGFyZ2UiClRPVEFMLDE4LDEyNC45Nyw2Ljk0LCJHYWRnZXQsIGxhcmdlIgpza2lwcGVkIDIK",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0CkVhc3QsMSwzMC4wMCwzMC4wMCxHaXptbwpXZXN0LDMsNTkuOTcsMTkuOTksIkdhZGdldCwgbGFyZ2UiClRPVEFMLDQsODkuOTcsMjIuNDksIkdhZGdldCwgbGFyZ2UiCnNraXBwZWQgMgo=",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClRPVEFMLDAsMC4wMCwtLC0Kc2tpcHBlZCAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0Ck5vcnRoLDAsMC4wMCwtLEN1cApUT1RBTCwwLDAuMDAsLSxDdXAKc2tpcHBlZCAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-5-date",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-date",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-5-missing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-missing",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0156
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "extra-files",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "extra-files",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "half-up-exact",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "half-up-exact",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClIsMiwwLjAxLDAuMDEscApUT1RBTCwyLDAuMDEsMC4wMSxwCnNraXBwZWQgMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "inexact-header",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "inexact-header",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "invalid-option-leap",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-option-leap",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0167
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "last-filter-wins",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "last-filter-wins",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClIsMSwxLjAwLDEuMDAscApUT1RBTCwxLDEuMDAsMS4wMCxwCnNraXBwZWQgMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0167
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "max-leading-zeros",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "max-leading-zeros",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClIsMTAwMDAsMTAwMDAwMDAwLjAwLDEwMDAwLjAwLHAKVE9UQUwsMTAwMDAsMTAwMDAwMDAwLjAwLDEwMDAwLjAwLHAKc2tpcHBlZCAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.0166
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "missing-option-value",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "missing-option-value",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0165
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "product-byte-tie",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "product-byte-tie",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClIsMiwyLjAwLDEuMDAsWgpUT1RBTCwyLDIuMDAsMS4wMCxaCnNraXBwZWQgMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0158
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "reversed-filter",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "reversed-filter",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClRPVEFMLDAsMC4wMCwtLC0Kc2tpcHBlZCAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.0166
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "row-number-syntax",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "row-number-syntax",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClRPVEFMLDAsMC4wMCwtLC0Kc2tpcHBlZCA5Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "strict-csv",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "strict-csv",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClRPVEFMLDAsMC4wMCwtLC0Kc2tpcHBlZCA3Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0156
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "total-products-and-duplicates",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "total-products-and-duplicates",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0CkEsMyw4LjAwLDIuNjcseQpCLDIsNi4wMCwzLjAwLHgKVE9UQUwsMSwxLjAwLDEuMDAsegpUT1RBTCw2LDE1LjAwLDIuNTAseApza2lwcGVkIDAK",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "unknown-option",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "unknown-option",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "validate-before-excluding",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "validate-before-excluding",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVnaW9uLHVuaXRzLHJldmVudWUsYXZnX3ByaWNlLHRvcF9wcm9kdWN0ClRPVEFMLDAsMC4wMCwtLC0Kc2tpcHBlZCAxCg==",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "zero-byte-header",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "zero-byte-header",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "blanks-tabs-crlf",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "blanks-tabs-crlf",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC8gY291bnQ9MiBlcnJvcnM9MCBlcnJfcGN0PTAuMCBwNTA9MCBwOTA9NyBwOTk9NyBtYXg9Nwp0b3RhbD0yIG1hbGZvcm1lZD0wCg==",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "count-ties",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "count-ties",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC9hIGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTMgcDkwPTMgcDk5PTMgbWF4PTMKR0VUIC96IGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTIgcDkwPTIgcDk5PTIgbWF4PTIKUE9TVCAvYiBjb3VudD0xIGVycm9ycz0wIGVycl9wY3Q9MC4wIHA1MD0xIHA5MD0xIHA5OT0xIG1heD0xCnRvdGFsPTMgbWFsZm9ybWVkPTAK",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "empty-sort",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-sort",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC91c2Vycy86aWQgY291bnQ9MyBlcnJvcnM9MSBlcnJfcGN0PTMzLjMgcDUwPTMwIHA5MD05MCBwOTk9OTAgbWF4PTkwCkdFVCAvaGVhbHRoIGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTEgcDkwPTEgcDk5PTEgbWF4PTEKR0VUIC91c2Vycy94MSBjb3VudD0xIGVycm9ycz0wIGVycl9wY3Q9MC4wIHA1MD01IHA5MD01IHA5OT01IG1heD01ClBPU1QgL3VzZXJzIGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTUwIHA5MD01MCBwOTk9NTAgbWF4PTUwCnRvdGFsPTYgbWFsZm9ybWVkPTIK",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC91c2Vycy86aWQgY291bnQ9MyBlcnJvcnM9MSBlcnJfcGN0PTMzLjMgcDUwPTMwIHA5MD05MCBwOTk9OTAgbWF4PTkwClBPU1QgL3VzZXJzIGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTUwIHA5MD01MCBwOTk9NTAgbWF4PTUwCkdFVCAvdXNlcnMveDEgY291bnQ9MSBlcnJvcnM9MCBlcnJfcGN0PTAuMCBwNTA9NSBwOTA9NSBwOTk9NSBtYXg9NQpHRVQgL2hlYWx0aCBjb3VudD0xIGVycm9ycz0wIGVycl9wY3Q9MC4wIHA1MD0xIHA5MD0xIHA5OT0xIG1heD0xCnRvdGFsPTYgbWFsZm9ybWVkPTIK",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC91c2Vycy86aWQgY291bnQ9MyBlcnJvcnM9MSBlcnJfcGN0PTMzLjMgcDUwPTMwIHA5MD05MCBwOTk9OTAgbWF4PTkwCnRvdGFsPTYgbWFsZm9ybWVkPTIK",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC8vYS8gY291bnQ9MTAgZXJyb3JzPTEgZXJyX3BjdD0xMC4wIHA1MD01MCBwOTA9OTAgcDk5PTEwMCBtYXg9MTAwCnRvdGFsPTEwIG1hbGZvcm1lZD0wCg==",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "dG90YWw9MCBtYWxmb3JtZWQ9MAo=",
+          "stderr_b64": "",
+          "seconds": 0.0143
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5-min",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-min",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5-missing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-missing",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5-sort",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-sort",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "extra-files",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "extra-files",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "filter-everything",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "filter-everything",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "dG90YWw9MSBtYWxmb3JtZWQ9MAo=",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "last-options-and-filter",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "last-options-and-filter",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC96IGNvdW50PTIgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTEgcDkwPTIgcDk5PTIgbWF4PTIKdG90YWw9MyBtYWxmb3JtZWQ9MAo=",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "malformed-field-grammar",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "malformed-field-grammar",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "dG90YWw9MCBtYWxmb3JtZWQ9MTAK",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "method-boundary",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "method-boundary",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "QUJDREVGR0hJSiAvIGNvdW50PTEgZXJyb3JzPTEgZXJyX3BjdD0xMDAuMCBwNTA9MCBwOTA9MCBwOTk9MCBtYXg9MAp0b3RhbD0xIG1hbGZvcm1lZD0wCg==",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "min-empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "min-empty",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "min-signed",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "min-signed",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "min-too-large",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "min-too-large",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "normalization",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "normalization",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC9hLy86aWQvIGNvdW50PTIgZXJyb3JzPTEgZXJyX3BjdD01MC4wIHA1MD0wIHA5MD05OTk5OTk5OTkgcDk5PTk5OTk5OTk5OSBtYXg9OTk5OTk5OTk5CkdFVCAveDEvJTMxLy0yIGNvdW50PTEgZXJyb3JzPTEgZXJyX3BjdD0xMDAuMCBwNTA9NyBwOTA9NyBwOTk9NyBtYXg9NwpQT1NUIC8gY291bnQ9MSBlcnJvcnM9MCBlcnJfcGN0PTAuMCBwNTA9OSBwOTA9OSBwOTk9OSBtYXg9OQp0b3RhbD00IG1hbGZvcm1lZD0wCg==",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "p99-distinct-from-max",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "p99-distinct-from-max",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC8gY291bnQ9MTAxIGVycm9ycz0wIGVycl9wY3Q9MC4wIHA1MD01MSBwOTA9OTEgcDk5PTEwMCBtYXg9MTAxCnRvdGFsPTEwMSBtYWxmb3JtZWQ9MAo=",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "p99-ties",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "p99-ties",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC9hIGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTUgcDkwPTUgcDk5PTUgbWF4PTUKR0VUIC96IGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTUgcDkwPTUgcDk5PTUgbWF4PTUKUE9TVCAvIGNvdW50PTEgZXJyb3JzPTAgZXJyX3BjdD0wLjAgcDUwPTUgcDkwPTUgcDk5PTUgbWF4PTUKdG90YWw9MyBtYWxmb3JtZWQ9MAo=",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "rounding-half-up",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "rounding-half-up",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC8gY291bnQ9MTYgZXJyb3JzPTEgZXJyX3BjdD02LjMgcDUwPTcgcDkwPTE0IHA5OT0xNSBtYXg9MTUKdG90YWw9MTYgbWFsZm9ybWVkPTAK",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "rounding-two-thirds",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "rounding-two-thirds",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "R0VUIC8gY291bnQ9MyBlcnJvcnM9MiBlcnJfcGN0PTY2LjcgcDUwPTIgcDkwPTIgcDk5PTIgbWF4PTIKdG90YWw9MyBtYWxmb3JtZWQ9MAo=",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "unknown-option",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "unknown-option",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "canonical-zero",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "canonical-zero",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "LTEKMAowCjAKMgo=",
+          "stderr_b64": "",
+          "seconds": 0.0161
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "count-overwrite-delete",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "count-overwrite-delete",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sKMQoxCjEKMAowCmEK",
+          "stderr_b64": "",
+          "seconds": 0.0162
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "delete-recreate-nested",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "delete-recreate-nested",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKMQpPSwpPSwpPSwoxCk9LCngKMQo=",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "depth-100",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "depth-100",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKT0sKeApPSwpOVUxMCg==",
+          "stderr_b64": "",
+          "seconds": 0.0164
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0156
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKMTAKMTUKTlVMTAoxCjAKKGVtcHR5KQo=",
+          "stderr_b64": "",
+          "seconds": 0.0161
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sKT0sKMQpOVUxMCk9LCjIKT0sKMgpFUlIgbm8gdHJhbnNhY3Rpb24K",
+          "stderr_b64": "",
+          "seconds": 0.0161
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sKT0sKT0sKMgphIGIgYwpPSwoyCjAKYSBiCg==",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MQpPSwpFUlIgbm90IGFuIGludGVnZXIKMTAwMDAwMDAwMDAwMDAwMApFUlIgb3ZlcmZsb3cKMTAwMDAwMDAwMDAwMDAwMApFUlIgbm90IGFuIGludGVnZXIKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZAo=",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "fresh-process-state",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sK",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "KGVtcHR5KQpOVUxMCk5VTEwK",
+          "stderr_b64": "",
+          "seconds": 0.0145
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "inner-commit-outer-rollback",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "inner-commit-outer-rollback",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sKT0sKT0sKT0sKbmV3Ck9LCm9sZApOVUxMCmEK",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "invalid-deltas-no-create",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-deltas-no-create",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIG5vdCBhbiBpbnRlZ2VyCkVSUiBub3QgYW4gaW50ZWdlcgpFUlIgbm90IGFuIGludGVnZXIKRVJSIG5vdCBhbiBpbnRlZ2VyCkVSUiBub3QgYW4gaW50ZWdlcgpOVUxMCihlbXB0eSkK",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "invalid-integer-values",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-integer-values",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKRVJSIG5vdCBhbiBpbnRlZ2VyCi0wCk9LCkVSUiBub3QgYW4gaW50ZWdlcgorNQpPSwpFUlIgbm90IGFuIGludGVnZXIKMDA3Ck9LCkVSUiBub3QgYW4gaW50ZWdlcgo5OTk5OTk5OTk5OTk5OTk5Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "key-ascii-order",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "key-ascii-order",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sKT0sKT0sKT0sKISAwIEEgXyBhIHoKNgo=",
+          "stderr_b64": "",
+          "seconds": 0.0145
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "lockstep-flush",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "T0sKeAoxCg==",
+          "stderr_b64": "",
+          "seconds": 0.0133
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "lower-overflow",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "lower-overflow",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "LTEwMDAwMDAwMDAwMDAwMDAKRVJSIG92ZXJmbG93Ci0xMDAwMDAwMDAwMDAwMDAwCjAK",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "malformed",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "malformed",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCg==",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "max-token",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "max-token",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKdnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dgo=",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "nested-count-rollback",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "nested-count-rollback",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKT0sKT0sKMgpPSwoxCk9LCjEK",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "no-transaction",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "no-transaction",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIG5vIHRyYW5zYWN0aW9uCkVSUiBubyB0cmFuc2FjdGlvbgpOVUxMCihlbXB0eSkK",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "open-at-eof",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "open-at-eof",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKeAo=",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "space-crlf-final",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "space-crlf-final",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKdmFsdWUKMQo=",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "transaction-incr-rollback",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "transaction-incr-rollback",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKT0sKLTUKT0sKLTQKT0sKLTQKT0sKNQo=",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "upper-overflow",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "upper-overflow",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sKRVJSIG92ZXJmbG93CjEwMDAwMDAwMDAwMDAwMDAKMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "acceptance-time-remainder",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "acceptance-time-remainder",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgcyBmaWxsZWQ9MCByZXN0aW5nPTIgdHJhZGVzPS0KT0sgeiBmaWxsZWQ9MiByZXN0aW5nPTIgdHJhZGVzPXM6MkA1Ck9LIGEgZmlsbGVkPTAgcmVzdGluZz0yIHRyYWRlcz0tCk9LIHQgZmlsbGVkPTMgcmVzdGluZz0wIHRyYWRlcz16OjJANSxhOjFANQpCT09LIGJpZHM9NToxIGFza3M9LQo=",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "bad-spacing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "bad-spacing",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCg==",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "book-numeric-price-order",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "book-numeric-price-order",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYSBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KT0sgYiBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KT0sgYyBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KT0sgZCBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KQk9PSyBiaWRzPTEwOjEsMjoxIGFza3M9MjA6MSwxMDA6MQo=",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "buy-remainder-rests",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "buy-remainder-rests",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgcyBmaWxsZWQ9MCByZXN0aW5nPTIgdHJhZGVzPS0KT0sgYiBmaWxsZWQ9MiByZXN0aW5nPTMgdHJhZGVzPXM6MkA5CkJPT0sgYmlkcz0xMDozIGFza3M9LQpDQU5DRUxFRCBiIDMKQk9PSyBiaWRzPS0gYXNrcz0tCg==",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "cancelled-id-never-reused",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "cancelled-id-never-reused",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYSBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KQ0FOQ0VMRUQgYSAxCkVSUiBkdXBsaWNhdGUgaWQKRVJSIHVua25vd24gb3JkZXIK",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "crlf-final",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "crlf-final",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYSBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KQk9PSyBiaWRzPTI6MSBhc2tzPS0K",
+          "stderr_b64": "",
+          "seconds": 0.0191
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "cross-at-equality",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "cross-at-equality",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYiBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KT0sgcyBmaWxsZWQ9MSByZXN0aW5nPTAgdHJhZGVzPWI6MUAxCkJPT0sgYmlkcz0tIGFza3M9LQpFUlIgdW5rbm93biBvcmRlcgpFUlIgZHVwbGljYXRlIGlkCg==",
+          "stderr_b64": "",
+          "seconds": 0.0204
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0202
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "empty-book-cancel",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-book-cancel",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Qk9PSyBiaWRzPS0gYXNrcz0tCkVSUiB1bmtub3duIG9yZGVyCg==",
+          "stderr_b64": "",
+          "seconds": 0.0193
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgczEgZmlsbGVkPTAgcmVzdGluZz0xMCB0cmFkZXM9LQpPSyBzMiBmaWxsZWQ9MCByZXN0aW5nPTUgdHJhZGVzPS0KT0sgczMgZmlsbGVkPTAgcmVzdGluZz01IHRyYWRlcz0tCk9LIGIxIGZpbGxlZD0xMiByZXN0aW5nPTAgdHJhZGVzPXMyOjVAMTAwLHMzOjVAMTAwLHMxOjJAMTAxCkJPT0sgYmlkcz0tIGFza3M9MTAxOjgK",
+          "stderr_b64": "",
+          "seconds": 0.0173
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYjEgZmlsbGVkPTAgcmVzdGluZz01IHRyYWRlcz0tCk9LIGIyIGZpbGxlZD0wIHJlc3Rpbmc9NyB0cmFkZXM9LQpPSyBiMyBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KQ0FOQ0VMRUQgYjEgNQpFUlIgdW5rbm93biBvcmRlcgpPSyBzMSBmaWxsZWQ9OCByZXN0aW5nPTIgdHJhZGVzPWIyOjdAOTksYjM6MUA5OApCT09LIGJpZHM9LSBhc2tzPTk4OjIK",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCk9LIGEgZmlsbGVkPTAgcmVzdGluZz01IHRyYWRlcz0tCkVSUiBkdXBsaWNhdGUgaWQKT0sgYiBmaWxsZWQ9MCByZXN0aW5nPTUgdHJhZGVzPS0KQ0FOQ0VMRUQgYSA1CkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKQk9PSyBiaWRzPS0gYXNrcz0xMTo1Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0156
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgeCBmaWxsZWQ9MCByZXN0aW5nPTMgdHJhZGVzPS0KT0sgeSBmaWxsZWQ9MCByZXN0aW5nPTQgdHJhZGVzPS0KT0sgeiBmaWxsZWQ9MCByZXN0aW5nPTIgdHJhZGVzPS0KT0sgdyBmaWxsZWQ9MCByZXN0aW5nPTMgdHJhZGVzPS0KT0sgdiBmaWxsZWQ9MyByZXN0aW5nPTAgdHJhZGVzPXg6M0A1MApFUlIgdW5rbm93biBvcmRlcgpFUlIgZHVwbGljYXRlIGlkCkJPT0sgYmlkcz01MDo0LDQ5OjIgYXNrcz01MTozCg==",
+          "stderr_b64": "",
+          "seconds": 0.016
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0162
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "flush-lockstep",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 2,
+          "stdout_b64": "T0sgYSBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0KQk9PSyBiaWRzPTI6MSBhc2tzPS0K",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "fresh-process-state",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYSBmaWxsZWQ9MCByZXN0aW5nPTEgdHJhZGVzPS0K",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Qk9PSyBiaWRzPS0gYXNrcz0tCk9LIGEgZmlsbGVkPTAgcmVzdGluZz0xIHRyYWRlcz0tCg==",
+          "stderr_b64": "",
+          "seconds": 0.0146
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "id-grammar",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "id-grammar",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApPSyBBXzAtIGZpbGxlZD0wIHJlc3Rpbmc9MSB0cmFkZXM9LQpDQU5DRUxFRCBBXzAtIDEK",
+          "stderr_b64": "",
+          "seconds": 0.0168
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "invalid-numbers",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-numbers",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQK",
+          "stderr_b64": "",
+          "seconds": 0.0162
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "large-level-total",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "large-level-total",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYSBmaWxsZWQ9MCByZXN0aW5nPTk5OTk5OTk5OSB0cmFkZXM9LQpPSyBiIGZpbGxlZD0wIHJlc3Rpbmc9OTk5OTk5OTk5IHRyYWRlcz0tCk9LIGMgZmlsbGVkPTAgcmVzdGluZz05OTk5OTk5OTkgdHJhZGVzPS0KQk9PSyBiaWRzPTE6Mjk5OTk5OTk5NyBhc2tzPS0K",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "malformed-id-not-consumed",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "malformed-id-not-consumed",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCk9LIGEgZmlsbGVkPTAgcmVzdGluZz0xIHRyYWRlcz0tCkVSUiBiYWQgY29tbWFuZApFUlIgZHVwbGljYXRlIGlkCkJPT0sgYmlkcz0tIGFza3M9MjoxCg==",
+          "stderr_b64": "",
+          "seconds": 0.0168
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "maximum-order",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "maximum-order",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYWJjZGVmZ2hpamtsbW5vcCBmaWxsZWQ9MCByZXN0aW5nPTk5OTk5OTk5OSB0cmFkZXM9LQpPSyBzIGZpbGxlZD05OTk5OTk5OTkgcmVzdGluZz0wIHRyYWRlcz1hYmNkZWZnaGlqa2xtbm9wOjk5OTk5OTk5OUA5OTk5OTk5OTkKQk9PSyBiaWRzPS0gYXNrcz0tCg==",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "no-cross",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "no-cross",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgYiBmaWxsZWQ9MCByZXN0aW5nPTIgdHJhZGVzPS0KT0sgcyBmaWxsZWQ9MCByZXN0aW5nPTIgdHJhZGVzPS0KQk9PSyBiaWRzPTk6MiBhc2tzPTEwOjIK",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "partial-maker-keeps-time",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "partial-maker-keeps-time",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgeiBmaWxsZWQ9MCByZXN0aW5nPTUgdHJhZGVzPS0KT0sgYSBmaWxsZWQ9MCByZXN0aW5nPTMgdHJhZGVzPS0KT0sgYiBmaWxsZWQ9MiByZXN0aW5nPTAgdHJhZGVzPXo6MkAxMApPSyBjIGZpbGxlZD01IHJlc3Rpbmc9MCB0cmFkZXM9ejozQDEwLGE6MkAxMApCT09LIGJpZHM9LSBhc2tzPTEwOjEK",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "sell-sweep-maker-prices",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "sell-sweep-maker-prices",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgbG93IGZpbGxlZD0wIHJlc3Rpbmc9MyB0cmFkZXM9LQpPSyBoaWdoIGZpbGxlZD0wIHJlc3Rpbmc9MiB0cmFkZXM9LQpPSyBtaWQgZmlsbGVkPTAgcmVzdGluZz00IHRyYWRlcz0tCk9LIHRha2UgZmlsbGVkPTggcmVzdGluZz0wIHRyYWRlcz1oaWdoOjJAMTIsbWlkOjRAMTAsbG93OjJAOApCT09LIGJpZHM9ODoxIGFza3M9LQo=",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "wrong-count-case",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "wrong-count-case",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQK",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "balance-limits-and-precedence",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "balance-limits-and-precedence",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIHggbGltaXQKRVJSIHkgaW5zdWZmaWNpZW50CkVSUiB6IGxpbWl0Ck9LIHggOTk5OTk5OTk5OTk5OTk5Ck9LIHoKYWxpY2UgMTAwMDAwMDAwMDAwMDAwMApib2IgMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "corrupt-complete-blank",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "corrupt-complete-blank",
+          "passed": true,
+          "detail": "",
+          "exit": 3,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "corrupt-numeric-record",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "corrupt-numeric-record",
+          "passed": true,
+          "detail": "",
+          "exit": 3,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.017
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "corrupt-readonly-record",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "corrupt-readonly-record",
+          "passed": true,
+          "detail": "",
+          "exit": 3,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0173
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "dir-is-file",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "dir-is-file",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "empty-eof",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-eof",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0173
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "empty-queries",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-queries",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "LQpFUlIgbm8gc3VjaCBhY2NvdW50Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0174
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgcjEKT0sgcjIKT0sgcjMgMTAwCk9LIHI0CkVSUiByNSBpbnN1ZmZpY2llbnQKRFVQIHIzCmFsaWNlIDcwCmFsaWNlPTcwIGJvYj0zMAo=",
+          "stderr_b64": "",
+          "seconds": 0.0173
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 2,
+          "stdout_b64": "T0sgdDEKT0sgdDIgNTAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.0162
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RFVQIHQxCkRVUCB0MgpPSyB0MyAzMDAK",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        },
+        {
+          "step": "run-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Y2Fyb2wgMzAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.017
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "ZGF2ZSA3MApPSyBhMyA3NQpkYXZlIDc1Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0174
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 3,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0174
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0169
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-5-semantic",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-semantic",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCk9LIHgxCkVSUiB4MiBleGlzdHMKRVJSIHgzIHNhbWUgYWNjb3VudApFUlIgeDQgbm8gc3VjaCBhY2NvdW50Ck9LIHg1IDk5OTk5OTk5OTk5OQpFUlIgbm8gc3VjaCBhY2NvdW50CmJvYj05OTk5OTk5OTk5OTkK",
+          "stderr_b64": "",
+          "seconds": 0.0175
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "extra-arguments",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "extra-arguments",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.017
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "failed-rid-reusable",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "failed-rid-reusable",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIHggbm8gc3VjaCBhY2NvdW50Ck9LIHgKRVJSIHkgaW5zdWZmaWNpZW50Ck9LIHkgMQpFUlIgeiBleGlzdHMKT0sgegphPTEgYj0wCg==",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "kill-failed-request-not-recorded",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 1,
+          "stdout_b64": "RVJSIHggbm8gc3VjaCBhY2NvdW50Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0162
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgeApEVVAgeAo=",
+          "stderr_b64": "",
+          "seconds": 0.017
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "kill-transfer-retry",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 4,
+          "stdout_b64": "T0sgYQpPSyBiCk9LIGMgNTAKT0sgZAo=",
+          "stderr_b64": "",
+          "seconds": 0.0164
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RFVQIGQKT0sgZSAxNQphbGljZT0zMCBib2I9MTUK",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        },
+        {
+          "step": "run-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YWxpY2U9MzAgYm9iPTE1Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0173
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "malformed-protocol",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "malformed-protocol",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZAo=",
+          "stderr_b64": "",
+          "seconds": 0.0176
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "max-identifiers-crlf-final",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "max-identifiers-crlf-final",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlJSUlIKYTExMTExMTExMTExMTExMSAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "parent-missing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "parent-missing",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0184
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "parse-and-spacing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "parse-and-spacing",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgcjEKRVJSIGJhZCBjb21tYW5kCk9LIHIyIDEKRVJSIGJhZCBjb21tYW5kCkRVUCByMQphIDEKYT0xCg==",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "replay-multiple-spaces",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "replay-multiple-spaces",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YT03IHo9MgpEVVAgcgo=",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "torn-tail-truncation",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YSA5Ck9LIHggMTAK",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YSAxMApEVVAgeAo=",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "transfer-error-order",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "transfer-error-order",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgcgpFUlIgcyBzYW1lIGFjY291bnQKRVJSIHMgbm8gc3VjaCBhY2NvdW50CkVSUiBzIG5vIHN1Y2ggYWNjb3VudApPSyBiCkVSUiBzIGluc3VmZmljaWVudApPSyBkIDIKT0sgcwphPTAgYj0yCg==",
+          "stderr_b64": "",
+          "seconds": 0.0184
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "whole-file-torn",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "LQpPSyByCg==",
+          "stderr_b64": "",
+          "seconds": 0.0175
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "YT0wCkRVUCByCg==",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "ack-only-inflight",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "ack-only-inflight",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpFUlIgbm90IGluIGZsaWdodApFUlIgbm90IGluIGZsaWdodApKT0IgMSAxIGEKT0sKRVJSIG5vdCBpbiBmbGlnaHQKRVJSIG5vdCBpbiBmbGlnaHQKT0sgMgpyZWFkeT0xIGluZmxpZ2h0PTAgYWNrZWQ9MSBuZXh0PTMK",
+          "stderr_b64": "",
+          "seconds": 0.0237
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "arbitrary-temporaries",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "arbitrary-temporaries",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RU1QVFkKT0sgMQpKT0IgMSAxIGEK",
+          "stderr_b64": "",
+          "seconds": 0.0232
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "crlf-final",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "crlf-final",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpKT0IgMSAxIGEKT0sKcmVhZHk9MCBpbmZsaWdodD0wIGFja2VkPTEgbmV4dD0yCg==",
+          "stderr_b64": "",
+          "seconds": 0.0233
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "dir-is-file",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "dir-is-file",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0237
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "duplicate-payloads",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "duplicate-payloads",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpPSyAyCkpPQiAxIDEgc2FtZQpPSwpKT0IgMiAxIHNhbWUK",
+          "stderr_b64": "",
+          "seconds": 0.0273
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "empty-eof",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-eof",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0233
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpPSyAyCkpPQiAxIDEgZW1haWw6MQpKT0IgMiAxIGVtYWlsOjIKT0sKRVJSIG5vdCBpbiBmbGlnaHQKT0sKSk9CIDIgMiBlbWFpbDoyCnJlYWR5PTAgaW5mbGlnaHQ9MSBhY2tlZD0xIG5leHQ9MwpFTVBUWQo=",
+          "stderr_b64": "",
+          "seconds": 0.0244
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "T0sgMQpPSyAyCkpPQiAxIDEgYQo=",
+          "stderr_b64": "",
+          "seconds": 0.0218
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVhZHk9MiBpbmZsaWdodD0wIGFja2VkPTAgbmV4dD0zCkpPQiAxIDIgYQpPSwpKT0IgMiAxIGIKcmVhZHk9MCBpbmZsaWdodD0xIGFja2VkPTEgbmV4dD0zCg==",
+          "stderr_b64": "",
+          "seconds": 0.023
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVhZHk9MCBpbmZsaWdodD0wIGFja2VkPTAgbmV4dD0xCk9LIDEK",
+          "stderr_b64": "",
+          "seconds": 0.0231
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpPSyAyCk9LIDMKSk9CIDEgMSBwMQpKT0IgMiAxIHAyCk9LCg==",
+          "stderr_b64": "",
+          "seconds": 0.0239
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgNApKT0IgMSAyIHAxCkpPQiAzIDEgcDMKSk9CIDQgMSBwNApFTVBUWQpFUlIgbm90IGluIGZsaWdodApFUlIgYmFkIGNvbW1hbmQK",
+          "stderr_b64": "",
+          "seconds": 0.023
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0234
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-5-extra",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-extra",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0233
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "initial-empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "initial-empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RU1QVFkKcmVhZHk9MCBpbmZsaWdodD0wIGFja2VkPTAgbmV4dD0xCkVSUiBub3QgaW4gZmxpZ2h0CkVSUiBub3QgaW4gZmxpZ2h0CkVSUiBub3QgaW4gZmxpZ2h0Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0233
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "kill-ack-durable",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "T0sgMQpKT0IgMSAxIGEKT0sK",
+          "stderr_b64": "",
+          "seconds": 0.0222
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVhZHk9MCBpbmZsaWdodD0wIGFja2VkPTEgbmV4dD0yCkVNUFRZCk9LIDIKSk9CIDIgMSBiCg==",
+          "stderr_b64": "",
+          "seconds": 0.0233
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "kill-after-put",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 1,
+          "stdout_b64": "T0sgMQo=",
+          "stderr_b64": "",
+          "seconds": 0.0214
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVhZHk9MSBpbmZsaWdodD0wIGFja2VkPTAgbmV4dD0yCk9LIDIKSk9CIDEgMSBhCkpPQiAyIDEgYgo=",
+          "stderr_b64": "",
+          "seconds": 0.0234
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "kill-nack-durable",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "T0sgMQpKT0IgMSAxIGEKT0sK",
+          "stderr_b64": "",
+          "seconds": 0.0219
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIG5vdCBpbiBmbGlnaHQKcmVhZHk9MSBpbmZsaWdodD0wIGFja2VkPTAgbmV4dD0yCkpPQiAxIDIgYQpPSwo=",
+          "stderr_b64": "",
+          "seconds": 0.0237
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "malformed-ids",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "malformed-ids",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQK",
+          "stderr_b64": "",
+          "seconds": 0.0248
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "malformed-spacing",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "malformed-spacing",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "RVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkVSUiBiYWQgY29tbWFuZAo=",
+          "stderr_b64": "",
+          "seconds": 0.0248
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "missing-parent",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "missing-parent",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0249
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "nack-smallest-first",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "nack-smallest-first",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpPSyAyCk9LIDMKSk9CIDEgMSBhCkpPQiAyIDEgYgpPSwpKT0IgMSAyIGEKSk9CIDMgMSBjCnJlYWR5PTAgaW5mbGlnaHQ9MyBhY2tlZD0wIG5leHQ9NAo=",
+          "stderr_b64": "",
+          "seconds": 0.0266
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "normal-exit-ack-and-next",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpKT0IgMSAxIGEKT0sK",
+          "stderr_b64": "",
+          "seconds": 0.024
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVhZHk9MCBpbmZsaWdodD0wIGFja2VkPTEgbmV4dD0yCk9LIDIKSk9CIDIgMSBiCk9LCg==",
+          "stderr_b64": "",
+          "seconds": 0.0235
+        },
+        {
+          "step": "run-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "Sk9CIDIgMiBiCnJlYWR5PTAgaW5mbGlnaHQ9MSBhY2tlZD0xIG5leHQ9Mwo=",
+          "stderr_b64": "",
+          "seconds": 0.023
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "numeric-ready-order",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "numeric-ready-order",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpPSyAyCk9LIDMKT0sgNApPSyA1Ck9LIDYKT0sgNwpPSyA4Ck9LIDkKT0sgMTAKT0sgMTEKT0sgMTIKSk9CIDEgMSBwMQpKT0IgMiAxIHAyCkpPQiAzIDEgcDMKSk9CIDQgMSBwNApKT0IgNSAxIHA1CkpPQiA2IDEgcDYKSk9CIDcgMSBwNwpKT0IgOCAxIHA4CkpPQiA5IDEgcDkKSk9CIDEwIDEgcDEwCkpPQiAxMSAxIHAxMQpKT0IgMTIgMSBwMTIK",
+          "stderr_b64": "",
+          "seconds": 0.0285
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "payload-boundaries",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "payload-boundaries",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpPSyAyCkVSUiBiYWQgY29tbWFuZApFUlIgYmFkIGNvbW1hbmQKRVJSIGJhZCBjb21tYW5kCkpPQiAxIDEgISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIQpKT0IgMiAxIH4KcmVhZHk9MCBpbmZsaWdodD0yIGFja2VkPTAgbmV4dD0zCg==",
+          "stderr_b64": "",
+          "seconds": 0.0244
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "repeat-deliveries",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "repeat-deliveries",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "T0sgMQpKT0IgMSAxIGEKT0sKSk9CIDEgMiBhCk9LCkpPQiAxIDMgYQpPSwpKT0IgMSA0IGEKT0sKSk9CIDEgNSBhCk9LCkpPQiAxIDYgYQpPSwpKT0IgMSA3IGEKT0sKSk9CIDEgOCBhCk9LCkpPQiAxIDkgYQpPSwpKT0IgMSAxMCBhCnJlYWR5PTAgaW5mbGlnaHQ9MSBhY2tlZD0wIG5leHQ9Mgo=",
+          "stderr_b64": "",
+          "seconds": 0.027
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "repeated-crashes",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "T0sgMQpPSyAyCkpPQiAxIDEgYQo=",
+          "stderr_b64": "",
+          "seconds": 0.0222
+        },
+        {
+          "step": "run-2",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 2,
+          "stdout_b64": "Sk9CIDEgMiBhCkpPQiAyIDEgYgo=",
+          "stderr_b64": "",
+          "seconds": 0.0214
+        },
+        {
+          "step": "run-3",
+          "passed": true,
+          "detail": "",
+          "exit": -9,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "Sk9CIDEgMyBhCk9LCkpPQiAyIDIgYgo=",
+          "stderr_b64": "",
+          "seconds": 0.0213
+        },
+        {
+          "step": "run-4",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "cmVhZHk9MSBpbmZsaWdodD0wIGFja2VkPTEgbmV4dD0zCkpPQiAyIDMgYgpPSwpPSyAzCg==",
+          "stderr_b64": "",
+          "seconds": 0.0234
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "ascii-name-ties",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "ascii-name-ties",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCAtIHcxCjEgZmluaXNoIC0gdzEKMSBzdGFydCAuIHcxCjIgZmluaXNoIC4gdzEKMiBzdGFydCAwIHcxCjMgZmluaXNoIDAgdzEKMyBzdGFydCBaIHcxCjQgZmluaXNoIFogdzEKNCBzdGFydCBfIHcxCjUgZmluaXNoIF8gdzEKNSBzdGFydCBhIHcxCjYgZmluaXNoIGEgdzEKZG9uZSA2Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0156
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "comments-crlf-final",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "comments-crlf-final",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBhIHcxCjEgZmluaXNoIGEgdzEKZG9uZSAxCg==",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "duplicate-job",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "duplicate-job",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "empty-dependency-element",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-dependency-element",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-1",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBjb25maWd1cmUgdzEKMCBzdGFydCBmZXRjaCB3MgoyIGZpbmlzaCBjb25maWd1cmUgdzEKMiBzdGFydCBkb2NzIHcxCjMgZmluaXNoIGRvY3MgdzEKMyBmaW5pc2ggZmV0Y2ggdzIKMyBzdGFydCBidWlsZCB3MQo3IGZpbmlzaCBidWlsZCB3MQo3IHN0YXJ0IHRlc3QgdzEKOSBmaW5pc2ggdGVzdCB3MQpkb25lIDkK",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-2",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBjb25maWd1cmUgdzEKMiBmaW5pc2ggY29uZmlndXJlIHcxCjIgc3RhcnQgZG9jcyB3MQozIGZpbmlzaCBkb2NzIHcxCjMgc3RhcnQgZmV0Y2ggdzEKNiBmaW5pc2ggZmV0Y2ggdzEKNiBzdGFydCBidWlsZCB3MQoxMCBmaW5pc2ggYnVpbGQgdzEKMTAgc3RhcnQgdGVzdCB3MQoxMiBmaW5pc2ggdGVzdCB3MQpkb25lIDEyCg==",
+          "stderr_b64": "",
+          "seconds": 0.016
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-3",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBhIHcxCjAgc3RhcnQgYiB3MgowIHN0YXJ0IGQgdzMKMiBmaW5pc2ggYSB3MQoyIGZpbmlzaCBiIHcyCjIgc3RhcnQgYyB3MQozIGZpbmlzaCBjIHcxCjUgZmluaXNoIGQgdzMKNSBzdGFydCBlIHcxCjYgZmluaXNoIGUgdzEKZG9uZSA2Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-4",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-4-empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-4-empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "ZG9uZSAwCg==",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-5",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-5-dependency",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-dependency",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-5-missing-file",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "example-5-missing-file",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "extra-file",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "extra-file",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "forward-and-duplicate-deps",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "forward-and-duplicate-deps",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBhIHcxCjEgZmluaXNoIGEgdzEKMSBzdGFydCBiIHcxCjIgZmluaXNoIGIgdzEKMiBzdGFydCBjIHcxCjMgZmluaXNoIGMgdzEKZG9uZSAzCg==",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "invalid-duration",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-duration",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "invalid-name",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-name",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "invalid-priority",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "invalid-priority",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0164
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "last-workers-wins",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "last-workers-wins",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBhIHcxCjAgc3RhcnQgYiB3MgoxIGZpbmlzaCBhIHcxCjEgZmluaXNoIGIgdzIKZG9uZSAxCg==",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "numeric-boundaries-leading-zero",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "numeric-boundaries-leading-zero",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBhIHcxCjEwMDAwMDAgZmluaXNoIGEgdzEKMTAwMDAwMCBzdGFydCBiIHcxCjEwMDAwMDEgZmluaXNoIGIgdzEKZG9uZSAxMDAwMDAxCg==",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "reuse-lowest-free-worker",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "reuse-lowest-free-worker",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCBhIHcxCjAgc3RhcnQgYiB3MgowIHN0YXJ0IGMgdzMKMSBmaW5pc2ggYyB3MwoxIHN0YXJ0IGQgdzMKMiBmaW5pc2ggYiB3MgoyIGZpbmlzaCBkIHczCjIgc3RhcnQgZSB3MgozIGZpbmlzaCBlIHcyCjQgZmluaXNoIGEgdzEKZG9uZSA0Cg==",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "self-cycle-before-output",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "self-cycle-before-output",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0169
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "simultaneous-finish-before-start",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "simultaneous-finish-before-start",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "MCBzdGFydCB6IHcxCjAgc3RhcnQgYSB3MgoyIGZpbmlzaCBhIHcyCjIgZmluaXNoIHogdzEKMiBzdGFydCBiIHcxCjIgc3RhcnQgYyB3MgozIGZpbmlzaCBiIHcxCjMgZmluaXNoIGMgdzIKZG9uZSAzCg==",
+          "stderr_b64": "",
+          "seconds": 0.0165
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "unknown-option",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "unknown-option",
+          "passed": true,
+          "detail": "",
+          "exit": 2,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "unreadable-file",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "unreadable-file",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0161
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "wrong-token-count",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "wrong-token-count",
+          "passed": true,
+          "detail": "",
+          "exit": 1,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+OK s filled=0 resting=2 trades=-
+OK b filled=2 resting=3 trades=s:2@9
+BOOK bids=10:3 asks=-
+CANCELED b 3
+BOOK bids=- asks=-

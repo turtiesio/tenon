@@ -1,0 +1,6 @@
+PUT p1
+PUT p2
+PUT p3
+GET
+GET
+ACK 2

@@ -1,0 +1,9 @@
+PUT a
+PUT b
+PUT c
+GET
+GET
+NACK 1
+GET
+GET
+STATS

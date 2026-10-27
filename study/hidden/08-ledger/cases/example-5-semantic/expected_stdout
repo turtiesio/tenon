@@ -1,0 +1,8 @@
+ERR bad command
+OK x1
+ERR x2 exists
+ERR x3 same account
+ERR x4 no such account
+OK x5 999999999999
+ERR no such account
+bob=999999999999

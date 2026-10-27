@@ -1,0 +1,11 @@
+0 start a w1
+0 start b w2
+0 start c w3
+1 finish c w3
+1 start d w3
+2 finish b w2
+2 finish d w3
+2 start e w2
+3 finish e w2
+4 finish a w1
+done 4

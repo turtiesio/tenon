@@ -1,0 +1,2 @@
+GET /z count=2 errors=0 err_pct=0.0 p50=1 p90=2 p99=2 max=2
+total=3 malformed=0

@@ -1,0 +1,13 @@
+0 start - w1
+1 finish - w1
+1 start . w1
+2 finish . w1
+2 start 0 w1
+3 finish 0 w1
+3 start Z w1
+4 finish Z w1
+4 start _ w1
+5 finish _ w1
+5 start a w1
+6 finish a w1
+done 6

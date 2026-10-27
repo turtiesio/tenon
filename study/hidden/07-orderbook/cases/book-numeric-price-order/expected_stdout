@@ -1,0 +1,5 @@
+OK a filled=0 resting=1 trades=-
+OK b filled=0 resting=1 trades=-
+OK c filled=0 resting=1 trades=-
+OK d filled=0 resting=1 trades=-
+BOOK bids=10:1,2:1 asks=20:1,100:1

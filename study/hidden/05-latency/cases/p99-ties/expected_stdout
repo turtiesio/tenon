@@ -1,0 +1,4 @@
+GET /a count=1 errors=0 err_pct=0.0 p50=5 p90=5 p99=5 max=5
+GET /z count=1 errors=0 err_pct=0.0 p50=5 p90=5 p99=5 max=5
+POST / count=1 errors=0 err_pct=0.0 p50=5 p90=5 p99=5 max=5
+total=3 malformed=0

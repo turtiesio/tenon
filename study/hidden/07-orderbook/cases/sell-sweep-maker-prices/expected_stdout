@@ -1,0 +1,5 @@
+OK low filled=0 resting=3 trades=-
+OK high filled=0 resting=2 trades=-
+OK mid filled=0 resting=4 trades=-
+OK take filled=8 resting=0 trades=high:2@12,mid:4@10,low:2@8
+BOOK bids=8:1 asks=-

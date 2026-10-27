@@ -1,0 +1,6 @@
+# name duration priority deps
+fetch     3 0 -
+configure 2 5 -
+build     4 1 fetch,configure
+test      2 0 build
+docs      1 0 configure

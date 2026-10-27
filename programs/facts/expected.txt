@@ -1,0 +1,50 @@
+$ facts query pluto planet
+pluto planet: unknown (no evidence)
+[exit 0]
+$ facts assert pluto class planet textbook-1990 80
+recorded #1; now supported: planet (net confidence 80)
+[exit 0]
+$ facts assert pluto class dwarf-planet iau-2006 95
+recorded #2; now disputed: dwarf-planet (95) vs planet (80)
+[exit 0]
+$ facts query pluto class
+pluto class: disputed: dwarf-planet (95) vs planet (80)
+[exit 0]
+$ facts deny pluto class planet iau-2006 90
+recorded #3; now supported: dwarf-planet (net confidence 95)
+[exit 0]
+$ facts query pluto class
+pluto class: supported: dwarf-planet (net confidence 95)
+[exit 0]
+$ facts assert pluto moons 5 nasa 90
+recorded #4; now supported: 5 (net confidence 90)
+[exit 0]
+$ facts assert pluto moons 4 old-survey 40
+recorded #5; now disputed: 5 (90) vs 4 (40)
+[exit 0]
+$ facts query pluto moons
+pluto moons: disputed: 5 (90) vs 4 (40)
+[exit 0]
+$ facts retract pluto moons 4 old-survey
+recorded #6; now supported: 5 (net confidence 90)
+[exit 0]
+$ facts query pluto moons
+pluto moons: supported: 5 (net confidence 90)
+[exit 0]
+$ facts deny pluto atmosphere none probe 60
+recorded #7; now refuted: evidence only against none
+[exit 0]
+$ facts query pluto atmosphere
+pluto atmosphere: refuted: evidence only against none
+[exit 0]
+$ facts retract pluto moons 4 old-survey
+error: old-survey has no evidence about pluto moons 4 to retract
+[exit 1]
+$ facts assert pluto class planet fan-site 500
+error: confidence must be an integer from 1 to 100, got 500
+[exit 1]
+$ facts history pluto class
+#1 textbook-1990 asserted planet (80)
+#2 iau-2006 asserted dwarf-planet (95)
+#3 iau-2006 denied planet (90)
+[exit 0]

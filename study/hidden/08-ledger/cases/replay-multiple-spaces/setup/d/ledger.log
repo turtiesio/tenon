@@ -1,0 +1,4 @@
+r  OPEN  a
+s OPEN z
+t DEPOSIT a 9
+u TRANSFER a z 2

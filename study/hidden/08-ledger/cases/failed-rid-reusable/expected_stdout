@@ -1,0 +1,7 @@
+ERR x no such account
+OK x
+ERR y insufficient
+OK y 1
+ERR z exists
+OK z
+a=1 b=0

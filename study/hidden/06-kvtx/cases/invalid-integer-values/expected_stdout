@@ -1,0 +1,12 @@
+OK
+ERR not an integer
+-0
+OK
+ERR not an integer
++5
+OK
+ERR not an integer
+007
+OK
+ERR not an integer
+9999999999999999

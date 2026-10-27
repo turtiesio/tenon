@@ -1,0 +1,3 @@
+BALANCE dave
+a3 DEPOSIT dave 5
+BALANCE dave

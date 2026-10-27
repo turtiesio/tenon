@@ -1,0 +1,11 @@
+
+open a
+x OPEN
+x OPEN a extra
+x DEPOSIT a 0
+x DEPOSIT a +1
+x DEPOSIT a 1000000000000
+x OPEN a.b
+x OPEN abcdefghijklmnopq
+BALANCE A
+ACCOUNTS extra

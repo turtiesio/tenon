@@ -1,0 +1,11 @@
+SET a old
+BEGIN
+SET a outer
+BEGIN
+SET b new
+COMMIT
+GET b
+ROLLBACK
+GET a
+GET b
+KEYS

@@ -1,0 +1,8 @@
+x1 OPEN Bob
+x1 OPEN bob
+x2 OPEN bob
+x3 TRANSFER bob bob 1
+x4 DEPOSIT zed 5
+x5 DEPOSIT bob 999999999999
+BALANCE zed
+ACCOUNTS

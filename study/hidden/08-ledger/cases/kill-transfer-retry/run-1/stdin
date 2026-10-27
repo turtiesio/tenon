@@ -1,0 +1,5 @@
+a OPEN alice
+b OPEN bob
+c DEPOSIT alice 50
+d TRANSFER alice bob 20
+e WITHDRAW bob 5

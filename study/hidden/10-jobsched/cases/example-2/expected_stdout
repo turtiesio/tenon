@@ -1,0 +1,11 @@
+0 start configure w1
+2 finish configure w1
+2 start docs w1
+3 finish docs w1
+3 start fetch w1
+6 finish fetch w1
+6 start build w1
+10 finish build w1
+10 start test w1
+12 finish test w1
+done 12
