@@ -84,6 +84,10 @@ a.push(3)      // b is still [1, 2]
 - `s += t` on a `var` string appends in place (amortized O(1)); building a
   string piece by piece is fine. `slice`, `split`, `lines` and `words` return
   views that share the original's bytes.
+- `a + b` makes a new string. When nested functions each return a string
+  that the caller appends (`out += esc(x)`), every level copies its output
+  once more; passing one buffer down (`fn esc(out: mut Str, s: Str)`, called
+  as `esc(mut out, x)`) writes each byte once.
 - `Map` and `Set` lookups and inserts are O(1) on average; small maps (up to
   8 entries) are scanned. `m[k] = m.get_or(k, 0) + 1` is compiled to a single
   lookup. Iteration follows insertion order.
