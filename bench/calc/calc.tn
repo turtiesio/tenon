@@ -1,0 +1,504 @@
+// calc: a REPL for a small expression language, reading statements from stdin.
+//
+//   let NAME = EXPR            bind (or rebind) a variable
+//   fn NAME(a, b) = EXPR       define (or redefine) a function
+//   EXPR                       evaluate and print
+//
+// Expressions: 64-bit integers, + - * / %, unary -, parentheses, comparisons
+// (== != < <= > >=; true is 1, false is 0), `if C then A else B`, variables and
+// calls. Precedence, loosest to tightest: == != | < <= > >= | + - | * / % | unary -.
+// All binary operators are left associative. Every error prints `error: MESSAGE`
+// and the REPL goes on. At end of input: `bye (N statements, E errors)`, exit
+// status 0, or 1 if there were errors.
+
+// (Tenon has no top-level constants, so these are functions; see GAPS.md.)
+fn max_depth() -> Int { 1000 }
+fn max_nesting() -> Int { 200 }
+fn int_max() -> Int { 9223372036854775807 }
+fn int_min() -> Int { -9223372036854775807 - 1 }
+
+// ---- tokens ----
+
+enum Kind {
+    KNum, KIdent, KLet, KFn, KIf, KThen, KElse,
+    KPlus, KMinus, KStar, KSlash, KPercent,
+    KLParen, KRParen, KComma, KAssign,
+    KEqEq, KNotEq, KLess, KLessEq, KGreater, KGreaterEq,
+    KEnd,
+}
+
+struct Token { kind: Kind, text: Str, num: Int, col: Int }
+
+fn is_digit(c: Int) -> Bool { c >= '0' and c <= '9' }
+fn is_ident_start(c: Int) -> Bool { (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_' }
+fn is_ident_char(c: Int) -> Bool { is_ident_start(c) or is_digit(c) }
+
+// Length in bytes of the UTF-8 character that starts with byte c.
+fn utf8_len(c: Int) -> Int {
+    if c >= 240 { 4 } else if c >= 224 { 3 } else if c >= 192 { 2 } else { 1 }
+}
+
+fn keyword(word: Str) -> Kind {
+    match word {
+        "let" => KLet,
+        "fn" => KFn,
+        "if" => KIf,
+        "then" => KThen,
+        "else" => KElse,
+        _ => KIdent,
+    }
+}
+
+// Columns are 1-based byte offsets.
+fn tokenize(s: Str) -> Result[List[Token], Str] {
+    var toks: List[Token] = []
+    var i = 0
+    while i < s.len() {
+        let c = s.byte(i)
+        let start = i
+        if c == ' ' or c == '\t' or c == '\r' {
+            i += 1
+        } else if c == '/' and i + 1 < s.len() and s.byte(i + 1) == '/' {
+            i = s.len()   // comment to end of line
+        } else if is_digit(c) {
+            while i < s.len() and is_digit(s.byte(i)) { i += 1 }
+            let text = s.slice(start, i)
+            match text.to_int() {
+                Some(n) => toks.push(Token { kind: KNum, text, num: n, col: start + 1 }),
+                None => return Err("integer literal {text} is too large at column {start + 1}"),
+            }
+        } else if is_ident_start(c) {
+            while i < s.len() and is_ident_char(s.byte(i)) { i += 1 }
+            let text = s.slice(start, i)
+            toks.push(Token { kind: keyword(text), text, num: 0, col: start + 1 })
+        } else {
+            let next = if i + 1 < s.len() { s.byte(i + 1) } else { 0 }
+            var kind = KEnd
+            var width = 1
+            if c == '+' { kind = KPlus }
+            else if c == '-' { kind = KMinus }
+            else if c == '*' { kind = KStar }
+            else if c == '/' { kind = KSlash }
+            else if c == '%' { kind = KPercent }
+            else if c == '(' { kind = KLParen }
+            else if c == ')' { kind = KRParen }
+            else if c == ',' { kind = KComma }
+            else if c == '=' {
+                if next == '=' { kind = KEqEq; width = 2 } else { kind = KAssign }
+            } else if c == '!' {
+                if next == '=' { kind = KNotEq; width = 2 }
+            } else if c == '<' {
+                if next == '=' { kind = KLessEq; width = 2 } else { kind = KLess }
+            } else if c == '>' {
+                if next == '=' { kind = KGreaterEq; width = 2 } else { kind = KGreater }
+            }
+            if kind == KEnd {
+                let ch = s.slice(i, (i + utf8_len(c)).min(s.len()))
+                return Err("unexpected character '{ch}' at column {i + 1}")
+            }
+            toks.push(Token { kind, text: s.slice(i, i + width), num: 0, col: i + 1 })
+            i += width
+        }
+    }
+    toks.push(Token { kind: KEnd, text: "", num: 0, col: s.len() + 1 })
+    Ok(toks)
+}
+
+// ---- syntax tree ----
+
+enum Op { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Le, Gt, Ge }
+
+enum Expr {
+    Num(Int),
+    Var(Str),
+    Neg(Expr),
+    Bin(Op, Expr, Expr),
+    If(Expr, Expr, Expr),
+    Call(Str, List[Expr]),
+}
+
+enum Stmt {
+    DefVar(Str, Expr),
+    DefFn(Str, List[Str], Expr),
+    Show(Expr),
+}
+
+// ---- parser ----
+
+struct Parser { toks: List[Token], pos: Int, depth: Int }
+
+fn describe(t: Token) -> Str {
+    if t.kind == KEnd { "end of line" } else { "'{t.text}'" }
+}
+
+fn unexpected(t: Token, wanted: Str) -> Str {
+    "expected {wanted} but found {describe(t)} at column {t.col}"
+}
+
+fn Parser.peek(self) -> Token { self.toks[self.pos] }
+
+fn Parser.next(mut self) -> Token {
+    let t = self.toks[self.pos]
+    if t.kind != KEnd { self.pos += 1 }
+    t
+}
+
+fn Parser.expect(mut self, kind: Kind, wanted: Str) -> Result[Token, Str] {
+    let t = self.peek()
+    if t.kind != kind { return Err(unexpected(t, wanted)) }
+    Ok(self.next())
+}
+
+// The statement must end here.
+fn Parser.finish(self) -> Result[Unit, Str] {
+    let t = self.peek()
+    if t.kind != KEnd { return Err("unexpected {describe(t)} at column {t.col}") }
+    Ok(())
+}
+
+fn Parser.enter(mut self) -> Result[Unit, Str] {
+    self.depth += 1
+    if self.depth > max_nesting() {
+        return Err("expression nested too deeply (limit {max_nesting()}) at column {self.peek().col}")
+    }
+    Ok(())
+}
+
+fn Parser.expr(mut self) -> Result[Expr, Str] {
+    self.enter()?
+    let r = self.equality()
+    self.depth -= 1
+    r
+}
+
+fn Parser.equality(mut self) -> Result[Expr, Str] {
+    var left = self.relational()?
+    while self.peek().kind == KEqEq or self.peek().kind == KNotEq {
+        let op = if self.next().kind == KEqEq { Eq } else { Ne }
+        let right = self.relational()?
+        left = Bin(op, left, right)
+    }
+    Ok(left)
+}
+
+fn Parser.relational(mut self) -> Result[Expr, Str] {
+    var left = self.additive()?
+    while true {
+        let op = match self.peek().kind {
+            KLess => Lt,
+            KLessEq => Le,
+            KGreater => Gt,
+            KGreaterEq => Ge,
+            _ => break,
+        }
+        let _ = self.next()
+        let right = self.additive()?
+        left = Bin(op, left, right)
+    }
+    Ok(left)
+}
+
+fn Parser.additive(mut self) -> Result[Expr, Str] {
+    var left = self.term()?
+    while self.peek().kind == KPlus or self.peek().kind == KMinus {
+        let op = if self.next().kind == KPlus { Add } else { Sub }
+        let right = self.term()?
+        left = Bin(op, left, right)
+    }
+    Ok(left)
+}
+
+fn Parser.term(mut self) -> Result[Expr, Str] {
+    var left = self.unary()?
+    while true {
+        let op = match self.peek().kind {
+            KStar => Mul,
+            KSlash => Div,
+            KPercent => Mod,
+            _ => break,
+        }
+        let _ = self.next()
+        let right = self.unary()?
+        left = Bin(op, left, right)
+    }
+    Ok(left)
+}
+
+fn Parser.unary(mut self) -> Result[Expr, Str] {
+    if self.peek().kind == KMinus {
+        self.enter()?
+        let _ = self.next()
+        let operand = self.unary()
+        self.depth -= 1
+        return Ok(Neg(operand?))
+    }
+    self.primary()
+}
+
+fn Parser.call_args(mut self) -> Result[List[Expr], Str] {
+    var args: List[Expr] = []
+    if self.peek().kind == KRParen {
+        let _ = self.next()
+        return Ok(args)
+    }
+    while true {
+        args.push(self.expr()?)
+        if self.peek().kind == KComma {
+            let _ = self.next()
+        } else {
+            let _ = self.expect(KRParen, "',' or ')'")?
+            break
+        }
+    }
+    Ok(args)
+}
+
+fn Parser.primary(mut self) -> Result[Expr, Str] {
+    let t = self.peek()
+    match t.kind {
+        KNum => {
+            let _ = self.next()
+            Ok(Num(t.num))
+        }
+        KIdent => {
+            let _ = self.next()
+            if self.peek().kind == KLParen {
+                let _ = self.next()
+                let args = self.call_args()?
+                Ok(Call(t.text, args))
+            } else {
+                Ok(Var(t.text))
+            }
+        }
+        KLParen => {
+            let _ = self.next()
+            let inner = self.expr()?
+            let _ = self.expect(KRParen, "')'")?
+            Ok(inner)
+        }
+        KIf => {
+            let _ = self.next()
+            let cond = self.expr()?
+            let _ = self.expect(KThen, "'then'")?
+            let yes = self.expr()?
+            let _ = self.expect(KElse, "'else'")?
+            let no = self.expr()?
+            Ok(If(cond, yes, no))
+        }
+        _ => Err(unexpected(t, "an expression")),
+    }
+}
+
+fn Parser.params(mut self) -> Result[List[Str], Str] {
+    var names: List[Str] = []
+    if self.peek().kind == KRParen {
+        let _ = self.next()
+        return Ok(names)
+    }
+    while true {
+        let t = self.expect(KIdent, "a parameter name")?
+        if names.contains(t.text) { return Err("duplicate parameter '{t.text}' at column {t.col}") }
+        names.push(t.text)
+        if self.peek().kind == KComma {
+            let _ = self.next()
+        } else {
+            let _ = self.expect(KRParen, "',' or ')'")?
+            break
+        }
+    }
+    Ok(names)
+}
+
+// None: the line holds no statement (blank or only a comment).
+fn parse_line(line: Str) -> Result[Option[Stmt], Str] {
+    let toks = tokenize(line)?
+    if toks.len() == 1 { return Ok(None) }
+    var p = Parser { toks, pos: 0, depth: 0 }
+    let first = p.peek()
+    if first.kind == KLet {
+        let _ = p.next()
+        let name = p.expect(KIdent, "a variable name")?
+        let _ = p.expect(KAssign, "'='")?
+        let e = p.expr()?
+        p.finish()?
+        Ok(Some(DefVar(name.text, e)))
+    } else if first.kind == KFn {
+        let _ = p.next()
+        let name = p.expect(KIdent, "a function name")?
+        let _ = p.expect(KLParen, "'('")?
+        let params = p.params()?
+        let _ = p.expect(KAssign, "'='")?
+        let body = p.expr()?
+        p.finish()?
+        Ok(Some(DefFn(name.text, params, body)))
+    } else {
+        let e = p.expr()?
+        p.finish()?
+        Ok(Some(Show(e)))
+    }
+}
+
+// ---- checked arithmetic ----
+
+fn add(a: Int, b: Int) -> Result[Int, Str] {
+    if (b > 0 and a > int_max() - b) or (b < 0 and a < int_min() - b) { return Err("integer overflow in {a} + {b}") }
+    Ok(a + b)
+}
+
+fn sub(a: Int, b: Int) -> Result[Int, Str] {
+    if (b > 0 and a < int_min() + b) or (b < 0 and a > int_max() + b) { return Err("integer overflow in {a} - {b}") }
+    Ok(a - b)
+}
+
+fn neg(a: Int) -> Result[Int, Str] {
+    if a == int_min() { return Err("integer overflow in -({a})") }
+    Ok(-a)
+}
+
+fn mul(a: Int, b: Int) -> Result[Int, Str] {
+    if a == 0 or b == 0 { return Ok(0) }
+    let msg = "integer overflow in {a} * {b}"
+    if a == -1 { return neg(b).map_err(fn(e) => msg) }
+    if b == -1 { return neg(a).map_err(fn(e) => msg) }
+    let too_big = if a > 0 {
+        if b > 0 { b > int_max() / a } else { b < int_min() / a }
+    } else {
+        if b > 0 { a < int_min() / b } else { a < int_max() / b }
+    }
+    if too_big { return Err(msg) }
+    Ok(a * b)
+}
+
+fn div(a: Int, b: Int) -> Result[Int, Str] {
+    if b == 0 { return Err("division by zero") }
+    if b == -1 { return neg(a).map_err(fn(e) => "integer overflow in {a} / -1") }
+    Ok(a / b)
+}
+
+fn rem(a: Int, b: Int) -> Result[Int, Str] {
+    if b == 0 { return Err("division by zero") }
+    if b == -1 { return Ok(0) }
+    Ok(a % b)
+}
+
+fn truth(b: Bool) -> Int { if b { 1 } else { 0 } }
+
+fn apply(op: Op, a: Int, b: Int) -> Result[Int, Str] {
+    match op {
+        Add => add(a, b),
+        Sub => sub(a, b),
+        Mul => mul(a, b),
+        Div => div(a, b),
+        Mod => rem(a, b),
+        Eq => Ok(truth(a == b)),
+        Ne => Ok(truth(a != b)),
+        Lt => Ok(truth(a < b)),
+        Le => Ok(truth(a <= b)),
+        Gt => Ok(truth(a > b)),
+        Ge => Ok(truth(a >= b)),
+    }
+}
+
+// ---- evaluator ----
+
+struct FnDef { params: List[Str], body: Expr }
+
+struct Interp { vars: Map[Str, Int], fns: Map[Str, FnDef] }
+
+fn plural(n: Int, word: Str) -> Str { if n == 1 { "{n} {word}" } else { "{n} {word}s" } }
+
+// env holds the parameters of the function being evaluated (empty at top level);
+// depth is the number of user function calls currently active.
+fn Interp.eval(self, e: Expr, env: Map[Str, Int], depth: Int) -> Result[Int, Str] {
+    match e {
+        Num(n) => Ok(n),
+        Var(name) => {
+            match env.get(name) {
+                Some(v) => Ok(v),
+                None => match self.vars.get(name) {
+                    Some(v) => Ok(v),
+                    None => {
+                        if self.fns.contains(name) { Err("'{name}' is a function, not a variable") }
+                        else { Err("unknown variable '{name}'") }
+                    }
+                },
+            }
+        }
+        Neg(x) => neg(self.eval(x, env, depth)?),
+        Bin(op, l, r) => {
+            let a = self.eval(l, env, depth)?
+            let b = self.eval(r, env, depth)?
+            apply(op, a, b)
+        }
+        If(c, yes, no) => {
+            if self.eval(c, env, depth)? != 0 { self.eval(yes, env, depth) } else { self.eval(no, env, depth) }
+        }
+        Call(name, args) => self.call(name, args, env, depth),
+    }
+}
+
+fn Interp.call(self, name: Str, args: List[Expr], env: Map[Str, Int], depth: Int) -> Result[Int, Str] {
+    let f = match self.fns.get(name) {
+        Some(f) => f,
+        None => {
+            if self.vars.contains(name) or env.contains(name) { return Err("'{name}' is not a function") }
+            return Err("unknown function '{name}'")
+        }
+    }
+    if args.len() != f.params.len() {
+        return Err("function '{name}' takes {plural(f.params.len(), "argument")}, got {args.len()}")
+    }
+    var inner: Map[Str, Int] = [:]
+    for i in 0..args.len() {
+        inner[f.params[i]] = self.eval(args[i], env, depth)?
+    }
+    if depth >= max_depth() { return Err("call depth limit ({max_depth()}) exceeded in '{name}'") }
+    self.eval(f.body, inner, depth + 1)
+}
+
+// Runs one statement; Ok(Some(text)) is output to print.
+fn Interp.run(mut self, stmt: Stmt) -> Result[Option[Str], Str] {
+    match stmt {
+        DefVar(name, e) => {
+            if self.fns.contains(name) { return Err("'{name}' is already defined as a function") }
+            let v = self.eval(e, [:], 0)?
+            self.vars[name] = v
+            Ok(None)
+        }
+        DefFn(name, params, body) => {
+            if self.vars.contains(name) { return Err("'{name}' is already defined as a variable") }
+            self.fns[name] = FnDef { params, body }
+            Ok(None)
+        }
+        Show(e) => Ok(Some(self.eval(e, [:], 0)?.to_str())),
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var interp = Interp { vars: [:], fns: [:] }
+    var statements = 0
+    var errors = 0
+    while true {
+        let line = match con.read_line() {
+            Some(l) => l,
+            None => break,
+        }
+        let result = match parse_line(line) {
+            Ok(None) => continue,
+            Ok(Some(stmt)) => interp.run(stmt),
+            Err(msg) => Err(msg),
+        }
+        statements += 1
+        match result {
+            Ok(Some(text)) => con.println(text),
+            Ok(None) => {}
+            Err(msg) => {
+                errors += 1
+                con.println("error: {msg}")
+            }
+        }
+    }
+    con.println("bye ({statements} statements, {errors} errors)")
+    if errors > 0 { 1 } else { 0 }
+}
