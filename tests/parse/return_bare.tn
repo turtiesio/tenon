@@ -1,0 +1,8 @@
+fn f(x: Option[Int]) -> Unit {
+    match x { None => return, Some(_) => return }
+    g(return)
+    let xs = [return]
+    if true { return } else { return; }
+    let y = (return)
+    return
+}

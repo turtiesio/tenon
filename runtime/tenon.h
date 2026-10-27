@@ -1349,6 +1349,11 @@ static TN_UNUSED void tn_str_append(tn_Str *x, tn_Str y) {
     tn_Str_release(*x);
     *x = r;
 }
+static TN_UNUSED tn_Int tn_str_char_count(tn_Str s) {
+    tn_Int n = 0; /* code points: every byte that is not a UTF-8 continuation byte */
+    for (int64_t i = 0; i < s.len; i++) n += ((uint8_t)s.p[i] & 0xC0) != 0x80;
+    return n;
+}
 static TN_UNUSED tn_List_Str tn_str_chars(tn_Str s) {
     tn_List_Str out = NULL;
     int64_t i = 0;
@@ -1494,7 +1499,7 @@ static TN_UNUSED bool tn_read_line(tn_Str *out) {
     if (tn_in_pos == tn_in_len) return false;
 found:;
     int64_t end = scan, next = scan < tn_in_len ? scan + 1 : scan;
-    if (scan < tn_in_len && end > tn_in_pos && tn_in_buf[end - 1] == '\r') end--;
+    if (end > tn_in_pos && tn_in_buf[end - 1] == '\r') end--; /* one "\r" off every line, also a last one without "\n" */
     tn_buf b = tn_buf_new();
     tn_utf8_lossy(tn_in_buf + tn_in_pos, end - tn_in_pos, &b);
     tn_in_pos = next;
@@ -2000,7 +2005,7 @@ static TN_UNUSED int tn_conn_read_line(tn_Conn c, bool *some, tn_Str *line, tn_S
     if (c->pos == c->len) { *some = false; return TN_IO_OK; }
 found:;
     int64_t end = scan, next = scan < c->len ? scan + 1 : scan;
-    if (scan < c->len && end > c->pos && c->buf[end - 1] == '\r') end--;
+    if (end > c->pos && c->buf[end - 1] == '\r') end--;
     tn_buf b = tn_buf_new();
     tn_utf8_lossy(c->buf + c->pos, end - c->pos, &b);
     c->pos = next;

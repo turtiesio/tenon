@@ -1,0 +1,13 @@
+// len() counts bytes, char_count() code points; pad_left/pad_right pad to a width in
+// code points, so non-ASCII text lines up; chars() gives one-character strings.
+fn main(sys: Sys) {
+    let c = sys.console
+    for s in ["Zürich", "東京", "Oslo", "", "é"] {
+        c.println("{s.len()} {s.char_count()} {s.chars()}")
+    }
+    for city in ["Zürich", "東京", "Oslo", "Reykjavík"] {
+        c.println("|{city.pad_right(8, ".")}|{city.pad_left(8, " ")}|")
+    }
+    c.println("{"7".pad_left(3, "0")} {"abc".pad_left(2, "0")} {"ab".pad_right(-1, "x")}")
+    c.println("{"x".pad_left(4, "·")} {"x".pad_right(3, "日")}")
+}

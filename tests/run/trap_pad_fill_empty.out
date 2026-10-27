@@ -1,0 +1,3 @@
+exit: 70
+stderr: trap: pad_right: fill must be exactly one character, got ""
+stderr:   at trap_pad_fill_empty.tn:3:33

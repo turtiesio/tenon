@@ -417,7 +417,8 @@ impl<'a> Parser<'a> {
             let body = self.block()?;
             StmtKind::For { pat, iter, body }
         } else if self.eat_kw("return") {
-            if self.is_sym(";") || self.is_sym("}") {
+            // No value when the next token cannot start one (`_ => return,`, `f(return)`).
+            if [";", "}", ",", ")", "]"].iter().any(|s| self.is_sym(s)) {
                 StmtKind::Return(None)
             } else {
                 StmtKind::Return(Some(self.expr()?))

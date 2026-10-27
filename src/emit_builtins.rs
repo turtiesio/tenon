@@ -72,6 +72,7 @@ impl<'a> Emitter<'a> {
                 self.tmp_val(t, &format!("{}({})", &name[6..], a[0]))
             }
             "Str.len" => self.tmp_val(t, &format!("({}).len", a[0])),
+            "Str.char_count" => self.tmp_val(t, &format!("tn_str_char_count({})", a[0])),
             "Str.byte" => self.tmp_val(t, &format!("tn_str_byte({}, {}, {})", a[0], a[1], loc)),
             "Str.slice" => self.tmp_owned(t, &format!("tn_str_slice({}, {}, {}, {})", a[0], a[1], a[2], loc)),
             "Str.find_from" => {
