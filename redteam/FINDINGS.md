@@ -265,3 +265,30 @@ used for the enum-release fix also shows one extra live allocation at exit under
 
 * The checkout changed under me (`mut` parameters, `let ... else`, constants, `Fs.rename`, etc. landed during the session); all repros were re-verified against the binary built from the final working tree.
 * While fuzzing I briefly wrote a temporary file (`_fz11.tn`) next to a corpus program inside the repo's `tests/run/` for a few seconds; I removed it immediately and `git status` shows no change from me. Everything else was written under `redteam/` and `/tmp/tenon-qa/`.
+
+## Status after fixes (verified 2026-10-28 by re-running every repro on main)
+
+| # | Finding | Status | Fixed by |
+|---|---|---|---|
+| 1 | NUL byte escapes `Fs.within` | fixed: NUL paths are refused in both backends | 7609370 |
+| 2 | generic wrapper drops/duplicates a linear value | fixed: only types declared linear/unique exempt `self`; `Wrap.drop_it` rejected for linear `A` | 7abe2a9 |
+| 3 | match guard consumes a linear value | fixed: rejected | 7609370 |
+| 4 | linear temporaries dropped | fixed: rejected | 7609370 |
+| 5 | `within` follows symlinks | fixed: existing symlinks on the path are refused (TOCTOU race documented) | 7609370 |
+| 6 | `..base` drops a linear field | fixed: rejected | 7609370 |
+| 7, 20 | comparing functions | fixed: rejected when written directly or through struct fields; through generics, functions (like NaN) are never equal, consistently in both backends (interpreter no longer short-circuits on Rc identity) | 7609370, 0c039a3 |
+| 8 | NaN map keys | fixed: Float (and fn/capability) keys rejected | 7609370 |
+| 9 | ports truncated | fixed: out-of-range ports are errors | 7609370 |
+| 10, 22, 23 | native stack overflow on deep values | fixed: bounded-depth release, and native main runs on a 1 GB stack like the interpreter | 7609370, 0c039a3 |
+| 11 | polymorphic recursion hangs/crashes `build` | fixed: clear compile error | 7abe2a9 |
+| 12 | `<` on maps accepted | fixed: compile-time error | 7abe2a9 |
+| 13 | constant cycles | fixed: compile-time error | 7abe2a9 |
+| 14 | `x += e` vs `x = x + e` order | documented (reference §6) | 7abe2a9 |
+| 15 | uninferred `let` | fixed: compile-time error | 7abe2a9 |
+| 16 | non-UTF-8 argument panics the interpreter | fixed: lossy in both backends | 7abe2a9 |
+| 17 | trap location inside the prelude | fixed: reported at the user call | 7abe2a9 |
+| 18 | `t.0.1` | fixed in both lexers | 7abe2a9 |
+| 21 | `Fs.write` temp-file symlink | fixed: stale temp removed, created O_EXCL\|O_NOFOLLOW | 7abe2a9 |
+| 24 | NUL in `connect` host | fixed: refused, messages normalized | 7abe2a9 |
+
+Not yet tested: out-of-memory behaviour (exit 71).
