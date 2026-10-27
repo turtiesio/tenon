@@ -84,10 +84,12 @@ fn main(sys: Sys) -> Int {
 | `None` / `null` | `Option[T]`: `Some(x)` / `None` |
 | exceptions | `Result[T, E]`: `Ok(x)` / `Err(e)`; `expr?` returns the `Err` early |
 | `class P: ...` / `interface` | `struct P { x: Int }`; methods `fn P.norm(self) -> Int` |
+| `P(x=x, y=0)` / `{ x, y: 0 }` | `P { x, y: 0 }` (`x` alone means `x: x`) |
 | method that mutates | `fn P.bump(mut self)`; call it on a `var` |
 | tagged union / `match` | `enum Cmd { Add(Str, Int), List }` and exhaustive `match` |
 | `lambda x: x + 1` / `x => x + 1` | `fn(x) => x + 1` |
-| `re.fullmatch(...)` | `import regex` then `regex.compile(p).unwrap().full(s)` |
+| `r"\d{4}"` / `` String.raw`\d{4}` `` | `r"\d{4}"`: raw string, no escapes, `{...}` is literal; cannot contain `"` |
+| `re.fullmatch(r"(\d{4})-(\d{2})", s)` | `import regex` then `regex.compile(r"(\d{4})-(\d{2})").unwrap().full(s)` gives `Option[List[Str]]` (groups) |
 | `open(p).read()` | `sys.fs.read(p)` gives `Result[Str, IoError]` (`Err` if not UTF-8) |
 | `open(p, "rb").read()`, `sys.stdin.buffer.read()` | `sys.fs.read_bytes(p)` gives `Result[List[Int], IoError]` (each 0..255); `con.read_all_bytes()`; `Str.from_utf8(bs)` |
 

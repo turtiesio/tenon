@@ -1,0 +1,5 @@
+let a = r"x\y{z}"
+let b = r""
+let c = "{r"}"}" + r"\"
+let r = r
+let d = for"x"

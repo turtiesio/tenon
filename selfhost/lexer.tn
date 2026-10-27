@@ -87,7 +87,11 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
             let start = self.pos
             while is_ident_char(self.peek(0)) { let _ = self.bump() }
             let s = self.src.slice(start, self.pos)
-            if keywords().contains(s) { Kw(s) } else { Ident(s) }
+            // `r"..."` is a raw string; `r` directly followed by `"` is
+            // never valid code otherwise (a name followed by a string).
+            if s == "r" and self.peek(0) == 34 {
+                self.raw_string(line, col)?
+            } else if keywords().contains(s) { Kw(s) } else { Ident(s) }
         } else if c == 39 {
             self.char_lit()?
         } else if c == 34 {
@@ -244,6 +248,23 @@ fn escape(e: Int) -> Option[Str] {
         125 => Some("\}"),
         _ => None,
     }
+}
+
+// r"...": no escapes, no interpolation; ends at the next `"` on the same
+// line (a raw string cannot contain `"` or a newline).
+fn Lx.raw_string(mut self, line: Int, col: Int) -> Result[Tok, LexError] {
+    let _ = self.bump()
+    let start = self.pos
+    while true {
+        if self.pos >= self.src.len() { return Err(self.fail(line, col, "unterminated raw string")) }
+        let c = self.peek(0)
+        if c == 34 { break }
+        if c == 10 { return Err(self.fail(line, col, "unterminated raw string (newline in raw string)")) }
+        let _ = self.bump()
+    }
+    let lit = self.src.slice(start, self.pos)
+    let _ = self.bump()
+    Ok(StrTok([Lit(lit)]))
 }
 
 fn Lx.string(mut self) -> Result[Tok, LexError] {

@@ -1,0 +1,39 @@
+// Raw strings r"...": no escapes, no interpolation; ends at the next `"`.
+import regex
+
+fn main(sys: Sys) {
+    let con = sys.console
+    // backslashes are literal
+    let bs = r"C:\temp\new"
+    con.println(bs)
+    con.println("{bs.len()}")
+    con.println("{r"\n".len()} {"\n".len()}")
+    // braces are literal: no interpolation
+    let r = 7
+    con.println(r"{r} and {x} and }{")
+    // `r` as a variable still works next to a raw string
+    con.println("{r}:{r"{r}"}:{r + 1}")
+    // empty raw string
+    let e = r""
+    con.println("[{e}] {e.len()} {e == ""}")
+    // a raw string is an ordinary Str
+    con.println(r"a\b" + "|" + r"\{")
+    con.println("{[r"x\y", "z"]}")
+    // equal to the escaped normal string
+    con.println("{r"(\d{4})" == "(\\d\{4})"}")
+    // with regex: no doubled backslashes, no \{
+    let date = regex.compile(r"(\d{4})-(\d{2})-(\d{2})").unwrap()
+    match date.full("2024-03-15") {
+        Some(g) => con.println("{g[1]} {g[2]} {g[3]}"),
+        None => con.println("not a date"),
+    }
+    let punch = regex.compile(r"([a-z]{1,16}) (Mon|Tue) ([01][0-9]|2[0-3]):([0-5][0-9]) (IN|OUT)").unwrap()
+    con.println("{punch.full("ana Mon 09:30 IN")}")
+    con.println("{punch.is_full("ana Mon 24:30 IN")}")
+    let ws = regex.compile(r"\s+").unwrap()
+    con.println(ws.replace_all("a  b\t c", r"\_"))
+    // `for` and other names ending in r are not raw-string prefixes
+    var for_r = 0
+    for x in [1, 2] { for_r += x }
+    con.println("{for_r}")
+}

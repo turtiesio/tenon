@@ -1,0 +1,3 @@
+// error: unterminated raw string (newline in raw string)
+fn main() { let p = r"\d{4}
+}

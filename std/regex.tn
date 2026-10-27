@@ -12,6 +12,11 @@
 // A compile error is a message of the form "<problem> at byte <offset>", the
 // offset being a byte offset into the pattern.
 //
+// Write patterns as raw strings, which take backslashes and braces as they are:
+//   let date = regex.compile(r"(\d{4})-(\d{2})-(\d{2})").unwrap()
+// In a normal string literal every regex backslash must be doubled and `{`
+// written `\{` ("(\\d\{4})"), because "{4}" would interpolate the value 4.
+//
 // Syntax
 //   x             a literal character (any UTF-8 character; `{` `}` `]` are literal
 //                 where they cannot start a quantifier / close a class)
