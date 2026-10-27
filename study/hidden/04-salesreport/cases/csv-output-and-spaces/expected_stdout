@@ -1,0 +1,5 @@
+region,units,revenue,avg_price,top_product
+" A,",2,2.00,1.00,"P""q"
+ Z,1,1.00,1.00,p
+TOTAL,3,3.00,1.00,"P""q"
+skipped 0

@@ -1,0 +1,3 @@
+SET a x
+BEGIN
+SET b y

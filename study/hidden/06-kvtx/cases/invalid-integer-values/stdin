@@ -1,0 +1,12 @@
+SET k -0
+INCR k
+GET k
+SET k +5
+INCR k
+GET k
+SET k 007
+INCR k
+GET k
+SET k 9999999999999999
+INCR k
+GET k

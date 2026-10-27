@@ -1,0 +1,4 @@
+OK 1
+JOB 1 1 a
+OK
+ready=0 inflight=0 acked=1 next=2

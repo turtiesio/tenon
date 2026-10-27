@@ -1,0 +1,7 @@
+ERR x limit
+ERR y insufficient
+ERR z limit
+OK x 999999999999999
+OK z
+alice 1000000000000000
+bob 0

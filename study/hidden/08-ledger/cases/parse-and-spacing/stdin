@@ -1,0 +1,7 @@
+  r1   OPEN   a  
+ r2  DEPOSIT a 0001
+r2 DEPOSIT a 1
+r1 OPEN Bad
+r1 TRANSFER missing missing 1
+BALANCE a
+ACCOUNTS

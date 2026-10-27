@@ -1,0 +1,8 @@
+--top=1
+-n
+0002
+-m
+4
+--min-length
+02
+--ignore-case

@@ -1,0 +1,5 @@
+ERR bad command
+OK a filled=0 resting=1 trades=-
+ERR bad command
+ERR duplicate id
+BOOK bids=- asks=2:1

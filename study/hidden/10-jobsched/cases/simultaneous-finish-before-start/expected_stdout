@@ -1,0 +1,9 @@
+0 start z w1
+0 start a w2
+2 finish a w2
+2 finish z w1
+2 start b w1
+2 start c w2
+3 finish b w1
+3 finish c w2
+done 3

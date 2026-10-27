@@ -1,0 +1,8 @@
+OK r1
+OK r2
+OK r3 100
+OK r4
+ERR r5 insufficient
+DUP r3
+alice 70
+alice=70 bob=30

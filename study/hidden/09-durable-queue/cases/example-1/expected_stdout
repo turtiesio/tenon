@@ -1,0 +1,10 @@
+OK 1
+OK 2
+JOB 1 1 email:1
+JOB 2 1 email:2
+OK
+ERR not in flight
+OK
+JOB 2 2 email:2
+ready=0 inflight=1 acked=1 next=3
+EMPTY

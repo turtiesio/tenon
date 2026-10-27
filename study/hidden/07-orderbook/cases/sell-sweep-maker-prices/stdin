@@ -1,0 +1,5 @@
+BUY low 3 8
+BUY high 2 12
+BUY mid 4 10
+SELL take 8 8
+BOOK

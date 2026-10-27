@@ -1,0 +1,5 @@
+BUY a 1 2
+BUY b 1 10
+SELL c 1 100
+SELL d 1 20
+BOOK

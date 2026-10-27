@@ -1,0 +1,5 @@
+OK b filled=0 resting=1 trades=-
+OK s filled=1 resting=0 trades=b:1@1
+BOOK bids=- asks=-
+ERR unknown order
+ERR duplicate id

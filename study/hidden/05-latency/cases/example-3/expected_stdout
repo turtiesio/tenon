@@ -1,0 +1,2 @@
+GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90=90 p99=90 max=90
+total=6 malformed=2

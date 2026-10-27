@@ -1,0 +1,3 @@
+  SET  k   value  
+ GET   k 
+COUNT value

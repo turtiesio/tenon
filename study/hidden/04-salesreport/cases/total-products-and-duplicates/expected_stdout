@@ -1,0 +1,6 @@
+region,units,revenue,avg_price,top_product
+A,3,8.00,2.67,y
+B,2,6.00,3.00,x
+TOTAL,1,1.00,1.00,z
+TOTAL,6,15.00,2.50,x
+skipped 0

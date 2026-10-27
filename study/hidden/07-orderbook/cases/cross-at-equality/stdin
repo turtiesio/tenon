@@ -1,0 +1,5 @@
+BUY b 1 1
+SELL s 1 1
+BOOK
+CANCEL s
+SELL s 1 2

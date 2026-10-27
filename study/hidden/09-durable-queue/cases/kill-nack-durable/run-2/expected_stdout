@@ -1,0 +1,4 @@
+ERR not in flight
+ready=1 inflight=0 acked=0 next=2
+JOB 1 2 a
+OK

@@ -1,0 +1,5 @@
+INCR a -1
+INCR a
+GET a
+INCR b 0
+COUNT 0

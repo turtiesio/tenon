@@ -1,0 +1,5 @@
+OK s1 filled=0 resting=10 trades=-
+OK s2 filled=0 resting=5 trades=-
+OK s3 filled=0 resting=5 trades=-
+OK b1 filled=12 resting=0 trades=s2:5@100,s3:5@100,s1:2@101
+BOOK bids=- asks=101:8

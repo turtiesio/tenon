@@ -1,0 +1,6 @@
+buy a 1 2
+BUY a 1
+SELL a 1 2 x
+CANCEL
+CANCEL a b
+BOOK x

@@ -1,0 +1,4 @@
+SET a x
+GET a
+INCR n
+COUNT x

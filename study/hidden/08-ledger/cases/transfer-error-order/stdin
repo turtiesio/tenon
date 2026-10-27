@@ -1,0 +1,9 @@
+r OPEN a
+s TRANSFER absent absent 1
+s TRANSFER a absent 1
+s TRANSFER a b 1
+b OPEN b
+s TRANSFER a b 1
+d DEPOSIT a 2
+s TRANSFER a b 2
+ACCOUNTS

@@ -1,0 +1,10 @@
+PUT email:1
+PUT email:2
+GET
+GET
+ACK 1
+ACK 1
+NACK 2
+GET
+STATS
+GET

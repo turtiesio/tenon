@@ -1,0 +1,7 @@
+OK r1
+ERR bad command
+OK r2 1
+ERR bad command
+DUP r1
+a 1
+a=1

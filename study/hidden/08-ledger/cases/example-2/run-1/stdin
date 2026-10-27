@@ -1,0 +1,3 @@
+t1 OPEN carol
+t2 DEPOSIT carol 500
+t3 WITHDRAW carol 200

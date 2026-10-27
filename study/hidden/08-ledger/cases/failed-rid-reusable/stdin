@@ -1,0 +1,7 @@
+x DEPOSIT a 5
+x OPEN a
+y WITHDRAW a 1
+y DEPOSIT a 1
+z OPEN a
+z OPEN b
+ACCOUNTS

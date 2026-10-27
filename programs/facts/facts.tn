@@ -1,0 +1,155 @@
+// facts: an evidence-backed fact store that keeps and revises beliefs.
+//
+//   facts DIR assert SUBJECT PREDICATE VALUE SOURCE CONFIDENCE   (confidence 1-100)
+//   facts DIR deny   SUBJECT PREDICATE VALUE SOURCE CONFIDENCE
+//   facts DIR retract SUBJECT PREDICATE VALUE SOURCE              (source withdraws its evidence)
+//   facts DIR query SUBJECT PREDICATE
+//   facts DIR history SUBJECT PREDICATE
+//
+// Evidence is authored by sources; beliefs are derived from it and never stored.
+// A query distinguishes: unknown (no evidence), refuted (evidence only against),
+// supported (one value with net support), disputed (several values with support).
+// Every change is an append-only journal entry, so history is never lost.
+
+import journal
+
+enum Stance { For, Against }
+
+struct Evidence { value: Str, source: Str, stance: Stance, confidence: Int, seq: Int }
+
+enum Event {
+    Said(Str, Str, Evidence),          // subject, predicate, evidence
+    Withdrew(Str, Str, Str, Str, Int), // subject, predicate, value, source, seq
+}
+
+enum Belief {
+    Unknown,
+    Refuted(List[Str]),
+    Supported(Str, Int),
+    Disputed(List[(Str, Int)]),
+}
+
+struct Store { events: List[Event], next: Int }
+
+fn key(s: Str, p: Str) -> Str { s + "/" + p }
+
+fn encode(e: Event) -> Str {
+    match e {
+        Said(s, p, ev) => {
+            let st = match ev.stance { For => "for", Against => "against" }
+            "said {s} {p} {ev.value} {ev.source} {st} {ev.confidence} {ev.seq}"
+        }
+        Withdrew(s, p, v, src, seq) => "withdrew {s} {p} {v} {src} {seq}",
+    }
+}
+
+fn decode(line: Str) -> Option[Event] {
+    let w = line.split(" ")
+    match w[0] {
+        "said" if w.len() == 8 => {
+            let stance = match w[5] { "for" => For, "against" => Against, _ => return None }
+            let ev = Evidence { value: w[3], source: w[4], stance, confidence: w[6].to_int()?, seq: w[7].to_int()? }
+            Some(Said(w[1], w[2], ev))
+        }
+        "withdrew" if w.len() == 6 => Some(Withdrew(w[1], w[2], w[3], w[4], w[5].to_int()?)),
+        _ => None,
+    }
+}
+
+// Current evidence for subject/predicate: the latest statement of each source
+// about each value, minus withdrawn ones.
+fn Store.evidence(self, s: Str, p: Str) -> List[Evidence] {
+    var latest: Map[Str, Evidence] = [:]
+    for e in self.events {
+        match e {
+            Said(es, ep, ev) if es == s and ep == p => latest[ev.value + " " + ev.source] = ev,
+            Withdrew(es, ep, v, src, _) if es == s and ep == p => { let _ = latest.remove(v + " " + src) }
+            _ => {}
+        }
+    }
+    latest.values()
+}
+
+fn belief(evs: List[Evidence]) -> Belief {
+    if evs.is_empty() { return Unknown }
+    var score: Map[Str, Int] = [:]
+    for ev in evs {
+        let d = match ev.stance { For => ev.confidence, Against => -ev.confidence }
+        score[ev.value] = score.get_or(ev.value, 0) + d
+    }
+    var supported = score.entries().filter(fn(e) => e.1 > 0)
+    supported.sort_by(fn(e) => (-e.1, e.0))
+    match supported.len() {
+        0 => Refuted(score.keys().sorted()),
+        1 => Supported(supported[0].0, supported[0].1),
+        _ => Disputed(supported),
+    }
+}
+
+fn show_belief(b: Belief) -> Str {
+    match b {
+        Unknown => "unknown (no evidence)",
+        Refuted(vs) => "refuted: evidence only against {vs.join(", ")}",
+        Supported(v, n) => "supported: {v} (net confidence {n})",
+        Disputed(vs) => "disputed: " + vs.map(fn(e) => "{e.0} ({e.1})").join(" vs "),
+    }
+}
+
+fn confidence(s: Str) -> Result[Int, Str] {
+    match s.to_int() {
+        Some(n) if n >= 1 and n <= 100 => Ok(n),
+        _ => Err("confidence must be an integer from 1 to 100, got {s}"),
+    }
+}
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    let a = sys.args
+    let usage = "usage: facts DIR (assert|deny S P V SOURCE CONF | retract S P V SOURCE | query S P | history S P)"
+    if a.len() < 4 { return Err(usage) }
+    let _ = sys.fs.mkdir(a[0])
+    let j = journal.open(sys.fs.within(a[0]), "events")
+    let loaded = j.load().map_err(fn(e) => "cannot read journal: {e}")?
+    var store = Store { events: [], next: 1 }
+    for line in loaded.records {
+        match decode(line) {
+            Some(e) => store.events.push(e),
+            None => con.eprintln("skipping unreadable event: {line}"),
+        }
+    }
+    store.next = store.events.len() + 1
+    let (s, p) = (a[2], a[3])
+    let ev = match a[1] {
+        "assert" | "deny" if a.len() == 7 => {
+            let stance = if a[1] == "assert" { For } else { Against }
+            Said(s, p, Evidence { value: a[4], source: a[5], stance, confidence: confidence(a[6])?, seq: store.next })
+        }
+        "retract" if a.len() == 6 => {
+            let held = store.evidence(s, p).any(fn(e) => e.value == a[4] and e.source == a[5])
+            if not held { return Err("{a[5]} has no evidence about {s} {p} {a[4]} to retract") }
+            Withdrew(s, p, a[4], a[5], store.next)
+        }
+        "query" if a.len() == 4 => {
+            con.println("{s} {p}: {show_belief(belief(store.evidence(s, p)))}")
+            return Ok(())
+        }
+        "history" if a.len() == 4 => {
+            for e in store.events {
+                match e {
+                    Said(es, ep, x) if es == s and ep == p => {
+                        let verb = match x.stance { For => "asserted", Against => "denied" }
+                        con.println("#{x.seq} {x.source} {verb} {x.value} ({x.confidence})")
+                    }
+                    Withdrew(es, ep, v, src, seq) if es == s and ep == p => con.println("#{seq} {src} retracted {v}"),
+                    _ => {}
+                }
+            }
+            return Ok(())
+        }
+        _ => return Err(usage),
+    }
+    j.append(encode(ev)).map_err(fn(e) => "cannot write journal: {e}")?
+    store.events.push(ev)
+    con.println("recorded #{store.next}; now {show_belief(belief(store.evidence(s, p)))}")
+    Ok(())
+}

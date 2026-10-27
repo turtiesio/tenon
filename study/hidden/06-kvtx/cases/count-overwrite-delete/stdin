@@ -1,0 +1,9 @@
+SET a x
+SET b x
+SET a y
+COUNT x
+COUNT y
+DEL b
+COUNT x
+DEL absent
+KEYS

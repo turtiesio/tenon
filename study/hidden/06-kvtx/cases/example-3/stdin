@@ -1,0 +1,11 @@
+SET a red
+SET b red
+BEGIN
+SET c red
+SET a blue
+COUNT red
+KEYS
+ROLLBACK
+COUNT red
+COUNT green
+KEYS

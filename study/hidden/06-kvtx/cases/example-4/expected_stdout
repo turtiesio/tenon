@@ -1,0 +1,9 @@
+1
+OK
+ERR not an integer
+1000000000000000
+ERR overflow
+1000000000000000
+ERR not an integer
+ERR bad command
+ERR bad command

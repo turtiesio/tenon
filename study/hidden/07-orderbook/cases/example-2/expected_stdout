@@ -1,0 +1,7 @@
+OK b1 filled=0 resting=5 trades=-
+OK b2 filled=0 resting=7 trades=-
+OK b3 filled=0 resting=1 trades=-
+CANCELED b1 5
+ERR unknown order
+OK s1 filled=8 resting=2 trades=b2:7@99,b3:1@98
+BOOK bids=- asks=98:2
