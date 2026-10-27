@@ -78,12 +78,13 @@ def main():
     w("- sanitizers: every run test compiled with ASan+UBSan (`tools/asan.sh`, evidence loop)")
     w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`)\n")
     if bench:
-        w("| Program | Tenon | C (cc -O2) | Python | Tenon / C | Binary (Tenon / C) |\n|---|---|---|---|---|---|")
+        w("| Program | Tenon | C (cc -O2) | Rust (-O) | Python | Tenon / C | Binary (Tenon / C) |\n|---|---|---|---|---|---|---|")
         for k, v in sorted(bench.items()):
-            w(f"| {k} | {v['tenon']:.3f} s | {v['c']:.3f} s | {v['python']:.3f} s | {v['tenon_vs_c']}x | {v['size_tenon'] // 1024} KB / {v['size_c'] // 1024} KB |")
+            rs = f"{v['rust']:.3f} s" if "rust" in v else "-"
+            w(f"| {k} | {v['tenon']:.3f} s | {v['c']:.3f} s | {rs} | {v['python']:.3f} s | {v['tenon_vs_c']}x | {v['size_tenon'] // 1024} KB / {v['size_c'] // 1024} KB |")
         worst = max(v["tenon_vs_c"] for v in bench.values())
         w(f"\nTarget: within 1.5x of C. Worst: {worst}x — {'met' if worst <= 1.5 else '**not met**'}.")
-        w("Rust and TypeScript columns: not measured yet.")
+        w("TypeScript column: not measured yet.")
     w("\n## Usability study\n")
     w(study.get("summary", "Not run yet. Task specifications: `study/tasks/`; hidden tests are kept out of authors' view.") + "\n")
     w("## Trusted base\n")
