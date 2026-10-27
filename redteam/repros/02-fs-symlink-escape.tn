@@ -1,0 +1,14 @@
+// An Fs narrowed with within/read_only follows symlinks that point outside its root.
+// Setup (from /tmp/tq):  mkdir -p jail outside; echo SECRET > outside/secret.txt; ln -s ../outside jail/link
+// Native and interpreter behave the same: reads, writes, renames, removes and mkdir all
+// cross the root through `link`.
+fn main(sys: Sys) {
+    let con = sys.console
+    let jail = sys.fs.within("jail")
+    con.println("read:   {jail.read("link/secret.txt")}")
+    con.println("write:  {jail.write("link/pwned.txt", "x")}")
+    con.println("rename: {jail.rename("link/secret.txt", "stolen.txt")}")
+    con.println("mkdir:  {jail.mkdir("link/newdir")}")
+    con.println("remove: {jail.remove("link/pwned.txt")}")
+    con.println("list:   {jail.list("link")}")
+}

@@ -1,0 +1,2 @@
+// `t.0.1` does not parse (the lexer reads `0.1` as a float).
+fn main(sys: Sys) { let t = ((1, 2), 3); sys.console.println("{t.0.1}") }

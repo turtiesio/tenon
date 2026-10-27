@@ -1,0 +1,13 @@
+// Fs.within narrows to a directory; a NUL byte in a path makes the native build
+// (C strings) see a shorter path than the checker saw. "..\0" is not the component
+// "..", so it passes the escape check, but open/opendir stop at the NUL and resolve
+// "<root>/..": the PARENT of the jail.  `tenon run` rejects any NUL (different error).
+// Setup:  mkdir -p /tmp/tq/jail /tmp/tq/outside && touch /tmp/tq/outside/secret /tmp/tq/jail/in.txt
+//         echo hi > /tmp/tq/jail/in.txt ; run from /tmp/tq
+fn main(sys: Sys) {
+    let jail = sys.fs.within("jail")
+    sys.console.println("list parent: {jail.list("..\0")}")
+    sys.console.println("is_dir parent: {jail.is_dir("..\0")}")
+    sys.console.println("exists parent: {jail.exists("..\0")}")
+    sys.console.println("truncated read: {jail.read("in.txt\0anything")}")
+}

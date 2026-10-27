@@ -1,0 +1,11 @@
+// A correct program with no user recursion: build a 1,000,000-long list-like enum, then drop it.
+// The interpreter finishes; the native build traps "stack overflow" (exit 72) in the recursive
+// release (derived == on two such values overflows the same way).
+enum Chain { Nil, Cons(Int, Chain) }
+fn main(sys: Sys) {
+    var c = Nil
+    for i in 0..1000000 { c = Cons(i, c) }
+    sys.console.println("built")
+    c = Nil
+    sys.console.println("dropped")
+}

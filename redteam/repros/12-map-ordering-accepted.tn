@@ -1,0 +1,5 @@
+// Docs: "maps are not ordered".  The checker accepts `<` on a Map and the program traps at run time.
+fn main(sys: Sys) {
+    let a: Map[Int, Int] = [:]
+    sys.console.println("{a < a}")
+}
