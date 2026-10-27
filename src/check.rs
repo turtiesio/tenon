@@ -112,7 +112,43 @@ fn upper(s: &str) -> bool {
     s.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
 }
 
-pub fn check(prog: Program) -> CResult<Checked> {
+// `Value.member` parses as a type path when the name is capitalized (a unit
+// variant such as `Red.name()`); turn those back into field/method access.
+fn fix_paths(prog: &mut Program) {
+    let mut types: Vec<String> = BUILTIN_TYPES.iter().map(|(n, _, _)| n.to_string()).collect();
+    types.extend(prog.structs.iter().map(|s| s.name.clone()));
+    types.extend(prog.enums.iter().map(|e| e.name.clone()));
+    fn fix(e: &mut Expr, types: &[String]) {
+        let replace = match &mut e.kind {
+            ExprKind::Call(callee, args) => match &callee.kind {
+                ExprKind::Path(t, m) if !types.contains(t) => {
+                    let recv = Expr { id: callee.id, span: callee.span, kind: ExprKind::Name(t.clone()) };
+                    Some(ExprKind::Method(Box::new(recv), m.clone(), std::mem::take(args)))
+                }
+                _ => None,
+            },
+            ExprKind::Path(t, m) if !types.contains(t) => {
+                let recv = Expr { id: u32::MAX - e.id, span: e.span, kind: ExprKind::Name(t.clone()) };
+                Some(ExprKind::Field(Box::new(recv), m.clone()))
+            }
+            _ => None,
+        };
+        if let Some(k) = replace {
+            e.kind = k;
+        }
+        crate::interp::visit_children_mut(e, &mut |x| fix(x, types));
+    }
+    for f in &mut prog.fns {
+        if let Some(b) = &mut f.body {
+            for s in &mut b.stmts {
+                crate::interp::visit_stmt_mut(s, &mut |x| fix(x, &types));
+            }
+        }
+    }
+}
+
+pub fn check(mut prog: Program) -> CResult<Checked> {
+    fix_paths(&mut prog);
     let mut c = Checker {
         out: Checked {
             prog: Program { structs: vec![], enums: vec![], fns: vec![] },

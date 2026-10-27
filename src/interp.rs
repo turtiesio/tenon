@@ -109,6 +109,94 @@ pub fn visit_children<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
     }
 }
 
+pub fn visit_children_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
+    let blk = |b: &mut Block, f: &mut dyn FnMut(&mut Expr)| {
+        for s in &mut b.stmts {
+            visit_stmt_mut(s, f);
+        }
+    };
+    match &mut e.kind {
+        ExprKind::Str(segs) => {
+            for s in segs {
+                if let StrSeg::Expr(x) = s {
+                    f(x)
+                }
+            }
+        }
+        ExprKind::Field(b, _) | ExprKind::TupleField(b, _) | ExprKind::Unary(_, b) | ExprKind::Try(b) => f(b),
+        ExprKind::Index(a, b) | ExprKind::Binary(_, a, b) => {
+            f(a);
+            f(b)
+        }
+        ExprKind::Call(c, args) | ExprKind::Method(c, _, args) => {
+            f(c);
+            args.iter_mut().for_each(|a| f(a))
+        }
+        ExprKind::If(c, t, e2) => {
+            f(c);
+            blk(t, f);
+            if let Some(x) = e2 {
+                f(x)
+            }
+        }
+        ExprKind::Match(s, arms) => {
+            f(s);
+            for a in arms {
+                if let Some(g) = &mut a.guard {
+                    f(g)
+                }
+                f(&mut a.body)
+            }
+        }
+        ExprKind::Block(b) => blk(b, f),
+        ExprKind::List(xs) | ExprKind::Tuple(xs) => xs.iter_mut().for_each(|a| f(a)),
+        ExprKind::MapLit(ps) => ps.iter_mut().for_each(|(k, v)| {
+            f(k);
+            f(v)
+        }),
+        ExprKind::StructLit(_, fs, b) => {
+            fs.iter_mut().for_each(|(_, v)| f(v));
+            if let Some(b) = b {
+                f(b)
+            }
+        }
+        ExprKind::Lambda(_, _, b) => f(b),
+        _ => {}
+    }
+}
+
+pub fn visit_stmt_mut(s: &mut Stmt, f: &mut dyn FnMut(&mut Expr)) {
+    let blk = |b: &mut Block, f: &mut dyn FnMut(&mut Expr)| {
+        for s in &mut b.stmts {
+            visit_stmt_mut(s, f);
+        }
+    };
+    match &mut s.kind {
+        StmtKind::Let { value, .. } => f(value),
+        StmtKind::Expr(e) => f(e),
+        StmtKind::Assign { target, value, .. } => {
+            f(target);
+            f(value)
+        }
+        StmtKind::While { cond, body } => {
+            f(cond);
+            blk(body, f)
+        }
+        StmtKind::For { iter, body, .. } => {
+            match iter {
+                ForIter::Range(a, b) => {
+                    f(a);
+                    f(b)
+                }
+                ForIter::Each(e) => f(e),
+            }
+            blk(body, f)
+        }
+        StmtKind::Return(Some(e)) => f(e),
+        _ => {}
+    }
+}
+
 pub fn visit_stmt<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
     let blk = |b: &'a Block, f: &mut dyn FnMut(&'a Expr)| {
         for s in &b.stmts {
@@ -1139,7 +1227,10 @@ impl<'a> Interp<'a> {
                 self.io_result(&p, r, |_| V::Unit)
             }
             "Fs.exists" => V::Bool(std::path::Path::new(&full).exists()),
-            "Fs.remove" => self.io_result(&p, std::fs::remove_file(&full), |_| V::Unit),
+            "Fs.remove" => {
+                let r = if std::path::Path::new(&full).is_dir() { std::fs::remove_dir(&full) } else { std::fs::remove_file(&full) };
+                self.io_result(&p, r, |_| V::Unit)
+            }
             "Fs.mkdir" => self.io_result(&p, std::fs::create_dir_all(&full), |_| V::Unit),
             "Fs.list" => {
                 let r = std::fs::read_dir(&full).and_then(|rd| {

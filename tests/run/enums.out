@@ -1,0 +1,8 @@
+(2 + 3 * -(-4)) = 14
+Add(Num(2), Mul(Num(3), Neg(Num(-4))))
+red cool Green true true [Red, Green, Blue]
+origin axis diagonal plane
+None 3 7 Some(20) true
+Err("boom") true None 5
+hello matched
+exit: 0

@@ -1,0 +1,7 @@
+ann#1: 75 [50, 25]
+ann#1: 0 []
+Account { id: 1, owner: "bob", balance: 75, history: [50, 25] } false true
+[Account { id: 2, owner: "x", balance: 0, history: [] }, Account { id: 3, owner: "y", balance: 9, history: [9, 1] }]
+Pair { first: 1, second: "one" } Pair { first: "one", second: 1 } true
+1 two 2 two 3.0 (1, "two", 3.0)
+exit: 0

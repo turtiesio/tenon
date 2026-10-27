@@ -1,1 +1,4 @@
-target/
+/target
+*.tmp
+/bench/out
+/.evidence

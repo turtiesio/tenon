@@ -343,7 +343,7 @@ impl<'a> Parser<'a> {
         Ok(Block { stmts, span })
     }
 
-    fn stmt(&mut self) -> PResult<Stmt> {
+    pub fn stmt(&mut self) -> PResult<Stmt> {
         let span = self.span();
         let kind = if self.is_kw("let") || self.is_kw("var") {
             let mutable = self.is_kw("var");
@@ -711,6 +711,11 @@ impl<'a> Parser<'a> {
                 Ok(self.mk(span, ExprKind::Block(b)))
             }
             Tok::Kw("if") => self.if_expr(),
+            // `return`/`break`/`continue` in expression position, e.g. a match arm
+            Tok::Kw("return") | Tok::Kw("break") | Tok::Kw("continue") => {
+                let st = self.stmt()?;
+                Ok(self.mk(span, ExprKind::Block(Block { stmts: vec![st], span })))
+            }
             Tok::Kw("match") => {
                 self.advance();
                 let scrut = self.head_expr()?;

@@ -1,2 +1,2 @@
-// error: 'if' without 'else' must produce Unit
+// error: unused value of type Int
 fn main() { let x = if true { 1 } }

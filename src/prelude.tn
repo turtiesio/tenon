@@ -199,7 +199,7 @@ extern fn Fs.read(self, path: Str) -> Result[Str, IoError]
 extern fn Fs.write(self, path: Str, data: Str) -> Result[Unit, IoError]
 extern fn Fs.append(self, path: Str, data: Str) -> Result[Unit, IoError]
 extern fn Fs.exists(self, path: Str) -> Bool
-extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError]
+extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError] // file or empty directory
 extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]
 extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError]
 extern fn Fs.within(self, dir: Str) -> Fs

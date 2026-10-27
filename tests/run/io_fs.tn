@@ -15,5 +15,7 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
     root.remove("a.txt")?
     root.remove("b.txt")?
     c.println("{root.list(".")?} {root.remove("a.txt")}")
+    sys.fs.remove("fs_scratch")?
+    c.println("{sys.fs.exists("fs_scratch")}")
     Ok(())
 }

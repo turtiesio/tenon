@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# The fast inner loop (budget: 60 s): build, then run and reject tests in one
+# mode, with every run test executed by BOTH backends (differential smoke).
+#   ./check --fast     what workers run before landing
+#   ./check            same today; slower evidence lives in tools/evidence
+set -euo pipefail
+cd "$(dirname "$0")"
+cargo build --release --quiet
+exec target/release/tenon test tests examples

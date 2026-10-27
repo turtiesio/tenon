@@ -7,4 +7,5 @@ true false
 Err(Denied("read-only Fs: b.txt"))
 ["a.txt", "b.txt"]
 [] Err(NotFound("a.txt"))
+false
 exit: 0
