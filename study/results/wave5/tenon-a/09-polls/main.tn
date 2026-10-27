@@ -1,0 +1,126 @@
+// polls: a persistent voting service; every change is journaled before it is acknowledged.
+
+struct Poll { options: List[Str], open: Bool, votes: Map[Str, Str], counts: Map[Str, Int] }
+
+// The response to a command, and whether the command changed the state
+// (and so must be journaled).
+struct Reply { text: Str, changed: Bool }
+
+fn reply(text: Str) -> Reply { Reply { text, changed: false } }
+fn change(text: Str) -> Reply { Reply { text, changed: true } }
+
+// [a-z0-9]{1,12}
+fn is_name(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 12 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit()) { return false }
+    }
+    true
+}
+
+fn apply(polls: mut Map[Str, Poll], line: Str) -> Reply {
+    let bad = reply("ERR bad command")
+    let t = line.split(" ")
+    let n = t.len()
+    match t[0] {
+        "CREATE" => {
+            if n < 4 or n > 11 or not t.slice(1, n).all(is_name) { return bad }
+            let options = t.slice(2, n)
+            if Set.of(options).len() != options.len() { return bad }
+            if polls.contains(t[1]) { return reply("ERR poll exists") }
+            var counts: Map[Str, Int] = [:]
+            for o in options { counts[o] = 0 }
+            polls[t[1]] = Poll { options, open: true, votes: [:], counts }
+            change("OK")
+        }
+        "VOTE" => {
+            if n != 4 or not t.slice(1, n).all(is_name) { return bad }
+            let (name, voter, option) = (t[1], t[2], t[3])
+            let Some(poll) = polls.get(name) else { return reply("ERR no such poll") }
+            if not poll.open { return reply("ERR poll closed") }
+            if not poll.counts.contains(option) { return reply("ERR no such option") }
+            let previous = poll.votes.get(voter)
+            if previous == Some(option) { return reply("UNCHANGED") }
+            polls[name].votes[voter] = option
+            polls[name].counts[option] += 1
+            match previous {
+                Some(old) => {
+                    polls[name].counts[old] -= 1
+                    change("CHANGED")
+                }
+                None => change("VOTED"),
+            }
+        }
+        "CLOSE" => {
+            if n != 2 or not is_name(t[1]) { return bad }
+            let Some(poll) = polls.get(t[1]) else { return reply("ERR no such poll") }
+            if not poll.open { return reply("ERR poll closed") }
+            polls[t[1]].open = false
+            change("OK")
+        }
+        "RESULT" => {
+            if n != 2 or not is_name(t[1]) { return bad }
+            let Some(poll) = polls.get(t[1]) else { return reply("ERR no such poll") }
+            var out = "{t[1]} {if poll.open { "open" } else { "closed" }}"
+            for o in poll.options { out += " {o}={poll.counts[o]}" }
+            reply(out)
+        }
+        _ => bad,
+    }
+}
+
+// Replays the journal; truncates a torn last record. Err for an unusable journal.
+fn load(fs: Fs, path: Str) -> Result[Map[Str, Poll], Str] {
+    var polls: Map[Str, Poll] = [:]
+    if not fs.exists(path) { return Ok(polls) }
+    let bytes = fs.read_bytes(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    var end = bytes.len()
+    while end > 0 and bytes[end - 1] != '\n' { end -= 1 }
+    let Some(text) = Str.from_utf8(bytes.slice(0, end)) else { return Err("{path}: invalid UTF-8") }
+    for (i, line) in text.lines().enumerate() {
+        let r = apply(mut polls, line)
+        if not r.changed { return Err("{path}:{i + 1}: invalid record '{line}' ({r.text})") }
+    }
+    if end < bytes.len() {
+        fs.write_bytes(path, bytes.slice(0, end)).map_err(fn(e) => "cannot truncate {path}: {e}")?
+    }
+    Ok(polls)
+}
+
+fn open_dir(fs: Fs, dir: Str) -> Result[Unit, Str] {
+    if fs.is_dir(dir) { return Ok(()) }
+    if fs.exists(dir) { return Err("{dir} is not a directory") }
+    fs.mkdir_one(dir).map_err(fn(e) => "cannot create {dir}: {e}")
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: polls DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    let path = path_join(dir, "polls.log")
+    let started = open_dir(sys.fs, dir).and_then(fn(_) => load(sys.fs, path))
+    var polls = match started {
+        Ok(p) => p,
+        Err(msg) => {
+            con.eprintln("polls: {msg}")
+            return 1
+        }
+    }
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let r = apply(mut polls, line)
+        if r.changed {
+            if let Err(e) = sys.fs.append(path, line + "\n") {
+                con.eprintln("polls: cannot write {path}: {e}")
+                return 1
+            }
+        }
+        con.println(r.text)
+        con.flush()
+    }
+    0
+}

@@ -1,0 +1,135 @@
+struct Robot { letter: Int, x: Int, y: Int, prog: Str, moves: Int, bumps: Int, coins: Int }
+
+struct World { w: Int, h: Int, cells: List[Int], robots: List[Robot] }
+
+fn valid_moves(s: Str) -> Bool {
+    if s.len() > 100 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c == 'N' or c == 'E' or c == 'S' or c == 'W' or c == '.') { return false }
+    }
+    true
+}
+
+fn parse_world(lines: List[Str]) -> Result[World, Str] {
+    var grid_end = 0
+    while grid_end < lines.len() and not lines[grid_end].is_empty() { grid_end += 1 }
+    if grid_end == 0 { return Err("missing grid") }
+    if grid_end > 50 { return Err("more than 50 rows") }
+    let w = lines[0].len()
+    if w < 1 or w > 50 { return Err("bad row length") }
+
+    var cells: List[Int] = []
+    var robots: List[Robot] = []
+    var seen: Set[Int] = Set.new()
+    for y in 0..grid_end {
+        let row = lines[y]
+        if row.len() != w { return Err("row {y + 1} has a different length") }
+        for x in 0..w {
+            let c = row.byte(x)
+            if c == '.' or c == '#' or c == '*' {
+                cells.push(c)
+            } else if c.is_upper() {
+                if not seen.insert(c) { return Err("robot {c.char()} appears twice") }
+                robots.push(Robot { letter: c, x, y, prog: "", moves: 0, bumps: 0, coins: 0 })
+                cells.push('.')
+            } else {
+                return Err("unknown grid character '{c.char()}'")
+            }
+        }
+    }
+    robots.sort_by(fn(r) => r.letter)
+
+    var programmed: Set[Int] = Set.new()
+    for i in (grid_end + 1)..lines.len() {
+        let line = lines[i]
+        if line.len() < 2 or not line.byte(0).is_upper() or line.byte(1) != ':' {
+            return Err("malformed program line '{line}'")
+        }
+        let letter = line.byte(0)
+        let prog = line.slice(2, line.len())
+        if not valid_moves(prog) { return Err("bad moves in '{line}'") }
+        if not programmed.insert(letter) { return Err("two programs for {letter.char()}") }
+        let Some(k) = robots.index_of_letter(letter) else { return Err("no robot {letter.char()}") }
+        robots[k].prog = prog
+    }
+    Ok(World { w, h: grid_end, cells, robots })
+}
+
+fn List[Robot].index_of_letter(self, letter: Int) -> Option[Int] {
+    for i in 0..self.len() {
+        if self[i].letter == letter { return Some(i) }
+    }
+    None
+}
+
+fn World.run(mut self, ticks: Int) {
+    var occupied = List.filled(self.w * self.h, false)
+    for r in self.robots { occupied[r.y * self.w + r.x] = true }
+    for t in 0..ticks {
+        for i in 0..self.robots.len() {
+            let prog = self.robots[i].prog
+            if prog.is_empty() { continue }
+            let m = prog.byte(t % prog.len())
+            if m == '.' { continue }
+            var dx = 0
+            var dy = 0
+            if m == 'N' { dy = -1 } else if m == 'S' { dy = 1 } else if m == 'E' { dx = 1 } else { dx = -1 }
+            let x = self.robots[i].x
+            let y = self.robots[i].y
+            let nx = x + dx
+            let ny = y + dy
+            if nx < 0 or nx >= self.w or ny < 0 or ny >= self.h
+                or self.cells[ny * self.w + nx] == '#' or occupied[ny * self.w + nx] {
+                self.robots[i].bumps += 1
+                continue
+            }
+            occupied[y * self.w + x] = false
+            occupied[ny * self.w + nx] = true
+            self.robots[i].x = nx
+            self.robots[i].y = ny
+            self.robots[i].moves += 1
+            if self.cells[ny * self.w + nx] == '*' {
+                self.cells[ny * self.w + nx] = '.'
+                self.robots[i].coins += 1
+            }
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: robots TICKS")
+        return 2
+    }
+    let t = sys.args[0]
+    if t.len() < 1 or t.len() > 5 or not t.is_digits() {
+        con.eprintln("robots: bad TICKS '{t}'")
+        return 2
+    }
+    let ticks = t.to_int().unwrap()
+
+    let lines = con.read_all().lines().map(fn(l) => l.strip_suffix("\r").unwrap_or(l))
+    var world = match parse_world(lines) {
+        Ok(wd) => wd,
+        Err(e) => {
+            con.eprintln("robots: {e}")
+            return 1
+        }
+    }
+    world.run(ticks)
+
+    var cells = world.cells
+    for r in world.robots { cells[r.y * world.w + r.x] = r.letter }
+    var out = ""
+    for y in 0..world.h {
+        for x in 0..world.w { out += cells[y * world.w + x].char() }
+        out += "\n"
+    }
+    for r in world.robots {
+        out += "{r.letter.char()} {r.x} {r.y} moves={r.moves} bumps={r.bumps} coins={r.coins}\n"
+    }
+    con.print(out)
+    0
+}

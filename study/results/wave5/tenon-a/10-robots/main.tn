@@ -1,0 +1,133 @@
+// robots: a deterministic simulation of robots moving on a grid.
+
+struct Robot { letter: Int, x: Int, y: Int, program: Str, moves: Int, bumps: Int, coins: Int }
+
+struct World {
+    width: Int,
+    height: Int,
+    cells: List[Int],      // '.', '#' or '*' (robots are not stored here)
+    occupant: List[Int],   // index into robots, or -1
+    robots: List[Robot],   // in alphabetical order
+}
+
+fn World.index(self, x: Int, y: Int) -> Int { y * self.width + x }
+
+fn parse(input: Str) -> Result[World, Str] {
+    let lines = input.lines().map(fn(l) => l.strip_suffix("\r").unwrap_or(l))
+    var rows: List[Str] = []
+    var i = 0
+    while i < lines.len() and not lines[i].is_empty() {
+        rows.push(lines[i])
+        i += 1
+    }
+    if rows.is_empty() { return Err("missing grid") }
+    if rows.len() > 50 { return Err("more than 50 rows") }
+    let width = rows[0].len()
+    if width > 50 { return Err("rows longer than 50 characters") }
+    var cells: List[Int] = []
+    var found: Map[Int, (Int, Int)] = [:]
+    for (y, row) in rows.enumerate() {
+        if row.len() != width { return Err("row {y + 1} has a different length") }
+        for x in 0..width {
+            let c = row.byte(x)
+            if c == '.' or c == '#' or c == '*' {
+                cells.push(c)
+            } else if c.is_upper() {
+                if found.contains(c) { return Err("robot {c.char()} appears twice") }
+                found[c] = (x, y)
+                cells.push('.')
+            } else {
+                return Err("unknown grid character in row {y + 1}")
+            }
+        }
+    }
+    var programs: Map[Int, Str] = [:]
+    for line in lines.slice((i + 1).min(lines.len()), lines.len()) {
+        let Some((name, moves)) = line.split_once(":") else { return Err("malformed program line '{line}'") }
+        if name.len() != 1 or not found.contains(name.byte(0)) {
+            return Err("program for unknown robot '{name}'")
+        }
+        let letter = name.byte(0)
+        if programs.contains(letter) { return Err("two programs for robot {name}") }
+        if moves.len() > 100 { return Err("program for {name} is too long") }
+        for k in 0..moves.len() {
+            if not "NESW.".contains(moves.slice(k, k + 1)) { return Err("unknown move in program for {name}") }
+        }
+        programs[letter] = moves
+    }
+    var letters = found.keys()
+    letters.sort()
+    var robots: List[Robot] = []
+    var occupant = List.filled(width * rows.len(), -1)
+    for letter in letters {
+        let (x, y) = found[letter]
+        occupant[y * width + x] = robots.len()
+        robots.push(Robot { letter, x, y, program: programs.get_or(letter, ""), moves: 0, bumps: 0, coins: 0 })
+    }
+    Ok(World { width, height: rows.len(), cells, occupant, robots })
+}
+
+fn World.act(mut self, r: Int, t: Int) {
+    let program = self.robots[r].program
+    if program.is_empty() { return }
+    let (dx, dy) = match program.byte(t % program.len()) {
+        'N' => (0, -1),
+        'S' => (0, 1),
+        'E' => (1, 0),
+        'W' => (-1, 0),
+        _ => { return },
+    }
+    let (x, y) = (self.robots[r].x, self.robots[r].y)
+    let (nx, ny) = (x + dx, y + dy)
+    let inside = nx >= 0 and nx < self.width and ny >= 0 and ny < self.height
+    if not inside or self.cells[self.index(nx, ny)] == '#' or self.occupant[self.index(nx, ny)] >= 0 {
+        self.robots[r].bumps += 1
+        return
+    }
+    self.occupant[self.index(x, y)] = -1
+    self.occupant[self.index(nx, ny)] = r
+    self.robots[r].x = nx
+    self.robots[r].y = ny
+    self.robots[r].moves += 1
+    if self.cells[self.index(nx, ny)] == '*' {
+        self.cells[self.index(nx, ny)] = '.'
+        self.robots[r].coins += 1
+    }
+}
+
+fn World.render(self) -> Str {
+    var out = ""
+    for y in 0..self.height {
+        for x in 0..self.width {
+            let o = self.occupant[self.index(x, y)]
+            out += if o >= 0 { self.robots[o].letter.char() } else { self.cells[self.index(x, y)].char() }
+        }
+        out += "\n"
+    }
+    for r in self.robots {
+        out += "{r.letter.char()} {r.x} {r.y} moves={r.moves} bumps={r.bumps} coins={r.coins}\n"
+    }
+    out
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    if args.len() != 1 or not args[0].is_digits() or args[0].len() > 5 {
+        con.eprintln("usage: robots TICKS < world")
+        return 2
+    }
+    let ticks = args[0].to_int().unwrap()
+    var world = match parse(con.read_all()) {
+        Ok(w) => w,
+        Err(msg) => {
+            con.eprintln("robots: {msg}")
+            return 1
+        }
+    }
+    for t in 0..ticks {
+        for r in 0..world.robots.len() { world.act(r, t) }
+    }
+    con.print(world.render())
+    0
+}

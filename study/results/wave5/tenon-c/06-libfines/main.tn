@@ -1,0 +1,64 @@
+struct Book { title: Str, rate: Int, cap: Int }
+struct Member { loans: Int, late: Int, fine: Int, details: List[Str] }
+fn small_int(s: Str) -> Option[Int] {
+    if not s.is_digits() or s.len() > 6 { return None }
+    s.to_int()
+}
+fn book_id(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.bytes().all(fn(c) => c.is_alnum() or c == '-')
+}
+fn member_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.byte(0).is_lower() and s.bytes().all(fn(c) => c.is_lower() or c.is_digit())
+}
+fn report(books_text: Str, loans_text: Str, today: Int) -> Option[Str] {
+    var books: Map[Str, Book] = [:]
+    for raw_book in books_text.lines() {
+        let book_line = raw_book.strip_suffix("\r").unwrap_or(raw_book)
+        if book_line.is_empty() or book_line.starts_with("#") { continue }
+        let fields = book_line.split("|")
+        if fields.len() != 4 or not book_id(fields[0]) or fields[1].is_empty() or books.contains(fields[0]) { return None }
+        books[fields[0]] = Book { title: fields[1], rate: small_int(fields[2])?, cap: small_int(fields[3])? }
+    }
+    var members: Map[Str, Member] = [:]
+    var skipped = 0
+    var total = 0
+    for raw_loan in loans_text.lines() {
+        let loan_line = raw_loan.strip_suffix("\r").unwrap_or(raw_loan)
+        if loan_line.is_empty() or loan_line.starts_with("#") { continue }
+        let parts = loan_line.split("|")
+        if parts.len() != 5 or not member_name(parts[0]) or not book_id(parts[1]) { return None }
+        let out = small_int(parts[2])?
+        let due = small_int(parts[3])?
+        let end = if parts[4] == "-" { today } else { small_int(parts[4])? }
+        if due < out or (parts[4] != "-" and end < out) { return None }
+        let Some(book) = books.get(parts[1]) else { skipped += 1; continue }
+        let days = (end - due).max(0)
+        let fine = (days * book.rate).min(book.cap)
+        members.or_insert(parts[0], Member { loans: 0, late: 0, fine: 0, details: [] })
+        members[parts[0]].loans += 1
+        members[parts[0]].fine += fine
+        total += fine
+        if days > 0 {
+            members[parts[0]].late += 1
+            members[parts[0]].details.push("  {parts[1]} {book.title} days={days} fine={fine.fmt_fixed(2)}")
+        }
+    }
+    var names = members.keys()
+    names.sort_by(fn(n) => (-members[n].fine, n))
+    var output = ""
+    for name in names {
+        let data = members[name]
+        output += "{name} loans={data.loans} late={data.late} fine={data.fine.fmt_fixed(2)}\n"
+        for detail in data.details { output += detail + "\n" }
+    }
+    Some(output + "total={total.fmt_fixed(2)} skipped={skipped}\n")
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 3 { sys.console.eprintln("expected BOOKS LOANS TODAY"); return 2 }
+    let Some(today) = small_int(sys.args[2]) else { sys.console.eprintln("invalid day"); return 2 }
+    let Ok(books) = sys.fs.read(sys.args[0]) else { sys.console.eprintln("cannot read books"); return 1 }
+    let Ok(loans) = sys.fs.read(sys.args[1]) else { sys.console.eprintln("cannot read loans"); return 1 }
+    let Some(output) = report(books, loans, today) else { sys.console.eprintln("invalid file"); return 1 }
+    sys.console.print(output)
+    0
+}

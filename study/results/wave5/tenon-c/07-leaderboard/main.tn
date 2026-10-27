@@ -1,0 +1,72 @@
+enum Command { Score(Str, Int), Rank(Str), Top(Int), Around(Str, Int), Remove(Str), Count }
+fn name_ok(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 16 and s.byte(0).is_lower() and s.bytes().all(fn(c) => c.is_lower() or c.is_digit() or c == '_')
+}
+fn unsigned(s: Str, length: Int) -> Option[Int] {
+    if not s.is_digits() or s.len() > length { return None }
+    s.to_int()
+}
+fn command(line: Str) -> Option[Command] {
+    let t = line.split(" ")
+    if t.any(fn(x) => x.is_empty()) { return None }
+    if t[0] == "COUNT" and t.len() == 1 { return Some(Count) }
+    if t[0] == "TOP" and t.len() == 2 {
+        if t[1].starts_with("0") { return None }
+        return Some(Top(unsigned(t[1], 3)?))
+    }
+    if t.len() < 2 or not name_ok(t[1]) { return None }
+    if t[0] == "SCORE" and t.len() == 3 {
+        let digits = t[2].strip_prefix("-").unwrap_or(t[2])
+        let magnitude = unsigned(digits, 6)?
+        return Some(Score(t[1], if t[2].starts_with("-") { -magnitude } else { magnitude }))
+    }
+    if t[0] == "AROUND" and t.len() == 3 { return Some(Around(t[1], unsigned(t[2], 3)?)) }
+    if t.len() != 2 { return None }
+    match t[0] {
+        "RANK" => Some(Rank(t[1])),
+        "REMOVE" => Some(Remove(t[1])),
+        _ => None,
+    }
+}
+fn rank_of(scores: Map[Str, Int], player: Str) -> Int {
+    1 + scores.values().count(fn(s) => s > scores[player])
+}
+fn entries(scores: Map[Str, Int], names: List[Str], start: Int, end: Int) -> Str {
+    var out = ""
+    var rank = 1
+    for i in 0..end {
+        if i > 0 and scores[names[i]] != scores[names[i - 1]] { rank = i + 1 }
+        if i >= start { out += " {rank}:{names[i]}:{scores[names[i]]}" }
+    }
+    out
+}
+fn respond(cmd: Command, scores: mut Map[Str, Int]) -> Str {
+    match cmd {
+        Score(p, n) => { scores[p] = scores.get_or(p, 0) + n; "TOTAL {scores[p]}" }
+        Rank(r) => if scores.contains(r) { "RANK {rank_of(scores, r)} {scores[r]}" } else { "ERR unknown player" },
+        Remove(removed) => if scores.remove(removed).is_some() { "OK" } else { "ERR unknown player" },
+        Count => "COUNT {scores.len()}",
+        Top(k) => {
+            var ordered = scores.keys()
+            ordered.sort_by(fn(x) => (-scores[x], x))
+            "TOP" + entries(scores, ordered, 0, k.min(ordered.len()))
+        }
+        Around(player, d) => {
+            if not scores.contains(player) { return "ERR unknown player" }
+            var nearby = scores.keys()
+            nearby.sort_by(fn(y) => (-scores[y], y))
+            let pos = nearby.index_of(player).unwrap()
+            "AROUND" + entries(scores, nearby, (pos - d).max(0), (pos + d + 1).min(nearby.len()))
+        }
+    }
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments expected"); return 2 }
+    var scores: Map[Str, Int] = [:]
+    while let Some(line) = sys.console.read_line() {
+        let response = match command(line) { Some(cmd) => respond(cmd, mut scores), None => "ERR bad command" }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

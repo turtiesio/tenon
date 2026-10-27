@@ -1,0 +1,104 @@
+struct Cue { start: Int, end: Int, text: List[Str] }
+
+fn is_blank(s: Str) -> Bool {
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if c != ' ' and c != '\t' { return false }
+    }
+    true
+}
+
+fn all_digits(s: Str, from: Int, to: Int) -> Bool {
+    for i in from..to {
+        if not s.byte(i).is_digit() { return false }
+    }
+    true
+}
+
+// HH:MM:SS,mmm -> milliseconds
+fn parse_time(s: Str) -> Option[Int] {
+    if s.len() != 12 { return None }
+    if s.byte(2) != ':' or s.byte(5) != ':' or s.byte(8) != ',' { return None }
+    if not (all_digits(s, 0, 2) and all_digits(s, 3, 5) and all_digits(s, 6, 8) and all_digits(s, 9, 12)) {
+        return None
+    }
+    if s.byte(3) > '5' or s.byte(6) > '5' { return None }
+    let h = s.slice(0, 2).to_int()?
+    let m = s.slice(3, 5).to_int()?
+    let sec = s.slice(6, 8).to_int()?
+    let ms = s.slice(9, 12).to_int()?
+    Some(((h * 60 + m) * 60 + sec) * 1000 + ms)
+}
+
+fn parse_block(block: List[Str]) -> Result[Cue, Str] {
+    if block.len() < 3 { return Err("cue with fewer than 3 lines: {block[0]}") }
+    let idx = block[0]
+    if idx.len() < 1 or idx.len() > 9 or not idx.is_digits() { return Err("bad index line '{idx}'") }
+    let Some((a, b)) = block[1].split_once(" --> ") else { return Err("bad timing line '{block[1]}'") }
+    let Some(start) = parse_time(a) else { return Err("bad start time '{a}'") }
+    let Some(end) = parse_time(b) else { return Err("bad end time '{b}'") }
+    if end <= start { return Err("end not after start in '{block[1]}'") }
+    Ok(Cue { start, end, text: block.slice(2, block.len()) })
+}
+
+fn fmt_time(ms: Int) -> Str {
+    let h = ms / 3600000
+    let m = ms / 60000 % 60
+    let s = ms / 1000 % 60
+    let r = ms % 1000
+    "{h.to_str().pad_left(2, "0")}:{m.to_str().pad_left(2, "0")}:{s.to_str().pad_left(2, "0")},{r.to_str().pad_left(3, "0")}"
+}
+
+fn parse_offset(s: Str) -> Option[Int] {
+    let digits = if s.starts_with("+") or s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    if digits.len() < 1 or digits.len() > 9 or not digits.is_digits() { return None }
+    s.to_int()
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: srtfix OFFSET")
+        return 2
+    }
+    let Some(offset) = parse_offset(sys.args[0]) else {
+        con.eprintln("srtfix: bad offset '{sys.args[0]}'")
+        return 2
+    }
+
+    var cues: List[Cue] = []
+    var block: List[Str] = []
+    var lines = con.read_all().lines().map(fn(l) => l.strip_suffix("\r").unwrap_or(l))
+    lines.push("") // sentinel so the last block is flushed
+    for line in lines {
+        if is_blank(line) {
+            if block.is_empty() { continue }
+            match parse_block(block) {
+                Ok(cue) => cues.push(cue),
+                Err(e) => {
+                    con.eprintln("srtfix: {e}")
+                    return 1
+                }
+            }
+            block = []
+        } else {
+            block.push(line)
+        }
+    }
+
+    var kept: List[Cue] = []
+    for c in cues {
+        if c.end + offset <= 0 { continue }
+        kept.push(Cue { start: (c.start + offset).max(0), end: c.end + offset, text: c.text })
+    }
+    kept.sort_by(fn(c) => c.start)
+
+    var out = ""
+    for (i, c) in kept.enumerate() {
+        out += "{i + 1}\n{fmt_time(c.start)} --> {fmt_time(c.end)}\n"
+        for t in c.text { out += t + "\n" }
+        out += "\n"
+    }
+    con.print(out)
+    0
+}

@@ -1,0 +1,59 @@
+struct Cue { start: Int, end: Int, text: List[Str] }
+fn parse_time(s: Str) -> Option[Int] {
+    if s.len() != 12 { return None }
+    if s.byte(2) != ':' or s.byte(5) != ':' or s.byte(8) != ',' { return None }
+    let h = s.slice(0, 2)
+    let m = s.slice(3, 5)
+    let sec = s.slice(6, 8)
+    let ms = s.slice(9, 12)
+    if not h.is_digits() or not m.is_digits() or not sec.is_digits() or not ms.is_digits() { return None }
+    let minutes = m.to_int()?
+    let seconds = sec.to_int()?
+    if minutes >= 60 or seconds >= 60 { return None }
+    Some(((h.to_int()? * 60 + minutes) * 60 + seconds) * 1000 + ms.to_int()?)
+}
+fn parse_cue(block: List[Str], offset: Int) -> Option[Cue] {
+    if block.len() < 3 or not block[0].is_digits() or block[0].len() > 9 { return None }
+    let times = block[1].split(" --> ")
+    if times.len() != 2 { return None }
+    let start = parse_time(times[0])?
+    let end = parse_time(times[1])?
+    if end <= start { return None }
+    Some(Cue { start: (start + offset).max(0), end: end + offset, text: block.slice(2, block.len()) })
+}
+fn parse(input: Str, offset: Int) -> Option[List[Cue]] {
+    var cues: List[Cue] = []
+    var block: List[Str] = []
+    var lines = input.lines()
+    lines.push("")
+    for raw in lines {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" \t").is_empty() {
+            if not block.is_empty() {
+                let cue = parse_cue(block, offset)?
+                if cue.end > 0 { cues.push(cue) }
+                block = []
+            }
+        } else { block.push(line) }
+    }
+    cues.sort_by(fn(c) => c.start)
+    Some(cues)
+}
+fn format_time(t: Int) -> Str {
+    "{(t / 3600000).to_str().pad_left(2, "0")}:{(t / 60000 % 60).to_str().pad_left(2, "0")}:{(t / 1000 % 60).to_str().pad_left(2, "0")},{(t % 1000).to_str().pad_left(3, "0")}"
+}
+fn offset_arg(args: List[Str]) -> Option[Int] {
+    if args.len() != 1 { return None }
+    let digits = if args[0].starts_with("+") or args[0].starts_with("-") { args[0].slice(1, args[0].len()) } else { args[0] }
+    if not digits.is_digits() or digits.len() > 9 { return None }
+    let n = digits.to_int()?
+    Some(if args[0].starts_with("-") { -n } else { n })
+}
+fn main(sys: Sys) -> Int {
+    let Some(offset) = offset_arg(sys.args) else { sys.console.eprintln("invalid offset"); return 2 }
+    let Some(cues) = parse(sys.console.read_all(), offset) else { sys.console.eprintln("invalid subtitle"); return 1 }
+    for (idx, cue) in cues.enumerate() {
+        sys.console.println("{idx + 1}\n{format_time(cue.start)} --> {format_time(cue.end)}\n{cue.text.join("\n")}\n")
+    }
+    0
+}

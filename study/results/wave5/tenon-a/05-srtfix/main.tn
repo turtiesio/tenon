@@ -1,0 +1,95 @@
+// srtfix: shift, drop, sort and renumber SRT subtitles.
+
+struct Cue { start: Int, end: Int, text: List[Str] }
+
+// OFFSET: [+-]?[0-9]{1,9}
+fn parse_offset(s: Str) -> Option[Int] {
+    let negative = s.starts_with("-")
+    let digits = if negative or s.starts_with("+") { s.slice(1, s.len()) } else { s }
+    if not digits.is_digits() or digits.len() > 9 { return None }
+    let n = digits.to_int()?
+    if negative { Some(-n) } else { Some(n) }
+}
+
+fn two_digits(s: Str, max_first: Int) -> Option[Int] {
+    if s.len() != 2 or not s.is_digits() or s.byte(0) - '0' > max_first { return None }
+    s.to_int()
+}
+
+// HH:MM:SS,mmm matching [0-9]{2}:[0-5][0-9]:[0-5][0-9],[0-9]{3}, in ms.
+fn parse_time(s: Str) -> Option[Int] {
+    if s.len() != 12 or s.byte(2) != ':' or s.byte(5) != ':' or s.byte(8) != ',' { return None }
+    let h = two_digits(s.slice(0, 2), 9)?
+    let m = two_digits(s.slice(3, 5), 5)?
+    let sec = two_digits(s.slice(6, 8), 5)?
+    let ms_text = s.slice(9, 12)
+    if not ms_text.is_digits() { return None }
+    Some(((h * 60 + m) * 60 + sec) * 1000 + ms_text.to_int()?)
+}
+
+fn format_time(t: Int) -> Str {
+    let pad = fn(n: Int, w: Int) -> Str { n.to_str().pad_left(w, "0") }
+    "{pad(t / 3600000, 2)}:{pad(t / 60000 % 60, 2)}:{pad(t / 1000 % 60, 2)},{pad(t % 1000, 3)}"
+}
+
+fn parse_cue(block: List[Str]) -> Result[Cue, Str] {
+    if block.len() < 3 { return Err("a cue needs an index, a timing and text") }
+    let index = block[0]
+    if not index.is_digits() or index.len() > 9 { return Err("bad index line '{index}'") }
+    let timing = block[1]
+    let Some((a, b)) = timing.split_once(" --> ") else { return Err("bad timing line '{timing}'") }
+    let Some(start) = parse_time(a) else { return Err("bad start time '{a}'") }
+    let Some(end) = parse_time(b) else { return Err("bad end time '{b}'") }
+    if end <= start { return Err("end {b} is not after start {a}") }
+    Ok(Cue { start, end, text: block.slice(2, block.len()) })
+}
+
+fn is_blank(line: Str) -> Bool { line.trim_chars(" \t").is_empty() }
+
+fn parse(input: Str) -> Result[List[Cue], Str] {
+    var cues: List[Cue] = []
+    var block: List[Str] = []
+    for raw in input.lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if is_blank(line) {
+            if not block.is_empty() {
+                cues.push(parse_cue(block)?)
+                block.clear()
+            }
+        } else {
+            block.push(line)
+        }
+    }
+    if not block.is_empty() { cues.push(parse_cue(block)?) }
+    Ok(cues)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 or parse_offset(sys.args[0]).is_none() {
+        con.eprintln("usage: srtfix OFFSET   (milliseconds, e.g. +1500 or -250)")
+        return 2
+    }
+    let offset = parse_offset(sys.args[0]).unwrap()
+    let cues = match parse(con.read_all()) {
+        Ok(c) => c,
+        Err(msg) => {
+            con.eprintln("srtfix: {msg}")
+            return 1
+        }
+    }
+    var kept: List[Cue] = []
+    for c in cues {
+        let end = c.end + offset
+        if end > 0 { kept.push(Cue { start: (c.start + offset).max(0), end, text: c.text }) }
+    }
+    kept.sort_by(fn(c) => c.start)
+    var out = ""
+    for (i, c) in kept.enumerate() {
+        out += "{i + 1}\n{format_time(c.start)} --> {format_time(c.end)}\n"
+        for t in c.text { out += t + "\n" }
+        out += "\n"
+    }
+    con.print(out)
+    0
+}

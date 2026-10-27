@@ -1,0 +1,125 @@
+const COLS: Int = 7
+const ROWS: Int = 6
+
+// over: 0 running, 1 X won, 2 O won, 3 draw
+struct Game { cells: List[Int], heights: List[Int], moves: List[Int], over: Int }
+
+fn Game.new() -> Game {
+    Game { cells: List.filled(COLS * ROWS, 0), heights: List.filled(COLS, 0), moves: [], over: 0 }
+}
+
+fn symbol(p: Int) -> Str {
+    if p == 1 { "X" } else if p == 2 { "O" } else { "." }
+}
+
+fn Game.at(self, c: Int, r: Int) -> Int { self.cells[c * ROWS + r] }
+
+fn Game.to_move(self) -> Int { if self.moves.len() % 2 == 0 { 1 } else { 2 } }
+
+// Number of consecutive discs of player p starting next to (c, r) in direction (dc, dr).
+fn Game.run(self, c: Int, r: Int, dc: Int, dr: Int, p: Int) -> Int {
+    var n = 0
+    var x = c + dc
+    var y = r + dr
+    while x >= 0 and x < COLS and y >= 0 and y < ROWS and self.at(x, y) == p {
+        n += 1
+        x += dc
+        y += dr
+    }
+    n
+}
+
+fn Game.wins(self, c: Int, r: Int, p: Int) -> Bool {
+    let dirs = [(1, 0), (0, 1), (1, 1), (1, -1)]
+    for d in dirs {
+        if 1 + self.run(c, r, d.0, d.1, p) + self.run(c, r, -d.0, -d.1, p) >= 4 { return true }
+    }
+    false
+}
+
+fn Game.board(self) -> Str {
+    var rows: List[Str] = []
+    var r = ROWS - 1
+    while r >= 0 {
+        var row = ""
+        for c in 0..COLS { row += symbol(self.at(c, r)) }
+        rows.push(row)
+        r -= 1
+    }
+    rows.join("/")
+}
+
+fn Game.drop(mut self, c: Int) -> Str {
+    if self.over != 0 { return "ERR game over" }
+    if self.heights[c] >= ROWS { return "ERR column full" }
+    let p = self.to_move()
+    let r = self.heights[c]
+    self.cells[c * ROWS + r] = p
+    self.heights[c] += 1
+    self.moves.push(c)
+    var msg = "PLAYED {symbol(p)} {r + 1}"
+    if self.wins(c, r, p) {
+        self.over = p
+        msg += " WIN"
+    } else if self.moves.len() == COLS * ROWS {
+        self.over = 3
+        msg += " DRAW"
+    }
+    msg
+}
+
+fn Game.undo(mut self) -> Str {
+    let Some(c) = self.moves.pop() else { return "ERR nothing to undo" }
+    self.heights[c] -= 1
+    self.cells[c * ROWS + self.heights[c]] = 0
+    self.over = 0
+    "UNDONE {c + 1}"
+}
+
+fn Game.status(self) -> Str {
+    if self.over == 1 {
+        "WIN X"
+    } else if self.over == 2 {
+        "WIN O"
+    } else if self.over == 3 {
+        "DRAW"
+    } else {
+        "TURN {symbol(self.to_move())}"
+    }
+}
+
+fn Game.handle(mut self, line: Str) -> Str {
+    let bad = "ERR bad command"
+    let w = line.split(" ")
+    match w[0] {
+        "DROP" => {
+            if w.len() != 2 or w[1].len() != 1 { return bad }
+            let d = w[1].byte(0)
+            if d < '1' or d > '7' { return bad }
+            self.drop(d - '1')
+        }
+        "UNDO" => if w.len() == 1 { self.undo() } else { bad },
+        "BOARD" => if w.len() == 1 { self.board() } else { bad },
+        "STATUS" => if w.len() == 1 { self.status() } else { bad },
+        "NEW" => {
+            if w.len() != 1 { return bad }
+            self = Game.new()
+            "OK"
+        }
+        _ => bad,
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: connect4 (no arguments)")
+        return 2
+    }
+    var game = Game.new()
+    while let Some(line) = con.read_line() {
+        con.println(game.handle(line))
+        con.flush()
+    }
+    0
+}

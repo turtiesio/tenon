@@ -1,0 +1,82 @@
+// colalign: align text into columns, in the style of `column -t`.
+
+struct Options { sep: Option[Str], outsep: Str, right: Set[Int] }
+
+// LIST must match [1-9][0-9]{0,2}(,[1-9][0-9]{0,2})*
+fn parse_list(s: Str) -> Option[Set[Int]] {
+    var cols: Set[Int] = Set.new()
+    for part in s.split(",") {
+        if not part.is_digits() or part.len() > 3 or part.byte(0) == '0' { return None }
+        let _ = cols.insert(part.to_int()?)
+    }
+    Some(cols)
+}
+
+fn parse_args(args: List[Str]) -> Result[Options, Str] {
+    var opts = Options { sep: None, outsep: "  ", right: Set.new() }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a != "-s" and a != "-o" and a != "-r" { return Err("unexpected argument '{a}'") }
+        if i + 1 >= args.len() { return Err("{a} needs a value") }
+        let v = args[i + 1]
+        match a {
+            "-s" => {
+                if v.chars().len() != 1 { return Err("-s needs exactly one character") }
+                opts.sep = Some(v)
+            }
+            "-o" => opts.outsep = v,
+            _ => {
+                let Some(cols) = parse_list(v) else { return Err("bad column list '{v}'") }
+                opts.right = cols
+            }
+        }
+        i += 2
+    }
+    Ok(opts)
+}
+
+fn fields(line: Str, sep: Option[Str]) -> List[Str] {
+    match sep {
+        Some(c) => if line.is_empty() { [] } else { line.split(c) },
+        None => line.replace("\t", " ").split(" ").filter(fn(f) => not f.is_empty()),
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(msg) => {
+            con.eprintln("colalign: {msg}")
+            con.eprintln("usage: colalign [-s CHAR] [-o OUTSEP] [-r LIST]")
+            return 2
+        }
+    }
+    var rows: List[List[Str]] = []
+    var widths: List[Int] = []
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let row = fields(line, opts.sep)
+        for (k, f) in row.enumerate() {
+            let n = f.chars().len()
+            if k == widths.len() { widths.push(n) } else { widths[k] = widths[k].max(n) }
+        }
+        rows.push(row)
+    }
+    for row in rows {
+        var out: List[Str] = []
+        for (k, f) in row.enumerate() {
+            let pad = " ".repeat(widths[k] - f.chars().len())
+            if opts.right.contains(k + 1) {
+                out.push(pad + f)
+            } else if k == row.len() - 1 {
+                out.push(f)
+            } else {
+                out.push(f + pad)
+            }
+        }
+        con.println(out.join(opts.outsep))
+    }
+    0
+}

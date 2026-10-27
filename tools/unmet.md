@@ -4,17 +4,15 @@ Milestone 1 (tenon.md §4), item by item:
   (programs/: ledger, jobq, facts, kvhttp, mkplan, csvq, mdhtml, calc, and the
   self-hosted lexer/parser drivers; fuzzing 0 backend disagreements).
 - Blind usability study at or below Python on line count and task time: **lines met,
-  time not met.** Lines count without closer-only lines (user decision, see
-  docs/log.md). Wave 4 (fresh task set 4, compiler 3487dd2, medians): lines Tenon
-  869 / Python 913 / TypeScript 828 (raw 1076 / 914 / 995); hidden tests 98% /
-  100% / 100% (two Tenon authors gave up the hexdump task: no byte input then,
-  added since); minutes 4.9 / 2.9 / 3.9; compile errors per Tenon author fell
-  from 11 (wave 3) to 2. Per task, writing until the first run takes 18 s vs
-  13 s (Tenon vs Python), and iterating until the examples pass 13 s vs 4 s with
-  the same number of runs. A Tenon run cost 0.33 s vs 0.1 s (try.sh rebuilt
-  every time; `tenon build` now caches, so an unchanged rebuild costs ~0 s); the rest is the
-  authors' time between runs. Time per model, Tenon vs Python: Opus 1.39x,
-  Sonnet 1.69x, Codex 1.74x. study/results/wave4/.
+  time not met.** Wave 5 (fresh task set 5, compiler 48f8391, notes off the
+  clock; medians): hidden tests 100% in all three languages; lines without
+  closer-only lines Tenon 801 / Python 920 / TypeScript 803; minutes 4.4 / 3.0 /
+  3.6 (Tenon 1.47x, TypeScript 1.2x Python); compile errors 0 / 0 / 0. Per task:
+  writing 16 s vs 13 s, iterating 6 s vs 4 s; a run costs the same now. Tenon time
+  over waves: 1.7x, 1.46x, 1.69x, 1.47x Python. The remaining gap is mostly
+  writing more tokens (1.36x Python; explicit types and braces) plus an
+  outlier author whose own test harness hung. study/results/wave5/.
+  Earlier waves:
   Wave 2 (task set 2, hidden tests written by Codex, 3 authors per language from
   Claude Opus, Claude Sonnet and Codex in a Latin square, compiler frozen at f6b8396;
   medians): hidden tests ~100% in all three languages; Tenon 1610 lines / 14640

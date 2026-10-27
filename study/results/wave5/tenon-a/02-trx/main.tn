@@ -1,0 +1,129 @@
+// trx: translate, delete and squeeze characters, in the style of `tr`.
+
+// A token of a set argument: a character, and whether it is a plain
+// (unescaped) `-` that can join a range.
+struct Token { ch: Int, range_dash: Bool }
+
+fn tokenize(arg: Str) -> Result[List[Token], Str] {
+    var out: List[Token] = []
+    var i = 0
+    while i < arg.len() {
+        let c = arg.byte(i)
+        if c == '\\' {
+            if i + 1 >= arg.len() { return Err("set '{arg}' ends with a backslash") }
+            let e = arg.byte(i + 1)
+            let ch = match e {
+                'n' => '\n',
+                't' => '\t',
+                '\\' => '\\',
+                '-' => '-',
+                _ => return Err("bad escape in set '{arg}'"),
+            }
+            out.push(Token { ch, range_dash: false })
+            i += 2
+        } else {
+            out.push(Token { ch: c, range_dash: c == '-' })
+            i += 1
+        }
+    }
+    Ok(out)
+}
+
+fn parse_set(arg: Str) -> Result[List[Int], Str] {
+    let toks = tokenize(arg)?
+    var out: List[Int] = []
+    var i = 0
+    while i < toks.len() {
+        if i + 2 < toks.len() and toks[i + 1].range_dash {
+            let lo = toks[i].ch
+            let hi = toks[i + 2].ch
+            if lo > hi { return Err("reversed range in set '{arg}'") }
+            for c in lo..hi + 1 { out.push(c) }
+            i += 3
+        } else {
+            out.push(toks[i].ch)
+            i += 1
+        }
+    }
+    Ok(out)
+}
+
+fn membership(set: List[Int]) -> List[Bool] {
+    var m = List.filled(128, false)
+    for c in set { m[c] = true }
+    m
+}
+
+struct Command { delete: Bool, squeeze: Bool, sets: List[List[Int]] }
+
+fn parse_args(args: List[Str]) -> Result[Command, Str] {
+    var delete = false
+    var squeeze = false
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-d" {
+            delete = true
+        } else if a == "-s" {
+            squeeze = true
+        } else if a == "--" {
+            i += 1
+            break
+        } else if a.starts_with("-") and a.len() >= 2 {
+            return Err("unknown option '{a}'")
+        } else {
+            break
+        }
+        i += 1
+    }
+    var sets: List[List[Int]] = []
+    for a in args.slice(i, args.len()) { sets.push(parse_set(a)?) }
+    let n = sets.len()
+    let ok = if delete and squeeze { n == 2 } else if delete { n == 1 } else if squeeze { n == 1 or n == 2 } else { n == 2 }
+    if not ok { return Err("wrong number of sets") }
+    if not delete and n == 2 and sets[1].is_empty() { return Err("SET2 must not be empty") }
+    Ok(Command { delete, squeeze, sets })
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let cmd = match parse_args(sys.args) {
+        Ok(c) => c,
+        Err(msg) => {
+            con.eprintln("trx: {msg}")
+            con.eprintln("usage: trx [-d] [-s] [--] SET1 [SET2]")
+            return 2
+        }
+    }
+    let input = con.read_all_bytes()
+    var data: List[Int] = []
+    let set1 = cmd.sets[0]
+    if cmd.delete {
+        let del = membership(set1)
+        for b in input {
+            if b >= 128 or not del[b] { data.push(b) }
+        }
+    } else if cmd.sets.len() == 2 {
+        // Translate: the last occurrence of a character in SET1 decides.
+        let set2 = cmd.sets[1]
+        var map: List[Int] = []
+        for c in 0..256 { map.push(c) }
+        for (i, c) in set1.enumerate() {
+            map[c] = set2[i.min(set2.len() - 1)]
+        }
+        data = input.map(fn(b) => map[b])
+    } else {
+        data = input
+    }
+    if cmd.squeeze {
+        let sq = membership(if cmd.sets.len() == 2 { cmd.sets[1] } else { set1 })
+        var out: List[Int] = []
+        for b in data {
+            let repeat = out.len() > 0 and out[out.len() - 1] == b
+            if not (repeat and b < 128 and sq[b]) { out.push(b) }
+        }
+        data = out
+    }
+    con.write_bytes(data)
+    0
+}
