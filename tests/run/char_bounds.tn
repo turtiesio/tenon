@@ -1,0 +1,24 @@
+fn main(sys: Sys) {
+    var out: List[Str] = []
+    for c in [127, 128, 2047, 2048, 65535, 65536, 1114111] {
+        let s = c.char()
+        out.push("{c}:{s.len()}")
+    }
+    sys.console.println(out.join(" "))
+    enum_or()
+    let s = "abc"
+    sys.console.println("{s.byte(2)}")
+    sys.console.println("{s.byte(3)}")
+}
+
+enum Pair { Left(Int, Str), Right(Str, Int) }
+
+fn enum_or() {
+    for p in [Left(1, "a"), Right("b", 2)] {
+        match p {
+            Left(n, s) | Right(s, n) => println_both(n, s),
+        }
+    }
+}
+
+fn println_both(n: Int, s: Str) { let _ = n + s.len() }

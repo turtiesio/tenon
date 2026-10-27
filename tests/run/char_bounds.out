@@ -1,0 +1,5 @@
+127:1 128:2 2047:2 2048:3 65535:3 65536:4 1114111:4
+99
+exit: 70
+stderr: trap: index 3 out of bounds for length 3
+stderr:   at char_bounds.tn:11:28
