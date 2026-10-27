@@ -411,6 +411,9 @@ impl<'a> Emitter<'a> {
         if let Some(vs) = self.c.enum_variants(t) {
             let boxed = self.is_boxed(t);
             let acc = if boxed { "->" } else { "." };
+            if boxed {
+                let _ = writeln!(protos, "static {n} {n}_pool; static int64_t {n}_pool_n;");
+            }
             // constructors
             for (i, (_, fs)) in vs.iter().enumerate() {
                 let params: Vec<String> = fs.iter().enumerate().map(|(j, f)| format!("{} a{}", self.cty(f), j)).collect();
@@ -423,7 +426,7 @@ impl<'a> Emitter<'a> {
                 }
                 let _ = write!(b, "static TN_UNUSED {} {}_mk{}({}) {{ ", n, n, i, params.join(", "));
                 if boxed {
-                    let _ = write!(b, "{n} x = tn_alloc(sizeof(struct {n}_s)); x->rc = 1; ");
+                    let _ = write!(b, "{n} x = {n}_pool; if (x) {{ {n}_pool = *(void **)x; {n}_pool_n--; }} else x = tn_alloc(sizeof(struct {n}_s)); x->rc = 1; ");
                 } else {
                     let _ = write!(b, "{n} x; ");
                 }
@@ -455,7 +458,12 @@ impl<'a> Emitter<'a> {
             let hs = each(self, &|i, j, tn| format!("h = tn_mix(h * 31 + {tn}_hash(x{acc}u.v{i}.f{j})); "));
             if boxed {
                 let _ = writeln!(b, "static TN_UNUSED {n} {n}_retain({n} x) {{ x->rc++; return x; }}");
-                let _ = writeln!(b, "static void {n}_free(void *p) {{ {n} x = p; tn_rel_depth++; switch (x->tag) {{ {rl}}} free(x); tn_rel_depth--; }}");
+                // freed nodes are kept on a small per-type list and reused by the constructors
+                let _ = writeln!(
+                    b,
+                    "static void {n}_free(void *p) {{ {n} x = p; tn_rel_depth++; switch (x->tag) {{ {rl}}} \
+                     if ({n}_pool_n < TN_POOL_MAX) {{ *(void **)x = {n}_pool; {n}_pool = x; {n}_pool_n++; }} else free(x); tn_rel_depth--; }}"
+                );
                 let _ = writeln!(
                     b,
                     "static TN_UNUSED void {n}_release({n} x) {{ if (!x || --x->rc) return; \

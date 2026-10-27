@@ -163,6 +163,11 @@ TN_NORETURN static TN_UNUSED void tn_exit(int code) {
 /* Releasing deeply nested recursive values (a million-long chain of enum
  * nodes) must not overflow the C stack: past a nesting depth, frees are
  * queued and drained iteratively. */
+/* Freed nodes of recursive enums are reused, up to this many per type.
+ * Sanitizer builds set it to 0 so that use-after-free stays detectable. */
+#ifndef TN_POOL_MAX
+#define TN_POOL_MAX 65536
+#endif
 static int tn_rel_depth;
 typedef struct { void *p; void (*f)(void *); } tn_deferred;
 static tn_deferred *tn_defer_q;
@@ -1413,7 +1418,8 @@ static TN_UNUSED bool tn_fs_path(tn_Fs f, tn_Str p, tn_buf *out) {
         /* walk root/comp1, root/comp1/comp2, ... refusing symlinks */
         char *full = out->p + sizeof(tn_rc);
         size_t start = (size_t)f->root.len;
-        for (size_t i = start + 1;; i++) {
+        /* the path is the root itself: nothing to walk */
+        for (size_t i = start + 1; full[start] != 0; i++) {
             char c = full[i];
             if (c == '/' || c == 0) {
                 if (i > start + 1) {

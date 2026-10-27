@@ -1,0 +1,11 @@
+// Fix for repro 09 only defers the release of boxed *enums*.  A 1,000,000-deep chain through a struct's List
+// (or a Map) still overflows the C stack when freed.  run: built / dropped, exit 0.
+// native: built / `trap: stack overflow`, exit 72.
+struct Tree { kids: List[Tree], v: Int }
+fn main(sys: Sys) {
+    var t = Tree { kids: [], v: 0 }
+    for i in 0..1000000 { t = Tree { kids: [t], v: i } }
+    sys.console.println("built")
+    t = Tree { kids: [], v: 0 }
+    sys.console.println("dropped")
+}

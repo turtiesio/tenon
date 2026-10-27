@@ -1,0 +1,10 @@
+// Derived ==, <, hashing, formatting, encode and decode recurse on the C stack in the native build.
+// With a 1,000,000-deep Cons chain: run prints `true`; native prints nothing and exits 72 (`trap: stack overflow`).
+// The same happens for `<`, a Map key, `to_str()` (1M deep), and encode+decode (300k deep).
+enum Chain { Nil, Cons(Int, Chain) }
+fn mk() -> Chain {
+    var c = Nil
+    for i in 0..1000000 { c = Cons(i, c) }
+    c
+}
+fn main(sys: Sys) { sys.console.println("{mk() == mk()}") }
