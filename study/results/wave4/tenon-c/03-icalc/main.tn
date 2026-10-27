@@ -1,0 +1,117 @@
+enum Expr { Number(Int), Name(Str), Neg(Expr), Binary(Int, Expr, Expr) }
+struct Parser { text: Str, pos: Int }
+fn Parser.spaces(mut self) {
+    while self.pos < self.text.len() and self.text.byte(self.pos) == ' ' { self.pos += 1 }
+}
+fn Parser.peek(mut self) -> Int {
+    self.spaces()
+    if self.pos < self.text.len() { self.text.byte(self.pos) } else { -1 }
+}
+fn Parser.primary(mut self) -> Option[Expr] {
+    let c = self.peek()
+    if c == '(' {
+        self.pos += 1
+        let inner = self.expr()?
+        if self.peek() != ')' { return None }
+        self.pos += 1
+        return Some(inner)
+    }
+    let start = self.pos
+    if c.is_digit() {
+        while self.pos < self.text.len() and self.text.byte(self.pos).is_digit() { self.pos += 1 }
+        if self.pos - start > 15 { return None }
+        return Some(Number(self.text.slice(start, self.pos).to_int()?))
+    }
+    if c.is_lower() {
+        self.pos += 1
+        while self.pos < self.text.len() {
+            let next = self.text.byte(self.pos)
+            if not (next.is_lower() or next.is_digit() or next == '_') { break }
+            self.pos += 1
+        }
+        return Some(Name(self.text.slice(start, self.pos)))
+    }
+    None
+}
+fn Parser.unary(mut self) -> Option[Expr] {
+    if self.peek() == '-' { self.pos += 1; Some(Neg(self.unary()?)) } else { self.primary() }
+}
+fn Parser.term(mut self) -> Option[Expr] {
+    var left = self.unary()?
+    while true {
+        let op = self.peek()
+        if op != '*' and op != '/' and op != '%' { break }
+        self.pos += 1
+        let right = self.unary()?
+        left = Binary(op, left, right)
+    }
+    Some(left)
+}
+fn Parser.expr(mut self) -> Option[Expr] {
+    var left = self.term()?
+    while true {
+        let op = self.peek()
+        if op != '+' and op != '-' { break }
+        self.pos += 1
+        let right = self.term()?
+        left = Binary(op, left, right)
+    }
+    Some(left)
+}
+fn evaluate(tree: Expr, vars: Map[Str, Int]) -> Result[Int, Str] {
+    match tree {
+        Number(n) => Ok(n),
+        Name(name) => vars.get(name).ok_or("undefined {name}"),
+        Neg(inner) => Ok(-evaluate(inner, vars)?),
+        Binary(op, lhs, rhs) => {
+            let a = evaluate(lhs, vars)?
+            let b = evaluate(rhs, vars)?
+            if (op == '/' or op == '%') and b == 0 { return Err("division by zero") }
+            let value = match op {
+                '+' => a.checked_add(b),
+                '-' => a.checked_sub(b),
+                '*' => a.checked_mul(b),
+                '/' => Some(a / b),
+                _ => Some(a % b),
+            }.ok_or("overflow")?
+            if value < -999999999999999 or value > 999999999999999 { Err("overflow") } else { Ok(value) }
+        }
+    }
+}
+fn definition(text: Str) -> Option[(Str, Int)] {
+    let (name, value) = text.split_once("=")?
+    if name.is_empty() or name.len() > 16 or not name.byte(0).is_lower() { return None }
+    for c in name.chars() {
+        let byte = c.byte(0)
+        if not (byte.is_lower() or byte.is_digit() or byte == '_') { return None }
+    }
+    let digits = value.strip_prefix("-").unwrap_or(value)
+    if not digits.is_digits() or digits.len() > 15 { return None }
+    Some((name, value.to_int()?))
+}
+fn main(sys: Sys) -> Int {
+    var vars: Map[Str, Int] = [:]
+    var expression: Option[Str] = None
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg == "-D" {
+            i += 1
+            if i == sys.args.len() { sys.console.eprintln("missing definition"); return 2 }
+            let Some((name, value)) = definition(sys.args[i]) else { sys.console.eprintln("bad definition"); return 2 }
+            vars[name] = value
+        } else {
+            if expression.is_some() { sys.console.eprintln("too many expressions"); return 2 }
+            expression = Some(arg)
+        }
+        i += 1
+    }
+    let Some(text) = expression else { sys.console.eprintln("missing expression"); return 2 }
+    var parser = Parser { text: text, pos: 0 }
+    let tree = parser.expr()
+    if parser.peek() != -1 or tree.is_none() { sys.console.println("error: syntax"); return 1 }
+    match evaluate(tree.unwrap(), vars) {
+        Ok(result) => { sys.console.println("{result}"); 0 },
+        Err(reason) => { sys.console.println("error: {reason}"); 1 },
+    }
+}

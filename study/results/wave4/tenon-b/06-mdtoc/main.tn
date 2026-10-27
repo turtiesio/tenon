@@ -1,0 +1,81 @@
+// mdtoc [-l LEVEL]
+
+struct Heading { level: Int, text: Str, slug: Str }
+
+fn base_slug(text: Str) -> Str {
+    var out = ""
+    for i in 0..text.len() {
+        let b = text.byte(i)
+        if b == ' ' {
+            out += "-"
+        } else if b.is_upper() {
+            out += (b - 'A' + 'a').char()
+        } else if b.is_lower() or b.is_digit() or b == '-' or b == '_' {
+            out += b.char()
+        }
+    }
+    if out.is_empty() { "section" } else { out }
+}
+
+fn unique_slug(base: Str, used: mut Set[Str]) -> Str {
+    var slug = base
+    var n = 0
+    while used.contains(slug) {
+        n += 1
+        slug = "{base}-{n}"
+    }
+    let _ = used.insert(slug)
+    slug
+}
+
+// (level, text) if the line is a heading.
+fn parse_heading(line: Str) -> Option[(Int, Str)] {
+    var level = 0
+    while level < line.len() and line.byte(level) == '#' { level += 1 }
+    if level < 1 or level > 6 { return None }
+    if level >= line.len() or line.byte(level) != ' ' { return None }
+    let text = line.slice(level + 1, line.len()).trim_chars(" ")
+    if text.is_empty() { None } else { Some((level, text)) }
+}
+
+fn parse_level(args: List[Str]) -> Option[Int] {
+    if args.is_empty() { return Some(6) }
+    if args.len() != 2 or args[0] != "-l" { return None }
+    let v = args[1]
+    if v.len() != 1 or not v.is_digits() { return None }
+    let n = v.to_int()?
+    if n >= 1 and n <= 6 { Some(n) } else { None }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let Some(max_level) = parse_level(sys.args) else {
+        con.eprintln("usage: mdtoc [-l LEVEL]   (LEVEL is 1-6)")
+        return 2
+    }
+    var headings: List[Heading] = []
+    var used: Set[Str] = Set.new()
+    var in_code = false
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.starts_with("```") {
+            in_code = not in_code
+            continue
+        }
+        if in_code { continue }
+        if let Some((level, text)) = parse_heading(line) {
+            let slug = unique_slug(base_slug(text), mut used)
+            headings.push(Heading { level: level, text: text, slug: slug })
+        }
+    }
+    let listed = headings.filter(fn(h) => h.level <= max_level)
+    if listed.is_empty() { return 0 }
+    var min_level = 6
+    for h in listed { min_level = min_level.min(h.level) }
+    var out = ""
+    for h in listed {
+        out += "{" ".repeat(2 * (h.level - min_level))}- [{h.text}](#{h.slug})\n"
+    }
+    con.print(out)
+    0
+}

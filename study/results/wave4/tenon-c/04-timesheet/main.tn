@@ -1,0 +1,63 @@
+const DAYS: List[Str] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+struct Punch { name: Str, day: Int, minute: Int, incoming: Bool }
+fn parse(line: Str) -> Option[Punch] {
+    let parts = line.split(" ")
+    if parts.len() != 4 { return None }
+    let name = parts[0]
+    if name.is_empty() or name.len() > 16 { return None }
+    for c in name.chars() { if not c.byte(0).is_lower() { return None } }
+    let day = DAYS.index_of(parts[1])?
+    let time = parts[2]
+    if time.len() != 5 or time.byte(2) != ':' { return None }
+    let hh = time.slice(0, 2)
+    let mm = time.slice(3, 5)
+    if not hh.is_digits() or not mm.is_digits() { return None }
+    let hour = hh.to_int()?
+    let minute = mm.to_int()?
+    if hour > 23 or minute > 59 { return None }
+    if parts[3] != "IN" and parts[3] != "OUT" { return None }
+    Some(Punch { name: name, day: day, minute: hour * 60 + minute, incoming: parts[3] == "IN" })
+}
+fn duration(minutes: Int) -> Str { "{minutes / 60}:{(minutes % 60).to_str().pad_left(2, "0")}" }
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments allowed"); return 2 }
+    var employees: Map[Str, List[Punch]] = [:]
+    var skipped = 0
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() { continue }
+        match parse(line) {
+            Some(punch) => { employees.or_insert(punch.name, []); employees[punch.name].push(punch) },
+            None => skipped += 1,
+        }
+    }
+    for name in employees.keys().sorted() {
+        var punches = employees[name]
+        punches.sort_by(fn(p) => (p.day, p.minute))
+        var output = name
+        var total = 0
+        var overtime = 0
+        var anomalies = 0
+        for day in 0..7 {
+            var opened: Option[Int] = None
+            var minutes = 0
+            for punch in punches {
+                if punch.day != day { continue }
+                if punch.incoming {
+                    if opened.is_some() { anomalies += 1 }
+                    opened = Some(punch.minute)
+                } else {
+                    if let Some(start) = opened { minutes += punch.minute - start } else { anomalies += 1 }
+                    opened = None
+                }
+            }
+            if opened.is_some() { anomalies += 1 }
+            if minutes > 0 { output += " {DAYS[day]}={duration(minutes)}" }
+            total += minutes
+            overtime += (minutes - 480).max(0)
+        }
+        sys.console.println("{output} total={duration(total)} overtime={duration(overtime)} anomalies={anomalies}")
+    }
+    sys.console.println("skipped={skipped}")
+    0
+}

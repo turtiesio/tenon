@@ -1,0 +1,104 @@
+struct Link { url: Str, hits: Int }
+struct State { links: Map[Str, Link], next_id: Int, records: Int }
+enum Command { Put(Str), Get(Str), Hits(Str), Delete(Str), Info }
+fn valid_url(url: Str) -> Bool {
+    if url.is_empty() or url.len() > 200 { return false }
+    for c in url.chars() { if c.byte(0) < 33 or c.byte(0) > 126 { return false } }
+    true
+}
+fn valid_code(code: Str) -> Bool {
+    if code.is_empty() or code.len() > 8 { return false }
+    for c in code.chars() { if not (c.byte(0).is_digit() or c.byte(0).is_lower()) { return false } }
+    true
+}
+fn parse(line: Str) -> Option[Command] {
+    let parts = line.split(" ")
+    if parts.len() == 1 and parts[0] == "INFO" { return Some(Info) }
+    if parts.len() != 2 { return None }
+    if parts[0] == "PUT" { return if valid_url(parts[1]) { Some(Put(parts[1])) } else { None } }
+    if not valid_code(parts[1]) { return None }
+    match parts[0] { "GET" => Some(Get(parts[1])), "HITS" => Some(Hits(parts[1])), "DEL" => Some(Delete(parts[1])), _ => None }
+}
+fn State.apply(mut self, operation: Str, token: Str) -> Bool {
+    if operation == "P" {
+        if not valid_url(token) { return false }
+        self.links[self.next_id.to_str_radix(36)] = Link { url: token, hits: 0 }
+        self.next_id += 1
+    } else {
+        if not valid_code(token) or not self.links.contains(token) { return false }
+        if operation == "H" { self.links[token].hits += 1 }
+        else if operation == "D" { let _ = self.links.remove(token) }
+        else { return false }
+    }
+    self.records += 1
+    true
+}
+fn recover(fs: Fs, path: Str) -> Result[State, IoError] {
+    var state = State { links: [:], next_id: 1, records: 0 }
+    if not fs.exists(path) { return Ok(state) }
+    let contents = fs.read(path)?
+    let lines = contents.split("\n")
+    var prefix = ""
+    for line in lines.slice(0, lines.len() - 1) {
+        let fields = line.split(" ")
+        if fields.len() != 3 { break }
+        let sequence = fields[0]
+        if not sequence.is_digits() or sequence.len() > 9 or sequence.starts_with("0") { break }
+        if sequence.to_int().unwrap() != state.records + 1 { break }
+        if not state.apply(fields[1], fields[2]) { break }
+        prefix += line + "\n"
+    }
+    if prefix != contents { fs.write(path, prefix)? }
+    Ok(state)
+}
+fn State.commit(mut self, fs: Fs, path: Str, operation: Str, token: Str) -> Result[Unit, IoError] {
+    fs.append(path, "{self.records + 1} {operation} {token}\n")?
+    assert(self.apply(operation, token))
+    Ok(())
+}
+fn State.execute(mut self, fs: Fs, path: Str, command: Command) -> Result[Str, IoError] {
+    match command {
+        Put(url) => {
+            let code = self.next_id.to_str_radix(36)
+            self.commit(fs, path, "P", url)?
+            Ok("CODE {code}")
+        }
+        Get(get_code) => {
+            let Some(link) = self.links.get(get_code) else { return Ok("ERR not found") }
+            self.commit(fs, path, "H", get_code)?
+            Ok("URL {link.url}")
+        }
+        Delete(del_code) => {
+            if not self.links.contains(del_code) { return Ok("ERR not found") }
+            self.commit(fs, path, "D", del_code)?
+            Ok("OK")
+        }
+        Hits(hit_code) => Ok(match self.links.get(hit_code) { Some(stored) => "HITS {stored.hits}", None => "ERR not found" }),
+        Info => Ok("links={self.links.len()} next={self.next_id.to_str_radix(36)} records={self.records}"),
+    }
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("expected directory"); return 2 }
+    let dir = sys.args[0]
+    if not sys.fs.exists(dir) {
+        if let Err(create_error) = sys.fs.mkdir_one(dir) { sys.console.eprintln("{create_error}"); return 1 }
+    }
+    if not sys.fs.is_dir(dir) { sys.console.eprintln("not a directory"); return 1 }
+    let path = path_join(dir, "journal")
+    var state = match recover(sys.fs, path) {
+        Ok(recovered) => recovered,
+        Err(recovery_error) => { sys.console.eprintln("{recovery_error}"); return 1 },
+    }
+    while let Some(raw) = sys.console.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let response = if let Some(command) = parse(line) {
+            match state.execute(sys.fs, path, command) {
+                Ok(reply) => reply,
+                Err(write_error) => { sys.console.eprintln("{write_error}"); return 1 },
+            }
+        } else { "ERR bad command" }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

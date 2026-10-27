@@ -1,0 +1,187 @@
+// icalc [-D NAME=VALUE]... EXPR
+
+const LIMIT: Int = 999999999999999
+
+enum Tok { Num(Int), Name(Str), Op(Int) }
+
+enum Expr { Lit(Int), Var(Str), Neg(Expr), Bin(Int, Expr, Expr) }
+
+struct Parser { toks: List[Tok], pos: Int }
+
+fn is_name_char(b: Int) -> Bool { b.is_lower() or b.is_digit() or b == '_' }
+
+fn tokenize(src: Str) -> Result[List[Tok], Str] {
+    var toks: List[Tok] = []
+    let n = src.len()
+    var i = 0
+    while i < n {
+        let b = src.byte(i)
+        if b == ' ' {
+            i += 1
+        } else if b.is_digit() {
+            var j = i
+            while j < n and src.byte(j).is_digit() { j += 1 }
+            if j - i > 15 { return Err("syntax") }
+            toks.push(Num(src.slice(i, j).to_int().unwrap()))
+            i = j
+        } else if b.is_lower() {
+            var j = i + 1
+            while j < n and is_name_char(src.byte(j)) { j += 1 }
+            toks.push(Name(src.slice(i, j)))
+            i = j
+        } else if "+-*/%()".contains(b.char()) {
+            toks.push(Op(b))
+            i += 1
+        } else {
+            return Err("syntax")
+        }
+    }
+    Ok(toks)
+}
+
+fn Parser.peek_op(self) -> Option[Int] {
+    if self.pos >= self.toks.len() { return None }
+    match self.toks[self.pos] {
+        Op(c) => Some(c),
+        _ => None,
+    }
+}
+
+fn Parser.expr(mut self, depth: Int) -> Result[Expr, Str] {
+    var left = self.term(depth)?
+    while let Some(c) = self.peek_op() {
+        if c != '+' and c != '-' { break }
+        self.pos += 1
+        let right = self.term(depth)?
+        left = Bin(c, left, right)
+    }
+    Ok(left)
+}
+
+fn Parser.term(mut self, depth: Int) -> Result[Expr, Str] {
+    var left = self.unary(depth)?
+    while let Some(c) = self.peek_op() {
+        if c != '*' and c != '/' and c != '%' { break }
+        self.pos += 1
+        let right = self.unary(depth)?
+        left = Bin(c, left, right)
+    }
+    Ok(left)
+}
+
+fn Parser.unary(mut self, depth: Int) -> Result[Expr, Str] {
+    if self.peek_op() == Some('-') {
+        self.pos += 1
+        let inner = self.unary(depth)?
+        return Ok(Neg(inner))
+    }
+    self.primary(depth)
+}
+
+fn Parser.primary(mut self, depth: Int) -> Result[Expr, Str] {
+    if self.pos >= self.toks.len() { return Err("syntax") }
+    let t = self.toks[self.pos]
+    self.pos += 1
+    match t {
+        Num(n) => Ok(Lit(n)),
+        Name(s) => Ok(Var(s)),
+        Op(c) => {
+            if c != '(' or depth >= 50 { return Err("syntax") }
+            let e = self.expr(depth + 1)?
+            if self.peek_op() != Some(')') { return Err("syntax") }
+            self.pos += 1
+            Ok(e)
+        }
+    }
+}
+
+fn parse(src: Str) -> Result[Expr, Str] {
+    let toks = tokenize(src)?
+    var p = Parser { toks: toks, pos: 0 }
+    let e = p.expr(0)?
+    if p.pos != p.toks.len() { return Err("syntax") }
+    Ok(e)
+}
+
+fn check(v: Option[Int]) -> Result[Int, Str] {
+    match v {
+        Some(x) => if x.abs() > LIMIT { Err("overflow") } else { Ok(x) },
+        None => Err("overflow"),
+    }
+}
+
+fn eval(e: Expr, vars: Map[Str, Int]) -> Result[Int, Str] {
+    match e {
+        Lit(n) => Ok(n),
+        Var(name) => match vars.get(name) {
+            Some(v) => Ok(v),
+            None => Err("undefined {name}"),
+        },
+        Neg(inner) => {
+            let v = eval(inner, vars)?
+            Ok(-v)
+        }
+        Bin(op, l, r) => {
+            let a = eval(l, vars)?
+            let b = eval(r, vars)?
+            if op == '+' { check(a.checked_add(b)) }
+            else if op == '-' { check(a.checked_sub(b)) }
+            else if op == '*' { check(a.checked_mul(b)) }
+            else if b == 0 { Err("division by zero") }
+            else if op == '/' { check(Some(a / b)) }
+            else { check(Some(a % b)) }
+        }
+    }
+}
+
+// NAME=VALUE with NAME [a-z][a-z0-9_]{0,15} and VALUE -?[0-9]{1,15}
+fn parse_def(s: Str) -> Option[(Str, Int)] {
+    let (name, val) = s.split_once("=")?
+    if name.is_empty() or name.len() > 16 or not name.byte(0).is_lower() { return None }
+    for i in 0..name.len() {
+        if not is_name_char(name.byte(i)) { return None }
+    }
+    let digits = val.strip_prefix("-").unwrap_or(val)
+    if digits.len() > 15 or not digits.is_digits() { return None }
+    Some((name, val.to_int()?))
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var vars: Map[Str, Int] = [:]
+    var exprs: List[Str] = []
+    let args = sys.args
+    var i = 0
+    while i < args.len() {
+        if args[i] == "-D" {
+            if i + 1 >= args.len() {
+                con.eprintln("icalc: -D needs a value")
+                return 2
+            }
+            let Some((name, v)) = parse_def(args[i + 1]) else {
+                con.eprintln("icalc: malformed -D value '{args[i + 1]}'")
+                return 2
+            }
+            vars[name] = v
+            i += 2
+        } else {
+            exprs.push(args[i])
+            i += 1
+        }
+    }
+    if exprs.len() != 1 {
+        con.eprintln("icalc: expected exactly one expression")
+        return 2
+    }
+    let result = parse(exprs[0]).and_then(fn(e) => eval(e, vars))
+    match result {
+        Ok(v) => {
+            con.println("{v}")
+            0
+        }
+        Err(msg) => {
+            con.println("error: {msg}")
+            1
+        }
+    }
+}

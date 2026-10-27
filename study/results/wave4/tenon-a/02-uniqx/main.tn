@@ -1,0 +1,80 @@
+// uniqx [-c] [-d] [-u] [-i] [-f N] [-s N]
+
+struct Opts { count: Bool, dups: Bool, uniques: Bool, fold: Bool, fields: Int, chars: Int }
+
+fn parse_args(args: List[Str]) -> Result[Opts, Str] {
+    var o = Opts { count: false, dups: false, uniques: false, fold: false, fields: 0, chars: 0 }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        i += 1
+        match a {
+            "-c" => o.count = true,
+            "-d" => o.dups = true,
+            "-u" => o.uniques = true,
+            "-i" => o.fold = true,
+            "-f" | "-s" => {
+                if i >= args.len() { return Err("option {a} needs a value") }
+                let v = args[i]
+                i += 1
+                if not v.is_digits() or v.len() > 4 { return Err("bad value '{v}' for {a}") }
+                let n = v.to_int().unwrap()
+                if a == "-f" { o.fields = n } else { o.chars = n }
+            }
+            other => return Err("unexpected argument '{other}'"),
+        }
+    }
+    Ok(o)
+}
+
+fn is_blank(b: Int) -> Bool { b == ' ' or b == '\t' }
+
+fn key(line: Str, o: Opts) -> Str {
+    var p = 0
+    let n = line.len()
+    for _ in 0..o.fields {
+        while p < n and is_blank(line.byte(p)) { p += 1 }
+        while p < n and not is_blank(line.byte(p)) { p += 1 }
+    }
+    p = (p + o.chars).min(n)
+    let k = line.slice(p, n)
+    if o.fold { k.lower() } else { k }
+}
+
+fn emit(out: mut Str, o: Opts, line: Str, size: Int) {
+    let keep = if size >= 2 { not o.uniques } else { not o.dups }
+    if not keep { return }
+    if o.count { out += "{size}".pad_left(7, " ") + " " }
+    out += line
+    out += "\n"
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let o = match parse_args(sys.args) {
+        Ok(x) => x,
+        Err(msg) => {
+            con.eprintln("uniqx: {msg}")
+            return 2
+        }
+    }
+    var out = ""
+    var first = ""
+    var first_key = ""
+    var size = 0
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let k = key(line, o)
+        if size > 0 and k == first_key {
+            size += 1
+        } else {
+            if size > 0 { emit(mut out, o, first, size) }
+            first = line
+            first_key = k
+            size = 1
+        }
+    }
+    if size > 0 { emit(mut out, o, first, size) }
+    con.print(out)
+    0
+}

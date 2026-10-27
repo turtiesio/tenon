@@ -1,0 +1,168 @@
+// shorten DIR: persistent URL shortener with a numbered journal
+
+struct Link { url: Str, hits: Int }
+
+struct State {
+    fs: Fs,
+    journal: Str,
+    links: Map[Str, Link],   // by code
+    next_id: Int,
+    records: Int,
+}
+
+fn valid_url(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 200 { return false }
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        if b < '!' or b > '~' { return false }
+    }
+    true
+}
+
+fn valid_code(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 8 { return false }
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        if not (b.is_digit() or b.is_lower()) { return false }
+    }
+    true
+}
+
+// seq is [1-9][0-9]{0,8}
+fn parse_seq(s: Str) -> Option[Int] {
+    if s.len() > 9 or not s.is_digits() or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+// In-memory effect of a record (used by both replay and live commands).
+fn State.apply(mut self, kind: Str, arg: Str) {
+    if kind == "P" {
+        self.links[self.next_id.to_str_radix(36)] = Link { url: arg, hits: 0 }
+        self.next_id += 1
+    } else if kind == "H" {
+        self.links[arg].hits += 1
+    } else {
+        let _ = self.links.remove(arg)
+    }
+    self.records += 1
+}
+
+// Is `line` a valid record number `self.records + 1` in the current state?
+fn State.record_ok(self, line: Str) -> Option[(Str, Str)] {
+    let t = line.split(" ")
+    if t.len() != 3 { return None }
+    let seq = parse_seq(t[0])?
+    if seq != self.records + 1 { return None }
+    let kind = t[1]
+    if kind == "P" {
+        if not valid_url(t[2]) { return None }
+    } else if kind == "H" or kind == "D" {
+        if not valid_code(t[2]) or not self.links.contains(t[2]) { return None }
+    } else {
+        return None
+    }
+    Some((kind, t[2]))
+}
+
+// Replays the longest valid prefix of the journal text; returns whether the
+// file holds anything beyond that prefix, plus the prefix text.
+fn State.replay(mut self, text: Str) -> (Bool, Str) {
+    let pieces = text.split("\n")
+    // the last piece is either "" (file ends with a newline) or a torn record
+    var prefix = ""
+    var kept = 0
+    for i in 0..pieces.len() - 1 {
+        let Some((kind, arg)) = self.record_ok(pieces[i]) else { break }
+        self.apply(kind, arg)
+        prefix += pieces[i] + "\n"
+        kept += 1
+    }
+    (prefix.len() != text.len(), prefix)
+}
+
+fn State.append(mut self, kind: Str, arg: Str) -> Result[Unit, IoError] {
+    let line = "{self.records + 1} {kind} {arg}\n"
+    self.fs.append(self.journal, line)?
+    self.apply(kind, arg)
+    Ok(())
+}
+
+fn State.handle(mut self, line: Str) -> Result[Str, IoError] {
+    let bad = "ERR bad command"
+    let nf = "ERR not found"
+    let t = line.split(" ")
+    if t[0] == "PUT" and t.len() == 2 and valid_url(t[1]) {
+        let code = self.next_id.to_str_radix(36)
+        self.append("P", t[1])?
+        return Ok("CODE {code}")
+    }
+    if t[0] == "INFO" and t.len() == 1 {
+        return Ok("links={self.links.len()} next={self.next_id.to_str_radix(36)} records={self.records}")
+    }
+    if (t[0] == "GET" or t[0] == "HITS" or t[0] == "DEL") and t.len() == 2 and valid_code(t[1]) {
+        let code = t[1]
+        let Some(link) = self.links.get(code) else { return Ok(nf) }
+        if t[0] == "HITS" { return Ok("HITS {link.hits}") }
+        if t[0] == "GET" {
+            self.append("H", code)?
+            return Ok("URL {link.url}")
+        }
+        self.append("D", code)?
+        return Ok("OK")
+    }
+    Ok(bad)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: shorten DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    let fs = sys.fs
+    if fs.exists(dir) {
+        if not fs.is_dir(dir) {
+            con.eprintln("shorten: {dir} is not a directory")
+            return 1
+        }
+    } else {
+        if let Err(e) = fs.mkdir_one(dir) {
+            con.eprintln("shorten: cannot create {dir}: {e}")
+            return 1
+        }
+    }
+    let path = path_join(dir, "journal")
+    var st = State { fs: fs, journal: path, links: [:], next_id: 1, records: 0 }
+    var text = ""
+    if fs.exists(path) {
+        match fs.read(path) {
+            Ok(t) => { text = t }
+            Err(e) => {
+                con.eprintln("shorten: cannot read journal: {e}")
+                return 1
+            }
+        }
+    }
+    let (dirty, prefix) = st.replay(text)
+    if dirty {
+        if let Err(e) = fs.write(path, prefix) {
+            con.eprintln("shorten: cannot rewrite journal: {e}")
+            return 1
+        }
+    }
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        match st.handle(line) {
+            Ok(resp) => {
+                con.println(resp)
+                con.flush()
+            }
+            Err(e) => {
+                con.eprintln("shorten: journal write failed: {e}")
+                return 1
+            }
+        }
+    }
+    0
+}

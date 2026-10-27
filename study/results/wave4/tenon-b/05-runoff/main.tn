@@ -1,0 +1,123 @@
+// runoff: instant-runoff vote count
+
+fn valid_name(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 20 or not s.byte(0).is_alpha() { return false }
+    for i in 1..s.len() {
+        let b = s.byte(i)
+        if not (b.is_alnum() or b == '_') { return false }
+    }
+    true
+}
+
+// The candidate names, or None if the line is not a valid candidates line.
+fn parse_header(line: Str) -> Option[List[Str]] {
+    let rest = line.strip_prefix("candidates:")?
+    if rest.is_empty() { return None }
+    // every name is preceded by exactly one space: split gives a leading ""
+    let parts = rest.split(" ")
+    if parts[0] != "" { return None }
+    var names: List[Str] = []
+    for i in 1..parts.len() {
+        let n = parts[i]
+        if not valid_name(n) or names.contains(n) { return None }
+        names.push(n)
+    }
+    if names.is_empty() or names.len() > 20 { return None }
+    Some(names)
+}
+
+// Candidate indices in preference order, or None for an invalid ballot.
+fn parse_ballot(line: Str, index: Map[Str, Int]) -> Option[List[Int]] {
+    var prefs: List[Int] = []
+    for item in line.split(">") {
+        let i = index.get(item)?
+        if prefs.contains(i) { return None }
+        prefs.push(i)
+    }
+    Some(prefs)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 0 {
+        con.eprintln("runoff: no arguments expected")
+        return 2
+    }
+    var header: Option[List[Str]] = None
+    var lines: List[Str] = []
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() or line.starts_with("#") { continue }
+        lines.push(line)
+    }
+    if lines.is_empty() {
+        con.eprintln("runoff: missing candidates line")
+        return 1
+    }
+    header = parse_header(lines[0])
+    let Some(names) = header else {
+        con.eprintln("runoff: invalid candidates line")
+        return 1
+    }
+    var index: Map[Str, Int] = [:]
+    for (i, n) in names.enumerate() { index[n] = i }
+
+    var ballots: List[List[Int]] = []
+    var invalid = 0
+    for k in 1..lines.len() {
+        match parse_ballot(lines[k], index) {
+            Some(b) => ballots.push(b),
+            None => { invalid += 1 }
+        }
+    }
+
+    var out = "ballots={ballots.len()} invalid={invalid}\n"
+    var continuing = List.filled(names.len(), true)
+    var remaining = names.len()
+    var round = 1
+    while true {
+        var votes = List.filled(names.len(), 0)
+        var exhausted = 0
+        for b in ballots {
+            var chosen = -1
+            for c in b {
+                if continuing[c] {
+                    chosen = c
+                    break
+                }
+            }
+            if chosen < 0 { exhausted += 1 } else { votes[chosen] += 1 }
+        }
+        let active = ballots.len() - exhausted
+        out += "round {round}:"
+        for c in 0..names.len() {
+            if continuing[c] { out += " {names[c]}={votes[c]}" }
+        }
+        out += " exhausted={exhausted}\n"
+
+        var winner = -1
+        for c in 0..names.len() {
+            if continuing[c] and 2 * votes[c] > active { winner = c }
+        }
+        if winner < 0 and remaining == 1 {
+            for c in 0..names.len() {
+                if continuing[c] { winner = c }
+            }
+        }
+        if winner >= 0 {
+            out += "winner: {names[winner]}\n"
+            break
+        }
+        // eliminate the weakest; among ties the latest in listing order
+        var weakest = -1
+        for c in 0..names.len() {
+            if continuing[c] and (weakest < 0 or votes[c] <= votes[weakest]) { weakest = c }
+        }
+        continuing[weakest] = false
+        remaining -= 1
+        out += "eliminated: {names[weakest]}\n"
+        round += 1
+    }
+    con.print(out)
+    0
+}

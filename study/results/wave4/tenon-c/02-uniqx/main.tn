@@ -1,0 +1,57 @@
+fn key(line: Str, fields: Int, chars: Int, insensitive: Bool) -> Str {
+    var pos = 0
+    for _ in 0..fields {
+        while pos < line.len() and (line.byte(pos) == ' ' or line.byte(pos) == '\t') { pos += 1 }
+        while pos < line.len() and line.byte(pos) != ' ' and line.byte(pos) != '\t' { pos += 1 }
+    }
+    pos = (pos + chars).min(line.len())
+    let rest = line.slice(pos, line.len())
+    if insensitive { rest.lower() } else { rest }
+}
+fn emit(con: Console, line: Str, count: Int, counted: Bool, repeated: Bool, only_unique: Bool) {
+    if (not repeated or count >= 2) and (not only_unique or count == 1) {
+        con.println(if counted { "{count.to_str().pad_left(7, " ")} {line}" } else { line })
+    }
+}
+fn main(sys: Sys) -> Int {
+    var counted = false
+    var repeated = false
+    var only_unique = false
+    var insensitive = false
+    var fields = 0
+    var chars = 0
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        match arg {
+            "-c" => counted = true,
+            "-d" => repeated = true,
+            "-u" => only_unique = true,
+            "-i" => insensitive = true,
+            "-f" | "-s" => {
+                i += 1
+                if i >= sys.args.len() { sys.console.eprintln("missing value"); return 2 }
+                let value = sys.args[i]
+                if not value.is_digits() or value.len() > 4 { sys.console.eprintln("invalid value"); return 2 }
+                if arg == "-f" { fields = value.to_int().unwrap() } else { chars = value.to_int().unwrap() }
+            }
+            _ => { sys.console.eprintln("invalid option"); return 2 },
+        }
+        i += 1
+    }
+    var first = ""
+    var previous = ""
+    var count = 0
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let current = key(line, fields, chars, insensitive)
+        if count > 0 and current != previous {
+            emit(sys.console, first, count, counted, repeated, only_unique)
+            count = 0
+        }
+        if count == 0 { first = line; previous = current }
+        count += 1
+    }
+    if count > 0 { emit(sys.console, first, count, counted, repeated, only_unique) }
+    0
+}

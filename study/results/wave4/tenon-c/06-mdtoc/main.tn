@@ -1,0 +1,47 @@
+struct Heading { level: Int, text: Str, slug: Str }
+fn base_slug(text: Str) -> Str {
+    var result = ""
+    for char in text.lower().chars() {
+        let c = char.byte(0)
+        if c == ' ' { result += "-" }
+        else if c.is_lower() or c.is_digit() or c == '-' or c == '_' { result += char }
+    }
+    if result.is_empty() { "section" } else { result }
+}
+fn main(sys: Sys) -> Int {
+    var limit = 6
+    if not sys.args.is_empty() {
+        if sys.args.len() != 2 or sys.args[0] != "-l" or sys.args[1].len() != 1 or not sys.args[1].is_digits() {
+            sys.console.eprintln("invalid arguments"); return 2
+        }
+        limit = sys.args[1].to_int().unwrap()
+        if limit < 1 or limit > 6 { sys.console.eprintln("invalid level"); return 2 }
+    }
+    var fenced = false
+    var used: Set[Str] = Set.new()
+    var headings: List[Heading] = []
+    var min_level = 6
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.starts_with("```") { fenced = not fenced; continue }
+        if fenced { continue }
+        var level = 0
+        while level < line.len() and line.byte(level) == '#' { level += 1 }
+        if level < 1 or level > 6 or level == line.len() or line.byte(level) != ' ' { continue }
+        let text = line.slice(level + 1, line.len()).trim_chars(" ")
+        if text.is_empty() { continue }
+        let base = base_slug(text)
+        var slug = base
+        var suffix = 1
+        while used.contains(slug) { slug = "{base}-{suffix}"; suffix += 1 }
+        let _ = used.insert(slug)
+        if level <= limit {
+            headings.push(Heading { level: level, text: text, slug: slug })
+            min_level = min_level.min(level)
+        }
+    }
+    for heading in headings {
+        sys.console.println("{" ".repeat(2 * (heading.level - min_level))}- [{heading.text}](#{heading.slug})")
+    }
+    0
+}

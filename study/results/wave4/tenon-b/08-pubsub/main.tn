@@ -1,0 +1,143 @@
+// pubsub: topic-based message broker over a line protocol
+
+struct Client { subs: List[Str], mailbox: List[Str], dropped: Int }
+
+const BAD: Str = "ERR bad command"
+
+fn is_lower_alnum(s: Str) -> Bool {
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        if not (b.is_lower() or b.is_digit()) { return false }
+    }
+    true
+}
+
+fn valid_client(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 16 and s.byte(0).is_lower() and is_lower_alnum(s)
+}
+
+fn valid_segment(s: Str) -> Bool { s.len() >= 1 and s.len() <= 16 and is_lower_alnum(s) }
+
+fn valid_topic(s: Str) -> Bool {
+    let segs = s.split(".")
+    if segs.len() > 8 { return false }
+    segs.all(fn(g) => valid_segment(g))
+}
+
+fn valid_pattern(s: Str) -> Bool {
+    let segs = s.split(".")
+    if segs.len() > 8 { return false }
+    for (i, g) in segs.enumerate() {
+        if g == "*" { continue }
+        if g == "#" {
+            if i != segs.len() - 1 { return false }
+            continue
+        }
+        if not valid_segment(g) { return false }
+    }
+    true
+}
+
+fn valid_text(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 32 { return false }
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        if not (b.is_alnum() or b == '_' or b == '.' or b == '!' or b == '?' or b == '-') { return false }
+    }
+    true
+}
+
+fn valid_max(s: Str) -> Option[Int] {
+    if s.len() > 3 or not s.is_digits() or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+fn matches(pattern: Str, topic: Str) -> Bool {
+    let p = pattern.split(".")
+    let t = topic.split(".")
+    let k = p.len()
+    let multi = p[k - 1] == "#"
+    let fixed = if multi { k - 1 } else { k }
+    if multi {
+        if t.len() < fixed { return false }
+    } else if t.len() != k {
+        return false
+    }
+    for i in 0..fixed {
+        if p[i] != "*" and p[i] != t[i] { return false }
+    }
+    true
+}
+
+struct Broker { clients: Map[Str, Client] }
+
+fn Broker.ensure(mut self, name: Str) {
+    self.clients.or_insert(name, Client { subs: [], mailbox: [], dropped: 0 })
+}
+
+fn Broker.handle(mut self, line: Str) -> Str {
+    let t = line.split(" ")
+    let cmd = t[0]
+    if cmd == "SUB" or cmd == "UNSUB" {
+        if t.len() != 3 or not valid_client(t[1]) or not valid_pattern(t[2]) { return BAD }
+        self.ensure(t[1])
+        let idx = self.clients[t[1]].subs.index_of(t[2])
+        if cmd == "SUB" {
+            if idx.is_some() { return "ERR already subscribed" }
+            self.clients[t[1]].subs.push(t[2])
+            return "OK"
+        }
+        let Some(i) = idx else { return "ERR not subscribed" }
+        let _ = self.clients[t[1]].subs.remove(i)
+        return "OK"
+    }
+    if cmd == "PUB" {
+        if t.len() != 3 or not valid_topic(t[1]) or not valid_text(t[2]) { return BAD }
+        let msg = "{t[1]}={t[2]}"
+        var delivered = 0
+        for name in self.clients.keys() {
+            if self.clients[name].subs.any(fn(p) => matches(p, t[1])) {
+                if self.clients[name].mailbox.len() >= 3 {
+                    let _ = self.clients[name].mailbox.remove(0)
+                    self.clients[name].dropped += 1
+                }
+                self.clients[name].mailbox.push(msg)
+                delivered += 1
+            }
+        }
+        return "DELIVERED {delivered}"
+    }
+    if cmd == "POLL" {
+        if t.len() != 3 or not valid_client(t[1]) { return BAD }
+        let Some(max) = valid_max(t[2]) else { return BAD }
+        self.ensure(t[1])
+        let k = max.min(self.clients[t[1]].mailbox.len())
+        var out = "MSGS {k}"
+        for _ in 0..k {
+            out += " " + self.clients[t[1]].mailbox.remove(0)
+        }
+        return out
+    }
+    if cmd == "STATS" {
+        if t.len() != 2 or not valid_client(t[1]) { return BAD }
+        self.ensure(t[1])
+        let c = self.clients[t[1]]
+        return "subs={c.subs.len()} queued={c.mailbox.len()} dropped={c.dropped}"
+    }
+    BAD
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 0 {
+        con.eprintln("pubsub: no arguments expected")
+        return 2
+    }
+    var broker = Broker { clients: [:] }
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        con.println(broker.handle(line))
+        con.flush()
+    }
+    0
+}

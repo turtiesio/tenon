@@ -1,0 +1,74 @@
+// mdtoc [-l LEVEL]: table of contents for a Markdown document on stdin.
+
+struct Heading { level: Int, text: Str, slug: Str }
+
+// (level, text) if the line is a heading.
+fn parse_heading(line: Str) -> Option[(Int, Str)] {
+    var level = 0
+    while level < line.len() and line.byte(level) == '#' { level += 1 }
+    if level < 1 or level > 6 or level >= line.len() or line.byte(level) != ' ' { return None }
+    let text = line.slice(level + 1, line.len()).trim_chars(" ")
+    if text.is_empty() { None } else { Some((level, text)) }
+}
+
+fn base_slug(text: Str) -> Str {
+    var s = ""
+    for i in 0..text.len() {
+        let c = text.byte(i)
+        if c == ' ' {
+            s += "-"
+        } else if c.is_upper() {
+            s += (c - 'A' + 'a').char()
+        } else if c.is_lower() or c.is_digit() or c == '-' or c == '_' {
+            s += c.char()
+        }
+    }
+    if s.is_empty() { "section" } else { s }
+}
+
+fn unique_slug(base: Str, used: mut Set[Str]) -> Str {
+    var slug = base
+    var n = 1
+    while used.contains(slug) {
+        slug = "{base}-{n}"
+        n += 1
+    }
+    let _ = used.insert(slug)
+    slug
+}
+
+fn parse_args(args: List[Str]) -> Option[Int] {
+    if args.is_empty() { return Some(6) }
+    if args.len() != 2 or args[0] != "-l" or args[1].len() != 1 { return None }
+    let level = args[1].to_int()?
+    if level >= 1 and level <= 6 { Some(level) } else { None }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let Some(max_level) = parse_args(sys.args) else {
+        con.eprintln("usage: mdtoc [-l LEVEL]   (LEVEL is 1-6)")
+        return 2
+    }
+    var used: Set[Str] = Set.new()
+    var listed: List[Heading] = []
+    var in_code = false
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.starts_with("```") {
+            in_code = not in_code
+            continue
+        }
+        if in_code { continue }
+        let Some((level, text)) = parse_heading(line) else { continue }
+        let slug = unique_slug(base_slug(text), mut used)
+        if level <= max_level { listed.push(Heading { level: level, text: text, slug: slug }) }
+    }
+    if listed.is_empty() { return 0 }
+    var min = 6
+    for h in listed { min = min.min(h.level) }
+    for h in listed {
+        con.println("{" ".repeat(2 * (h.level - min))}- [{h.text}](#{h.slug})")
+    }
+    0
+}
