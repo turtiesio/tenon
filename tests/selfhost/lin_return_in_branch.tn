@@ -1,0 +1,16 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn f(c: Claim, early: Bool) -> Int {
+    if early {
+        c.done()
+        return 0
+    }
+    c.done()
+    1
+}
+fn g(c: Claim, early: Bool) -> Int {
+    if early { return 0 }
+    c.done()
+    1
+}
+fn main() { let _ = f(Claim { id: 1 }, true) }

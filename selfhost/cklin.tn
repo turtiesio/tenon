@@ -346,14 +346,62 @@ fn Walk.exprs(mut self, xs: List[ckast.Expr], consume: Bool) -> Result[Unit, cka
     Ok(())
 }
 
+fn is_place(e: ckast.Expr) -> Bool {
+    match e.k {
+        XName(_) => true,
+        XField(b, _) => is_place(b),
+        XTField(b, _) => is_place(b),
+        XIndex(b, _) => is_place(b),
+        XMutArg(b) => is_place(b),
+        _ => false,
+    }
+}
+
+// The first Map/Set inside t (outermost first) whose key type cannot be compared exactly.
+fn Walk.bad_key(self, t: cktypes.Ty) -> Option[(cktypes.Ty, Str)] {
+    match t {
+        Con(n, a) if (n == "Map" or n == "Set") and not a.is_empty() => match self.env.incomparable_part(a[0], true) {
+            Some(b) => return Some((a[0], b)),
+            None => {}
+        },
+        _ => {}
+    }
+    let kids = match t {
+        Con(_, a) | Tup(a) => a,
+        Fun(a, r) => a + [r],
+        _ => [],
+    }
+    for x in kids {
+        match self.bad_key(x) {
+            Some(r) => return Some(r),
+            None => {}
+        }
+    }
+    None
+}
+
 fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag] {
+    // A linear value that is only inspected must live in a variable;
+    // otherwise it is created here and dropped right away.
+    if not consume and self.kind(e.id) == Linear and not is_place(e) {
+        return ckast.fail(e.sp, "this linear value is created here and never consumed; bind it with 'let' and consume it")
+    }
     match self.types.get(e.id) {
-        Some(Con(n, a)) if n == "List" or n == "Map" => {
-            for x in a {
-                if self.kind_ty(x) != Plain { return ckast.fail(e.sp, n + " cannot hold linear or unique values") }
+        Some(t) => {
+            match t {
+                Con(n, a) if n == "List" or n == "Map" => {
+                    for x in a {
+                        if self.kind_ty(x) != Plain { return ckast.fail(e.sp, n + " cannot hold linear or unique values") }
+                    }
+                }
+                _ => {}
+            }
+            match self.bad_key(t) {
+                Some((k, b)) => return ckast.fail(e.sp, k.show() + " cannot be a map or set key: it contains " + b),
+                None => {}
             }
         }
-        _ => {}
+        None => {}
     }
     match e.k {
         XInt | XFloat | XBool(_) | XUnit | XPath(_, _) => Ok(()),
@@ -453,7 +501,17 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
                 let mark = self.vars.len()
                 if destructure { self.bind(a.pat)? }
                 match a.guard {
-                    Some(g) => self.expr(g, false)?,
+                    Some(g) => {
+                        // A guard may run and fail, after which another arm runs:
+                        // it must not consume anything.
+                        let before = self.vars.map(fn(v) => v.moved.is_some())
+                        self.expr(g, false)?
+                        for i in 0..before.len().min(self.vars.len()) {
+                            if self.vars[i].moved.is_some() and not before[i] {
+                                return ckast.fail(g.sp, "a match guard cannot consume '" + self.vars[i].name + "': if the guard fails, another arm runs")
+                            }
+                        }
+                    }
                     None => {}
                 }
                 self.expr(a.body, consume)?
@@ -474,7 +532,14 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
         XNew(_, fs, base) => {
             for f in fs { self.expr(f.1, true)? }
             match base {
-                Some(b) => self.expr(b, true),
+                Some(b) => {
+                    for f in fs {
+                        if self.kind(f.1.id) == Linear {
+                            return ckast.fail(b.sp, "'..' would drop the base's linear field '" + f.0 + "', which '" + f.0 + ": ...' replaces")
+                        }
+                    }
+                    self.expr(b, true)
+                }
                 None => Ok(()),
             }
         }

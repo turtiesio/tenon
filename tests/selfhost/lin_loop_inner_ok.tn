@@ -1,0 +1,11 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn main() {
+    for i in 0..3 {
+        let c = Claim { id: i }
+        match i {
+            0 => c.done(),
+            _ => c.done(),
+        }
+    }
+}

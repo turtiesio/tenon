@@ -1,0 +1,7 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn main() {
+    let c = Claim { id: 1 }
+    let same = c == Claim { id: 1 }
+    c.done()
+}

@@ -1,0 +1,10 @@
+// Mutually recursive generic functions: the cache assumes success while a
+// query is in progress, then records the real answer.
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn ping[T](x: T, n: Int) -> T { if n == 0 { x } else { pong(x, n - 1) } }
+fn pong[T](x: T, n: Int) -> T { if n == 0 { x } else { ping(x, n - 1) } }
+fn main() {
+    let c = ping(Claim { id: 1 }, 4)
+    c.done()
+}

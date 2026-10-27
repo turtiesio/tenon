@@ -1,0 +1,7 @@
+linear struct Claim { id: Int }
+fn main() {
+    var xs: List[Int] = [1]
+    xs[0] = 2
+    var c = Claim { id: 1 }
+    c = Claim { id: 2 }
+}

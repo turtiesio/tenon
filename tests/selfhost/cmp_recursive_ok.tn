@@ -1,0 +1,6 @@
+enum Tree { Leaf, Node(Tree, Int, Tree) }
+struct Wrap { t: Tree, xs: List[Wrap] }
+fn main() {
+    let a = Wrap { t: Leaf, xs: [] }
+    let b = a == a
+}

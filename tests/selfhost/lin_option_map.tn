@@ -1,0 +1,6 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) -> Int { 1 }
+fn main() {
+    let o = Some(Claim { id: 1 })
+    let n = o.map(fn(c) => c.done())
+}

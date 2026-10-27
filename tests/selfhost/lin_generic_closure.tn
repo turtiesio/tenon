@@ -1,0 +1,11 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn later[T](x: T) -> fn() -> Int {
+    fn() => {
+        let y = x
+        1
+    }
+}
+fn main() {
+    let f = later(Claim { id: 1 })
+}

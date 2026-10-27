@@ -1,0 +1,6 @@
+linear struct Claim { id: Int, n: Int }
+struct Pair { a: Int, b: Str }
+fn main() {
+    let p = Pair { a: 1, b: "x" }
+    let q = Pair { a: 2, ..p }
+}

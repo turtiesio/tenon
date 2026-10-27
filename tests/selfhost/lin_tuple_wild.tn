@@ -1,0 +1,4 @@
+linear struct Claim { id: Int }
+fn main() {
+    let (a, _) = (1, Claim { id: 2 })
+}

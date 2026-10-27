@@ -212,6 +212,57 @@ pub fn Env.enum_variants(self, t: cktypes.Ty) -> Option[List[(Str, List[cktypes.
     }
 }
 
+// The first part of t that derived equality cannot handle exactly: functions
+// and capabilities (and, for map keys, Float, since NaN != NaN). Looks through
+// struct fields and enum payloads (src/check_expr.rs `incomparable_part`).
+pub fn Env.incomparable_part(self, t: cktypes.Ty, key: Bool) -> Option[Str] {
+    self.incomparable_walk(t, key, []).0
+}
+
+fn Env.incomparable_walk(self, t: cktypes.Ty, key: Bool, seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
+    if seen0.contains(t) { return (None, seen0) }
+    var seen = seen0
+    seen.push(t)
+    match t {
+        Fun(_, _) => return (Some("the function type " + t.show()), seen),
+        Con(n, _) if cktypes.is_capability(n) => return (Some("the capability " + n), seen),
+        Con(n, _) if key and n == "Float" => return (Some("Float (NaN is not equal to itself)"), seen),
+        Tup(ts) => return self.incomparable_list(ts, key, seen),
+        Con(_, args) => {
+            match self.struct_fields(t) {
+                Some(fs) => {
+                    let r = self.incomparable_list(fs.map(fn(f) => f.1), key, seen)
+                    if r.0.is_some() { return r }
+                    seen = r.1
+                }
+                None => match self.enum_variants(t) {
+                    Some(vs) => {
+                        var all: List[cktypes.Ty] = []
+                        for v in vs { all.extend(v.1) }
+                        let r = self.incomparable_list(all, key, seen)
+                        if r.0.is_some() { return r }
+                        seen = r.1
+                    }
+                    None => {}
+                },
+            }
+            return self.incomparable_list(args, key, seen)
+        }
+        _ => {}
+    }
+    (None, seen)
+}
+
+fn Env.incomparable_list(self, ts: List[cktypes.Ty], key: Bool, seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
+    var seen = seen0
+    for x in ts {
+        let r = self.incomparable_walk(x, key, seen)
+        if r.0.is_some() { return r }
+        seen = r.1
+    }
+    (None, seen)
+}
+
 // A free function visible by its plain name: the current module's, else the prelude's.
 pub fn Env.lookup_fn(self, n: Str) -> Option[Int] {
     match self.find_fn(self.internal(self.cur, n)) {

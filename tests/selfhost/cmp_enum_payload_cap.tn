@@ -1,0 +1,5 @@
+enum Src { File(Fs), Nothing }
+fn main(sys: Sys) {
+    let a = File(sys.fs)
+    let b = a == Nothing
+}

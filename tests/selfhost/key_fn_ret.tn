@@ -1,0 +1,4 @@
+fn f() -> Option[Map[Float, Int]] { None }
+fn main() {
+    let o = f()
+}

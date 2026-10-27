@@ -642,6 +642,11 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
                 let t = self.expr(l, t0)?
                 let _ = self.expr(r, t)?
                 self.comparable(t, e.sp)?
+                let rt = self.sub.resolve(t)
+                match self.env.incomparable_part(rt, false) {
+                    Some(bad) => return ckast.fail(e.sp, "values of type " + rt.show() + " cannot be compared: they contain " + bad),
+                    None => {}
+                }
                 return Ok(cktypes.t_bool())
             }
             let t = if is_var(self.sub.shallow(exp)) { self.sub.fresh() } else { exp }
