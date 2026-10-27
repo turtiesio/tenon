@@ -14,31 +14,32 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 "$T" build selfhost/astdump.tn -o "$tmp/astdump"
 "$T" build selfhost/check.tn -o "$tmp/check"
 
-# Files where exact checker agreement is unreasonable because of a bootstrap
-# quirk; each entry points to a note in selfhost/CHECKER_NOTES.md.
-skip_check=" "
-
-n=0; fail=0; checked=0; accepted=0; rejected=0
-while IFS= read -r f; do
-  n=$((n+1))
+# One job per file, run in parallel; each prints FAIL lines and one result word.
+one() {
+  f=$1; T=$2; tmp=$3; out=""
   for pair in "tokens:tokens" "ast:astdump"; do
     cmd=${pair%%:*}; exe=${pair##*:}
     if ! cmp -s <("$T" "$cmd" "$f") <("$tmp/$exe" "$f"); then
-      echo "FAIL self-hosted $exe disagrees on $f"; diff <("$T" "$cmd" "$f") <("$tmp/$exe" "$f") | head -5; fail=$((fail+1))
+      echo "FAIL self-hosted $exe disagrees on $f"; diff <("$T" "$cmd" "$f") <("$tmp/$exe" "$f") | head -5; out=fail
     fi
   done
-  case "$skip_check" in *" $f "*) continue ;; esac
-  if "$T" check "$f" > /dev/null 2> "$tmp/err"; then
-    want=ok; accepted=$((accepted+1))
-  else
-    want=$(head -n 1 "$tmp/err"); rejected=$((rejected+1))
-  fi
+  e=$(mktemp)
+  if "$T" check "$f" > /dev/null 2> "$e"; then want=ok; kind=accepted; else want=$(head -n 1 "$e"); kind=rejected; fi
+  rm -f "$e"
   got=$("$tmp/check" "$f" 2>&1 | head -n 1 || true)
-  checked=$((checked+1))
   if [ "$want" != "$got" ]; then
-    echo "FAIL self-hosted check disagrees on $f"; echo "  bootstrap: $want"; echo "  selfhost:  $got"; fail=$((fail+1))
+    echo "FAIL self-hosted check disagrees on $f"; echo "  bootstrap: $want"; echo "  selfhost:  $got"; out=fail
   fi
-done < <(find src std tests programs selfhost bench study -name '*.tn' 2>/dev/null | sort)
+  echo "RESULT $kind ${out:-ok}"
+}
+export -f one
+find src std tests programs selfhost bench study -name '*.tn' 2>/dev/null | sort \
+  | xargs -P 8 -I{} bash -c 'one "$@"' _ {} "$T" "$tmp" > "$tmp/results"
+grep -v '^RESULT ' "$tmp/results" || true
+n=$(grep -c '^RESULT ' "$tmp/results")
+accepted=$(grep -c '^RESULT accepted' "$tmp/results" || true)
+rejected=$(grep -c '^RESULT rejected' "$tmp/results" || true)
+fail=$(grep -c '^FAIL ' "$tmp/results" || true)
 echo "selfhost: lexer and parser agree with the bootstrap on $n files;" \
-  "checker on $checked ($accepted accepted, $rejected rejected); $fail disagreements"
+  "checker on $n ($accepted accepted, $rejected rejected); $fail disagreements"
 [ "$fail" = 0 ]
