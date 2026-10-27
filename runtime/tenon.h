@@ -251,7 +251,14 @@ static inline bool tn_str_eq_c(tn_Str a, const char *c) {
     return (size_t)a.len == n && memcmp(a.p, c, n) == 0;
 }
 static inline bool tn_Str_eq(tn_Str a, tn_Str b) {
-    return a.len == b.len && (a.p == b.p || memcmp(a.p, b.p, (size_t)a.len) == 0);
+    if (a.len != b.len) return false;
+    if (a.p == b.p) return true;
+    if (a.len <= 16) { /* short strings: compare inline instead of calling memcmp */
+        for (int64_t i = 0; i < a.len; i++)
+            if (a.p[i] != b.p[i]) return false;
+        return true;
+    }
+    return memcmp(a.p, b.p, (size_t)a.len) == 0;
 }
 static inline int tn_Str_cmp(tn_Str a, tn_Str b) {
     int64_t n = a.len < b.len ? a.len : b.len;
@@ -278,7 +285,7 @@ static inline uint64_t tn_Str_hash(tn_Str s) {
         h ^= h >> 31;
     }
     uint64_t w = 0;
-    memcpy(&w, p, (size_t)n);
+    for (int64_t i = 0; i < n; i++) w |= (uint64_t)(uint8_t)p[i] << (8 * i); /* no memcpy call */
     return tn_mix(h ^ w);
 }
 /* mode: TN_TOP (a top-level string prints raw), TN_FULL (encode: show every field) */
