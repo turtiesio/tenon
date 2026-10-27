@@ -1,0 +1,13 @@
+// module: imports hidepre_a but defines no path_join or Set of its own, so
+// the unqualified names are the prelude's.
+import hidepre_a
+
+pub fn joined() -> Str { path_join("a", "b") + " / " + hidepre_a.path_join("a", "b") }
+
+pub fn count() -> Int {
+    var s: Set[Int] = Set.new()
+    let _ = s.insert(1)
+    let _ = s.insert(1)
+    let _ = s.insert(2)
+    s.len() + hidepre_a.set().label.len()
+}

@@ -235,7 +235,9 @@ fn Ck.stmt(mut self, s: ckast.Stmt) -> Result[Unit, ckast.Diag] {
                         QOr(_) => return ckast.fail(pat.sp, "'let ... else' cannot use '|' patterns; use 'match'"),
                         _ => {}
                     }
-                    if not ckast.leaves(b) {
+                    let panic_is_prelude = self.lookup("panic").is_none()
+                        and self.env.lookup_fn("panic").map_or(false, fn(i) => self.env.fns[i].sp.file == 0)
+                    if not ckast.leaves(b, panic_is_prelude) {
                         return ckast.fail(b.sp, "the 'else' block of 'let ... else' must leave: end it with return, break, continue or panic")
                     }
                     // Checked before the pattern binds: the else block cannot see its names.
@@ -521,6 +523,10 @@ fn Ck.variant_by_name(self, v: Str, sp: ckast.Span) -> Result[Option[(Int, Int)]
         if e.file == self.env.cur or e.file == 0 or (e.public and self.env.imported(self.env.modules[e.file])) {
             found.push(c)
         }
+    }
+    // Variants of the file's own and imported enums hide the prelude's.
+    if found.any(fn(c) => self.env.enums[c.0].file != 0) {
+        found = found.filter(fn(c) => self.env.enums[c.0].file != 0)
     }
     if found.is_empty() { return Ok(None) }
     if found.len() == 1 { return Ok(Some(found[0])) }

@@ -1,0 +1,18 @@
+// A top-level item of the main file hides the prelude item of the same name
+// in this file; the prelude's own code keeps using its own item.
+fn path_join(a: Str, b: Str) -> Str { a + "::" + b }
+const INT_MAX: Int = 99
+fn path_parent(p: Str) -> Str { "parent of " + p }
+
+fn main(sys: Sys) {
+    sys.console.println(path_join("a", "b"))
+    sys.console.println("{INT_MAX} {INT_MIN < 0}")
+    // path_base is still the prelude's; path_parent here is ours.
+    sys.console.println("{path_parent("x/y")} {path_base("x/y")}")
+    // As a value, too.
+    let f = path_join
+    sys.console.println(f("c", "d"))
+    // The prelude's panic is still the one that leaves a 'let ... else'.
+    let Some(n) = "42".to_int() else { panic("not a number") }
+    sys.console.println("{n}")
+}

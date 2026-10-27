@@ -149,6 +149,7 @@ pub struct Checker {
     pub(crate) let_types: Vec<(Span, String, Ty)>, // `let` bindings, checked for unresolved types
     pub(crate) modules: Vec<String>,              // module name per file
     pub(crate) imports: HashMap<u16, Vec<String>>, // modules imported by each file
+    pub(crate) prelude_items: Vec<String>,        // top-level names the prelude declares (hidden by the main file's own)
 }
 
 pub(crate) type CResult<T> = Result<T, Diag>;
@@ -201,12 +202,22 @@ fn const_cycles(c: &Checked, prog: &Program) -> CResult<()> {
     Ok(())
 }
 
+// Names of the prelude's top-level items (free functions, constants, types).
+fn prelude_items(prog: &Program) -> Vec<String> {
+    let mut v: Vec<String> = prog.fns.iter().filter(|f| f.span.file == 0 && f.owner.is_none()).map(|f| f.name.clone()).collect();
+    v.extend(prog.structs.iter().filter(|s| s.span.file == 0).map(|s| s.name.clone()));
+    v.extend(prog.enums.iter().filter(|e| e.span.file == 0).map(|e| e.name.clone()));
+    v
+}
+
 // Does this block always leave (return, break, continue, or panic)?
-fn leaves(b: &Block) -> bool {
+// `panic_is_prelude`: the name `panic` here means the prelude's `panic`
+// (not a local or a function of the main file that hides it).
+fn leaves(b: &Block, panic_is_prelude: bool) -> bool {
     match b.stmts.last().map(|s| &s.kind) {
         Some(StmtKind::Return(_) | StmtKind::Break | StmtKind::Continue) => true,
-        Some(StmtKind::Expr(Expr { kind: ExprKind::Call(f, _), .. })) => matches!(&f.kind, ExprKind::Name(n) if n == "panic"),
-        Some(StmtKind::Expr(Expr { kind: ExprKind::Block(inner), .. })) => leaves(inner),
+        Some(StmtKind::Expr(Expr { kind: ExprKind::Call(f, _), .. })) => panic_is_prelude && matches!(&f.kind, ExprKind::Name(n) if n == "panic"),
+        Some(StmtKind::Expr(Expr { kind: ExprKind::Block(inner), .. })) => leaves(inner, panic_is_prelude),
         _ => false,
     }
 }
@@ -332,6 +343,7 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
         let_types: vec![],
         modules: prog.modules.clone(),
         imports: HashMap::new(),
+        prelude_items: prelude_items(&prog),
     };
     for im in &prog.imports {
         c.imports.entry(im.file).or_default().push(im.name.clone());
@@ -358,9 +370,13 @@ impl Checker {
     // ---- declarations ----
 
     // Internal name of item `n` declared in `file`: modules prefix their items.
+    // The main file's items keep their plain names, except those that hide a
+    // prelude item: they become `<main>.n`, so the prelude's own code (and
+    // every other module) still resolves `n` to the prelude's item.
     pub(crate) fn internal(&self, file: u16, n: &str) -> String {
         match self.modules.get(file as usize) {
             Some(m) if !m.is_empty() => format!("{}.{}", m, n),
+            _ if file == 1 && self.prelude_items.iter().any(|p| p == n) => format!("<main>.{}", n),
             _ => n.to_string(),
         }
     }
@@ -844,7 +860,9 @@ impl Checker {
                         if matches!(pat.kind, PatKind::Or(_)) {
                             return err(pat.span, "'let ... else' cannot use '|' patterns; use 'match'");
                         }
-                        if !leaves(b) {
+                        let panic_is_prelude = self.lookup("panic").is_none()
+                            && self.lookup_fn("panic").map(|i| self.out.fns[i].span.file == 0).unwrap_or(false);
+                        if !leaves(b, panic_is_prelude) {
                             return err(b.span, "the 'else' block of 'let ... else' must leave: end it with return, break, continue or panic");
                         }
                         // Checked before the pattern binds: the else block cannot see its names.

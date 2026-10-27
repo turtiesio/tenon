@@ -1,0 +1,7 @@
+// error: the 'else' block of 'let ... else' must leave
+// A local named `panic` is not the prelude's panic: calling it does not leave.
+fn main() {
+    let panic = fn(msg: Str) => assert(msg != "")
+    let Some(n) = "x".to_int() else { panic("not a number") }
+    assert(n == 0)
+}

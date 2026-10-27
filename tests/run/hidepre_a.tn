@@ -1,0 +1,10 @@
+// module: hides the prelude's path_join and Set inside this file only.
+pub fn path_join(a: Str, b: Str) -> Str { a + "+" + b }
+
+pub struct Set { pub label: Str }
+
+pub enum Level { Low, None }
+
+pub fn joined() -> Str { path_join("a", "b") }
+
+pub fn set() -> Set { Set { label: "a's set" } }

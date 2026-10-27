@@ -1,0 +1,6 @@
+// error: function '<main>.path_join' is already defined
+// Hiding a prelude function is allowed once; defining it twice in the same
+// file is still a duplicate.
+fn path_join(a: Str, b: Str) -> Str { a + b }
+fn path_join(a: Str, b: Str) -> Str { b + a }
+fn main() { let _ = path_join("a", "b") }

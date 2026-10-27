@@ -1,0 +1,6 @@
+// error: type '<main>.Option' is already defined
+// A struct and an enum of the same name in one file are duplicates, also
+// when the name hides a prelude type.
+struct Option { x: Int }
+enum Option { Yes, No }
+fn main() { }

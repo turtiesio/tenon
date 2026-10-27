@@ -1,0 +1,28 @@
+// Variants of this file's enums hide prelude variants of the same name when
+// written unqualified; `Option.Some` still names the prelude's.
+enum Reply { Some(Int), None, Ok }
+
+fn show(r: Reply) -> Str {
+    match r {
+        Some(n) => "some {n}",
+        None => "none",
+        Ok => "ok",
+    }
+}
+
+fn main(sys: Sys) {
+    sys.console.println("{show(Some(3))} {show(None)} {show(Ok)}")
+    let o: Option[Int] = Option.Some(4)
+    let z: Option[Int] = Option.None
+    sys.console.println("{o} {z} {o.unwrap_or(0) + z.unwrap_or(1)}")
+    // Patterns follow the matched value's type.
+    match o {
+        Some(n) => sys.console.println("prelude some {n}"),
+        None => sys.console.println("prelude none"),
+    }
+    let r: Result[Int, Str] = "8".to_int().ok_or("bad")
+    match r {
+        Ok(n) => sys.console.println("prelude ok {n}"),
+        Err(e) => sys.console.println(e),
+    }
+}

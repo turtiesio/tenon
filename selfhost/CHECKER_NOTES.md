@@ -38,6 +38,12 @@ expressions, declarations, variants, parameters and imports.
 - The linear pass's cache of "generic function accepts a linear argument"
   answers is shared across the whole pass, as the bootstrap's thread-local is.
 
+- Hiding prelude items: a main-file item whose name the prelude also
+  declares at top level gets the internal name `<main>.NAME`
+  (`Env.internal`), and diagnostics print it that way. Unqualified variants
+  of non-prelude enums hide prelude variants (`variant_by_name`). `panic`
+  ends a `let ... else` block only when it resolves to the prelude's.
+
 ## Bootstrap quirks reproduced on purpose
 
 - `check_recursion` reports at the default span, rendered `<prelude>:0:0`.
