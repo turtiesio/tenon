@@ -285,7 +285,10 @@ impl<'a> Emitter<'a> {
             StmtKind::Expr(e) => {
                 self.expr(e);
             }
-            StmtKind::Let { pat, value, .. } => {
+            StmtKind::Let { pat, value, mutable, .. } => {
+                if *mutable {
+                    pat_names(pat, &mut self.st.muts);
+                }
                 let t = self.c.ty(pat.id).subst(&self.st.tsub);
                 let cv = self.expr(value);
                 if let PatKind::Bind(n) = &pat.kind {
@@ -295,7 +298,7 @@ impl<'a> Emitter<'a> {
                     self.reg_local(&format!("v_{}", n), &t);
                 } else {
                     let v = if cv.owned { cv.code.clone() } else { self.tmp_val(&t, &cv.code).code };
-                    self.bind(pat, &v, &t);
+                    self.bind(pat, &v, &t, false);
                 }
             }
             StmtKind::Assign { target, op, value } => self.assign(target, *op, value, s),
@@ -356,7 +359,22 @@ impl<'a> Emitter<'a> {
                 self.line(&format!("for (int64_t {i} = {}; {i} < {hi}; {i}++) {{", vs[0].code));
                 self.st.indent += 1;
                 self.push(ScopeKind::LoopBody);
-                self.bind(pat, &i, &et);
+                self.bind(pat, &i, &et, true);
+            }
+            ForIter::Each(e) if self.fusable(e).is_some() => {
+                // `for x in s.words()` / `s.lines()`: scan the string instead of
+                // building the temporary list (same elements, same order).
+                let (recv, next) = self.fusable(e).unwrap();
+                let cv = self.expr(recv);
+                let code = self.own(cv, &Ty::str());
+                let src = self.tmp_owned(&Ty::str(), &code).code;
+                let pos = self.fresh("pos");
+                let w = self.fresh("w");
+                self.line(&format!("int64_t {} = 0;", pos));
+                self.line(&format!("for (tn_Str {w}; {next}({src}, &{pos}, &{w});) {{"));
+                self.st.indent += 1;
+                self.push(ScopeKind::LoopBody);
+                self.bind(pat, &w, &et, true);
             }
             ForIter::Each(e) => {
                 let st = self.ety(e);
@@ -368,7 +386,7 @@ impl<'a> Emitter<'a> {
                     self.line(&format!("for (int64_t {i} = 0; {i} < {ln}_len({snap}); {i}++) {{"));
                     self.st.indent += 1;
                     self.push(ScopeKind::LoopBody);
-                    self.bind(pat, &format!("{}->data[{}]", snap, i), &et);
+                    self.bind(pat, &format!("{}->data[{}]", snap, i), &et, true);
                 } else {
                     self.line(&format!("for (int64_t {i} = 0; {snap} && {i} < {snap}->n; {i}++) {{"));
                     self.st.indent += 1;
@@ -377,7 +395,7 @@ impl<'a> Emitter<'a> {
                     let tn = self.cty(&et);
                     let tup = self.fresh("kv");
                     self.line(&format!("{tn} {tup} = {{ {snap}->e[{i}].k, {snap}->e[{i}].v }};"));
-                    self.bind(pat, &tup, &et);
+                    self.bind(pat, &tup, &et, true);
                 }
             }
         }
@@ -388,6 +406,19 @@ impl<'a> Emitter<'a> {
         self.pop();
         self.st.indent -= 1;
         self.line("}");
+    }
+
+    fn fusable<'e>(&self, e: &'e Expr) -> Option<(&'e Expr, &'static str)> {
+        let ExprKind::Method(recv, _, args) = &e.kind else { return None };
+        let Some(Res::Method(fi, _)) = self.c.res.get(&e.id) else { return None };
+        if !args.is_empty() {
+            return None;
+        }
+        match self.c.fns[*fi].name.as_str() {
+            "Str.words" => Some((recv, "tn_next_word")),
+            "Str.lines" => Some((recv, "tn_next_line")),
+            _ => None,
+        }
     }
 
     // ---- places ----
@@ -519,18 +550,23 @@ impl<'a> Emitter<'a> {
     }
 
     // Bind pattern variables (retained) from value `v`, which is known to match.
-    fn bind(&mut self, p: &Pattern, v: &str, t: &Ty) {
+    // `borrow`: the matched value outlives these bindings and cannot change
+    // meanwhile, so they need no reference of their own.
+    fn bind(&mut self, p: &Pattern, v: &str, t: &Ty, borrow: bool) {
         match &p.kind {
             PatKind::Bind(n) => {
                 let tn = self.cty(t);
-                let code = if self.trivial(t) { v.to_string() } else { format!("{}_retain({})", tn, v) };
-                self.line(&format!("{} v_{} = {};", tn, n, code));
+                if borrow || self.trivial(t) {
+                    self.line(&format!("{} v_{} = {};", tn, n, v));
+                    return;
+                }
+                self.line(&format!("{} v_{} = {}_retain({});", tn, n, tn, v));
                 self.reg_local(&format!("v_{}", n), t);
             }
             PatKind::Tuple(ps) => {
                 let Ty::Tuple(ts) = t else { unreachable!() };
                 for (i, (p, t)) in ps.iter().zip(ts.clone()).enumerate() {
-                    self.bind(p, &format!("({}).f{}", v, i), &t);
+                    self.bind(p, &format!("({}).f{}", v, i), &t, borrow);
                 }
             }
             PatKind::Variant(_, _, ps) => {
@@ -539,7 +575,7 @@ impl<'a> Emitter<'a> {
                 let fts = self.c.enum_variants(t).unwrap()[vi].1.clone();
                 for (j, (sp, ft)) in ps.iter().zip(fts).enumerate() {
                     let pv = self.payload(t, v, vi, j);
-                    self.bind(sp, &pv, &ft);
+                    self.bind(sp, &pv, &ft, borrow);
                 }
             }
             _ => {}
@@ -929,7 +965,8 @@ impl<'a> Emitter<'a> {
         let st = self.ety(s);
         let res = self.result_var(t);
         let cv = self.expr(s);
-        let sv = if cv.owned || cv.code.starts_with("v_") { cv.code } else { self.tmp_val(&st, &cv.code).code };
+        let stable = cv.owned || (is_ident(&cv.code) && cv.code.starts_with("v_") && !self.st.muts.contains(&cv.code));
+        let sv = if cv.owned || is_ident(&cv.code) { cv.code } else { self.tmp_val(&st, &cv.code).code };
         let done = self.fresh("done");
         for a in arms {
             for alt in expand_or(&a.pat) {
@@ -937,7 +974,7 @@ impl<'a> Emitter<'a> {
                 self.line(&format!("if ({}) {{", test));
                 self.st.indent += 1;
                 self.push(ScopeKind::Block);
-                self.bind(&alt, &sv, &st);
+                self.bind(&alt, &sv, &st, stable);
                 if let Some(g) = &a.guard {
                     let gv = self.expr(g);
                     self.line(&format!("if ({}) {{", gv.code));
@@ -1163,6 +1200,8 @@ impl<'a> Emitter<'a> {
                 self.some_none(t, &format!("{} >= 0", i), &i)
             }
             "Str.split" => self.tmp_owned(t, &format!("tn_str_split({}, {}, {})", a[0], a[1], loc)),
+            "Str.words" => self.tmp_owned(t, &format!("tn_str_words({})", a[0])),
+            "Str.lines" => self.tmp_owned(t, &format!("tn_str_lines({})", a[0])),
             "Str.trim" => self.tmp_owned(t, &format!("tn_str_trim({}, true, true)", a[0])),
             "Str.trim_start" => self.tmp_owned(t, &format!("tn_str_trim({}, true, false)", a[0])),
             "Str.trim_end" => self.tmp_owned(t, &format!("tn_str_trim({}, false, true)", a[0])),
@@ -1174,6 +1213,11 @@ impl<'a> Emitter<'a> {
                 self.line(&format!("{} {} = 0;", ty, o));
                 let ok = self.tmp_val(&Ty::bool(), &format!("{}({}, &{})", f, a[0], o)).code;
                 self.some_none(t, &ok, &o)
+            }
+            "Str.upper" | "Str.lower" if args[0].owned => {
+                // The receiver is a temporary: hand it over so it can be reused in place.
+                self.unreg(&a[0]);
+                self.tmp_owned(t, &format!("tn_str_case_move({}, {})", a[0], name == "Str.upper"))
             }
             "Str.upper" | "Str.lower" => {
                 self.tmp_owned(t, &format!("tn_str_case({}, {})", a[0], name == "Str.upper"))
@@ -1389,6 +1433,20 @@ impl<'a> Emitter<'a> {
              for (int64_t i = 0; i < n; i++) {kn}_release(keys[i]);\n    free(keys); free(idx); free(tmp); free(out);\n}}"
         );
         h
+    }
+}
+
+fn is_ident(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn pat_names(p: &Pattern, out: &mut std::collections::HashSet<String>) {
+    match &p.kind {
+        PatKind::Bind(n) => {
+            out.insert(format!("v_{}", n));
+        }
+        PatKind::Tuple(ps) | PatKind::Variant(_, _, ps) | PatKind::Or(ps) => ps.iter().for_each(|p| pat_names(p, out)),
+        _ => {}
     }
 }
 

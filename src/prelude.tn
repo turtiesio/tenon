@@ -47,20 +47,10 @@ extern fn Str.replace(self, from: Str, to: Str) -> Str
 extern fn Str.chars(self) -> List[Str]
 fn Str.is_empty(self) -> Bool { self.len() == 0 }
 fn Str.contains(self, sub: Str) -> Bool { self.find(sub).is_some() }
-fn Str.lines(self) -> List[Str] {
-    var parts = self.split("\n")
-    if parts.len() > 0 and parts[parts.len() - 1] == "" {
-        let _ = parts.pop()
-    }
-    parts
-}
-fn Str.words(self) -> List[Str] {
-    var out: List[Str] = []
-    for w in self.replace("\t", " ").replace("\n", " ").replace("\r", " ").split(" ") {
-        if w != "" { out.push(w) }
-    }
-    out
-}
+// Lines without their "\n"; a final empty line is dropped.
+extern fn Str.lines(self) -> List[Str]
+// Pieces separated by runs of spaces, tabs, "\r" or "\n".
+extern fn Str.words(self) -> List[Str]
 fn Str.repeat(self, n: Int) -> Str {
     var parts: List[Str] = []
     for _ in 0..n { parts.push(self) }

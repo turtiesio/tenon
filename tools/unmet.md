@@ -1,0 +1,7 @@
+- 10 real programs: 0 of 10 written.
+- Blind usability study: tasks not yet written; not run.
+- Performance: wordfreq at 1.7x C (map update path); Rust/TypeScript baselines missing.
+- Self-hosted lexer/parser/checker: not started.
+- Approvals log and checker: not started.
+- Linear/unique types, modules, concurrency, networking, codecs: not implemented.
+- CI runs on macOS and Linux; a week of loop-time history does not exist yet.

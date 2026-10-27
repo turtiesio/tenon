@@ -24,8 +24,8 @@ pub enum V {
 
 #[derive(Debug)]
 pub enum Closure {
-    Named(usize, Vec<crate::types::Ty>),
-    Variant(u32, u32, usize),
+    Named(usize),
+    Variant(u32, u32),
     Lambda(crate::ast::Id, Vec<(String, V)>),
 }
 
