@@ -108,6 +108,7 @@ impl FnDecl {
 pub struct Param {
     pub name: String,
     pub by_ref: bool, // `x: ref T`: inspected, never consumed (for linear/unique T)
+    pub by_mut: bool, // `x: mut T`: the caller passes a place (`f(mut v)`) that the function may change
     pub ty: TypeExpr,
     pub span: Span,
 }
@@ -204,6 +205,7 @@ pub enum ExprKind {
     StructLit(String, Vec<(String, Expr)>, Option<Box<Expr>>),
     Try(Box<Expr>),
     Lambda(Vec<(String, Option<TypeExpr>)>, Option<TypeExpr>, Box<Expr>),
+    MutArg(Box<Expr>), // `mut place` as an argument to a `mut` parameter
 }
 
 #[derive(Debug, Clone)]

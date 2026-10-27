@@ -276,8 +276,9 @@ impl<'a> Parser<'a> {
             let pname = self.ident()?;
             self.expect_sym(":")?;
             let by_ref = self.eat_kw("ref");
+            let by_mut = !by_ref && self.eat_kw("mut");
             let ty = self.type_expr()?;
-            params.push(Param { name: pname, by_ref, ty, span: pspan });
+            params.push(Param { name: pname, by_ref, by_mut, ty, span: pspan });
             if !self.is_sym(")") {
                 self.expect_sym(",")?;
             }
@@ -625,7 +626,13 @@ impl<'a> Parser<'a> {
         self.no_struct = false;
         let mut args = Vec::new();
         while !self.eat_sym(close) {
-            args.push(self.expr()?);
+            let span = self.span();
+            if self.eat_kw("mut") {
+                let place = self.expr()?;
+                args.push(self.mk(span, ExprKind::MutArg(Box::new(place))));
+            } else {
+                args.push(self.expr()?);
+            }
             if !self.is_sym(close) {
                 self.expect_sym(",")?;
             }

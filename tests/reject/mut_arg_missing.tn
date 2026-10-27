@@ -1,0 +1,4 @@
+// error: pass a variable as 'mut x'
+fn bump(n: mut Int) { n += 1 }
+fn main() { var x = 1
+ bump(x) }

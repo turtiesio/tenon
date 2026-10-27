@@ -1,0 +1,3 @@
+// error: can only be called, not used as a value
+fn bump(n: mut Int) { n += 1 }
+fn main() { let f = bump }

@@ -110,6 +110,7 @@ fn expr(e: parser.Expr) -> Str {
         New(n, fs, base) => "new " + n + list(fs.map(fn(f) => "(" + f.0 + " " + expr(f.1) + ")")) +
             base.map(fn(b) => " (base " + expr(b) + ")").unwrap_or(""),
         Try(x) => "try " + expr(x),
+        MutArg(x) => "mutarg " + expr(x),
         Lambda(ps, r, b) => {
             let params = ps.map(fn(p) => match p.1 {
                 Some(t) => p.0 + ": " + ty(t),
@@ -135,7 +136,7 @@ fn dump(p: parser.Program) -> Str {
     for f in p.fns {
         let owner = f.owner.map(fn(o) => ty(o) + ".").unwrap_or("")
         let selfk = if f.self_kind == "" { "" } else { " " + f.self_kind }
-        let ps = f.params.map(fn(x) => " (" + x.name + (if x.by_ref { " ref" } else { "" }) + " " + ty(x.ty) + ")")
+        let ps = f.params.map(fn(x) => " (" + x.name + (if x.by_ref { " ref" } else { "" }) + (if x.by_mut { " mut" } else { "" }) + " " + ty(x.ty) + ")")
         let ret = f.ret.map(fn(r) => " -> " + ty(r)).unwrap_or("")
         let body = match f.body {
             Some(b) => " " + block(b),

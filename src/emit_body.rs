@@ -100,17 +100,23 @@ impl<'a> Emitter<'a> {
         let ret = info.ret.subst(&tsub);
         let rn = self.cty(&ret);
         let mut params = Vec::new();
+        let mut mut_params = std::collections::HashSet::new();
+        let explicit: Vec<bool> = info.muts.clone();
+        let skip = if info.self_kind.is_some() { 1 } else { 0 };
         for (i, (n, t)) in info.params.iter().enumerate() {
             let ct = self.cty(&t.subst(&tsub));
             if i == 0 && info.self_kind == Some(SelfKind::Mut) {
                 params.push(format!("{} *p_self", ct));
+            } else if i >= skip && explicit[i - skip] {
+                params.push(format!("{} *p_{}", ct, n));
+                mut_params.insert(n.clone());
             } else {
                 params.push(format!("{} v_{}", ct, n));
             }
         }
         let sig = format!("static {} {}({})", rn, name, if params.is_empty() { "void".into() } else { params.join(", ") });
         let _ = writeln!(self.protos, "{};", sig);
-        self.st = FnState { tsub, ret: Some(ret.clone()), self_ptr: info.self_kind == Some(SelfKind::Mut), indent: 1, ..Default::default() };
+        self.st = FnState { tsub, ret: Some(ret.clone()), self_ptr: info.self_kind == Some(SelfKind::Mut), indent: 1, mut_params, ..Default::default() };
         self.push(ScopeKind::Fn);
         let r = self.fresh("ret");
         let _ = writeln!(self.st.out, "    {} {};", rn, r);
@@ -435,7 +441,13 @@ impl<'a> Emitter<'a> {
     pub(crate) fn place(&mut self, e: &Expr) -> Place {
         match &e.kind {
             ExprKind::Name(n) => {
-                let root = if n == "self" && self.st.self_ptr { "p_self".to_string() } else { format!("&v_{}", n) };
+                let root = if n == "self" && self.st.self_ptr {
+                    "p_self".to_string()
+                } else if self.st.mut_params.contains(n) {
+                    format!("p_{}", n)
+                } else {
+                    format!("&v_{}", n)
+                };
                 Place { root, steps: vec![] }
             }
             ExprKind::Field(b, f) => {
@@ -676,6 +688,7 @@ impl<'a> Emitter<'a> {
             }
             ExprKind::Try(x) => self.try_expr(e, x, &t),
             ExprKind::Lambda(params, _, body) => self.lambda(e, params, body, &t),
+            ExprKind::MutArg(_) => unreachable!("mut arguments are handled at calls"),
         }
     }
 
@@ -723,7 +736,13 @@ impl<'a> Emitter<'a> {
     }
 
     pub(crate) fn local_code(&self, n: &str) -> String {
-        if n == "self" && self.st.self_ptr { "(*p_self)".into() } else { format!("v_{}", n) }
+        if n == "self" && self.st.self_ptr {
+            "(*p_self)".into()
+        } else if self.st.mut_params.contains(n) {
+            format!("(*p_{})", n)
+        } else {
+            format!("v_{}", n)
+        }
     }
 
     pub(crate) fn name_value(&mut self, e: &Expr, t: &Ty) -> CV {
@@ -770,6 +789,13 @@ impl<'a> Emitter<'a> {
         }
         let refs: Vec<&Expr> = args.iter().collect();
         match self.c.res.get(&callee.id).cloned() {
+            Some(Res::Fn(fi, targs)) if self.c.fns[fi].muts.iter().any(|m| *m) => {
+                let targs: Vec<Ty> = targs.iter().map(|x| self.sub(x)).collect();
+                let (ptys, _) = self.sig(fi, &targs);
+                let codes = self.mut_args(args, &ptys);
+                let name = self.fn_inst(fi, targs);
+                self.tmp_owned(t, &format!("{}({})", name, codes.join(", ")))
+            }
             Some(Res::Fn(fi, targs)) => {
                 let targs: Vec<Ty> = targs.iter().map(|x| self.sub(x)).collect();
                 let vs = self.eval_list(&refs);
@@ -812,6 +838,14 @@ impl<'a> Emitter<'a> {
                 let is_extern = info.is_extern;
                 if info.self_kind == Some(SelfKind::Mut) {
                     let p = self.place(recv);
+                    if !is_extern {
+                        let codes = self.mut_args(args, &ptys[1..]);
+                        let ptr = self.place_ptr(&p, p.steps.len(), recv.span);
+                        let f = self.fn_inst(fi, targs);
+                        let mut all = vec![ptr];
+                        all.extend(codes);
+                        return self.tmp_owned(t, &format!("{}({})", f, all.join(", ")));
+                    }
                     let refs: Vec<&Expr> = args.iter().collect();
                     let vs = self.eval_list(&refs);
                     // Arguments are owned so they cannot alias the receiver being mutated.
@@ -821,12 +855,16 @@ impl<'a> Emitter<'a> {
                         owned.push(self.tmp_owned(pt, &code));
                     }
                     let ptr = self.place_ptr(&p, p.steps.len(), recv.span);
-                    if is_extern {
-                        return self.extern_mut(&name, &ptr, &ptys, owned, t, e.span);
-                    }
+                    return self.extern_mut(&name, &ptr, &ptys, owned, t, e.span);
+                }
+                if info.muts.iter().any(|m| *m) {
+                    let rv = self.expr(recv);
+                    let rt = ptys[0].clone();
+                    let rcode = self.own(rv, &rt);
+                    let r = self.tmp_owned(&rt, &rcode).code;
+                    let mut codes = vec![r];
+                    codes.extend(self.mut_args(args, &ptys[1..]));
                     let f = self.fn_inst(fi, targs);
-                    let mut codes = vec![ptr];
-                    codes.extend(owned.iter().map(|v| v.code.clone()));
                     return self.tmp_owned(t, &format!("{}({})", f, codes.join(", ")));
                 }
                 let mut refs: Vec<&Expr> = vec![recv];
@@ -841,6 +879,31 @@ impl<'a> Emitter<'a> {
             }
             _ => unreachable!(),
         }
+    }
+
+    // Arguments for a call with `mut` parameters: places become pointers, and
+    // every other argument is owned so nothing aliases a place being changed.
+    pub(crate) fn mut_args(&mut self, args: &[Expr], ptys: &[Ty]) -> Vec<String> {
+        let mut out: Vec<(Option<Place>, String)> = Vec::new();
+        for (a, pt) in args.iter().zip(ptys) {
+            if let ExprKind::MutArg(inner) = &a.kind {
+                let p = self.place(inner);
+                out.push((Some(p), String::new()));
+            } else {
+                let cv = self.expr(a);
+                let code = self.own(cv, pt);
+                let tmp = self.tmp_owned(pt, &code).code;
+                out.push((None, tmp));
+            }
+        }
+        let spans: Vec<crate::diag::Span> = args.iter().map(|a| a.span).collect();
+        out.into_iter()
+            .zip(spans)
+            .map(|((p, code), sp)| match p {
+                Some(p) => self.place_ptr(&p, p.steps.len(), sp),
+                None => code,
+            })
+            .collect()
     }
 
     pub(crate) fn binary(&mut self, e: &Expr, op: BinOp, l: &Expr, r: &Expr) -> CV {

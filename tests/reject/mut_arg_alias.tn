@@ -1,0 +1,4 @@
+// error: two 'mut' arguments refer to 'x'
+fn swap(a: mut Int, b: mut Int) {}
+fn main() { var x = 1
+ swap(mut x, mut x) }

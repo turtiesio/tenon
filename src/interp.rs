@@ -68,7 +68,7 @@ pub fn visit_children<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
                 }
             }
         }
-        ExprKind::Field(b, _) | ExprKind::TupleField(b, _) | ExprKind::Unary(_, b) | ExprKind::Try(b) => f(b),
+        ExprKind::Field(b, _) | ExprKind::TupleField(b, _) | ExprKind::Unary(_, b) | ExprKind::Try(b) | ExprKind::MutArg(b) => f(b),
         ExprKind::Index(a, b) | ExprKind::Binary(_, a, b) => {
             f(a);
             f(b)
@@ -124,7 +124,7 @@ pub fn visit_children_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
                 }
             }
         }
-        ExprKind::Field(b, _) | ExprKind::TupleField(b, _) | ExprKind::Unary(_, b) | ExprKind::Try(b) => f(b),
+        ExprKind::Field(b, _) | ExprKind::TupleField(b, _) | ExprKind::Unary(_, b) | ExprKind::Try(b) | ExprKind::MutArg(b) => f(b),
         ExprKind::Index(a, b) | ExprKind::Binary(_, a, b) => {
             f(a);
             f(b)
@@ -414,29 +414,58 @@ impl<'a> Interp<'a> {
         }
     }
 
-    // A user method with `mut self`: run it on the value and hand back the new self.
-    fn call_fn_mut(&mut self, fi: usize, recv: V, args: Vec<V>, sp: Span) -> Result<(V, V), Ctrl> {
+    // Call a user function and also return the final values of its parameters
+    // (for `mut self` and `mut` parameters, which are written back by the caller).
+    fn call_fn_full(&mut self, fi: usize, args: Vec<V>) -> Result<(V, Vec<V>), Ctrl> {
         if self.depth >= MAX_DEPTH {
             let _ = self.out.flush();
             eprintln!("trap: stack overflow");
             return Err(Ctrl::Exit(EXIT_STACK));
         }
-        let _ = sp;
         let info = &self.c.fns[fi];
         let decl = &self.c.prog.fns[fi];
-        let mut env: Vec<(String, V)> = vec![("self".to_string(), recv)];
-        env.extend(info.params[1..].iter().map(|(n, _)| n.clone()).zip(args));
+        let n = info.params.len();
+        let mut env: Vec<(String, V)> = info.params.iter().map(|(n, _)| n.clone()).zip(args).collect();
         std::mem::swap(&mut self.env, &mut env);
         self.depth += 1;
         let r = self.block(decl.body.as_ref().unwrap());
         self.depth -= 1;
-        let new_self = self.env[0].1.clone();
+        let finals: Vec<V> = self.env[..n].iter().map(|(_, v)| v.clone()).collect();
         std::mem::swap(&mut self.env, &mut env);
         match r {
-            Ok(v) | Err(Ctrl::Ret(v)) => Ok((new_self, v)),
+            Ok(v) | Err(Ctrl::Ret(v)) => Ok((v, finals)),
             Err(e) => Err(e),
         }
     }
+
+    // Arguments, with `mut place` arguments taken out of their places (written
+    // back after the call by `put_back`).
+    fn eval_args_mut(&mut self, args: &[Expr]) -> Result<(Vec<V>, Vec<(usize, String, Vec<Step>)>), Ctrl> {
+        let mut vals = Vec::new();
+        let mut places = Vec::new();
+        for (i, a) in args.iter().enumerate() {
+            if let ExprKind::MutArg(inner) = &a.kind {
+                let (root, steps) = self.place_path(inner)?;
+                places.push((i, root, steps));
+                vals.push(V::Unit);
+            } else {
+                vals.push(self.eval(a)?);
+            }
+        }
+        for (i, root, steps) in &places {
+            let slot = navigate(self.local_mut(root), steps, false, args[*i].span)?;
+            vals[*i] = std::mem::replace(slot, V::Unit);
+        }
+        Ok((vals, places))
+    }
+
+    fn put_back(&mut self, places: Vec<(usize, String, Vec<Step>)>, finals: &[V], offset: usize, sp: Span) -> Result<(), Ctrl> {
+        for (i, root, steps) in places {
+            *navigate(self.local_mut(&root), &steps, false, sp)? = finals[i + offset].clone();
+        }
+        Ok(())
+    }
+
 
     pub(crate) fn apply(&mut self, f: &V, args: Vec<V>, sp: Span) -> R {
         let V::Fn(cl) = f else { panic!("interp: calling a non-function") };
@@ -684,6 +713,12 @@ impl<'a> Interp<'a> {
                             Err(m) => self.variant("Result", "Err", vec![V::Str(m.into())]),
                         })
                     }
+                    Some(Res::Fn(fi, _)) if self.c.fns[fi].muts.iter().any(|m| *m) => {
+                        let (av, places) = self.eval_args_mut(args)?;
+                        let (r, finals) = self.call_fn_full(fi, av)?;
+                        self.put_back(places, &finals, 0, e.span)?;
+                        Ok(r)
+                    }
                     Some(Res::Fn(fi, _)) => {
                         let av = self.eval_args(args)?;
                         self.call_fn(fi, av, e.span)
@@ -708,19 +743,28 @@ impl<'a> Interp<'a> {
                     let info = &self.c.fns[fi];
                     if info.self_kind == Some(SelfKind::Mut) {
                         let (root, steps) = self.place_path(recv)?;
-                        let av = self.eval_args(args)?;
                         let name = info.name.clone();
-                        let is_extern = info.is_extern;
-                        let slot = navigate(self.local_mut(&root), &steps, false, recv.span)?;
-                        if is_extern {
+                        if info.is_extern {
+                            let av = self.eval_args(args)?;
+                            let _ = navigate(self.local_mut(&root), &steps, false, recv.span)?;
                             return self.extern_mut(&name, &root, &steps, av, e.span);
                         }
-                        let recv_v = std::mem::replace(slot, V::Unit);
-                        let (new_self, r) = self.call_fn_mut(fi, recv_v, av, e.span)?;
-                        *navigate(self.local_mut(&root), &steps, false, recv.span)? = new_self;
+                        let (mut all, places) = self.eval_args_mut(args)?;
+                        let slot = navigate(self.local_mut(&root), &steps, false, recv.span)?;
+                        all.insert(0, std::mem::replace(slot, V::Unit));
+                        let (r, finals) = self.call_fn_full(fi, all)?;
+                        *navigate(self.local_mut(&root), &steps, false, recv.span)? = finals[0].clone();
+                        self.put_back(places, &finals, 1, e.span)?;
                         Ok(r)
                     } else {
                         let rv = self.eval(recv)?;
+                        if info.muts.iter().any(|m| *m) {
+                            let (mut all, places) = self.eval_args_mut(args)?;
+                            all.insert(0, rv);
+                            let (r, finals) = self.call_fn_full(fi, all)?;
+                            self.put_back(places, &finals, 1, e.span)?;
+                            return Ok(r);
+                        }
                         let mut av = vec![rv];
                         av.extend(self.eval_args(args)?);
                         self.call_fn(fi, av, e.span)
@@ -853,6 +897,7 @@ impl<'a> Interp<'a> {
                 }
                 _ => unreachable!(),
             },
+            ExprKind::MutArg(_) => unreachable!("mut arguments are handled at calls"),
             ExprKind::Lambda(..) => {
                 let caps = &self.c.captures[&e.id];
                 let vals = caps.iter().map(|(n, _)| (n.clone(), self.lookup(n))).collect();
