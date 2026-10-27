@@ -1,0 +1,867 @@
+// module (imported by astdump.tn)
+// Self-hosted parser: a second, independent implementation of src/parser.rs.
+// `astdump FILE` must print exactly what `tenon ast FILE` prints.
+
+import lexer
+
+pub struct Pos { pub line: Int, pub col: Int }
+
+pub enum Ty {
+    Named(Str, List[Ty]),
+    FnTy(List[Ty], Ty),
+    TupleTy(List[Ty]),
+}
+
+pub enum Pat {
+    Wild,
+    Bind(Str),
+    PInt(Int),
+    PStr(Str),
+    PBool(Bool),
+    PTuple(List[Pattern]),
+    Variant(Option[Str], Str, List[Pattern]),
+    POr(List[Pattern]),
+}
+
+pub struct Pattern { pub at: Pos, pub kind: Pat }
+
+pub enum Seg { SLit(Str), SExpr(Expr) }
+
+pub struct Arm { pub pat: Pattern, pub guard: Option[Expr], pub body: Expr }
+
+pub enum Ex {
+    EInt(Int),
+    EFloat(Float),
+    EBool(Bool),
+    EStr(List[Seg]),
+    EUnit,
+    Name(Str),
+    Path(Str, Str),
+    Field(Expr, Str),
+    TField(Expr, Int),
+    Index(Expr, Expr),
+    Call(Expr, List[Expr]),
+    Method(Expr, Str, List[Expr]),
+    Unary(Str, Expr),
+    Binary(Str, Expr, Expr),
+    If(Expr, Block, Option[Expr]),
+    Match(Expr, List[Arm]),
+    EBlock(Block),
+    EList(List[Expr]),
+    EMap(List[(Expr, Expr)]),
+    ETuple(List[Expr]),
+    New(Str, List[(Str, Expr)], Option[Expr]),
+    Try(Expr),
+    Lambda(List[(Str, Option[Ty])], Option[Ty], Expr),
+}
+
+pub struct Expr { pub at: Pos, pub kind: Ex }
+
+pub enum For { Range(Expr, Expr), Each(Expr) }
+
+pub enum St {
+    Let(Pattern, Bool, Option[Ty], Expr),
+    ExprStmt(Expr),
+    Assign(Expr, Option[Str], Expr),
+    While(Expr, Block),
+    ForLoop(Pattern, For, Block),
+    Return(Option[Expr]),
+    Break,
+    Continue,
+}
+
+pub struct Stmt { pub at: Pos, pub kind: St }
+
+pub struct Block { pub at: Pos, pub stmts: List[Stmt] }
+
+pub struct Param { pub name: Str, pub by_ref: Bool, pub ty: Ty }
+
+pub struct FnDecl {
+    pub public: Bool, pub owner: Option[Ty], pub name: Str, pub tparams: List[Str],
+    pub self_kind: Str, pub params: List[Param], pub ret: Option[Ty], pub body: Option[Block],
+}
+
+pub struct StructDecl {
+    pub public: Bool, pub kind: Str, pub name: Str, pub tparams: List[Str], pub fields: List[(Bool, Str, Ty)],
+}
+
+pub struct EnumDecl {
+    pub public: Bool, pub kind: Str, pub name: Str, pub tparams: List[Str], pub variants: List[(Str, List[Ty])],
+}
+
+pub struct Program {
+    pub imports: List[Str], pub structs: List[StructDecl], pub enums: List[EnumDecl], pub fns: List[FnDecl],
+}
+
+pub struct ParseError { pub line: Int, pub col: Int, pub msg: Str }
+
+struct Parser { toks: List[lexer.Token], pos: Int, no_struct: Bool }
+
+// ---- token helpers ----
+
+fn Parser.tok(self) -> lexer.Tok { self.toks[self.pos].tok }
+fn Parser.tok_at(self, n: Int) -> lexer.Tok { self.toks[(self.pos + n).min(self.toks.len() - 1)].tok }
+fn Parser.here(self) -> Pos { Pos { line: self.toks[self.pos].line, col: self.toks[self.pos].col } }
+fn Parser.at_eof(self) -> Bool { self.tok() == Eof }
+fn Parser.advance(mut self) {
+    if self.pos < self.toks.len() - 1 { self.pos += 1 }
+}
+fn Parser.is_sym(self, s: Str) -> Bool { self.tok() == Sym(s) }
+fn Parser.is_kw(self, s: Str) -> Bool { self.tok() == Kw(s) }
+fn Parser.eat_sym(mut self, s: Str) -> Bool {
+    if self.is_sym(s) {
+        self.advance()
+        return true
+    }
+    false
+}
+fn Parser.eat_kw(mut self, s: Str) -> Bool {
+    if self.is_kw(s) {
+        self.advance()
+        return true
+    }
+    false
+}
+
+fn describe(t: lexer.Tok) -> Str {
+    match t {
+        Ident(s) | Kw(s) => "'{s}'",
+        Sym(s) if s == ";" => "end of statement",
+        Sym(s) => "'{s}'",
+        IntTok(i) => "'{i}'",
+        FloatTok(f) => "'{f}'",
+        StrTok(_) => "string",
+        Eof => "end of file",
+    }
+}
+
+fn Parser.fail(self, what: Str) -> ParseError {
+    let h = self.here()
+    ParseError { line: h.line, col: h.col, msg: "expected {what}, found {describe(self.tok())}" }
+}
+fn err_at(p: Pos, msg: Str) -> ParseError { ParseError { line: p.line, col: p.col, msg } }
+
+fn Parser.expect_sym(mut self, s: Str) -> Result[Unit, ParseError] {
+    if self.eat_sym(s) { Ok(()) } else { Err(self.fail("'{s}'")) }
+}
+fn Parser.ident(mut self) -> Result[Str, ParseError] {
+    match self.tok() {
+        Ident(s) => {
+            self.advance()
+            Ok(s)
+        }
+        _ => Err(self.fail("a name")),
+    }
+}
+fn Parser.skip_semis(mut self) {
+    while self.eat_sym(";") {}
+}
+fn Parser.skip_seps(mut self) {
+    while self.eat_sym(";") or self.eat_sym(",") {}
+}
+
+fn upper(s: Str) -> Bool { s.byte(0) >= 65 and s.byte(0) <= 90 }
+
+// ---- items ----
+
+fn Parser.item(mut self, prog: Program) -> Result[Program, ParseError] {
+    var pr = prog
+    if self.is_kw("import") {
+        self.advance()
+        pr.imports.push(self.ident()?)
+        return Ok(pr)
+    }
+    let public = self.eat_kw("pub")
+    let kind = if self.eat_kw("linear") { "linear" } else if self.eat_kw("unique") { "unique" } else { "" }
+    if self.is_kw("struct") {
+        var d = self.struct_decl(kind)?
+        d.public = public
+        pr.structs.push(d)
+    } else if self.is_kw("enum") {
+        var d = self.enum_decl(kind)?
+        d.public = public
+        pr.enums.push(d)
+    } else if self.is_kw("fn") and kind == "" {
+        var d = self.fn_decl(false)?
+        d.public = public
+        pr.fns.push(d)
+    } else if self.is_kw("extern") and kind == "" {
+        self.advance()
+        if not self.is_kw("fn") { return Err(self.fail("'fn'")) }
+        pr.fns.push(self.fn_decl(true)?)
+    } else {
+        return Err(self.fail("'fn', 'struct' or 'enum'"))
+    }
+    Ok(pr)
+}
+
+fn Parser.tparams(mut self) -> Result[List[Str], ParseError] {
+    var v: List[Str] = []
+    if self.eat_sym("[") {
+        while not self.eat_sym("]") {
+            v.push(self.ident()?)
+            if not self.is_sym("]") { self.expect_sym(",")? }
+        }
+    }
+    Ok(v)
+}
+
+fn Parser.sep_or_close(self) -> Bool { self.is_sym("}") or self.is_sym(",") or self.is_sym(";") }
+
+fn Parser.struct_decl(mut self, kind: Str) -> Result[StructDecl, ParseError] {
+    self.advance()
+    let name = self.ident()?
+    let tparams = self.tparams()?
+    self.expect_sym("\{")?
+    var fields: List[(Bool, Str, Ty)] = []
+    self.skip_seps()
+    while not self.eat_sym("}") {
+        let p = self.eat_kw("pub")
+        let f = self.ident()?
+        self.expect_sym(":")?
+        fields.push((p, f, self.type_expr()?))
+        if not self.sep_or_close() { return Err(self.fail("',' or '}'")) }
+        self.skip_seps()
+    }
+    Ok(StructDecl { public: false, kind, name, tparams, fields })
+}
+
+fn Parser.enum_decl(mut self, kind: Str) -> Result[EnumDecl, ParseError] {
+    self.advance()
+    let name = self.ident()?
+    let tparams = self.tparams()?
+    self.expect_sym("\{")?
+    var variants: List[(Str, List[Ty])] = []
+    self.skip_seps()
+    while not self.eat_sym("}") {
+        let vname = self.ident()?
+        var fields: List[Ty] = []
+        if self.eat_sym("(") {
+            while not self.eat_sym(")") {
+                fields.push(self.type_expr()?)
+                if not self.is_sym(")") { self.expect_sym(",")? }
+            }
+        }
+        variants.push((vname, fields))
+        if not self.sep_or_close() { return Err(self.fail("',' or '}'")) }
+        self.skip_seps()
+    }
+    Ok(EnumDecl { public: false, kind, name, tparams, variants })
+}
+
+// After `fn Name`, is `[...]` followed by `.`? (owner type args vs fn type params)
+fn Parser.owner_follows(self) -> Bool {
+    var depth = 0
+    var i = self.pos
+    while true {
+        let t = self.toks[i].tok
+        if t == Sym("[") {
+            depth += 1
+        } else if t == Sym("]") {
+            depth -= 1
+            if depth == 0 { return i + 1 < self.toks.len() and self.toks[i + 1].tok == Sym(".") }
+        } else if t == Eof {
+            return false
+        }
+        i += 1
+    }
+    false
+}
+
+fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
+    self.advance()
+    let first_at = self.here()
+    let first = self.ident()?
+    var owner: Option[Ty] = None
+    var name = first
+    if self.is_sym("[") and self.owner_follows() {
+        self.advance()
+        var args: List[Ty] = []
+        while not self.eat_sym("]") {
+            args.push(self.type_expr()?)
+            if not self.is_sym("]") { self.expect_sym(",")? }
+        }
+        self.expect_sym(".")?
+        name = self.ident()?
+        owner = Some(Named(first, args))
+    } else if self.eat_sym(".") {
+        name = self.ident()?
+        if self.is_sym(".") {
+            return Err(err_at(first_at, "methods can only be defined in the module that defines the type"))
+        }
+        owner = Some(Named(first, []))
+    }
+    let tparams = self.tparams()?
+    self.expect_sym("(")?
+    var self_kind = ""
+    var params: List[Param] = []
+    if owner.is_some() {
+        if self.is_kw("mut") and self.tok_at(1) == Kw("self") {
+            self.advance()
+            self.advance()
+            self_kind = "mut-self"
+        } else if self.eat_kw("self") {
+            self_kind = "self"
+        }
+        if self_kind != "" and not self.is_sym(")") { self.expect_sym(",")? }
+    }
+    while not self.eat_sym(")") {
+        let pname = self.ident()?
+        self.expect_sym(":")?
+        let by_ref = self.eat_kw("ref")
+        params.push(Param { name: pname, by_ref, ty: self.type_expr()? })
+        if not self.is_sym(")") { self.expect_sym(",")? }
+    }
+    let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None }
+    let body = if is_extern { None } else { Some(self.block()?) }
+    Ok(FnDecl { public: false, owner, name, tparams, self_kind, params, ret, body })
+}
+
+fn Parser.type_list(mut self, close: Str) -> Result[List[Ty], ParseError] {
+    var v: List[Ty] = []
+    while not self.eat_sym(close) {
+        v.push(self.type_expr()?)
+        if not self.is_sym(close) { self.expect_sym(",")? }
+    }
+    Ok(v)
+}
+
+fn Parser.type_expr(mut self) -> Result[Ty, ParseError] {
+    if self.eat_kw("fn") {
+        self.expect_sym("(")?
+        let args = self.type_list(")")?
+        let ret = if self.eat_sym("->") { self.type_expr()? } else { Named("Unit", []) }
+        return Ok(FnTy(args, ret))
+    }
+    if self.eat_sym("(") {
+        let elems = self.type_list(")")?
+        return Ok(match elems.len() {
+            0 => Named("Unit", []),
+            1 => elems[0],
+            _ => TupleTy(elems),
+        })
+    }
+    var name = self.ident()?
+    if self.is_sym(".") {
+        match self.tok_at(1) {
+            Ident(t) => {
+                self.advance()
+                self.advance()
+                name = name + "." + t
+            }
+            _ => {}
+        }
+    }
+    let args = if self.eat_sym("[") { self.type_list("]")? } else { [] }
+    Ok(Named(name, args))
+}
+
+// ---- statements ----
+
+fn Parser.block(mut self) -> Result[Block, ParseError] {
+    let at = self.here()
+    let save = self.no_struct
+    self.no_struct = false
+    self.expect_sym("\{")?
+    var stmts: List[Stmt] = []
+    self.skip_semis()
+    while not self.eat_sym("}") {
+        if self.at_eof() { return Err(self.fail("'}'")) }
+        stmts.push(self.stmt()?)
+        if not self.is_sym("}") and not self.eat_sym(";") { return Err(self.fail("end of statement")) }
+        self.skip_semis()
+    }
+    self.no_struct = save
+    Ok(Block { at, stmts })
+}
+
+fn assign_op(t: lexer.Tok) -> Option[Option[Str]] {
+    match t {
+        Sym("=") => Some(None),
+        Sym("+=") => Some(Some("Add")),
+        Sym("-=") => Some(Some("Sub")),
+        Sym("*=") => Some(Some("Mul")),
+        Sym("/=") => Some(Some("Div")),
+        Sym("%=") => Some(Some("Rem")),
+        _ => None,
+    }
+}
+
+fn Parser.stmt(mut self) -> Result[Stmt, ParseError] {
+    let at = self.here()
+    let kind = if self.is_kw("let") or self.is_kw("var") {
+        let mutable = self.is_kw("var")
+        self.advance()
+        let pat = self.pattern()?
+        let ty = if self.eat_sym(":") { Some(self.type_expr()?) } else { None }
+        self.expect_sym("=")?
+        Let(pat, mutable, ty, self.expr()?)
+    } else if self.eat_kw("while") {
+        let cond = self.head_expr()?
+        While(cond, self.block()?)
+    } else if self.eat_kw("for") {
+        let pat = self.pattern()?
+        if not self.eat_kw("in") { return Err(self.fail("'in'")) }
+        let a = self.head_expr()?
+        let it = if self.eat_sym("..") { Range(a, self.head_expr()?) } else { Each(a) }
+        ForLoop(pat, it, self.block()?)
+    } else if self.eat_kw("return") {
+        if self.is_sym(";") or self.is_sym("}") { Return(None) } else { Return(Some(self.expr()?)) }
+    } else if self.eat_kw("break") {
+        Break
+    } else if self.eat_kw("continue") {
+        Continue
+    } else {
+        let e = self.expr()?
+        match assign_op(self.tok()) {
+            Some(op) => {
+                self.advance()
+                Assign(e, op, self.expr()?)
+            }
+            None => ExprStmt(e),
+        }
+    }
+    Ok(Stmt { at, kind })
+}
+
+fn Parser.head_expr(mut self) -> Result[Expr, ParseError] {
+    let save = self.no_struct
+    self.no_struct = true
+    let e = self.expr()
+    self.no_struct = save
+    e
+}
+
+// ---- patterns ----
+
+fn Parser.pattern(mut self) -> Result[Pattern, ParseError] {
+    let first = self.pattern1()?
+    if not self.is_sym("|") { return Ok(first) }
+    let at = first.at
+    var alts = [first]
+    while self.eat_sym("|") { alts.push(self.pattern1()?) }
+    Ok(Pattern { at, kind: POr(alts) })
+}
+
+fn Parser.pattern_list(mut self) -> Result[List[Pattern], ParseError] {
+    var v: List[Pattern] = []
+    while not self.eat_sym(")") {
+        v.push(self.pattern()?)
+        if not self.is_sym(")") { self.expect_sym(",")? }
+    }
+    Ok(v)
+}
+
+fn Parser.pattern1(mut self) -> Result[Pattern, ParseError] {
+    let at = self.here()
+    let kind = match self.tok() {
+        Sym(s) if s == "_" => {
+            self.advance()
+            Wild
+        }
+        IntTok(i) => {
+            self.advance()
+            PInt(i)
+        }
+        Sym(s) if s == "-" => {
+            self.advance()
+            match self.tok() {
+                IntTok(i) => {
+                    self.advance()
+                    PInt(-i)
+                }
+                _ => return Err(self.fail("integer")),
+            }
+        }
+        Kw(k) if k == "true" or k == "false" => {
+            self.advance()
+            PBool(k == "true")
+        }
+        StrTok(parts) => {
+            self.advance()
+            match parts.len() == 1 {
+                true => match parts[0] {
+                    Lit(s) => PStr(s),
+                    Interp(_) => return Err(err_at(at, "string patterns cannot interpolate")),
+                },
+                false => return Err(err_at(at, "string patterns cannot interpolate")),
+            }
+        }
+        Sym(s) if s == "(" => {
+            self.advance()
+            let elems = self.pattern_list()?
+            if elems.len() == 1 { return Ok(elems[0]) }
+            PTuple(elems)
+        }
+        Ident(name) => {
+            self.advance()
+            if not upper(name) {
+                Bind(name)
+            } else {
+                var qual: Option[Str] = None
+                var vname = name
+                if self.eat_sym(".") {
+                    qual = Some(name)
+                    vname = self.ident()?
+                }
+                let args = if self.eat_sym("(") { self.pattern_list()? } else { [] }
+                Variant(qual, vname, args)
+            }
+        }
+        _ => return Err(self.fail("a pattern")),
+    }
+    Ok(Pattern { at, kind })
+}
+
+// ---- expressions ----
+
+fn Parser.expr(mut self) -> Result[Expr, ParseError] { self.binary(0) }
+
+fn binop(t: lexer.Tok) -> Option[(Str, Int)] {
+    match t {
+        Kw(k) if k == "or" => Some(("Or", 1)),
+        Kw(k) if k == "and" => Some(("And", 2)),
+        Sym(s) => match s {
+            "==" => Some(("Eq", 3)),
+            "!=" => Some(("Ne", 3)),
+            "<" => Some(("Lt", 3)),
+            "<=" => Some(("Le", 3)),
+            ">" => Some(("Gt", 3)),
+            ">=" => Some(("Ge", 3)),
+            "+" => Some(("Add", 4)),
+            "-" => Some(("Sub", 4)),
+            "*" => Some(("Mul", 5)),
+            "/" => Some(("Div", 5)),
+            "%" => Some(("Rem", 5)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn Parser.binary(mut self, min: Int) -> Result[Expr, ParseError] {
+    var lhs = self.unary()?
+    while true {
+        let (op, prec) = match binop(self.tok()) {
+            Some(b) => b,
+            None => break,
+        }
+        if prec < min { break }
+        let at = self.here()
+        self.advance()
+        let rhs = self.binary(prec + 1)?
+        if prec == 3 {
+            match binop(self.tok()) {
+                Some((_, 3)) => return Err(err_at(self.here(), "comparisons cannot be chained; use 'and'")),
+                _ => {}
+            }
+        }
+        lhs = Expr { at, kind: Binary(op, lhs, rhs) }
+    }
+    Ok(lhs)
+}
+
+fn Parser.unary(mut self) -> Result[Expr, ParseError] {
+    let at = self.here()
+    if self.is_sym("-") {
+        match self.tok_at(1) {
+            IntTok(i) => {
+                self.advance()
+                self.advance()
+                return self.postfix_from(Expr { at, kind: EInt(-i) })
+            }
+            FloatTok(f) => {
+                self.advance()
+                self.advance()
+                return self.postfix_from(Expr { at, kind: EFloat(-f) })
+            }
+            _ => {}
+        }
+    }
+    if self.eat_sym("-") {
+        let e = self.unary()?
+        return Ok(match e.kind {
+            EInt(i) => Expr { at, kind: EInt(-i) },
+            EFloat(f) => Expr { at, kind: EFloat(-f) },
+            _ => Expr { at, kind: Unary("neg", e) },
+        })
+    }
+    if self.eat_kw("not") {
+        let e = self.unary()?
+        return Ok(Expr { at, kind: Unary("not", e) })
+    }
+    let e = self.primary()?
+    self.postfix_from(e)
+}
+
+fn Parser.args(mut self, close: Str) -> Result[List[Expr], ParseError] {
+    let save = self.no_struct
+    self.no_struct = false
+    var args: List[Expr] = []
+    while not self.eat_sym(close) {
+        args.push(self.expr()?)
+        if not self.is_sym(close) { self.expect_sym(",")? }
+    }
+    self.no_struct = save
+    Ok(args)
+}
+
+fn Parser.postfix_from(mut self, start: Expr) -> Result[Expr, ParseError] {
+    var e = start
+    while true {
+        let at = self.here()
+        if self.eat_sym("(") {
+            e = Expr { at, kind: Call(e, self.args(")")?) }
+        } else if self.eat_sym("[") {
+            let save = self.no_struct
+            self.no_struct = false
+            let i = self.expr()?
+            self.no_struct = save
+            self.expect_sym("]")?
+            e = Expr { at, kind: Index(e, i) }
+        } else if self.eat_sym("?") {
+            e = Expr { at, kind: Try(e) }
+        } else if self.eat_sym(".") {
+            match self.tok() {
+                IntTok(i) => {
+                    self.advance()
+                    e = Expr { at, kind: TField(e, i) }
+                    continue
+                }
+                _ => {}
+            }
+            let name = self.ident()?
+            if self.eat_sym("(") {
+                e = Expr { at, kind: Method(e, name, self.args(")")?) }
+            } else {
+                e = Expr { at, kind: Field(e, name) }
+            }
+        } else {
+            return Ok(e)
+        }
+    }
+    Ok(e)
+}
+
+fn Parser.primary(mut self) -> Result[Expr, ParseError] {
+    let at = self.here()
+    match self.tok() {
+        IntTok(i) => {
+            self.advance()
+            Ok(Expr { at, kind: EInt(i) })
+        }
+        FloatTok(f) => {
+            self.advance()
+            Ok(Expr { at, kind: EFloat(f) })
+        }
+        Kw(k) if k == "true" or k == "false" => {
+            self.advance()
+            Ok(Expr { at, kind: EBool(k == "true") })
+        }
+        Kw(k) if k == "self" => {
+            self.advance()
+            Ok(Expr { at, kind: Name("self") })
+        }
+        StrTok(parts) => {
+            self.advance()
+            var segs: List[Seg] = []
+            for p in parts {
+                match p {
+                    Lit(s) => segs.push(SLit(s)),
+                    Interp(toks) => {
+                        var sub = Parser { toks, pos: 0, no_struct: false }
+                        let e = sub.expr()?
+                        if not sub.at_eof() { return Err(sub.fail("'}' to close interpolation")) }
+                        segs.push(SExpr(e))
+                    }
+                }
+            }
+            Ok(Expr { at, kind: EStr(segs) })
+        }
+        Sym(s) if s == "(" => {
+            self.advance()
+            let elems = self.args(")")?
+            Ok(match elems.len() {
+                0 => Expr { at, kind: EUnit },
+                1 => elems[0],
+                _ => Expr { at, kind: ETuple(elems) },
+            })
+        }
+        Sym(s) if s == "[" => self.bracket(at),
+        Sym(s) if s == "\{" => Ok(Expr { at, kind: EBlock(self.block()?) }),
+        Kw(k) if k == "if" => self.if_expr(),
+        Kw(k) if k == "return" or k == "break" or k == "continue" => {
+            let st = self.stmt()?
+            Ok(Expr { at, kind: EBlock(Block { at, stmts: [st] }) })
+        }
+        Kw(k) if k == "match" => self.match_expr(at),
+        Kw(k) if k == "fn" => self.lambda(at),
+        Ident(name) => {
+            self.advance()
+            let up = upper(name)
+            if up and self.is_sym(".") {
+                match self.tok_at(1) {
+                    Ident(m) => {
+                        self.advance()
+                        self.advance()
+                        return Ok(Expr { at, kind: Path(name, m) })
+                    }
+                    _ => {}
+                }
+            }
+            if up and not self.no_struct and self.is_sym("\{") { return self.struct_lit(at, name) }
+            // module.Type { ... }
+            if not up and not self.no_struct and self.is_sym(".") and self.tok_at(2) == Sym("\{") {
+                match self.tok_at(1) {
+                    Ident(t) if upper(t) => {
+                        self.advance()
+                        self.advance()
+                        return self.struct_lit(at, name + "." + t)
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Expr { at, kind: Name(name) })
+        }
+        _ => Err(self.fail("an expression")),
+    }
+}
+
+fn Parser.bracket(mut self, at: Pos) -> Result[Expr, ParseError] {
+    self.advance()
+    if self.eat_sym(":") {
+        self.expect_sym("]")?
+        return Ok(Expr { at, kind: EMap([]) })
+    }
+    if self.eat_sym("]") { return Ok(Expr { at, kind: EList([]) }) }
+    let save = self.no_struct
+    self.no_struct = false
+    let first = self.expr()?
+    let kind = if self.eat_sym(":") {
+        let v = self.expr()?
+        var pairs = [(first, v)]
+        while self.eat_sym(",") {
+            if self.is_sym("]") { break }
+            let k = self.expr()?
+            self.expect_sym(":")?
+            pairs.push((k, self.expr()?))
+        }
+        self.expect_sym("]")?
+        EMap(pairs)
+    } else {
+        var elems = [first]
+        while self.eat_sym(",") {
+            if self.is_sym("]") { break }
+            elems.push(self.expr()?)
+        }
+        self.expect_sym("]")?
+        EList(elems)
+    }
+    self.no_struct = save
+    Ok(Expr { at, kind })
+}
+
+fn Parser.match_expr(mut self, at: Pos) -> Result[Expr, ParseError] {
+    self.advance()
+    let scrut = self.head_expr()?
+    self.expect_sym("\{")?
+    let save = self.no_struct
+    self.no_struct = false
+    var arms: List[Arm] = []
+    self.skip_seps()
+    while not self.eat_sym("}") {
+        let pat = self.pattern()?
+        let guard = if self.eat_kw("if") { Some(self.expr()?) } else { None }
+        self.expect_sym("=>")?
+        // An arm body is an expression or an assignment (`None => n += 1`).
+        let bat = self.here()
+        let st = self.stmt()?
+        let body = match st.kind {
+            ExprStmt(e) => e,
+            _ => Expr { at: bat, kind: EBlock(Block { at: bat, stmts: [st] }) },
+        }
+        arms.push(Arm { pat, guard, body })
+        if not self.sep_or_close() { return Err(self.fail("',' or '}' after match arm")) }
+        self.skip_seps()
+    }
+    self.no_struct = save
+    Ok(Expr { at, kind: Match(scrut, arms) })
+}
+
+fn Parser.lambda(mut self, at: Pos) -> Result[Expr, ParseError] {
+    self.advance()
+    self.expect_sym("(")?
+    var params: List[(Str, Option[Ty])] = []
+    while not self.eat_sym(")") {
+        let n = self.ident()?
+        let t = if self.eat_sym(":") { Some(self.type_expr()?) } else { None }
+        params.push((n, t))
+        if not self.is_sym(")") { self.expect_sym(",")? }
+    }
+    let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None }
+    let body = if self.eat_sym("=>") {
+        let save = self.no_struct
+        self.no_struct = false
+        let e = self.expr()?
+        self.no_struct = save
+        e
+    } else {
+        let bat = self.here()
+        Expr { at: bat, kind: EBlock(self.block()?) }
+    }
+    Ok(Expr { at, kind: Lambda(params, ret, body) })
+}
+
+fn Parser.struct_lit(mut self, at: Pos, name: Str) -> Result[Expr, ParseError] {
+    self.expect_sym("\{")?
+    var fields: List[(Str, Expr)] = []
+    var base: Option[Expr] = None
+    self.skip_seps()
+    while not self.eat_sym("}") {
+        if self.eat_sym("..") {
+            base = Some(self.expr()?)
+            self.skip_seps()
+            self.expect_sym("}")?
+            break
+        }
+        let fat = self.here()
+        let f = self.ident()?
+        let v = if self.eat_sym(":") { self.expr()? } else { Expr { at: fat, kind: Name(f) } }
+        fields.push((f, v))
+        if not self.sep_or_close() { return Err(self.fail("',' or '}'")) }
+        self.skip_seps()
+    }
+    Ok(Expr { at, kind: New(name, fields, base) })
+}
+
+fn Parser.if_expr(mut self) -> Result[Expr, ParseError] {
+    let at = self.here()
+    self.advance()
+    let cond = self.head_expr()?
+    let then = self.block()?
+    var els: Option[Expr] = None
+    if self.eat_kw("else") {
+        if self.is_kw("if") {
+            els = Some(self.if_expr()?)
+        } else {
+            let bat = self.here()
+            els = Some(Expr { at: bat, kind: EBlock(self.block()?) })
+        }
+    }
+    Ok(Expr { at, kind: If(cond, then, els) })
+}
+
+pub fn parse(src: Str) -> Result[Program, ParseError] {
+    let toks = match lexer.lex(src) {
+        Ok(t) => t,
+        Err(e) => return Err(ParseError { line: e.line, col: e.col, msg: e.msg }),
+    }
+    var p = Parser { toks, pos: 0, no_struct: false }
+    var prog = Program { imports: [], structs: [], enums: [], fns: [] }
+    p.skip_semis()
+    while not p.at_eof() {
+        prog = p.item(prog)?
+        p.skip_semis()
+    }
+    Ok(prog)
+}

@@ -1,6 +1,7 @@
 // tenon: bootstrap compiler and reference interpreter for the Tenon language.
 
 mod ast;
+mod astdump;
 mod builtins;
 mod check;
 mod check_expr;
@@ -97,6 +98,13 @@ fn main() {
     let (cmd, file) = (args[1].as_str(), args[2].as_str());
     match cmd {
         "test" => exit(testrun::main(&args[2..])),
+        "ast" => {
+            let src = std::fs::read_to_string(file).unwrap_or_else(|e| {
+                eprintln!("tenon: cannot read {}: {}", file, e);
+                exit(2)
+            });
+            print!("{}", astdump::dump(&src));
+        }
         "tokens" => {
             let src = std::fs::read_to_string(file).unwrap_or_else(|e| {
                 eprintln!("tenon: cannot read {}: {}", file, e);

@@ -1,0 +1,5 @@
+fn f() { let x = -2.5.abs() + -(3) - - 4 }
+fn g() -> fn(Int) -> (Int, Str) { fn(a: Int) -> (Int, Str) => (a, "s") }
+fn h() { m.Thing { a: 1 }; var t = [1: 2, 3: 4,]; for (a, b) in m { t[a] -= b }
+if x { } else if y { } else { }
+}

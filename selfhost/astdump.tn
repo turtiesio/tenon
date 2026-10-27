@@ -1,0 +1,153 @@
+// astdump FILE: the self-hosted parser's AST dump (compare: tenon ast FILE).
+import parser
+
+fn tps(ps: List[Str]) -> Str { if ps.is_empty() { "" } else { "[" + ps.join(", ") + "]" } }
+fn vis(p: Bool) -> Str { if p { " pub" } else { "" } }
+fn kind(k: Str) -> Str { if k == "" { "" } else { " " + k } }
+fn at(p: parser.Pos) -> Str { "@{p.line}:{p.col}" }
+fn quote(s: Str) -> Str {
+    let q = [s].to_str()
+    q.slice(1, q.len() - 1)
+}
+fn list(xs: List[Str]) -> Str { xs.map(fn(x) => " " + x).join("") }
+
+fn ty(t: parser.Ty) -> Str {
+    match t {
+        Named(n, a) => if a.is_empty() { n } else { n + "[" + a.map(ty).join(", ") + "]" },
+        FnTy(a, r) => "fn(" + a.map(ty).join(", ") + ") -> " + ty(r),
+        TupleTy(a) => "(" + a.map(ty).join(", ") + ")",
+    }
+}
+
+fn block(b: parser.Block) -> Str { "(block" + list(b.stmts.map(stmt)) + ")" }
+
+fn opt_expr(e: Option[parser.Expr], prefix: Str) -> Str {
+    match e {
+        Some(x) => prefix + expr(x),
+        None => "",
+    }
+}
+
+fn stmt(s: parser.Stmt) -> Str {
+    let body = match s.kind {
+        Let(p, mutable, t, v) => {
+            let ann = match t {
+                Some(x) => " : " + ty(x),
+                None => "",
+            }
+            "let" + (if mutable { " var" } else { "" }) + " " + pat(p) + ann + " " + expr(v)
+        }
+        ExprStmt(e) => "expr " + expr(e),
+        Assign(target, op, v) => "assign" + op.map(fn(o) => " " + o).unwrap_or("") + " " + expr(target) + " " + expr(v),
+        While(c, b) => "while " + expr(c) + " " + block(b),
+        ForLoop(p, it, b) => {
+            let i = match it {
+                Range(a, z) => "(range " + expr(a) + " " + expr(z) + ")",
+                Each(e) => "(each " + expr(e) + ")",
+            }
+            "for " + pat(p) + " " + i + " " + block(b)
+        }
+        Return(v) => "return" + opt_expr(v, " "),
+        Break => "break",
+        Continue => "continue",
+    }
+    "(" + at(s.at) + " " + body + ")"
+}
+
+fn pat(p: parser.Pattern) -> Str {
+    let body = match p.kind {
+        Wild => "_",
+        Bind(n) => "bind " + n,
+        PInt(i) => "int {i}",
+        PStr(s) => "str " + quote(s),
+        PBool(b) => "bool {b}",
+        PTuple(ps) => "tuple" + list(ps.map(pat)),
+        Variant(q, v, ps) => "variant " + q.map(fn(x) => x + ".").unwrap_or("") + v + list(ps.map(pat)),
+        POr(ps) => "or" + list(ps.map(pat)),
+    }
+    "(" + at(p.at) + " " + body + ")"
+}
+
+fn seg(s: parser.Seg) -> Str {
+    match s {
+        SLit(l) => quote(l),
+        SExpr(e) => expr(e),
+    }
+}
+
+fn expr(e: parser.Expr) -> Str {
+    let body = match e.kind {
+        EInt(i) => "int {i}",
+        EFloat(f) => "float {f}",
+        EBool(b) => "bool {b}",
+        EStr(segs) => "str" + list(segs.map(seg)),
+        EUnit => "unit",
+        Name(n) => "name " + n,
+        Path(t, m) => "path {t} {m}",
+        Field(b, f) => "field " + expr(b) + " " + f,
+        TField(b, i) => "tfield " + expr(b) + " {i}",
+        Index(a, b) => "index " + expr(a) + " " + expr(b),
+        Call(f, args) => "call " + expr(f) + list(args.map(expr)),
+        Method(r, m, args) => "method " + expr(r) + " " + m + list(args.map(expr)),
+        Unary(op, x) => op + " " + expr(x),
+        Binary(op, l, r) => op + " " + expr(l) + " " + expr(r),
+        If(c, t, els) => "if " + expr(c) + " " + block(t) + opt_expr(els, " "),
+        Match(s, arms) => "match " + expr(s) + list(arms.map(fn(a) => {
+            let g = match a.guard {
+                Some(x) => " (guard " + expr(x) + ")",
+                None => "",
+            }
+            "(arm " + pat(a.pat) + g + " " + expr(a.body) + ")"
+        })),
+        EBlock(b) => block(b),
+        EList(xs) => "list" + list(xs.map(expr)),
+        EMap(ps) => "map" + list(ps.map(fn(kv) => "(" + expr(kv.0) + " " + expr(kv.1) + ")")),
+        ETuple(xs) => "tuple" + list(xs.map(expr)),
+        New(n, fs, base) => "new " + n + list(fs.map(fn(f) => "(" + f.0 + " " + expr(f.1) + ")")) +
+            base.map(fn(b) => " (base " + expr(b) + ")").unwrap_or(""),
+        Try(x) => "try " + expr(x),
+        Lambda(ps, r, b) => {
+            let params = ps.map(fn(p) => match p.1 {
+                Some(t) => p.0 + ": " + ty(t),
+                None => p.0,
+            })
+            "lambda (" + params.join(", ") + ")" + r.map(fn(t) => " -> " + ty(t)).unwrap_or("") + " " + expr(b)
+        }
+    }
+    "(" + at(e.at) + " " + body + ")"
+}
+
+fn dump(p: parser.Program) -> Str {
+    var out: List[Str] = []
+    for i in p.imports { out.push("(import {i})") }
+    for s in p.structs {
+        let fs = s.fields.map(fn(f) => " (" + (if f.0 { "pub " } else { "" }) + f.1 + " " + ty(f.2) + ")")
+        out.push("(struct" + vis(s.public) + kind(s.kind) + " " + s.name + tps(s.tparams) + fs.join("") + ")")
+    }
+    for e in p.enums {
+        let vs = e.variants.map(fn(v) => " (" + v.0 + list(v.1.map(ty)) + ")")
+        out.push("(enum" + vis(e.public) + kind(e.kind) + " " + e.name + tps(e.tparams) + vs.join("") + ")")
+    }
+    for f in p.fns {
+        let owner = f.owner.map(fn(o) => ty(o) + ".").unwrap_or("")
+        let selfk = if f.self_kind == "" { "" } else { " " + f.self_kind }
+        let ps = f.params.map(fn(x) => " (" + x.name + (if x.by_ref { " ref" } else { "" }) + " " + ty(x.ty) + ")")
+        let ret = f.ret.map(fn(r) => " -> " + ty(r)).unwrap_or("")
+        let body = match f.body {
+            Some(b) => " " + block(b),
+            None => " extern",
+        }
+        out.push("(fn" + vis(f.public) + " " + owner + f.name + tps(f.tparams) + selfk + ps.join("") + ret + body + ")")
+    }
+    out.map(fn(l) => l + "\n").join("")
+}
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    if sys.args.len() != 1 { return Err("usage: astdump FILE") }
+    let src = sys.fs.read(sys.args[0]).map_err(fn(e) => "cannot read: {e}")?
+    match parser.parse(src) {
+        Ok(p) => sys.console.print(dump(p)),
+        Err(e) => sys.console.print("error {e.line}:{e.col} {e.msg}\n"),
+    }
+    Ok(())
+}
