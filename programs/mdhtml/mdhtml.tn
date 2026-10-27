@@ -1,0 +1,297 @@
+// mdhtml: convert a subset of Markdown to HTML.
+//
+//   mdhtml [FILE]        reads FILE (or standard input) and writes HTML to standard output
+//
+// Exit status: 0 success, 1 FILE cannot be read, 2 usage error (more than one argument).
+//
+// SPEC
+// ====
+// Input is split into lines at "\n"; a trailing "\r" on a line is dropped. Except
+// inside fenced code, every line is trimmed of leading and trailing spaces/tabs
+// before it is looked at, so indentation never matters. Blocks are recognised
+// line by line, in this order of priority:
+//
+//   blank line     separates blocks; produces no output.
+//   fence          a line starting with ``` whose remainder (the info string,
+//                  trimmed) contains no backtick. Everything up to the next line
+//                  that is exactly ``` (after trimming) is the code; an unclosed
+//                  fence runs to the end of the input (or of the enclosing
+//                  block quote). Code lines are kept exactly (a line's own
+//                  indentation included) with only & < > " escaped. The first
+//                  word of the info string, if any, is the language.
+//                    ```               ->  <pre><code>LINE\n...LINE\n</code></pre>
+//                    ```rust           ->  <pre><code class="language-rust">LINE\n...</code></pre>
+//                  Every code line, the last one too, is followed by "\n"; an
+//                  empty block is <pre><code></code></pre>.
+//   heading        1 to 6 "#" followed by a space or the end of the line. The
+//                  rest of the line, trimmed, is inline text.   ->  <hN>TEXT</hN>
+//                  (7 or more "#", or "#" glued to text, is not a heading.)
+//   rule           a line that is exactly "---".                 ->  <hr>
+//   block quote    a run of consecutive lines starting with ">". One ">" and one
+//                  optional following space are removed from each, and the
+//                  result is converted as a document of its own (so it can hold
+//                  paragraphs, lists, code, rules and further quotes).
+//                    ->  <blockquote>\nINNER</blockquote>
+//   list           a run of consecutive items of the same kind. A bullet item is
+//                  "- " or "* " followed by text; an ordered item is one or more
+//                  digits, ". " and text (the number itself is ignored). An item
+//                  is one line; a different kind of item starts a new list.
+//                    ->  <ul>\n<li>TEXT</li>\n...</ul>      or      <ol>...</ol>
+//                  (A marker with no text after it, like "-", is plain text.)
+//   paragraph      anything else: consecutive lines up to a blank line or a line
+//                  that starts another block. The lines are joined with "\n".
+//                    ->  <p>TEXT</p>
+//
+// Every block's output ends in "\n", and nothing else separates blocks, so
+// empty input gives empty output.
+//
+// Inline text (headings, paragraphs, list items, links' text) is scanned left to
+// right; at each position the first construct that applies is used:
+//
+//   `code`       a backtick and the next backtick, with at least one character
+//                between. No formatting inside; the text is escaped.  <code>..</code>
+//   **bold**     "**", then text, then "**".                         <strong>..</strong>
+//   *em*         "*", then text, then "*".                           <em>..</em>
+//   [text](url)  text is non-empty and contains no "]"; url is non-empty and
+//                contains no whitespace and no ")".     <a href="URL">TEXT</a>
+//
+// Bold, em and link text are themselves inline text, so they nest. Rules for
+// "*" and "**": the opener must be followed by a non-space character, the closer
+// must be preceded by one, and the text between must be non-empty. The closer of
+// "**" is the first "**" that qualifies, moved to the last two asterisks of its
+// run (so "***a***" is <strong><em>a</em></strong>). While looking for the closer
+// of "*", a "**" pair is skipped over. Closers are found by plain search: code
+// spans and links are not skipped. A marker with no closer is literal text: an
+// unclosed "**" gives both asterisks, an unclosed "*" or backtick gives that
+// character. There are no backslash escapes.
+//
+// Escaping: in all emitted text, code, link URLs and language names,
+// & < > " become &amp; &lt; &gt; &quot;. Nothing else is changed.
+
+fn esc(s: Str) -> Str {
+    var out = ""
+    var run = 0
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        var rep = ""
+        if b == '&' { rep = "&amp;" }
+        else if b == '<' { rep = "&lt;" }
+        else if b == '>' { rep = "&gt;" }
+        else if b == '"' { rep = "&quot;" }
+        if not rep.is_empty() {
+            out += s.slice(run, i) + rep
+            run = i + 1
+        }
+    }
+    out + s.slice(run, s.len())
+}
+
+fn is_space(b: Int) -> Bool { b == ' ' or b == '\t' or b == '\n' or b == '\r' }
+
+// ---- inline ----
+
+fn code_span(s: Str, i: Int) -> Option[(Str, Int)] {
+    var j = i + 1
+    while j < s.len() and s.byte(j) != '`' { j += 1 }
+    if j >= s.len() or j == i + 1 { return None }
+    Some(("<code>" + esc(s.slice(i + 1, j)) + "</code>", j + 1))
+}
+
+fn bold(s: Str, i: Int) -> Option[(Str, Int)] {
+    let n = s.len()
+    let start = i + 2
+    if start >= n or is_space(s.byte(start)) { return None }
+    var j = start + 1
+    while j + 1 < n {
+        if s.byte(j) == '*' and s.byte(j + 1) == '*' and not is_space(s.byte(j - 1)) {
+            while j + 2 < n and s.byte(j + 2) == '*' { j += 1 }
+            return Some(("<strong>" + inline(s.slice(start, j)) + "</strong>", j + 2))
+        }
+        j += 1
+    }
+    None
+}
+
+fn em(s: Str, i: Int) -> Option[(Str, Int)] {
+    let n = s.len()
+    let start = i + 1
+    if start >= n or is_space(s.byte(start)) { return None }
+    var j = start + 1
+    while j < n {
+        if s.byte(j) == '*' {
+            if j + 1 < n and s.byte(j + 1) == '*' {
+                j += 2
+                continue
+            }
+            if not is_space(s.byte(j - 1)) {
+                return Some(("<em>" + inline(s.slice(start, j)) + "</em>", j + 1))
+            }
+        }
+        j += 1
+    }
+    None
+}
+
+fn link(s: Str, i: Int) -> Option[(Str, Int)] {
+    let n = s.len()
+    var j = i + 1
+    while j < n and s.byte(j) != ']' { j += 1 }
+    if j == i + 1 or j + 1 >= n or s.byte(j + 1) != '(' { return None }
+    var k = j + 2
+    while k < n and s.byte(k) != ')' and not is_space(s.byte(k)) { k += 1 }
+    if k >= n or k == j + 2 or s.byte(k) != ')' { return None }
+    let href = esc(s.slice(j + 2, k))
+    Some(("<a href=\"" + href + "\">" + inline(s.slice(i + 1, j)) + "</a>", k + 1))
+}
+
+fn try_inline(s: Str, i: Int) -> Option[(Str, Int)] {
+    let b = s.byte(i)
+    if b == '`' { code_span(s, i) }
+    else if b == '[' { link(s, i) }
+    else if b == '*' {
+        if i + 1 < s.len() and s.byte(i + 1) == '*' { bold(s, i) } else { em(s, i) }
+    }
+    else { None }
+}
+
+fn inline(s: Str) -> Str {
+    let n = s.len()
+    var out = ""
+    var run = 0   // start of the pending plain text
+    var i = 0
+    while i < n {
+        match try_inline(s, i) {
+            Some((html, stop)) => {
+                out += esc(s.slice(run, i)) + html
+                i = stop
+                run = stop
+            }
+            None => {
+                // an unclosed "**" is literal as a pair
+                if s.byte(i) == '*' and i + 1 < n and s.byte(i + 1) == '*' { i += 2 } else { i += 1 }
+            }
+        }
+    }
+    out + esc(s.slice(run, n))
+}
+
+// ---- blocks ----
+
+fn heading_level(line: Str) -> Int {
+    var k = 0
+    while k < line.len() and line.byte(k) == '#' { k += 1 }
+    if k >= 1 and k <= 6 and (k == line.len() or line.byte(k) == ' ') { k } else { 0 }
+}
+
+// (kind, marker length); kind 0 = not an item, 1 = bullet, 2 = ordered
+fn item_marker(line: Str) -> (Int, Int) {
+    if line.starts_with("- ") or line.starts_with("* ") { return (1, 2) }
+    var k = 0
+    while k < line.len() and line.byte(k) >= '0' and line.byte(k) <= '9' { k += 1 }
+    if k >= 1 and k + 1 < line.len() and line.byte(k) == '.' and line.byte(k + 1) == ' ' {
+        return (2, k + 2)
+    }
+    (0, 0)
+}
+
+fn is_fence(line: Str) -> Bool {
+    line.starts_with("```") and not line.slice(3, line.len()).contains("`")
+}
+
+fn starts_block(line: Str) -> Bool {
+    (is_fence(line) or heading_level(line) > 0 or line == "---" or line.starts_with(">") or
+        item_marker(line).0 > 0)
+}
+
+fn render(lines: List[Str]) -> Str {
+    let n = lines.len()
+    var out = ""
+    var i = 0
+    while i < n {
+        let line = lines[i].trim()
+        if line.is_empty() {
+            i += 1
+        } else if is_fence(line) {
+            let lang = line.slice(3, line.len()).trim().split(" ")[0]
+            var body = ""
+            i += 1
+            while i < n and lines[i].trim() != "```" {
+                body += esc(lines[i]) + "\n"
+                i += 1
+            }
+            if i < n { i += 1 }
+            let attr = if lang.is_empty() { "" } else { " class=\"language-" + esc(lang) + "\"" }
+            out += "<pre><code" + attr + ">" + body + "</code></pre>\n"
+        } else if heading_level(line) > 0 {
+            let lvl = heading_level(line)
+            let text = inline(line.slice(lvl, line.len()).trim())
+            out += "<h{lvl}>{text}</h{lvl}>\n"
+            i += 1
+        } else if line == "---" {
+            out += "<hr>\n"
+            i += 1
+        } else if line.starts_with(">") {
+            var inner: List[Str] = []
+            while i < n and lines[i].trim().starts_with(">") {
+                let t = lines[i].trim()
+                let rest = t.slice(1, t.len())
+                inner.push(if rest.starts_with(" ") { rest.slice(1, rest.len()) } else { rest })
+                i += 1
+            }
+            out += "<blockquote>\n" + render(inner) + "</blockquote>\n"
+        } else if item_marker(line).0 > 0 {
+            let kind = item_marker(line).0
+            var items = ""
+            while i < n {
+                let t = lines[i].trim()
+                let (k, m) = item_marker(t)
+                if k != kind { break }
+                items += "<li>" + inline(t.slice(m, t.len()).trim()) + "</li>\n"
+                i += 1
+            }
+            let tag = if kind == 1 { "ul" } else { "ol" }
+            out += "<{tag}>\n{items}</{tag}>\n"
+        } else {
+            var parts: List[Str] = [line]
+            i += 1
+            while i < n {
+                let t = lines[i].trim()
+                if t.is_empty() or starts_block(t) { break }
+                parts.push(t)
+                i += 1
+            }
+            out += "<p>" + inline(parts.join("\n")) + "</p>\n"
+        }
+    }
+    out
+}
+
+fn describe(e: IoError) -> Str {
+    match e {
+        NotFound(p) => "{p}: no such file",
+        Denied(p) => "{p}: permission denied",
+        Failed(m) => m,
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 1 {
+        con.eprintln("usage: mdhtml [FILE]")
+        return 2
+    }
+    let text = if sys.args.len() == 1 {
+        match sys.fs.read(sys.args[0]) {
+            Ok(t) => t,
+            Err(e) => {
+                con.eprintln("mdhtml: cannot read " + describe(e))
+                return 1
+            }
+        }
+    } else {
+        con.read_all()
+    }
+    let lines = text.lines().map(fn(l) => if l.ends_with("\r") { l.slice(0, l.len() - 1) } else { l })
+    con.print(render(lines))
+    0
+}
