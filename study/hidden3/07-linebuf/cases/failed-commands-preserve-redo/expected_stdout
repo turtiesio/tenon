@@ -1,0 +1,11 @@
+OK 1
+OK 2
+OK 1
+1|a
+1
+1
+ERR bad line
+ERR bad line
+ERR bad command
+OK 2
+2|b

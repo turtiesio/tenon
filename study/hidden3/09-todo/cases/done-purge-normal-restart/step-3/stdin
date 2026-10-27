@@ -1,0 +1,4 @@
+SHOW 1
+SHOW 2
+ADD 1 d
+STATS

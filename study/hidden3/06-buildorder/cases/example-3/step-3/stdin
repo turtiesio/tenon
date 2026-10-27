@@ -1,0 +1,8 @@
+# build rules
+app: lib util
+lib: core
+util: core
+test: app
+x: y
+y: x
+z: x

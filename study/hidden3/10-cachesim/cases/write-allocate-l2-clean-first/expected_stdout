@@ -1,0 +1,5 @@
+W 0x0 MEM
+W 0x1 MEM
+W 0x1 L1
+L1 hits=1 misses=2 writebacks=1
+L2 hits=0 misses=2 writebacks=0

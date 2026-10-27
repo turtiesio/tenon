@@ -1,0 +1,13 @@
+[
+  {
+    "step": "pathological-backtracking",
+    "passed": false,
+    "detail": "timeout after 10 s; stdout byte 0: expected b'1\\n', got b'' (length 2/0); exit expected 0, got -9",
+    "exit": -9,
+    "expected_exit": 0,
+    "kill_after": null,
+    "stdout_b64": "",
+    "stderr_b64": "",
+    "seconds": 10.0028
+  }
+]

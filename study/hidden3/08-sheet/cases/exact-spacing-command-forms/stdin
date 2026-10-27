@@ -1,0 +1,12 @@
+
+GET
+GET A1 x
+GET  A1
+ GET A1
+GET A1 
+CLEAR
+CLEAR A1 x
+SHOW A1 
+SET A1  1
+SET A1 = A2
+get A1

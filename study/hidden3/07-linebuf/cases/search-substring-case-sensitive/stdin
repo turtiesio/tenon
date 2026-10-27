@@ -1,0 +1,7 @@
+APPEND banana
+APPEND BANANA
+APPEND ana ana
+FIND ana
+FIND BAN
+FIND a a
+FIND .
