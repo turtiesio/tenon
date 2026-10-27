@@ -1,0 +1,9 @@
+ballots=6 invalid=4
+round 1: Ana=1 Ben=2 Cho=2 Dov=1 exhausted=0
+eliminated: Dov
+round 2: Ana=1 Ben=2 Cho=3 exhausted=0
+eliminated: Ana
+round 3: Ben=3 Cho=3 exhausted=0
+eliminated: Cho
+round 4: Ben=3 exhausted=3
+winner: Ben

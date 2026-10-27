@@ -1,0 +1,5 @@
+ballots=7 invalid=0
+round 1: Alice=3 Bob=2 Carol=2 exhausted=0
+eliminated: Carol
+round 2: Alice=3 Bob=4 exhausted=0
+winner: Bob

@@ -1,0 +1,7 @@
+SUB A x
+SUB 1a x
+SUB a_b x
+SUB aaaaaaaaaaaaaaaaa x
+SUB -a x
+SUB a0 x
+STATS a0

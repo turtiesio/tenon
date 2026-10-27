@@ -1,0 +1,13 @@
+OK
+OK
+OK
+DELIVERED 3
+DELIVERED 2
+DELIVERED 1
+DELIVERED 1
+DELIVERED 0
+MSGS 1 news.sport=Goal!
+MSGS 1 news.sport=Goal!
+MSGS 1 news.weather=Rain
+MSGS 3 news.weather=Rain news=Extra news.sport.uk=Win
+MSGS 0

@@ -1,0 +1,13 @@
+SUB a x
+PUB x m1
+PUB x m2
+PUB x m3
+PUB x m4
+PUB x m5
+PUB x m6
+STATS a
+POLL a 1
+POLL a 1
+POLL a 1
+POLL a 1
+STATS a

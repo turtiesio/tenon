@@ -1,0 +1,11 @@
+01-hexdump: 25 cases; 58 runs; examples complete; input limits checked
+02-uniqx: 25 cases; 55 runs; examples complete; input limits checked
+03-icalc: 25 cases; 115 runs; examples complete; input limits checked
+04-timesheet: 25 cases; 29 runs; examples complete; input limits checked
+05-runoff: 25 cases; 42 runs; examples complete; input limits checked
+06-mdtoc: 25 cases; 43 runs; examples complete; input limits checked
+07-parking: 25 cases; 62 runs; examples complete; input limits checked
+08-pubsub: 25 cases; 26 runs; examples complete; input limits checked
+09-shorten: 25 cases; 91 runs; examples complete; input limits checked
+10-elevator: 25 cases; 64 runs; examples complete; input limits checked
+AUDIT PASS: 250 cases; 585 process runs; 10 kill steps

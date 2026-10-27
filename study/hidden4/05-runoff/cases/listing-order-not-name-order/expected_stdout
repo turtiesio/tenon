@@ -1,0 +1,7 @@
+ballots=3 invalid=0
+round 1: Z=1 A=1 M=1 exhausted=0
+eliminated: M
+round 2: Z=1 A=1 exhausted=1
+eliminated: A
+round 3: Z=1 exhausted=2
+winner: Z

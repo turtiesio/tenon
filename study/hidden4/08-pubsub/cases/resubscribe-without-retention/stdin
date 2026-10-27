@@ -1,0 +1,8 @@
+PUB a old
+SUB c a
+POLL c 1
+UNSUB c a
+PUB a missed
+SUB c a
+PUB a new
+POLL c 2

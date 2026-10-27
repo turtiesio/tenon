@@ -1,0 +1,5 @@
+ballots=2 invalid=0
+round 1: A_0=1 b99=1 exhausted=0
+eliminated: b99
+round 2: A_0=2 exhausted=0
+winner: A_0

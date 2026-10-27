@@ -1,0 +1,15 @@
+
+ INFO
+INFO 
+INFO x
+put u
+PUT
+PUT  u
+PUT u 
+GET
+GET  1
+DEL 1 x
+HITS 1 
+GET	1
+UNKNOWN
+INFO

@@ -1,0 +1,11 @@
+01-hexdump: 25 cases
+02-uniqx: 25 cases
+03-icalc: 25 cases
+04-timesheet: 25 cases
+05-runoff: 25 cases
+06-mdtoc: 25 cases
+07-parking: 25 cases
+08-pubsub: 25 cases
+09-shorten: 25 cases
+10-elevator: 25 cases
+REBUILD PASS: 2190 fixture files; identical paths and SHA-256 contents

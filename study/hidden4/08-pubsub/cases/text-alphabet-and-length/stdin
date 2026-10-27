@@ -1,0 +1,10 @@
+SUB a q
+PUB q A0_.!?-
+PUB q xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+PUB q xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+PUB q a,b
+PUB q a=b
+PUB q a/b
+PUB q a b
+PUB q 
+POLL a 3

@@ -1,0 +1,6 @@
+PUT same
+PUT same
+DEL 1
+PUT same
+GET 2
+INFO

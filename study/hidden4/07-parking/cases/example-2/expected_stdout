@@ -1,0 +1,9 @@
+OK 1
+ERR bad time
+FEE 0.00
+OK 1
+FEE 22.50
+ERR not parked
+ERR bad time
+ERR not parked
+free=1 parked=0 revenue=22.50

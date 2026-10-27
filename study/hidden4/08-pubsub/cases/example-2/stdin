@@ -1,0 +1,18 @@
+SUB dee a.#
+SUB dee a.b
+SUB dee a.#
+PUB a.b m1
+PUB a.c m2
+PUB a m3
+PUB a.b.c m4
+STATS dee
+POLL dee 2
+STATS dee
+UNSUB dee a.#
+UNSUB dee a.#
+PUB a.c m5
+PUB a.b m6
+STATS dee
+POLL dee 9
+STATS zed
+POLL zed 1

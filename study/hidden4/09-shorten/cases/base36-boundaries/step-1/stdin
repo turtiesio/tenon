@@ -1,0 +1,8 @@
+INFO
+GET 9
+GET a
+GET z
+GET 10
+GET zz
+PUT new
+INFO
