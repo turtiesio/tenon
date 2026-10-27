@@ -41,6 +41,11 @@ study/
      for Python and TypeScript, and `docs/` plus `tenon.md` for Tenon.
    An author does not see other solutions, `hidden/`, or any other study
    material. Authors may run their own program and write their own tests.
+   Any extra duty an author has (Tenon authors keep NOTES.md on documentation
+   gaps) is done **off the clock**: only after `./try.sh --done NAME` (or
+   `--give-up`) for that task, so it never counts as task time (from wave 5 on;
+   in waves 2-4 notes were written before `--done`, which added ~3 s per Tenon
+   task, study/results/wave4/TIME_ANALYSIS.md).
 4. **Time box.** Each task has a **30-minute wall-clock** limit per author. The
    solution is whatever is on disk when time runs out. A missing or non-running
    solution scores 0 on hidden tests.
@@ -57,7 +62,7 @@ study/
 | Metric | Definition |
 |---|---|
 | Hidden-test pass rate | passed cases / total cases in `hidden/<task-id>/` |
-| Size: lines | non-blank, non-comment source lines in the solution |
+| Size: lines | non-blank, non-comment source lines in the solution, without lines that hold only closing brackets (user decision after wave 3; the raw count is reported too) |
 | Size: tokens | lexical tokens in the solution, excluding comments and whitespace (counted with each language's lexer) |
 | Time to visible green | wall-clock time from session start until the spec's worked examples first all pass |
 | Attempts to visible green | number of program runs until the worked examples first all pass |
