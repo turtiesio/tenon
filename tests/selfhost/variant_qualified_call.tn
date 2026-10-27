@@ -1,0 +1,4 @@
+enum Shape { Circle(Int), Rect(Int, Int) }
+fn main() {
+    let s = Shape.Rect(1)
+}

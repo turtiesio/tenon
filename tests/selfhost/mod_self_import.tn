@@ -1,0 +1,6 @@
+import mod_self_import
+pub fn twice(n: Int) -> Int { n * 2 }
+fn main() {
+    let a = mod_self_import.twice(2)
+    let b: Str = twice(3)
+}

@@ -1,0 +1,3 @@
+import ckmod
+fn f(s: ckmod2.Speed) {}
+fn main() {}

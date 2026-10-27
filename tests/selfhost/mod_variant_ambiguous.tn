@@ -1,0 +1,5 @@
+import ckmod
+import ckmod2
+fn main() {
+    let m = Fast
+}

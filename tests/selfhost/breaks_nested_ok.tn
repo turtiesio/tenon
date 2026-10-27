@@ -1,0 +1,7 @@
+// A break inside a directly nested loop does not count.
+fn f(c: Bool) -> Int {
+    while true {
+        while c { break }
+    }
+}
+fn main() { let _ = f(false) }

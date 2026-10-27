@@ -1,0 +1,5 @@
+fn f(s: Str) -> Int {
+    let i = s.find("x")?
+    i
+}
+fn main() { let _ = f("a") }

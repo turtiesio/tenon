@@ -1,0 +1,3 @@
+struct Aa { b: (Int, Bb) }
+struct Bb { a: Option[Aa], c: Aa }
+fn main() {}

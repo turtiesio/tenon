@@ -1,0 +1,2 @@
+fn Nope.f(self) {}
+fn main() {}

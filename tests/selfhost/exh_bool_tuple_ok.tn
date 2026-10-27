@@ -1,0 +1,8 @@
+fn f(a: Bool, b: Bool) -> Int {
+    match (a, b) {
+        (true, true) => 1,
+        (true, false) => 3,
+        (false, _) => 2,
+    }
+}
+fn main() { let _ = f(true, true) }

@@ -1,0 +1,3 @@
+import ckmod
+fn ckmod.Open.extra(self) {}
+fn main() {}

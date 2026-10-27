@@ -1,0 +1,3 @@
+// module (imported by tests/selfhost/mod_cycle.tn); imports it back
+import mod_cycle
+pub fn ping(n: Int) -> Int { if n == 0 { 0 } else { mod_cycle.pong(n - 1) } }

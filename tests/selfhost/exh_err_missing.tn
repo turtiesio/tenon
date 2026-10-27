@@ -1,0 +1,6 @@
+fn f(r: Result[Int, Str]) -> Int {
+    match r {
+        Ok(x) => x,
+    }
+}
+fn main() { let _ = f(Ok(1)) }

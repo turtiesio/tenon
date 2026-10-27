@@ -1,0 +1,4 @@
+import ckmod
+fn main() {
+    let r: Result[List[ckmod.Sealed], Str] = decode("[]")
+}

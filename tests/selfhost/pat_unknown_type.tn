@@ -1,0 +1,6 @@
+fn main() {
+    let f = fn(x) => match x {
+        Some(y) => y,
+        None => 0,
+    }
+}

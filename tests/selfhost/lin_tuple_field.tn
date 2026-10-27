@@ -1,0 +1,7 @@
+linear struct Claim { id: Int }
+fn take(c: Claim) {}
+fn main() {
+    let t = (Claim { id: 1 }, 2)
+    take(t.0)
+    take(t.0)
+}

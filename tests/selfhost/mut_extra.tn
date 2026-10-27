@@ -1,0 +1,5 @@
+fn show(a: Int) {}
+fn main() {
+    var x = 1
+    show(mut x)
+}

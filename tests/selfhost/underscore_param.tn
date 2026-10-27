@@ -1,0 +1,4 @@
+fn main() {
+    let f = fn(_, y: Int) => y
+    let n = f(1, 2)
+}

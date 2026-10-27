@@ -1,0 +1,7 @@
+fn Int.double(self) -> Int { self * 2 }
+fn List[Int].total2(self) -> Int { self.sum() }
+fn main() {
+    let a = 3.double()
+    let b = [1, 2].total2()
+    let c = ["a"].total2()
+}

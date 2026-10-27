@@ -1,0 +1,12 @@
+// A break of a loop nested in an `if` still counts for the outer `while true`
+// (src/check.rs `breaks` descends into nested loop bodies through `visit_stmt`).
+fn f(c: Bool) -> Int {
+    while true {
+        if c {
+            while c {
+                if c { break }
+            }
+        }
+    }
+}
+fn main() { let _ = f(true) }

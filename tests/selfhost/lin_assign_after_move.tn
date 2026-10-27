@@ -1,0 +1,9 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn main() {
+    var c = Claim { id: 1 }
+    c.done()
+    c = Claim { id: 2 }
+    c.done()
+    let d = Claim { id: 3 }
+}

@@ -1,0 +1,10 @@
+import ckmod
+struct Open { z: Int }
+fn make() -> Int { 2 }
+fn main() {
+    let a = Open { z: 1 }
+    let b = ckmod.Open { x: 1, y: "b" }
+    let c: Int = make()
+    let d: ckmod.Sealed = ckmod.make()
+    let e: Open = b
+}

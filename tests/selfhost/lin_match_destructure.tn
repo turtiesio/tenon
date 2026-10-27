@@ -1,0 +1,9 @@
+linear enum Job { Pending(Int), Done }
+fn main() {
+    let j = Pending(1)
+    match j {
+        Pending(n) => {}
+        Done => {}
+    }
+    let k = Pending(2)
+}

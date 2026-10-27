@@ -1,0 +1,5 @@
+linear struct Claim { id: Int }
+fn keep[T](x: T) {}
+fn main() {
+    let f: fn(Claim) -> Unit = keep
+}

@@ -1,0 +1,2 @@
+const M: Int = 3
+fn main() {}

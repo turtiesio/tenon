@@ -1,0 +1,4 @@
+import ckmod
+fn main() {
+    let s: Str = ckmod.LIMIT
+}

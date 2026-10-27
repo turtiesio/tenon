@@ -1,0 +1,7 @@
+linear enum Job { A(Int), B(Int) }
+fn main() {
+    let j = A(1)
+    match j {
+        A(n) | B(n) => {}
+    }
+}

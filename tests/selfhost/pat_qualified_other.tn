@@ -1,0 +1,7 @@
+enum Shape { Circle(Int) }
+fn main() {
+    match Some(1) {
+        Shape.Circle(x) => {}
+        _ => {}
+    }
+}

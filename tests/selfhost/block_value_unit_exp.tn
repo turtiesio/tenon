@@ -1,0 +1,4 @@
+fn f(x: Int) -> Int {
+    let y = x
+}
+fn main() { let _ = f(1) }

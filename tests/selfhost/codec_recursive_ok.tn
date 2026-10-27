@@ -1,0 +1,5 @@
+enum Tree { Leaf, Node(Tree, Int, Tree) }
+fn main() {
+    let s = encode(Node(Leaf, 1, Leaf))
+    let t: Result[Tree, Str] = decode(s)
+}

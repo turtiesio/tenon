@@ -1,0 +1,9 @@
+fn swap2(a: mut Int, b: mut Int) {
+    let t = a
+    a = b
+    b = t
+}
+fn main() {
+    var p = (1, 2)
+    swap2(mut p.0, mut p.1)
+}

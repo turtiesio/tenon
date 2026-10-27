@@ -1,0 +1,5 @@
+struct Pnt { x: Int }
+fn mk() -> Pnt { Pnt { x: 1 } }
+fn main() {
+    mk().x = 3
+}

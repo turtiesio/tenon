@@ -1,0 +1,6 @@
+fn g() -> Result[Int, Str] { Ok(1) }
+fn f() -> Result[Str, Int] {
+    let x = g()?
+    Ok("a")
+}
+fn main() { let _ = f() }

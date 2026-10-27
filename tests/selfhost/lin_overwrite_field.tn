@@ -1,0 +1,6 @@
+linear struct Claim { id: Int }
+linear struct Pair { a: Claim }
+fn Pair.f(mut self) {
+    self.a = Claim { id: 2 }
+}
+fn main() {}

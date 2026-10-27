@@ -1,0 +1,6 @@
+linear struct Claim { id: Int }
+fn Claim.ok(self) -> Bool { true }
+fn main() {
+    let c = Claim { id: 1 }
+    let b = true and c.ok()
+}

@@ -1,0 +1,7 @@
+fn f(r: Option[Int]) -> Int {
+    match r {
+        Some(x) if x > 0 => x,
+        None => 0,
+    }
+}
+fn main() { let _ = f(None) }

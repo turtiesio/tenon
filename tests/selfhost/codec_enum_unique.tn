@@ -1,0 +1,4 @@
+enum Ev { Open(Conn), Closed }
+fn main() {
+    let s = encode(Closed)
+}

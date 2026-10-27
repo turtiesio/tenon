@@ -1,0 +1,5 @@
+// T is fixed by the first argument.
+fn both[T](a: T, b: List[T]) -> Int { b.len() }
+fn main() {
+    let n = both(1, ["a"])
+}

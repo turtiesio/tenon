@@ -1,0 +1,6 @@
+struct Pt { x: Int }
+fn Pt.make() -> Pt { Pt { x: 0 } }
+fn main() {
+    let p = Pt.make()
+    let q = p.make()
+}

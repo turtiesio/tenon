@@ -1,0 +1,10 @@
+enum En { A, B, C }
+fn f(x: (En, Bool)) -> Int {
+    match x {
+        (A | B, true) => 1,
+        (C, _) => 2,
+        (A, false) | (B, false) => 3,
+        (B, true) => 4,
+    }
+}
+fn main() { let _ = f((A, true)) }

@@ -1,0 +1,5 @@
+struct Counter { n: Int }
+fn Counter.bump(mut self) {
+    let f = fn() => { self.n += 1 }
+}
+fn main() {}

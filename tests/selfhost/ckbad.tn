@@ -1,0 +1,2 @@
+// module (imported by tests/selfhost/mod_error_in_module.tn): a type error
+pub fn broken() -> Int { "not an int" }

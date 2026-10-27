@@ -1,0 +1,7 @@
+fn use(c: Conn) {}
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.net.connect("localhost", 1)?
+    use(c)
+    use(c)
+    Ok(())
+}

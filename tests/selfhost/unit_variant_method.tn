@@ -1,0 +1,6 @@
+enum Color { Red, Green }
+fn Color.name(self) -> Str { match self { Red => "red", Green => "green" } }
+fn main() {
+    let n = Red.name()
+    let m: Int = Green.name()
+}

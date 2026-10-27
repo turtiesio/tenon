@@ -1,0 +1,4 @@
+import ckmod
+fn main() {
+    let t = ckmod.Token { n: 1 }
+}

@@ -1,0 +1,3 @@
+// module (imported by tests/selfhost/mod_missing_nested.tn): imports a missing module
+import nowhere_at_all
+pub fn f() {}

@@ -1,0 +1,6 @@
+struct Pnt { x: Int, y: Str }
+fn main() {
+    let p = Pnt { x: 1, y: "a" }
+    let q = Pnt { x: 2, ..p }
+    let r = Pnt { y: 3, ..p }
+}

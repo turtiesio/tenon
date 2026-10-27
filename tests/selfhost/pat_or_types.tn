@@ -1,0 +1,6 @@
+enum En { A(Int), B(Str) }
+fn main() {
+    match A(1) {
+        A(x) | B(x) => {}
+    }
+}

@@ -1,0 +1,6 @@
+// A failed unification keeps the bindings made before the failure.
+fn pair[T](x: T, y: Str) -> (T, Str) { (x, y) }
+fn main() {
+    let p = pair
+    let q: fn(Int, Int) -> (Int, Int) = p
+}

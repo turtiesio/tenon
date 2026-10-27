@@ -1,0 +1,6 @@
+fn main() {
+    while true {
+        let f = fn() => { break }
+        break
+    }
+}

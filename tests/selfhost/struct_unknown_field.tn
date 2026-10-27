@@ -1,0 +1,4 @@
+struct Pnt { x: Int }
+fn main() {
+    let p = Pnt { x: 1, z: 2 }
+}

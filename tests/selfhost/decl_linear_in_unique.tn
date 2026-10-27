@@ -1,0 +1,3 @@
+linear struct Lin { id: Int }
+unique struct Uq { l: Lin }
+fn main() {}

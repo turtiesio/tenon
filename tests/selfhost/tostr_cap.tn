@@ -1,0 +1,3 @@
+fn main(sys: Sys) {
+    let s = sys.fs.to_str()
+}
