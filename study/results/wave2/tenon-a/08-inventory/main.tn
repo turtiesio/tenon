@@ -1,0 +1,214 @@
+// inv: inventory service with expiring holds, driven by a line protocol.
+
+enum Command {
+    Add(Str, Int),
+    Remove(Str, Int),
+    Reserve(Str, Int, Int),    // sku, qty, ttl
+    Commit(Int),
+    Release(Int),
+    Avail(Str),
+    Stats,
+}
+
+enum State { Active, Committed, Expired, Released }
+
+struct Hold { sku: Str, qty: Int, expires: Int, state: State }
+
+struct Stock { on_hand: Int, held: Int }
+
+// Min-heap of (expiry time, hold id).
+struct Heap { items: List[(Int, Int)] }
+
+fn Heap.push(mut self, x: (Int, Int)) {
+    self.items.push(x)
+    var i = self.items.len() - 1
+    while i > 0 {
+        let parent = (i - 1) / 2
+        if self.items[parent] <= self.items[i] { break }
+        let tmp = self.items[parent]
+        self.items[parent] = self.items[i]
+        self.items[i] = tmp
+        i = parent
+    }
+}
+
+fn Heap.peek(self) -> Option[(Int, Int)] { self.items.first() }
+
+fn Heap.pop(mut self) -> Option[(Int, Int)] {
+    let top = self.items.first()?
+    let last = self.items.pop().unwrap()
+    let n = self.items.len()
+    if n == 0 { return Some(top) }
+    self.items[0] = last
+    var i = 0
+    while true {
+        let l = 2 * i + 1
+        let r = l + 1
+        var smallest = i
+        if l < n and self.items[l] < self.items[smallest] { smallest = l }
+        if r < n and self.items[r] < self.items[smallest] { smallest = r }
+        if smallest == i { break }
+        let tmp = self.items[smallest]
+        self.items[smallest] = self.items[i]
+        self.items[i] = tmp
+        i = smallest
+    }
+    Some(top)
+}
+
+struct Inventory {
+    clock: Int,
+    stock: Map[Str, Stock],
+    holds: List[Hold],          // hold id N is holds[N - 1]
+    expiry: Heap,
+    active: Int,
+    committed: Int,
+    expired: Int,
+    released: Int,
+}
+
+fn all_match(s: Str, ok: fn(Int) -> Bool) -> Bool {
+    for i in 0..s.len() {
+        if not ok(s.byte(i)) { return false }
+    }
+    true
+}
+
+fn number(s: Str, max_digits: Int, min: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > max_digits or not all_match(s, Int.is_digit) { return None }
+    let v = s.to_int()?
+    if v < min { None } else { Some(v) }
+}
+
+fn sku(s: Str) -> Option[Str] {
+    let ok = s.len() >= 1 and s.len() <= 20 and all_match(s, fn(c) => c.is_upper() or c.is_digit() or c == '-')
+    if ok { Some(s) } else { None }
+}
+
+fn qty(s: Str) -> Option[Int] { number(s, 9, 1) }
+
+fn parse(line: Str) -> Option[(Int, Command)] {
+    let t = line.split(" ")
+    if t.len() < 2 { return None }
+    let time = number(t[0], 12, 0)?
+    let cmd = match (t[1], t.len()) {
+        ("ADD", 4) => Add(sku(t[2])?, qty(t[3])?),
+        ("REMOVE", 4) => Remove(sku(t[2])?, qty(t[3])?),
+        ("RESERVE", 5) => Reserve(sku(t[2])?, qty(t[3])?, qty(t[4])?),
+        ("COMMIT", 3) => Commit(number(t[2], 9, 0)?),
+        ("RELEASE", 3) => Release(number(t[2], 9, 0)?),
+        ("AVAIL", 3) => Avail(sku(t[2])?),
+        ("STATS", 2) => Stats,
+        _ => return None,
+    }
+    Some((time, cmd))
+}
+
+fn Inventory.new() -> Inventory {
+    Inventory {
+        clock: 0, stock: [:], holds: [], expiry: Heap { items: [] },
+        active: 0, committed: 0, expired: 0, released: 0,
+    }
+}
+
+fn Inventory.stock_of(self, s: Str) -> Stock { self.stock.get_or(s, Stock { on_hand: 0, held: 0 }) }
+
+// Ends an active hold in `state`, returning its quantity to the SKU.
+fn Inventory.finish(mut self, id: Int, state: State) {
+    let h = self.holds[id - 1]
+    self.holds[id - 1].state = state
+    self.stock[h.sku].held -= h.qty
+    self.active -= 1
+}
+
+fn Inventory.expire_until(mut self, now: Int) {
+    while true {
+        let Some((at, id)) = self.expiry.peek() else { break }
+        if at > now { break }
+        let _ = self.expiry.pop()
+        if self.holds[id - 1].state == Active {
+            self.finish(id, Expired)
+            self.expired += 1
+        }
+    }
+}
+
+// The state of hold `id` if it was ever issued.
+fn Inventory.hold_state(self, id: Int) -> Option[State] {
+    if id < 1 or id > self.holds.len() { None } else { Some(self.holds[id - 1].state) }
+}
+
+fn Inventory.execute(mut self, now: Int, cmd: Command) -> Str {
+    if now < self.clock { return "ERR time went backwards" }
+    self.clock = now
+    self.expire_until(now)
+    match cmd {
+        Add(s, n) => {
+            let st = self.stock_of(s)
+            self.stock[s] = Stock { on_hand: st.on_hand + n, ..st }
+            "OK {st.on_hand + n}"
+        },
+        Remove(s, n) => {
+            let st = self.stock_of(s)
+            let available = st.on_hand - st.held
+            if n > available { return "ERR insufficient {available}" }
+            self.stock[s] = Stock { on_hand: st.on_hand - n, ..st }
+            "OK {st.on_hand - n}"
+        },
+        Reserve(s, n, ttl) => {
+            let st = self.stock_of(s)
+            let available = st.on_hand - st.held
+            if n > available { return "ERR insufficient {available}" }
+            self.stock[s] = Stock { held: st.held + n, ..st }
+            self.holds.push(Hold { sku: s, qty: n, expires: now + ttl, state: Active })
+            let id = self.holds.len()
+            self.expiry.push((now + ttl, id))
+            self.active += 1
+            "HOLD {id}"
+        },
+        Commit(id) | Release(id) => {
+            match self.hold_state(id) {
+                Some(Active) => {},
+                Some(Expired) => return "ERR expired",
+                _ => return "ERR no such hold",
+            }
+            match cmd {
+                Commit(_) => {
+                    let h = self.holds[id - 1]
+                    self.stock[h.sku].on_hand -= h.qty
+                    self.finish(id, Committed)
+                    self.committed += 1
+                },
+                _ => {
+                    self.finish(id, Released)
+                    self.released += 1
+                },
+            }
+            "OK"
+        },
+        Avail(s) => {
+            let st = self.stock_of(s)
+            "{s} on_hand={st.on_hand} held={st.held} available={st.on_hand - st.held}"
+        },
+        Stats => "holds={self.active} committed={self.committed} expired={self.expired} released={self.released}",
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: inv (no arguments)")
+        return 2
+    }
+    var inv = Inventory.new()
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let reply = match parse(line) {
+            Some((now, cmd)) => inv.execute(now, cmd),
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

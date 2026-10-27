@@ -1,0 +1,129 @@
+struct Request { id: Str, arrival: Int, duration: Int }
+struct Server { job: Int, busy: Int, served: Int }
+struct Simulation { servers: List[Server], events: List[(Int, Int)], idle: List[(Int, Int)], waiting: List[Int], head: Int, served: Int, rejected: Int, max_wait: Int, total_wait: Int, makespan: Int }
+fn number(s: Str, limit: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > limit { return None }
+    for i in 0..s.len() { if not s.byte(i).is_digit() { return None } }
+    s.to_int()
+}
+fn valid_id(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 16 { return false }
+    for i in 0..s.len() { let c = s.byte(i); if not (c.is_alnum() or c == 95 or c == 45) { return false } }
+    true
+}
+fn trace(console: Console) -> Option[List[Request]] {
+    var requests: List[Request] = []
+    var seen: Set[Str] = Set.new()
+    var previous = 0
+    while true {
+        let Some(line) = console.read_line() else { break }
+        if line.is_empty() or line.chars().all(fn(c) => c == " ") { continue }
+        let fields = line.split(" ")
+        if fields.len() != 3 or not valid_id(fields[0]) { return None }
+        let arrival = number(fields[1], 12)?
+        let duration = number(fields[2], 9)?
+        if duration == 0 or arrival < previous or not seen.insert(fields[0]) { return None }
+        previous = arrival
+        requests.push(Request { id: fields[0], arrival, duration })
+    }
+    Some(requests)
+}
+fn heap_push(heap: mut List[(Int, Int)], entry: (Int, Int)) {
+    heap.push(entry)
+    var i = heap.len() - 1
+    while i > 0 {
+        let parent = (i - 1) / 2
+        if heap[parent] <= heap[i] { break }
+        let temp = heap[parent]
+        heap[parent] = heap[i]
+        heap[i] = temp
+        i = parent
+    }
+}
+fn heap_pop(heap: mut List[(Int, Int)]) -> (Int, Int) {
+    let first = heap[0]
+    let last = heap.pop().unwrap()
+    if not heap.is_empty() {
+        heap[0] = last
+        var i = 0
+        while i * 2 + 1 < heap.len() {
+            var child = i * 2 + 1
+            if child + 1 < heap.len() and heap[child + 1] < heap[child] { child += 1 }
+            if heap[i] <= heap[child] { break }
+            let temp = heap[i]
+            heap[i] = heap[child]
+            heap[child] = temp
+            i = child
+        }
+    }
+    first
+}
+fn start(job: Int, server: Int, time: Int, requests: List[Request], sim: mut Simulation, console: Console) {
+    let request = requests[job]
+    let wait = time - request.arrival
+    sim.servers[server].job = job
+    sim.servers[server].busy += request.duration
+    sim.servers[server].served += 1
+    sim.served += 1
+    sim.max_wait = sim.max_wait.max(wait)
+    sim.total_wait += wait
+    heap_push(mut sim.events, (time + request.duration, server))
+    console.println("{time} start {request.id} s{server + 1} wait={wait}")
+}
+fn main(sys: Sys) -> Int {
+    var server_count = 0
+    var has_count = false
+    var capacity = 100000
+    var arg = 0
+    while arg < sys.args.len() {
+        let text = sys.args[arg]
+        if text == "-q" {
+            if arg + 1 == sys.args.len() { return 2 }
+            let Some(value) = number(sys.args[arg + 1], 7) else { return 2 }
+            capacity = value
+            arg += 2
+        } else {
+            if text.starts_with("-") or has_count { return 2 }
+            let Some(value) = number(text, 4) else { return 2 }
+            if value < 1 or value > 1000 { return 2 }
+            server_count = value
+            has_count = true
+            arg += 1
+        }
+    }
+    if not has_count { return 2 }
+    let Some(requests) = trace(sys.console) else { sys.console.eprintln("invalid trace"); return 1 }
+    var sim = Simulation { servers: [], events: [], idle: [], waiting: [], head: 0, served: 0, rejected: 0, max_wait: 0, total_wait: 0, makespan: 0 }
+    for k in 0..server_count {
+        sim.servers.push(Server { job: 0, busy: 0, served: 0 })
+        heap_push(mut sim.idle, (k, 0))
+    }
+    var next = 0
+    while next < requests.len() or not sim.events.is_empty() {
+        if not sim.events.is_empty() and (next == requests.len() or sim.events[0].0 <= requests[next].arrival) {
+            let (time, server) = heap_pop(mut sim.events)
+            let completed = requests[sim.servers[server].job]
+            sys.console.println("{time} done {completed.id} s{server + 1}")
+            sim.makespan = time
+            if sim.head < sim.waiting.len() {
+                let job = sim.waiting[sim.head]
+                sim.head += 1
+                start(job, server, time, requests, mut sim, sys.console)
+            } else { heap_push(mut sim.idle, (server, 0)) }
+        } else {
+            let request = requests[next]
+            if not sim.idle.is_empty() {
+                let server = heap_pop(mut sim.idle).0
+                start(next, server, request.arrival, requests, mut sim, sys.console)
+            } else if sim.waiting.len() - sim.head < capacity { sim.waiting.push(next) }
+            else { sim.rejected += 1; sys.console.println("{request.arrival} reject {request.id}") }
+            next += 1
+        }
+    }
+    sys.console.println("served={sim.served} rejected={sim.rejected} max_wait={sim.max_wait} total_wait={sim.total_wait} makespan={sim.makespan}")
+    for k in 0..server_count {
+        let server = sim.servers[k]
+        sys.console.println("s{k + 1} busy={server.busy} served={server.served}")
+    }
+    0
+}

@@ -1,0 +1,217 @@
+// servsim: discrete-event simulation of N servers sharing one FIFO queue.
+
+struct Request { id: Str, arrival: Int, duration: Int }
+
+struct Config { servers: Int, capacity: Option[Int] }
+
+struct ServerStats { busy: Int, served: Int }
+
+// Binary min-heap.
+struct Heap[T] { items: List[T] }
+
+fn Heap[T].new() -> Heap[T] { Heap { items: [] } }
+
+fn Heap[T].peek(self) -> Option[T] { self.items.first() }
+
+fn Heap[T].is_empty(self) -> Bool { self.items.is_empty() }
+
+fn Heap[T].swap(mut self, i: Int, j: Int) {
+    let tmp = self.items[i]
+    self.items[i] = self.items[j]
+    self.items[j] = tmp
+}
+
+fn Heap[T].push(mut self, x: T) {
+    self.items.push(x)
+    var i = self.items.len() - 1
+    while i > 0 and self.items[(i - 1) / 2] > self.items[i] {
+        self.swap(i, (i - 1) / 2)
+        i = (i - 1) / 2
+    }
+}
+
+fn Heap[T].pop(mut self) -> Option[T] {
+    let top = self.items.first()?
+    let last = self.items.pop().unwrap()
+    let n = self.items.len()
+    if n == 0 { return Some(top) }
+    self.items[0] = last
+    var i = 0
+    while true {
+        let l = 2 * i + 1
+        let r = l + 1
+        var smallest = i
+        if l < n and self.items[l] < self.items[smallest] { smallest = l }
+        if r < n and self.items[r] < self.items[smallest] { smallest = r }
+        if smallest == i { break }
+        self.swap(i, smallest)
+        i = smallest
+    }
+    Some(top)
+}
+
+fn all_match(s: Str, ok: fn(Int) -> Bool) -> Bool {
+    for i in 0..s.len() {
+        if not ok(s.byte(i)) { return false }
+    }
+    true
+}
+
+fn number(s: Str, max_digits: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > max_digits or not all_match(s, Int.is_digit) { return None }
+    s.to_int()
+}
+
+fn parse_args(args: List[Str]) -> Result[Config, Str] {
+    var capacity: Option[Int] = None
+    var positional: List[Str] = []
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-q" {
+            let Some(raw) = args.get(i + 1) else { return Err("-q needs a value") }
+            let Some(cap) = number(raw, 7) else { return Err("bad queue capacity: {raw}") }
+            capacity = Some(cap)
+            i += 2
+        } else if a.starts_with("-") {
+            return Err("unknown option {a}")
+        } else {
+            positional.push(a)
+            i += 1
+        }
+    }
+    if positional.len() != 1 { return Err("expected exactly one N") }
+    let Some(n) = number(positional[0], 4) else { return Err("bad N: {positional[0]}") }
+    if n < 1 or n > 1000 { return Err("N out of range: {n}") }
+    Ok(Config { servers: n, capacity })
+}
+
+fn parse_request(line: Str) -> Option[Request] {
+    let t = line.split(" ")
+    if t.len() != 3 { return None }
+    let id_ok = t[0].len() >= 1 and t[0].len() <= 16
+        and all_match(t[0], fn(c) => c.is_alnum() or c == '_' or c == '-')
+    if not id_ok { return None }
+    let arrival = number(t[1], 12)?
+    let duration = number(t[2], 9)?
+    if duration < 1 { return None }
+    Some(Request { id: t[0], arrival, duration })
+}
+
+fn parse_trace(text: Str) -> Result[List[Request], Str] {
+    var requests: List[Request] = []
+    var ids: Set[Str] = Set.new()
+    var n = 0
+    for raw in text.lines() {
+        n += 1
+        let line = if raw.ends_with("\r") { raw.slice(0, raw.len() - 1) } else { raw }
+        if all_match(line, fn(c) => c == ' ') { continue }
+        let Some(r) = parse_request(line) else { return Err("line {n}: malformed request") }
+        if not ids.insert(r.id) { return Err("line {n}: duplicate id {r.id}") }
+        if requests.last().map(fn(p) => p.arrival > r.arrival).unwrap_or(false) {
+            return Err("line {n}: arrival goes backwards")
+        }
+        requests.push(r)
+    }
+    Ok(requests)
+}
+
+fn simulate(cfg: Config, requests: List[Request]) -> List[Str] {
+    var out: List[Str] = []
+    var stats: List[ServerStats] = []
+    var idle: Heap[Int] = Heap.new()
+    for k in 1..cfg.servers + 1 {
+        stats.push(ServerStats { busy: 0, served: 0 })
+        idle.push(k)
+    }
+    // (finish time, server, request index)
+    var running: Heap[(Int, Int, Int)] = Heap.new()
+    // FIFO of request indices; entries before `head` have left the queue.
+    var queue: List[Int] = []
+    var head = 0
+    var next = 0
+    var served = 0
+    var rejected = 0
+    var max_wait = 0
+    var total_wait = 0
+    var makespan = 0
+    while next < requests.len() or not running.is_empty() {
+        let next_done = running.peek().map(fn(e) => e.0)
+        let next_arrival = requests.get(next).map(fn(r) => r.arrival)
+        let t = match (next_done, next_arrival) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => break,
+        }
+        // Completions, in increasing server number (the heap orders ties by server).
+        while running.peek().map(fn(e) => e.0 == t).unwrap_or(false) {
+            let (_, k, ri) = running.pop().unwrap()
+            out.push("{t} done {requests[ri].id} s{k}")
+            makespan = t
+            if head < queue.len() {
+                let qi = queue[head]
+                head += 1
+                let r = requests[qi]
+                let wait = t - r.arrival
+                out.push("{t} start {r.id} s{k} wait={wait}")
+                served += 1
+                max_wait = max_wait.max(wait)
+                total_wait += wait
+                stats[k - 1].busy += r.duration
+                stats[k - 1].served += 1
+                running.push((t + r.duration, k, qi))
+            } else {
+                idle.push(k)
+            }
+        }
+        // Arrivals, in input order.
+        while next < requests.len() and requests[next].arrival == t {
+            let r = requests[next]
+            match idle.pop() {
+                Some(k) => {
+                    out.push("{t} start {r.id} s{k} wait=0")
+                    served += 1
+                    stats[k - 1].busy += r.duration
+                    stats[k - 1].served += 1
+                    running.push((t + r.duration, k, next))
+                },
+                None => {
+                    let waiting = queue.len() - head
+                    if cfg.capacity.map(fn(c) => waiting < c).unwrap_or(true) {
+                        queue.push(next)
+                    } else {
+                        out.push("{t} reject {r.id}")
+                        rejected += 1
+                    }
+                },
+            }
+            next += 1
+        }
+    }
+    out.push("served={served} rejected={rejected} max_wait={max_wait} total_wait={total_wait} makespan={makespan}")
+    for k in 1..cfg.servers + 1 {
+        out.push("s{k} busy={stats[k - 1].busy} served={stats[k - 1].served}")
+    }
+    out
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let cfg = match parse_args(sys.args) {
+        Ok(c) => c,
+        Err(msg) => {
+            con.eprintln("servsim: {msg}")
+            return 2
+        },
+    }
+    let requests = match parse_trace(con.read_all()) {
+        Ok(rs) => rs,
+        Err(msg) => {
+            con.eprintln("servsim: invalid trace: {msg}")
+            return 1
+        },
+    }
+    for line in simulate(cfg, requests) { con.println(line) }
+    0
+}

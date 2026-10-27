@@ -1,0 +1,59 @@
+struct Service { errors: Int, warns: Int, alerts: Int, peak: Int, times: List[Int], head: Int, last_alert: Option[Int] }
+fn number(s: Str, limit: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > limit { return None }
+    for i in 0..s.len() { if not s.byte(i).is_digit() { return None } }
+    s.to_int()
+}
+fn valid_service(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 32 or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() { if not (s.byte(i).is_lower() or s.byte(i).is_digit() or s.byte(i) == 45) { return false } }
+    true
+}
+fn main(sys: Sys) -> Int {
+    var window = 60
+    var threshold = 3
+    var cooldown = 300
+    var i = 0
+    while i < sys.args.len() {
+        let option = sys.args[i]
+        if not ["-w", "-t", "-c"].contains(option) or i + 1 == sys.args.len() { return 2 }
+        let Some(value) = number(sys.args[i + 1], 9) else { return 2 }
+        if option != "-c" and value == 0 { return 2 }
+        if option == "-w" { window = value } else if option == "-t" { threshold = value } else { cooldown = value }
+        i += 2
+    }
+    var services: Map[Str, Service] = [:]
+    var last_time = 0
+    var skipped = 0
+    while true {
+        let Some(line) = sys.console.read_line() else { break }
+        if line.is_empty() or line.chars().all(fn(c) => c == " ") { continue }
+        let fields = line.split(" ")
+        if fields.len() != 3 { skipped += 1; continue }
+        let Some(time) = number(fields[0], 12) else { skipped += 1; continue }
+        let name = fields[1]
+        let level = fields[2]
+        if not valid_service(name) or not ["INFO", "WARN", "ERROR"].contains(level) or time < last_time { skipped += 1; continue }
+        last_time = time
+        if not services.contains(name) { services[name] = Service { errors: 0, warns: 0, alerts: 0, peak: 0, times: [], head: 0, last_alert: None } }
+        if level == "WARN" { services[name].warns += 1 }
+        if level != "ERROR" { continue }
+        services[name].errors += 1
+        services[name].times.push(time)
+        while services[name].head < services[name].times.len() and services[name].times[services[name].head] <= time - window { services[name].head += 1 }
+        let count = services[name].times.len() - services[name].head
+        services[name].peak = services[name].peak.max(count)
+        let cooled = match services[name].last_alert { None => true, Some(previous) => time - previous >= cooldown }
+        if count >= threshold and cooled {
+            sys.console.println("ALERT {time} {name} {count}")
+            services[name].alerts += 1
+            services[name].last_alert = Some(time)
+        }
+    }
+    for name in services.keys().sorted() {
+        let service = services[name]
+        sys.console.println("{name} errors={service.errors} warns={service.warns} alerts={service.alerts} peak={service.peak}")
+    }
+    sys.console.println("skipped={skipped}")
+    0
+}

@@ -1,0 +1,122 @@
+struct Command { kind: Str, name: Str, value: Int }
+struct Store { counters: Map[Str, Int], records: Int }
+fn valid_name(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 32 or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() { let c = s.byte(i); if not (c.is_lower() or c.is_digit() or c == 95) { return false } }
+    true
+}
+fn number(s: Str, limit: Int) -> Option[Int] {
+    let start = if s.starts_with("-") { 1 } else { 0 }
+    if s.len() - start < 1 or s.len() - start > limit { return None }
+    for i in start..s.len() { if not s.byte(i).is_digit() { return None } }
+    s.to_int()
+}
+fn parse(line: Str, log: Bool) -> Option[Command] {
+    let parts = line.split(" ")
+    if parts.any(fn(s) => s.is_empty()) { return None }
+    var kind = parts[0]
+    if log {
+        kind = match kind { "S" => "SET", "A" => "ADD", "D" => "DEL", _ => return None }
+    }
+    var command = Command { kind, name: "", value: 0 }
+    match kind {
+        "SET" | "ADD" => {
+            if parts.len() != 3 or not valid_name(parts[1]) { return None }
+            command.name = parts[1]
+            // Snapshots must be able to represent accumulated counter values.
+            let limit = if log and kind == "SET" { 18 } else { 15 }
+            command.value = number(parts[2], limit)?
+            if log and kind == "SET" and (command.value < -100000000000000000 or command.value > 100000000000000000) { return None }
+        },
+        "GET" | "DEL" => { if parts.len() != 2 or not valid_name(parts[1]) { return None }; command.name = parts[1] },
+        "LIST" | "INFO" | "COMPACT" => { if parts.len() != 1 { return None } },
+        _ => return None,
+    }
+    Some(command)
+}
+fn apply(command: Command, store: mut Store) {
+    match command.kind {
+        "SET" => store.counters[command.name] = command.value,
+        "ADD" => store.counters[command.name] = store.counters.get_or(command.name, 0) + command.value,
+        "DEL" => { let _ = store.counters.remove(command.name) },
+        _ => (),
+    }
+}
+fn load(fs: Fs) -> Result[Store, IoError] {
+    if fs.exists("tally.log.tmp") { fs.remove("tally.log.tmp")? }
+    let text = match fs.read("tally.log") { Ok(value) => value, Err(NotFound(_)) => "", Err(error) => return Err(error) }
+    let lines = text.split("\n")
+    var good: List[Str] = []
+    var store = Store { counters: [:], records: 0 }
+    for i in 0..(lines.len() - 1) {
+        let Some(command) = parse(lines[i], true) else { break }
+        apply(command, mut store)
+        store.records += 1
+        good.push(lines[i] + "\n")
+    }
+    let prefix = good.join("")
+    if prefix != text { fs.write("tally.log", prefix)? }
+    Ok(store)
+}
+fn execute(command: Command, store: mut Store, fs: Fs) -> Result[Str, IoError] {
+    let name = command.name
+    match command.kind {
+        "SET" | "ADD" => {
+            let op = if command.kind == "SET" { "S" } else { "A" }
+            fs.append("tally.log", "{op} {name} {command.value}\n")?
+            apply(command, mut store)
+            store.records += 1
+            Ok(if command.kind == "SET" { "OK" } else { store.counters[name].to_str() })
+        },
+        "DEL" => {
+            if not store.counters.contains(name) { return Ok("NONE") }
+            fs.append("tally.log", "D {name}\n")?
+            apply(command, mut store)
+            store.records += 1
+            Ok("OK")
+        },
+        "GET" => Ok(match store.counters.get(name) { Some(value) => value.to_str(), None => "NONE" }),
+        "INFO" => Ok("counters={store.counters.len()} log_records={store.records}"),
+        "LIST" => {
+            var pieces = [store.counters.len().to_str()]
+            for key in store.counters.keys().sorted() { let value = store.counters[key]; pieces.push("{key}={value}") }
+            Ok(pieces.join(" "))
+        },
+        "COMPACT" => {
+            var records: List[Str] = []
+            for key in store.counters.keys().sorted() { let value = store.counters[key]; records.push("S {key} {value}\n") }
+            fs.write("tally.log.tmp", records.join(""))?
+            fs.rename("tally.log.tmp", "tally.log")?
+            store.records = records.len()
+            Ok("OK {store.records}")
+        },
+        _ => Ok("ERR bad command"),
+    }
+}
+fn prepare(fs: Fs, path: Str) -> Bool {
+    if fs.exists(path) { return fs.is_dir(path) }
+    var end = path.len()
+    while end > 1 and path.byte(end - 1) == 47 { end -= 1 }
+    var slash = end - 1
+    while slash >= 0 and path.byte(slash) != 47 { slash -= 1 }
+    let parent = if slash < 0 { "." } else if slash == 0 { "/" } else { path.slice(0, slash) }
+    if not fs.is_dir(parent) { return false }
+    fs.mkdir(path).is_ok() and fs.is_dir(path)
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("expected directory"); return 2 }
+    if not prepare(sys.fs, sys.args[0]) { sys.console.eprintln("unusable directory"); return 1 }
+    let fs = sys.fs.within(sys.args[0])
+    let Ok(initial) = load(fs) else { sys.console.eprintln("cannot recover log"); return 1 }
+    var store = initial
+    while true {
+        let Some(line) = sys.console.read_line() else { break }
+        let response = match parse(line, false) {
+            None => "ERR bad command",
+            Some(command) => { let Ok(value) = execute(command, mut store, fs) else { sys.console.eprintln("log write failed"); return 1 }; value },
+        }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

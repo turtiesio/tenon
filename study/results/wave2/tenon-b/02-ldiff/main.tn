@@ -1,0 +1,117 @@
+// ldiff: line diff following a fixed LCS walk.
+
+fn key_of(line: Str, ignore_case: Bool, ignore_trailing: Bool) -> Str {
+    var end = line.len()
+    if ignore_trailing {
+        while end > 0 and (line.byte(end - 1) == ' ' or line.byte(end - 1) == '\t') { end -= 1 }
+    }
+    let k = line.slice(0, end)
+    if ignore_case { k.lower() } else { k }
+}
+
+fn main(sys: Sys) -> Int {
+    var ignore_case = false
+    var ignore_trailing = false
+    var quiet = false
+    var summary = false
+    var files: List[Str] = []
+    for a in sys.args {
+        if a.starts_with("-") {
+            match a {
+                "-i" => ignore_case = true,
+                "-b" => ignore_trailing = true,
+                "-q" => quiet = true,
+                "-s" => summary = true,
+                _ => {
+                    sys.console.eprintln("ldiff: unknown option {a}")
+                    return 2
+                },
+            }
+        } else {
+            files.push(a)
+        }
+    }
+    if files.len() != 2 or (quiet and summary) {
+        sys.console.eprintln("usage: ldiff [-i] [-b] [-q | -s] FILE1 FILE2")
+        return 2
+    }
+    let text_a = match sys.fs.read(files[0]) {
+        Ok(t) => t,
+        Err(_) => {
+            sys.console.eprintln("ldiff: cannot read {files[0]}")
+            return 2
+        },
+    }
+    let text_b = match sys.fs.read(files[1]) {
+        Ok(t) => t,
+        Err(_) => {
+            sys.console.eprintln("ldiff: cannot read {files[1]}")
+            return 2
+        },
+    }
+
+    let a = text_a.lines()
+    let b = text_b.lines()
+    let n = a.len()
+    let m = b.len()
+    let ka = a.map(fn(l) => key_of(l, ignore_case, ignore_trailing))
+    let kb = b.map(fn(l) => key_of(l, ignore_case, ignore_trailing))
+
+    // L[i][j] stored flat at i * (m + 1) + j; suffix LCS lengths.
+    let w = m + 1
+    var table: List[Int] = []
+    for _ in 0..((n + 1) * w) { table.push(0) }
+    var i = n - 1
+    while i >= 0 {
+        var j = m - 1
+        while j >= 0 {
+            if ka[i] == kb[j] {
+                table[i * w + j] = table[(i + 1) * w + j + 1] + 1
+            } else {
+                table[i * w + j] = table[(i + 1) * w + j].max(table[i * w + j + 1])
+            }
+            j -= 1
+        }
+        i -= 1
+    }
+
+    var out: List[Str] = []
+    var inserted = 0
+    var deleted = 0
+    var common = 0
+    i = 0
+    var j = 0
+    while i < n or j < m {
+        if i == n {
+            out.push("+ " + b[j])
+            inserted += 1
+            j += 1
+        } else if j == m {
+            out.push("- " + a[i])
+            deleted += 1
+            i += 1
+        } else if ka[i] == kb[j] {
+            out.push("  " + a[i])
+            common += 1
+            i += 1
+            j += 1
+        } else if table[(i + 1) * w + j] >= table[i * w + j + 1] {
+            out.push("- " + a[i])
+            deleted += 1
+            i += 1
+        } else {
+            out.push("+ " + b[j])
+            inserted += 1
+            j += 1
+        }
+    }
+
+    if not quiet {
+        if summary {
+            sys.console.println("+{inserted} -{deleted} ={common}")
+        } else {
+            for l in out { sys.console.println(l) }
+        }
+    }
+    if inserted + deleted > 0 { 1 } else { 0 }
+}

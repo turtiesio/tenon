@@ -1,0 +1,105 @@
+struct Date { year: Int, month: Int, day: Int }
+fn leap(y: Int) -> Bool { y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) }
+fn month_days(y: Int, m: Int) -> Int { if m == 2 { if leap(y) { 29 } else { 28 } } else if [4, 6, 9, 11].contains(m) { 30 } else { 31 } }
+fn decimal(s: Str, limit: Int, signed: Bool) -> Bool {
+    let start = if signed and s.starts_with("-") { 1 } else { 0 }
+    if s.len() - start < 1 or s.len() - start > limit { return false }
+    for i in start..s.len() { if not s.byte(i).is_digit() { return false } }
+    true
+}
+fn parse_date(s: Str) -> Option[Date] {
+    if s.len() != 10 { return None }
+    if s.byte(4) != 45 or s.byte(7) != 45 { return None }
+    let ys = s.slice(0, 4)
+    let ms = s.slice(5, 7)
+    let ds = s.slice(8, 10)
+    if not decimal(ys, 4, false) or not decimal(ms, 2, false) or not decimal(ds, 2, false) { return None }
+    let y = ys.to_int()?
+    let m = ms.to_int()?
+    let d = ds.to_int()?
+    if y < 1 or m < 1 or m > 12 or d < 1 or d > month_days(y, m) { return None }
+    Some(Date { year: y, month: m, day: d })
+}
+fn ordinal(d: Date) -> Int {
+    let y = d.year - 1
+    var n = 365 * y + y / 4 - y / 100 + y / 400 + d.day - 1
+    for m in 1..d.month { n += month_days(d.year, m) }
+    n
+}
+fn from_ordinal(n: Int) -> Date {
+    var remain = n
+    var year = 1
+    while remain >= (if leap(year) { 366 } else { 365 }) { remain -= if leap(year) { 366 } else { 365 }; year += 1 }
+    var month = 1
+    while remain >= month_days(year, month) { remain -= month_days(year, month); month += 1 }
+    Date { year, month, day: remain + 1 }
+}
+fn valid_format(fmt: Str) -> Bool {
+    var i = 0
+    while i < fmt.len() {
+        if fmt.byte(i) == 37 {
+            i += 1
+            if i == fmt.len() { return false }
+            if not ["Y", "m", "d", "j", "a", "b", "%"].contains(fmt.slice(i, i + 1)) { return false }
+        }
+        i += 1
+    }
+    true
+}
+fn format(d: Date, fmt: Str) -> Str {
+    var out = ""
+    var i = 0
+    while i < fmt.len() {
+        if fmt.byte(i) != 37 { out += fmt.slice(i, i + 1) } else {
+            i += 1
+            out += match fmt.slice(i, i + 1) {
+                "Y" => d.year.to_str().pad_left(4, "0"),
+                "m" => d.month.to_str().pad_left(2, "0"),
+                "d" => d.day.to_str().pad_left(2, "0"),
+                "j" => (ordinal(d) - ordinal(Date { year: d.year, month: 1, day: 1 }) + 1).to_str().pad_left(3, "0"),
+                "a" => ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][ordinal(d) % 7],
+                "b" => ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.month - 1],
+                _ => "%",
+            }
+        }
+        i += 1
+    }
+    out
+}
+fn main(sys: Sys) -> Int {
+    var i = 0
+    var fmt = "%Y-%m-%d"
+    while i < sys.args.len() and sys.args[i].starts_with("-") {
+        if sys.args[i] != "-F" or i + 1 >= sys.args.len() { return 2 }
+        fmt = sys.args[i + 1]
+        i += 2
+    }
+    if i >= sys.args.len() or not valid_format(fmt) { return 2 }
+    let command = sys.args[i]
+    let args = sys.args.slice(i + 1, sys.args.len())
+    if command == "weekday" { if args.len() != 1 { return 2 } } else if ["add", "diff", "addmonths"].contains(command) { if args.len() != 2 { return 2 } } else { return 2 }
+    if command == "add" or command == "addmonths" { if not decimal(args[1], 7, true) { return 2 } }
+    let Some(date) = parse_date(args[0]) else { return 1 }
+    if command == "weekday" {
+        sys.console.println(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"][ordinal(date) % 7])
+    } else if command == "diff" {
+        let Some(other) = parse_date(args[1]) else { return 1 }
+        sys.console.println("{ordinal(other) - ordinal(date)}")
+    } else {
+        let amount = args[1].to_int().unwrap()
+        var result = date
+        if command == "add" {
+            let target = ordinal(date) + amount
+            if target < 0 or target > 3652058 { return 1 }
+            result = from_ordinal(target)
+        } else {
+            let target_month = (date.year - 1) * 12 + date.month - 1 + amount
+            if target_month < 0 or target_month >= 9999 * 12 { return 1 }
+            let year = target_month / 12 + 1
+            let month = target_month % 12 + 1
+            result = Date { year, month, day: date.day.min(month_days(year, month)) }
+        }
+        sys.console.println(format(result, fmt))
+    }
+    0
+}

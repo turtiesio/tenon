@@ -1,0 +1,112 @@
+struct Stats { count: Int, n: Int, sum: Int, low: Int, high: Int }
+fn start(c: Int) -> Bool { c.is_alpha() or c == 95 }
+fn rest(c: Int) -> Bool { start(c) or c.is_digit() or c == 46 }
+fn valid_key(s: Str) -> Bool {
+    if s.is_empty() or not start(s.byte(0)) { return false }
+    for i in 1..s.len() { if not rest(s.byte(i)) { return false } }
+    true
+}
+fn parse(s: Str) -> Option[Map[Str, Str]] {
+    var pairs: Map[Str, Str] = [:]
+    var i = 0
+    while i < s.len() {
+        while i < s.len() and s.byte(i) == 32 { i += 1 }
+        if i == s.len() { break }
+        let begin = i
+        if not start(s.byte(i)) { return None }
+        i += 1
+        while i < s.len() and rest(s.byte(i)) { i += 1 }
+        let key = s.slice(begin, i)
+        if pairs.contains(key) { return None }
+        var value = "true"
+        if i < s.len() and s.byte(i) != 32 {
+            if s.byte(i) != 61 { return None }
+            i += 1
+            if i < s.len() and s.byte(i) == 34 {
+                i += 1
+                value = ""
+                var closed = false
+                while i < s.len() {
+                    let c = s.byte(i)
+                    i += 1
+                    if c == 34 { closed = true; break }
+                    if c == 92 {
+                        if i == s.len() { return None }
+                        let escaped = s.byte(i)
+                        if escaped != 34 and escaped != 92 { return None }
+                        value += escaped.char()
+                        i += 1
+                    } else { value += c.char() }
+                }
+                if not closed or (i < s.len() and s.byte(i) != 32) { return None }
+            } else {
+                let value_start = i
+                while i < s.len() and s.byte(i) != 32 {
+                    if s.byte(i) == 34 or s.byte(i) == 61 { return None }
+                    i += 1
+                }
+                value = s.slice(value_start, i)
+            }
+        }
+        pairs[key] = value
+    }
+    Some(pairs)
+}
+fn number(s: Str) -> Option[Int] {
+    let first = if s.starts_with("-") { 1 } else { 0 }
+    if s.len() - first < 1 or s.len() - first > 15 { return None }
+    for i in first..s.len() { if not s.byte(i).is_digit() { return None } }
+    s.to_int()
+}
+fn average(sum: Int, n: Int) -> Str {
+    var whole = sum / n
+    let remainder = (sum % n).abs()
+    var cents = (remainder * 100) / n
+    if ((remainder * 100) % n) * 2 >= n { cents += 1 }
+    if cents == 100 { whole += if sum < 0 { -1 } else { 1 }; cents = 0 }
+    let signed_text = whole.to_str()
+    let magnitude = if whole < 0 { signed_text.slice(1, signed_text.len()) } else { signed_text }
+    let sign = if sum < 0 and (whole != 0 or cents != 0) { "-" } else { "" }
+    "{sign}{magnitude}.{cents.to_str().pad_left(2, "0")}"
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() < 1 or sys.args.len() > 2 { return 2 }
+    for arg in sys.args { if not valid_key(arg) { return 2 } }
+    let by = sys.args[0]
+    let field = sys.args.get(1).unwrap_or("")
+    var groups: Map[Str, Stats] = [:]
+    var valid = 0
+    var malformed = 0
+    var nokey = 0
+    while true {
+        let Some(line) = sys.console.read_line() else { break }
+        if line.is_empty() or line.chars().all(fn(c) => c == " ") { continue }
+        let Some(pairs) = parse(line) else { malformed += 1; continue }
+        valid += 1
+        let Some(group) = pairs.get(by) else { nokey += 1; continue }
+        var stat = groups.get_or(group, Stats { count: 0, n: 0, sum: 0, low: 0, high: 0 })
+        stat.count += 1
+        if not field.is_empty() {
+            let maybe = pairs.get(field).unwrap_or("")
+            match number(maybe) {
+                Some(value) => {
+                    if stat.n == 0 { stat.low = value; stat.high = value } else { stat.low = stat.low.min(value); stat.high = stat.high.max(value) }
+                    stat.n += 1
+                    stat.sum += value
+                },
+                None => (),
+            }
+        }
+        groups[group] = stat
+    }
+    var ordered = groups.entries()
+    ordered.sort_by(fn(e) => (-e.1.count, e.0))
+    for (group, stat) in ordered {
+        let label = if group.is_empty() { "\"\"" } else { group }
+        if field.is_empty() { sys.console.println("{label} count={stat.count}") }
+        else if stat.n == 0 { sys.console.println("{label} count={stat.count} n=0 sum=0 min=- max=- avg=-") }
+        else { sys.console.println("{label} count={stat.count} n={stat.n} sum={stat.sum} min={stat.low} max={stat.high} avg={average(stat.sum, stat.n)}") }
+    }
+    sys.console.println("lines={valid} malformed={malformed} nokey={nokey}")
+    0
+}

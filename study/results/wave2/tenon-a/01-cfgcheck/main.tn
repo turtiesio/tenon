@@ -1,0 +1,246 @@
+// cfgcheck: validate an INI-style config against a schema.
+
+enum Kind { IntT(Option[(Int, Int, Str)]), StrT(Option[(Int, Str)]), BoolT, EnumT(List[Str], Str) }
+
+struct Entry { name: Str, kind: Kind, required: Bool }
+
+fn is_blank_char(c: Int) -> Bool { c == ' ' or c == '\t' }
+
+// Remove leading and trailing spaces and tabs (only those).
+fn strip(s: Str) -> Str {
+    var a = 0
+    var b = s.len()
+    while a < b and is_blank_char(s.byte(a)) { a += 1 }
+    while b > a and is_blank_char(s.byte(b - 1)) { b -= 1 }
+    s.slice(a, b)
+}
+
+// Tokens separated by runs of spaces or tabs.
+fn tokens(s: Str) -> List[Str] {
+    var out: List[Str] = []
+    var i = 0
+    while i < s.len() {
+        while i < s.len() and is_blank_char(s.byte(i)) { i += 1 }
+        let start = i
+        while i < s.len() and not is_blank_char(s.byte(i)) { i += 1 }
+        if i > start { out.push(s.slice(start, i)) }
+    }
+    out
+}
+
+// Lines split on "\n", one trailing "\r" removed from each.
+fn file_lines(text: Str) -> List[Str] {
+    text.lines().map(fn(l) => if l.ends_with("\r") { l.slice(0, l.len() - 1) } else { l })
+}
+
+// [a-z][a-z0-9_]*
+fn is_ident(s: Str) -> Bool {
+    if s.is_empty() or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_') { return false }
+    }
+    true
+}
+
+fn all_digits(s: Str, min: Int, max: Int) -> Bool {
+    if s.len() < min or s.len() > max { return false }
+    for i in 0..s.len() {
+        if not s.byte(i).is_digit() { return false }
+    }
+    true
+}
+
+// -?[0-9]{1,18}
+fn parse_int(s: Str) -> Option[Int] {
+    let digits = if s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    if not all_digits(digits, 1, 18) { return None }
+    let v = digits.to_int()?
+    if s.starts_with("-") { Some(-v) } else { Some(v) }
+}
+
+fn is_ignored(line: Str) -> Bool {
+    let t = strip(line)
+    t.is_empty() or t.starts_with("#")
+}
+
+fn parse_kind(ty: Str, arg: Option[Str]) -> Option[Kind] {
+    match ty {
+        "int" => match arg {
+            None => Some(IntT(None)),
+            Some(a) => {
+                let i = a.find("..")?
+                let lo_s = a.slice(0, i)
+                let hi_s = a.slice(i + 2, a.len())
+                let lo = parse_int(lo_s)?
+                let hi = parse_int(hi_s)?
+                if lo > hi { return None }
+                Some(IntT(Some((lo, hi, a))))
+            },
+        },
+        "string" => match arg {
+            None => Some(StrT(None)),
+            Some(a) => {
+                if not a.starts_with("maxlen=") { return None }
+                let n_s = a.slice(7, a.len())
+                if not all_digits(n_s, 1, 7) { return None }
+                Some(StrT(Some((n_s.to_int()?, n_s))))
+            },
+        },
+        "bool" => match arg {
+            None => Some(BoolT),
+            Some(_) => None,
+        },
+        "enum" => match arg {
+            None => None,
+            Some(a) => {
+                let vals = a.split(",")
+                if vals.any(Str.is_empty) { return None }
+                Some(EnumT(vals, a))
+            },
+        },
+        _ => None,
+    }
+}
+
+fn parse_entry(line: Str) -> Option[Entry] {
+    let toks = tokens(line)
+    if toks.len() < 3 or toks.len() > 4 { return None }
+    let name = toks[0]
+    let dot = name.find(".")?
+    if not is_ident(name.slice(0, dot)) or not is_ident(name.slice(dot + 1, name.len())) { return None }
+    let required = match toks[2] {
+        "required" => true,
+        "optional" => false,
+        _ => return None,
+    }
+    let arg = toks.get(3)
+    let kind = parse_kind(toks[1], arg)?
+    Some(Entry { name, kind, required })
+}
+
+fn parse_schema(text: Str) -> Option[List[Entry]] {
+    var entries: List[Entry] = []
+    var seen: Set[Str] = Set.new()
+    for line in file_lines(text) {
+        if is_ignored(line) { continue }
+        let e = parse_entry(line)?
+        if not seen.insert(e.name) { return None }
+        entries.push(e)
+    }
+    Some(entries)
+}
+
+// The diagnostic for a value, if any.
+fn check_value(name: Str, kind: Kind, value: Str) -> Option[Str] {
+    match kind {
+        IntT(range) => match parse_int(value) {
+            None => Some("{name}: not an integer"),
+            Some(v) => match range {
+                Some((lo, hi, text)) if v < lo or v > hi => Some("{name}: out of range {text}"),
+                _ => None,
+            },
+        },
+        BoolT => if value == "true" or value == "false" { None } else { Some("{name}: not a boolean") },
+        StrT(Some((n, text))) if value.len() > n => Some("{name}: longer than {text}"),
+        StrT(_) => None,
+        EnumT(vals, text) => if vals.contains(value) { None } else { Some("{name}: not one of {text}") },
+    }
+}
+
+fn check_config(text: Str, schema: List[Entry], strict: Bool) -> List[Str] {
+    var by_name: Map[Str, Entry] = [:]
+    for e in schema { by_name[e.name] = e }
+    var diags: List[Str] = []
+    var section: Option[Str] = None
+    var seen: Set[Str] = Set.new()
+    var n = 0
+    for line in file_lines(text) {
+        n += 1
+        let t = strip(line)
+        if t.is_empty() or t.starts_with("#") or t.starts_with(";") { continue }
+        if t.starts_with("[") and t.ends_with("]") and is_ident(t.slice(1, t.len() - 1)) {
+            section = Some(t.slice(1, t.len() - 1))
+            continue
+        }
+        let Some(eq) = line.find("=") else {
+            diags.push("{n}: syntax error")
+            continue
+        }
+        let key = strip(line.slice(0, eq))
+        let value = strip(line.slice(eq + 1, line.len()))
+        if not is_ident(key) {
+            diags.push("{n}: syntax error")
+            continue
+        }
+        let Some(sec) = section else {
+            diags.push("{n}: key outside section")
+            continue
+        }
+        let name = "{sec}.{key}"
+        if not seen.insert(name) {
+            diags.push("{n}: duplicate key {name}")
+            continue
+        }
+        match by_name.get(name) {
+            None => if strict { diags.push("{n}: unknown key {name}") },
+            Some(e) => match check_value(name, e.kind, value) {
+                Some(d) => diags.push("{n}: {d}"),
+                None => {},
+            },
+        }
+    }
+    for e in schema {
+        if e.required and not seen.contains(e.name) { diags.push("missing: {e.name}") }
+    }
+    diags
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var strict = false
+    var quiet = false
+    var paths: List[Str] = []
+    for a in sys.args {
+        if a.starts_with("-") {
+            match a {
+                "--strict" => strict = true,
+                "-q" => quiet = true,
+                _ => {
+                    con.eprintln("cfgcheck: unknown option {a}")
+                    return 2
+                },
+            }
+        } else {
+            paths.push(a)
+        }
+    }
+    if paths.len() != 2 {
+        con.eprintln("usage: cfgcheck [--strict] [-q] SCHEMA CONFIG")
+        return 2
+    }
+    let schema_text = match sys.fs.read(paths[0]) {
+        Ok(t) => t,
+        Err(e) => {
+            con.eprintln("cfgcheck: cannot read schema: {e}")
+            return 2
+        },
+    }
+    let Some(schema) = parse_schema(schema_text) else {
+        con.eprintln("cfgcheck: invalid schema")
+        return 3
+    }
+    let config_text = match sys.fs.read(paths[1]) {
+        Ok(t) => t,
+        Err(e) => {
+            con.eprintln("cfgcheck: cannot read config: {e}")
+            return 2
+        },
+    }
+    let diags = check_config(config_text, schema, strict)
+    if not quiet {
+        for d in diags { con.println(d) }
+        if diags.is_empty() { con.println("OK") } else { con.println("errors: {diags.len()}") }
+    }
+    if diags.is_empty() { 0 } else { 1 }
+}

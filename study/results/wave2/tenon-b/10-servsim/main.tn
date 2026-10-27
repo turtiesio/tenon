@@ -1,0 +1,229 @@
+// servsim: discrete-event simulation of a pool of servers with one FIFO queue.
+
+struct Req { id: Str, arrival: Int, duration: Int }
+
+// ---- min-heap on List[(Int, Int)] ----
+
+fn heap_push(h: mut List[(Int, Int)], x: (Int, Int)) {
+    h.push(x)
+    var i = h.len() - 1
+    while i > 0 {
+        let parent = (i - 1) / 2
+        if h[parent] <= h[i] { break }
+        let tmp = h[parent]
+        h[parent] = h[i]
+        h[i] = tmp
+        i = parent
+    }
+}
+
+fn heap_pop(h: mut List[(Int, Int)]) -> (Int, Int) {
+    let top = h[0]
+    let last = h.pop().unwrap()
+    if h.is_empty() { return top }
+    h[0] = last
+    var i = 0
+    while true {
+        let l = 2 * i + 1
+        let r = l + 1
+        var smallest = i
+        if l < h.len() and h[l] < h[smallest] { smallest = l }
+        if r < h.len() and h[r] < h[smallest] { smallest = r }
+        if smallest == i { break }
+        let tmp = h[smallest]
+        h[smallest] = h[i]
+        h[i] = tmp
+        i = smallest
+    }
+    top
+}
+
+// ---- parsing ----
+
+fn all_digits(s: Str) -> Bool {
+    for i in 0..s.len() {
+        if not s.byte(i).is_digit() { return false }
+    }
+    true
+}
+
+fn parse_num(s: Str, max_digits: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > max_digits or not all_digits(s) { return None }
+    s.to_int()
+}
+
+// [A-Za-z0-9_-]{1,16}
+fn valid_id(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 16 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_alnum() or c == '_' or c == '-') { return false }
+    }
+    true
+}
+
+fn parse_req(line: Str) -> Option[Req] {
+    let t = line.split(" ")
+    if t.len() != 3 or not valid_id(t[0]) { return None }
+    let arrival = parse_num(t[1], 12)?
+    let duration = parse_num(t[2], 9)?
+    if duration < 1 { return None }
+    Some(Req { id: t[0], arrival, duration })
+}
+
+fn only_spaces(s: Str) -> Bool {
+    for i in 0..s.len() {
+        if s.byte(i) != ' ' { return false }
+    }
+    true
+}
+
+// Reads and validates the whole trace; None if any line is invalid.
+fn read_trace(input: Str) -> Option[List[Req]] {
+    var reqs: List[Req] = []
+    var ids: Set[Str] = Set.new()
+    var prev = 0
+    for raw in input.lines() {
+        let line = if raw.ends_with("\r") { raw.slice(0, raw.len() - 1) } else { raw }
+        if only_spaces(line) { continue }
+        let r = parse_req(line)?
+        if r.arrival < prev { return None }
+        if not ids.insert(r.id) { return None }
+        prev = r.arrival
+        reqs.push(r)
+    }
+    Some(reqs)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    var cap = INT_MAX
+    var servers = 0
+    var have_n = false
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-q" {
+            if i + 1 >= args.len() {
+                con.eprintln("servsim: -q needs a value")
+                return 2
+            }
+            let Some(c) = parse_num(args[i + 1], 7) else {
+                con.eprintln("servsim: bad queue capacity")
+                return 2
+            }
+            cap = c
+            i += 2
+        } else if a.starts_with("-") {
+            con.eprintln("servsim: unknown option {a}")
+            return 2
+        } else {
+            if have_n {
+                con.eprintln("servsim: too many arguments")
+                return 2
+            }
+            let Some(n) = parse_num(a, 4) else {
+                con.eprintln("servsim: bad server count")
+                return 2
+            }
+            if n < 1 or n > 1000 {
+                con.eprintln("servsim: server count out of range")
+                return 2
+            }
+            servers = n
+            have_n = true
+            i += 1
+        }
+    }
+    if not have_n {
+        con.eprintln("usage: servsim [-q CAP] N")
+        return 2
+    }
+
+    let Some(reqs) = read_trace(con.read_all()) else {
+        con.eprintln("servsim: invalid trace")
+        return 1
+    }
+
+    var out: List[Str] = []
+    var busy_heap: List[(Int, Int)] = []   // (finish time, server)
+    var idle_heap: List[(Int, Int)] = []   // (server, 0)
+    var running: List[Int] = []             // request index per server (index k - 1)
+    var busy_time: List[Int] = []
+    var served_by: List[Int] = []
+    for k in 1..(servers + 1) {
+        heap_push(mut idle_heap, (k, 0))
+        running.push(0)
+        busy_time.push(0)
+        served_by.push(0)
+    }
+    var queue: List[Int] = []   // request indices; queue[qhead..] are waiting
+    var qhead = 0
+    var next = 0
+    var served = 0
+    var rejected = 0
+    var max_wait = 0
+    var total_wait = 0
+    var makespan = 0
+
+    while next < reqs.len() or not busy_heap.is_empty() {
+        var t = 0
+        if busy_heap.is_empty() {
+            t = reqs[next].arrival
+        } else if next >= reqs.len() {
+            t = busy_heap[0].0
+        } else {
+            t = busy_heap[0].0.min(reqs[next].arrival)
+        }
+
+        // Completions first, lowest server first (heap order is (time, server)).
+        while not busy_heap.is_empty() and busy_heap[0].0 == t {
+            let (_, k) = heap_pop(mut busy_heap)
+            out.push("{t} done {reqs[running[k - 1]].id} s{k}")
+            makespan = t
+            if qhead < queue.len() {
+                let r = queue[qhead]
+                qhead += 1
+                let wait = t - reqs[r].arrival
+                out.push("{t} start {reqs[r].id} s{k} wait={wait}")
+                running[k - 1] = r
+                busy_time[k - 1] += reqs[r].duration
+                served_by[k - 1] += 1
+                served += 1
+                max_wait = max_wait.max(wait)
+                total_wait += wait
+                heap_push(mut busy_heap, (t + reqs[r].duration, k))
+            } else {
+                heap_push(mut idle_heap, (k, 0))
+            }
+        }
+
+        // Then arrivals at t, in input order.
+        while next < reqs.len() and reqs[next].arrival == t {
+            let r = next
+            next += 1
+            if not idle_heap.is_empty() {
+                let (k, _) = heap_pop(mut idle_heap)
+                out.push("{t} start {reqs[r].id} s{k} wait=0")
+                running[k - 1] = r
+                busy_time[k - 1] += reqs[r].duration
+                served_by[k - 1] += 1
+                served += 1
+                heap_push(mut busy_heap, (t + reqs[r].duration, k))
+            } else if queue.len() - qhead < cap {
+                queue.push(r)
+            } else {
+                out.push("{t} reject {reqs[r].id}")
+                rejected += 1
+            }
+        }
+    }
+
+    out.push("served={served} rejected={rejected} max_wait={max_wait} total_wait={total_wait} makespan={makespan}")
+    for k in 0..servers {
+        out.push("s{k + 1} busy={busy_time[k]} served={served_by[k]}")
+    }
+    con.print(out.join("\n") + "\n")
+    0
+}

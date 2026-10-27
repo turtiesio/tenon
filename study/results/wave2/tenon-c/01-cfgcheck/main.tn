@@ -1,0 +1,114 @@
+struct Entry { key: Str, kind: Str, required: Bool, arg: Str }
+fn clean(s: Str) -> Str { if s.ends_with("\r") { s.slice(0, s.len() - 1) } else { s } }
+fn trim(s: Str) -> Str {
+    var a = 0
+    var b = s.len()
+    while a < b and (s.byte(a) == 32 or s.byte(a) == 9) { a += 1 }
+    while b > a and (s.byte(b - 1) == 32 or s.byte(b - 1) == 9) { b -= 1 }
+    s.slice(a, b)
+}
+fn ident(s: Str) -> Bool {
+    if s.is_empty() { return false }
+    if not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() { if not (s.byte(i).is_lower() or s.byte(i).is_digit() or s.byte(i) == 95) { return false } }
+    true
+}
+fn digits(s: Str, limit: Int, signed: Bool) -> Bool {
+    let start = if signed and s.starts_with("-") { 1 } else { 0 }
+    if s.len() - start < 1 or s.len() - start > limit { return false }
+    for i in start..s.len() { if not s.byte(i).is_digit() { return false } }
+    true
+}
+fn schema(text: Str) -> Option[List[Entry]] {
+    var out: List[Entry] = []
+    var seen: Set[Str] = Set.new()
+    for raw in text.lines() {
+        let line = trim(clean(raw))
+        if line.is_empty() or line.starts_with("#") { continue }
+        // Only spaces and tabs are token separators.
+        let tokens = line.replace("\t", " ").split(" ").filter(fn(x) => not x.is_empty())
+        if tokens.len() < 3 or tokens.len() > 4 { return None }
+        let parts = tokens[0].split(".")
+        if parts.len() != 2 { return None }
+        if not ident(parts[0]) or not ident(parts[1]) or seen.contains(tokens[0]) { return None }
+        let _ = seen.insert(tokens[0])
+        if tokens[2] != "required" and tokens[2] != "optional" { return None }
+        let arg = tokens.get(3).unwrap_or("")
+        match tokens[1] {
+            "int" => {
+                if tokens.len() == 4 {
+                    let bounds = arg.split("..")
+                    if bounds.len() != 2 { return None }
+                    if not digits(bounds[0], 18, true) or not digits(bounds[1], 18, true) { return None }
+                    if bounds[0].to_int()? > bounds[1].to_int()? { return None }
+                }
+            },
+            "string" => { if tokens.len() == 4 { if not arg.starts_with("maxlen=") { return None }; if not digits(arg.slice(7, arg.len()), 7, false) { return None } } },
+            "bool" => { if tokens.len() != 3 { return None } },
+            "enum" => { if tokens.len() != 4 or arg.split(",").any(fn(x) => x.is_empty()) { return None } },
+            _ => return None,
+        }
+        out.push(Entry { key: tokens[0], kind: tokens[1], required: tokens[2] == "required", arg })
+    }
+    Some(out)
+}
+fn problem(e: Entry, value: Str) -> Str {
+    match e.kind {
+        "int" => {
+            if not digits(value, 18, true) { return "not an integer" }
+            if not e.arg.is_empty() {
+                let bounds = e.arg.split("..")
+                let n = value.to_int().unwrap()
+                if n < bounds[0].to_int().unwrap() or n > bounds[1].to_int().unwrap() { return "out of range {e.arg}" }
+            }
+        },
+        "bool" => { if value != "true" and value != "false" { return "not a boolean" } },
+        "enum" => { if not e.arg.split(",").contains(value) { return "not one of {e.arg}" } },
+        "string" => { if not e.arg.is_empty() { let ntext = e.arg.slice(7, e.arg.len()); if value.len() > ntext.to_int().unwrap() { return "longer than {ntext}" } } },
+        _ => (),
+    }
+    ""
+}
+fn main(sys: Sys) -> Int {
+    var paths: List[Str] = []
+    var strict = false
+    var quiet = false
+    for arg in sys.args {
+        if arg == "--strict" { strict = true } else if arg == "-q" { quiet = true } else if arg.starts_with("-") { return 2 } else { paths.push(arg) }
+    }
+    if paths.len() != 2 { return 2 }
+    let Ok(stext) = sys.fs.read(paths[0]) else { return 2 }
+    let Some(entries) = schema(stext) else { return 3 }
+    let Ok(ctext) = sys.fs.read(paths[1]) else { return 2 }
+    var lookup: Map[Str, Entry] = [:]
+    for e in entries { lookup[e.key] = e }
+    var seen: Set[Str] = Set.new()
+    var diagnostics: List[Str] = []
+    var section = ""
+    var line_no = 0
+    for raw in ctext.lines() {
+        line_no += 1
+        let line = trim(clean(raw))
+        if line.is_empty() or line.starts_with("#") or line.starts_with(";") { continue }
+        if line.starts_with("[") and line.ends_with("]") {
+            let name = line.slice(1, line.len() - 1)
+            if ident(name) { section = name; continue }
+        }
+        let Some(eq) = line.find("=") else { diagnostics.push("{line_no}: syntax error"); continue }
+        let key = trim(line.slice(0, eq))
+        let value = trim(line.slice(eq + 1, line.len()))
+        if not ident(key) { diagnostics.push("{line_no}: syntax error"); continue }
+        if section.is_empty() { diagnostics.push("{line_no}: key outside section"); continue }
+        let full = section + "." + key
+        if not seen.insert(full) { diagnostics.push("{line_no}: duplicate key {full}"); continue }
+        let Some(entry) = lookup.get(full) else { if strict { diagnostics.push("{line_no}: unknown key {full}") }; continue }
+        let why = problem(entry, value)
+        if not why.is_empty() { diagnostics.push("{line_no}: {full}: {why}") }
+    }
+    for entry in entries { if entry.required and not seen.contains(entry.key) { diagnostics.push("missing: {entry.key}") } }
+    if not quiet {
+        for d in diagnostics { sys.console.println(d) }
+        sys.console.println(if diagnostics.is_empty() { "OK" } else { "errors: {diagnostics.len()}" })
+    }
+    if diagnostics.is_empty() { 0 } else { 1 }
+}

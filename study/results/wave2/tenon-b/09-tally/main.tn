@@ -1,0 +1,241 @@
+// tally: persistent named counters backed by a write-ahead log.
+
+const LOG: Str = "tally.log"
+const TMP: Str = "tally.log.tmp"
+
+// A parsed record or command; the log uses Set/Add/Del, the protocol adds the rest.
+enum Cmd {
+    Set(Str, Int),
+    Add(Str, Int),
+    Del(Str),
+    Get(Str),
+    List,
+    Info,
+    Compact,
+}
+
+// [a-z][a-z0-9_]{0,31}
+fn valid_name(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 32 or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_') { return false }
+    }
+    true
+}
+
+// -?[0-9]{1,15}
+fn parse_int(s: Str) -> Option[Int] {
+    let digits = if s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    if digits.len() < 1 or digits.len() > 15 { return None }
+    for i in 0..digits.len() {
+        if not digits.byte(i).is_digit() { return None }
+    }
+    s.to_int()
+}
+
+fn parse_name(s: Str) -> Option[Str] { if valid_name(s) { Some(s) } else { None } }
+
+// Parses the log record forms (S, A, D) only.
+fn parse_record(line: Str) -> Option[Cmd] {
+    let t = line.split(" ")
+    match t[0] {
+        "S" => {
+            if t.len() != 3 { return None }
+            Some(Set(parse_name(t[1])?, parse_int(t[2])?))
+        },
+        "A" => {
+            if t.len() != 3 { return None }
+            Some(Add(parse_name(t[1])?, parse_int(t[2])?))
+        },
+        "D" => {
+            if t.len() != 2 { return None }
+            Some(Del(parse_name(t[1])?))
+        },
+        _ => None,
+    }
+}
+
+fn parse_command(line: Str) -> Option[Cmd] {
+    let t = line.split(" ")
+    match t[0] {
+        "SET" => {
+            if t.len() != 3 { return None }
+            Some(Set(parse_name(t[1])?, parse_int(t[2])?))
+        },
+        "ADD" => {
+            if t.len() != 3 { return None }
+            Some(Add(parse_name(t[1])?, parse_int(t[2])?))
+        },
+        "DEL" => {
+            if t.len() != 2 { return None }
+            Some(Del(parse_name(t[1])?))
+        },
+        "GET" => {
+            if t.len() != 2 { return None }
+            Some(Get(parse_name(t[1])?))
+        },
+        "LIST" => if t.len() == 1 { Some(List) } else { None },
+        "INFO" => if t.len() == 1 { Some(Info) } else { None },
+        "COMPACT" => if t.len() == 1 { Some(Compact) } else { None },
+        _ => None,
+    }
+}
+
+fn record_text(cmd: Cmd) -> Str {
+    match cmd {
+        Set(name, v) => "S {name} {v}",
+        Add(name, v) => "A {name} {v}",
+        Del(name) => "D {name}",
+        _ => panic("not a log record"),
+    }
+}
+
+// Applies a state-changing record to the counters.
+fn apply(counters: mut Map[Str, Int], cmd: Cmd) {
+    match cmd {
+        Set(name, v) => counters[name] = v,
+        Add(name, v) => counters[name] = counters.get_or(name, 0) + v,
+        Del(name) => {
+            let _ = counters.remove(name)
+        },
+        _ => {},
+    }
+}
+
+// The parent directory of path ("." if there is no slash).
+fn parent_of(path: Str) -> Str {
+    var end = path.len()
+    while end > 1 and path.byte(end - 1) == '/' { end -= 1 }
+    var i = end - 1
+    while i >= 0 and path.byte(i) != '/' { i -= 1 }
+    if i < 0 { "." } else if i == 0 { "/" } else { path.slice(0, i) }
+}
+
+fn fail(sys: Sys, msg: Str) -> Int {
+    sys.console.eprintln("tally: {msg}")
+    1
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: tally DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+
+    // Data directory: only the last path component is created.
+    if sys.fs.exists(dir) {
+        if not sys.fs.is_dir(dir) { return fail(sys, "{dir} is not a directory") }
+    } else {
+        let parent = parent_of(dir)
+        if not sys.fs.is_dir(parent) { return fail(sys, "cannot create {dir}") }
+        match sys.fs.mkdir(dir) {
+            Ok(_) => {},
+            Err(_) => return fail(sys, "cannot create {dir}"),
+        }
+    }
+    let fs = sys.fs.within(dir)
+
+    // A leftover temporary file never affects the state.
+    if fs.exists(TMP) {
+        match fs.remove(TMP) {
+            Ok(_) => {},
+            Err(_) => return fail(sys, "cannot remove {TMP}"),
+        }
+    }
+
+    // Recovery: replay the valid prefix of the log.
+    let text = match fs.read(LOG) {
+        Ok(t) => t,
+        Err(NotFound(_)) => "",
+        Err(_) => return fail(sys, "cannot read {LOG}"),
+    }
+    var counters: Map[Str, Int] = [:]
+    var log_records = 0
+    var valid_bytes = 0
+    var pos = 0
+    while true {
+        let Some(nl) = text.find_from("\n", pos) else { break }   // an unterminated tail is discarded
+        let Some(rec) = parse_record(text.slice(pos, nl)) else { break }
+        apply(mut counters, rec)
+        log_records += 1
+        pos = nl + 1
+        valid_bytes = pos
+    }
+    if valid_bytes != text.len() {
+        match fs.write(LOG, text.slice(0, valid_bytes)) {
+            Ok(_) => {},
+            Err(_) => return fail(sys, "cannot rewrite {LOG}"),
+        }
+    }
+
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let reply = match parse_command(line) {
+            None => "ERR bad command",
+            Some(cmd) => {
+                match cmd {
+                    Get(name) => match counters.get(name) {
+                        Some(v) => v.to_str(),
+                        None => "NONE",
+                    },
+                    List => {
+                        var out = counters.len().to_str()
+                        for name in counters.keys().sorted() {
+                            out += " {name}={counters[name]}"
+                        }
+                        out
+                    },
+                    Info => "counters={counters.len()} log_records={log_records}",
+                    Compact => {
+                        var content = ""
+                        for name in counters.keys().sorted() {
+                            content += "S {name} {counters[name]}\n"
+                        }
+                        match fs.write(TMP, content) {
+                            Ok(_) => {},
+                            Err(_) => return fail(sys, "cannot write {TMP}"),
+                        }
+                        match fs.rename(TMP, LOG) {
+                            Ok(_) => {},
+                            Err(_) => return fail(sys, "cannot replace {LOG}"),
+                        }
+                        log_records = counters.len()
+                        "OK {log_records}"
+                    },
+                    Del(name) => {
+                        if counters.contains(name) {
+                            match fs.append(LOG, record_text(cmd) + "\n") {
+                                Ok(_) => {},
+                                Err(_) => return fail(sys, "cannot append to {LOG}"),
+                            }
+                            log_records += 1
+                            apply(mut counters, cmd)
+                            "OK"
+                        } else {
+                            "NONE"
+                        }
+                    },
+                    _ => {
+                        // Set and Add change state: log first, then apply.
+                        match fs.append(LOG, record_text(cmd) + "\n") {
+                            Ok(_) => {},
+                            Err(_) => return fail(sys, "cannot append to {LOG}"),
+                        }
+                        log_records += 1
+                        apply(mut counters, cmd)
+                        match cmd {
+                            Add(name, _) => counters[name].to_str(),
+                            _ => "OK",
+                        }
+                    },
+                }
+            },
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}
