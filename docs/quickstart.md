@@ -57,6 +57,7 @@ fn main(sys: Sys) -> Int {
 | Python / TypeScript | Tenon |
 |---|---|
 | `x = 1` / `const x = 1` | `let x = 1` (immutable) |
+| `not`, `and`, `or` / `!`, `&&`, `\|\|` | `not`, `and`, `or` |
 | `x = 1` then `x += 1` / `let x` | `var x = 1` then `x += 1` |
 | `def f(a: int) -> str:` | `fn f(a: Int) -> Str { ... }`; the last expression is the result |
 | `print(x)` / `console.log(x)` | `sys.console.println("{x}")`; `main` receives `sys: Sys` |

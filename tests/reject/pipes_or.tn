@@ -1,0 +1,3 @@
+// error: unexpected '||' (write 'or')
+fn main() { let a = true
+ let _ = a || a }
