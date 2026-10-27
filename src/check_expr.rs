@@ -36,11 +36,38 @@ impl Checker {
         (targs, m)
     }
     pub(crate) fn call_args(&mut self, span: Span, params: &[Ty], args: &[Expr], what: &str) -> CResult<()> {
+        self.call_args_mut(span, params, &[], args, what, vec![])
+    }
+
+    // `muts[i]`: parameter i is `mut`, so its argument must be `mut place`.
+    pub(crate) fn call_args_mut(&mut self, span: Span, params: &[Ty], muts: &[bool], args: &[Expr], what: &str, roots0: Vec<String>) -> CResult<()> {
         if params.len() != args.len() {
             return err(span, format!("{} expects {} argument(s), found {}", what, params.len(), args.len()));
         }
-        for (a, p) in args.iter().zip(params) {
-            self.expr(a, p)?;
+        let mut roots: Vec<String> = roots0;
+        for (i, (a, p)) in args.iter().zip(params).enumerate() {
+            let want_mut = muts.get(i).copied().unwrap_or(false);
+            match (&a.kind, want_mut) {
+                (ExprKind::MutArg(inner), true) => {
+                    self.expr(inner, p)?;
+                    self.place(inner, false)?;
+                    self.record(a.id, p);
+                    let root = place_root(inner);
+                    if roots.contains(&root) {
+                        return err(a.span, format!("two 'mut' arguments refer to '{}'; they would alias", root));
+                    }
+                    roots.push(root);
+                }
+                (ExprKind::MutArg(_), false) => {
+                    return err(a.span, "this parameter is not 'mut'; pass the value without 'mut'");
+                }
+                (_, true) => {
+                    return err(a.span, "this parameter is 'mut': pass a variable as 'mut x' so the change is visible at the call");
+                }
+                _ => {
+                    self.expr(a, p)?;
+                }
+            }
         }
         Ok(())
     }
@@ -110,6 +137,9 @@ impl Checker {
                     return Ok(ty);
                 }
                 if let Some(fi) = self.lookup_fn(n) {
+                    if !self.in_callee && self.out.fns[fi].muts.iter().any(|m| *m) {
+                        return err(e.span, format!("'{}' has 'mut' parameters, so it can only be called, not used as a value", n));
+                    }
                     if self.out.fns[fi].is_const {
                         self.pending_res.push((e.id, Res::Const(fi)));
                         return Ok(self.out.fns[fi].ret.clone());
@@ -172,7 +202,11 @@ impl Checker {
                     return Ok(t);
                 }
                 let ct = self.sub.fresh();
-                let ct = self.expr(callee, &ct)?;
+                let saved = self.in_callee;
+                self.in_callee = true;
+                let ct = self.expr(callee, &ct);
+                self.in_callee = saved;
+                let ct = ct?;
                 let ct = self.known(&ct, callee.span, "the called value")?;
                 let Ty::Fn(ps, r) = ct else {
                     return err(callee.span, format!("cannot call a value of type {}", self.sub.resolve(&ct)));
@@ -180,7 +214,11 @@ impl Checker {
                 if !matches!(callee.kind, ExprKind::Name(_) | ExprKind::Path(..)) || matches!(self.res_of(callee.id), Some(Res::Local(_))) {
                     self.pending_res.push((e.id, Res::CallValue));
                 }
-                self.call_args(e.span, &ps, args, "this function")?;
+                let muts = match self.res_of(callee.id) {
+                    Some(Res::Fn(fi, _)) => self.out.fns[*fi].muts.clone(),
+                    _ => vec![],
+                };
+                self.call_args_mut(e.span, &ps, &muts, args, "this function", vec![])?;
                 Ok(*r)
             }
             ExprKind::Method(recv, m, args) => self.method(e, recv, m, args),
@@ -408,6 +446,7 @@ impl Checker {
                     _ => err(e.span, format!("'?' needs a Result or Option, found {}", self.sub.resolve(&t))),
                 }
             }
+            ExprKind::MutArg(_) => err(e.span, "'mut' marks an argument to a 'mut' parameter"),
             ExprKind::Lambda(params, ret, body) => {
                 let (pts, rt) = match self.sub.shallow(exp) {
                     Ty::Fn(ps, r) if ps.len() == params.len() => (ps, *r),
@@ -482,7 +521,9 @@ impl Checker {
             })?;
         }
         self.pending_res.push((e.id, Res::Method(fi, targs)));
-        self.call_args(e.span, &params, args, &format!("method '{}'", m))?;
+        let muts = self.out.fns[fi].muts.clone();
+        let roots0 = if sk == SelfKind::Mut { vec![place_root(recv)] } else { vec![] };
+        self.call_args_mut(e.span, &params, &muts, args, &format!("method '{}'", m), roots0)?;
         Ok(ret)
     }
     // `let PAT = v else ...` with a pattern that always matches is a mistake.
@@ -504,5 +545,14 @@ impl Checker {
         }
         let resolved = |t: &Ty| self.sub.resolve(t);
         exhaust::check(&self.out, &res, &resolved, span, st, arms)
+    }
+}
+
+// The variable a place expression is rooted at.
+pub(crate) fn place_root(e: &Expr) -> String {
+    match &e.kind {
+        ExprKind::Field(b, _) | ExprKind::TupleField(b, _) | ExprKind::Index(b, _) => place_root(b),
+        ExprKind::Name(n) => n.clone(),
+        _ => String::new(),
     }
 }

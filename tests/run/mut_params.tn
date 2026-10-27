@@ -1,0 +1,44 @@
+struct Graph { edges: Map[Str, List[Str]] }
+
+// Depth-first search that records the current path in a `mut` parameter.
+fn find_cycle(g: Graph, node: Str, path: mut List[Str], done: mut Map[Str, Bool]) -> Option[List[Str]] {
+    if path.contains(node) {
+        let i = path.index_of(node).unwrap()
+        return Some(path.slice(i, path.len()) + [node])
+    }
+    if done.contains(node) { return None }
+    path.push(node)
+    for next in g.edges.get_or(node, []) {
+        let Some(c) = find_cycle(g, next, mut path, mut done) else { continue }
+        return Some(c)
+    }
+    let _ = path.pop()
+    done[node] = true
+    None
+}
+
+fn bump(n: mut Int, by: Int) { n += by }
+
+struct Counter { hits: Int }
+fn Counter.absorb(mut self, other: mut Counter) {
+    self.hits += other.hits
+    other.hits = 0
+}
+
+fn main(sys: Sys) {
+    let c = sys.console
+    let g = Graph { edges: ["a": ["b"], "b": ["c"], "c": ["a", "d"], "d": []] }
+    var path: List[Str] = []
+    var done: Map[Str, Bool] = [:]
+    c.println("{find_cycle(g, "a", mut path, mut done)} path={path} done={done}")
+    var x = 1
+    let before = x
+    bump(mut x, 41)
+    var xs = [1, 2, 3]
+    bump(mut xs[1], xs[1])
+    c.println("{before} {x} {xs}")
+    var a = Counter { hits: 2 }
+    var b = Counter { hits: 5 }
+    a.absorb(mut b)
+    c.println("{a} {b}")
+}

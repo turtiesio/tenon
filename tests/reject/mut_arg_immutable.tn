@@ -1,0 +1,4 @@
+// error: declare it with 'var'
+fn bump(n: mut Int) { n += 1 }
+fn main() { let x = 1
+ bump(mut x) }

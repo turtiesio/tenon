@@ -44,6 +44,7 @@ pub struct FnInfo {
     pub tparams: Vec<String>,
     pub owner: Option<Ty>,
     pub params: Vec<(String, Ty)>, // includes `self` first for methods
+    pub muts: Vec<bool>,           // per explicit (non-self) parameter: `x: mut T`
     pub ret: Ty,
     pub self_kind: Option<SelfKind>,
     pub is_extern: bool,
@@ -144,6 +145,7 @@ pub struct Checker {
     pub(crate) tparams: Vec<String>,
     pub(crate) self_mut: bool,
     pub(crate) cur: u16,                          // file (module) being checked
+    pub(crate) in_callee: bool, // checking the callee of a call (functions with `mut` params allowed)
     pub(crate) modules: Vec<String>,              // module name per file
     pub(crate) imports: HashMap<u16, Vec<String>>, // modules imported by each file
 }
@@ -290,6 +292,7 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
         tparams: vec![],
         self_mut: false,
         cur: 1,
+        in_callee: false,
         modules: prog.modules.clone(),
         imports: HashMap::new(),
     };
@@ -543,7 +546,9 @@ impl Checker {
                 Some(t) => self.lower_type(t, &tparams)?,
                 None => Ty::unit(),
             };
+            let muts: Vec<bool> = f.params.iter().map(|p| p.by_mut).collect();
             self.out.fns.push(FnInfo {
+                muts,
                 name: full,
                 tparams,
                 owner,
@@ -624,9 +629,13 @@ impl Checker {
         self.self_mut = f.self_kind == Some(SelfKind::Mut);
         let ret = info.ret.clone();
         let params = info.params.clone();
+        let mutp: Vec<String> = f.params.iter().filter(|p| p.by_mut).map(|p| p.name.clone()).collect();
         self.scopes = vec![params
             .into_iter()
-            .map(|(n, ty)| (n, Local { ty, mutable: false, depth: 0 }))
+            .map(|(n, ty)| {
+                let mutable = mutp.contains(&n);
+                (n, Local { ty, mutable, depth: 0 })
+            })
             .collect()];
         self.ctx = vec![Ctx { ret: ret.clone(), loops: 0, lambda: None }];
         self.lambda_stack.clear();

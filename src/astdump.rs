@@ -41,7 +41,7 @@ pub fn dump(src: &str) -> String {
         let head = if f.is_const { "const" } else { "fn" };
         out.push_str(&format!("({}{} {}{}{}{}", head, vis(f.public), owner, f.name, tps(&f.tparams), selfk));
         for p in &f.params {
-            out.push_str(&format!(" ({}{} {})", p.name, if p.by_ref { " ref" } else { "" }, ty(&p.ty)));
+            out.push_str(&format!(" ({}{}{} {})", p.name, if p.by_ref { " ref" } else { "" }, if p.by_mut { " mut" } else { "" }, ty(&p.ty)));
         }
         if let Some(r) = &f.ret {
             out.push_str(&format!(" -> {}", ty(r)));
@@ -184,6 +184,7 @@ fn expr(e: &Expr) -> String {
             base.as_ref().map(|b| format!(" (base {})", expr(b))).unwrap_or_default()
         ),
         ExprKind::Try(x) => format!("try {}", expr(x)),
+        ExprKind::MutArg(x) => format!("mutarg {}", expr(x)),
         ExprKind::Lambda(ps, r, b) => format!(
             "lambda ({}){} {}",
             ps.iter()

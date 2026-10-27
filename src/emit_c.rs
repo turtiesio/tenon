@@ -36,6 +36,7 @@ pub struct FnState {
     pub self_ptr: bool,
     pub indent: usize,
     pub muts: HashSet<String>, // `var` locals: values bound from them must be retained
+    pub mut_params: HashSet<String>, // `x: mut T` parameters, passed as pointers (p_x)
 }
 
 pub struct Emitter<'a> {

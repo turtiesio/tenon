@@ -53,6 +53,7 @@ pub enum Ex {
     New(Str, List[(Str, Expr)], Option[Expr]),
     Try(Expr),
     Lambda(List[(Str, Option[Ty])], Option[Ty], Expr),
+    MutArg(Expr),
 }
 
 pub struct Expr { pub at: Pos, pub kind: Ex }
@@ -74,7 +75,7 @@ pub struct Stmt { pub at: Pos, pub kind: St }
 
 pub struct Block { pub at: Pos, pub stmts: List[Stmt] }
 
-pub struct Param { pub name: Str, pub by_ref: Bool, pub ty: Ty }
+pub struct Param { pub name: Str, pub by_ref: Bool, pub by_mut: Bool, pub ty: Ty }
 
 pub struct FnDecl {
     pub is_const: Bool, pub public: Bool, pub owner: Option[Ty], pub name: Str, pub tparams: List[Str],
@@ -319,7 +320,8 @@ fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
         let pname = self.ident()?
         self.expect_sym(":")?
         let by_ref = self.eat_kw("ref")
-        params.push(Param { name: pname, by_ref, ty: self.type_expr()? })
+        let by_mut = not by_ref and self.eat_kw("mut")
+        params.push(Param { name: pname, by_ref, by_mut, ty: self.type_expr()? })
         if not self.is_sym(")") { self.expect_sym(",")? }
     }
     let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None }
@@ -611,7 +613,12 @@ fn Parser.args(mut self, close: Str) -> Result[List[Expr], ParseError] {
     self.no_struct = false
     var args: List[Expr] = []
     while not self.eat_sym(close) {
-        args.push(self.expr()?)
+        let at = self.here()
+        if self.eat_kw("mut") {
+            args.push(Expr { at, kind: MutArg(self.expr()?) })
+        } else {
+            args.push(self.expr()?)
+        }
         if not self.is_sym(close) { self.expect_sym(",")? }
     }
     self.no_struct = save

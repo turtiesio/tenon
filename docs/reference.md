@@ -133,8 +133,14 @@ captured variables. A parameter named `_` is ignored (`xs.map(fn(_) => 0)`). Nam
   need a mutable place: a `var`, or a field/element of one, including map
   entries: `m[k].push(x)` and `m[k] += 1` update the entry in place (the key
   must exist; `m[k] = v` inserts).
-- Function parameters are immutable; to change a value, return the new one
-  (or use a `mut self` method).
+- Function parameters are immutable, except `mut` parameters: the caller
+  passes a place marked `mut`, and the function's changes are visible to the
+  caller after the call. Two `mut` arguments cannot refer to the same variable.
+
+  ```tenon
+  fn visit(node: Str, path: mut List[Str]) { path.push(node) }
+  visit("a", mut path)
+  ```
 
 ## 7. Control flow
 

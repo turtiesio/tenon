@@ -96,7 +96,7 @@ fn walk_fn(c: &Checked, prog: &Program, fi: usize, assume: Vec<String>) -> LResu
     let mut w = Walk { c, prog, assume, vars: vec![], loops: vec![], diverged: false };
     for (n, t) in &info.params {
         let k = w.kind_ty(t);
-        let by_ref = f.params.iter().any(|p| p.name == *n && p.by_ref);
+        let by_ref = f.params.iter().any(|p| p.name == *n && (p.by_ref || p.by_mut));
         if k != Kind::Plain && n != "self" {
             w.vars.push(Var { name: n.clone(), kind: k, moved: None, borrowed: by_ref });
         }
@@ -500,6 +500,7 @@ impl<'a> Walk<'a> {
                 self.expr(x, true)?;
                 self.live_check(0, e.span, "the early return of '?'")
             }
+            ExprKind::MutArg(x) => self.expr(x, false),
             ExprKind::Lambda(params, _, body) => {
                 for (n, t) in &self.c.captures[&e.id] {
                     let k = self.kind_ty(t);
