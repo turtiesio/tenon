@@ -3,3 +3,4 @@
 /bench/out
 /.evidence
 /bench/*/input.txt
+.check.log
