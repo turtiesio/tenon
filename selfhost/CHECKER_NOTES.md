@@ -59,11 +59,13 @@ expressions, declarations, variants, parameters and imports.
   pass, so `mut` parameters count as borrowed: consuming one reports the
   `'ref' parameter` message (tests/selfhost/lin_mut_param.tn).
 
-- Rules added to the bootstrap from QA findings (commit 7609370: comparability
-  through fields and payloads, Float/function map keys, linear temporaries,
-  guards that consume, `..` dropping a replaced linear field) are implemented;
-  `tests/pending-reject/` is cross-checked like the rest of the corpus, so its
-  cases can move to `tests/reject/`.
+- Rules added to the bootstrap from QA findings are implemented: round 1
+  (commit 7609370: comparability through fields and payloads, Float/function
+  map keys, linear temporaries, guards that consume, `..` dropping a replaced
+  linear field) and round 2 (commit 7abe2a9: ordering maps, un-inferable
+  `let` types, constant cycles, `self` exemption only for linear/unique
+  owners). `tools/selfhost.sh` no longer skips `tests/pending/`, so every case
+  there is cross-checked and can move to `tests/reject/`.
 
 ## Testing
 

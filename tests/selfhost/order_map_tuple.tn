@@ -1,0 +1,5 @@
+fn main() {
+    let a = (1, [["k": 1]])
+    let b = a >= a
+    let c = a == a
+}

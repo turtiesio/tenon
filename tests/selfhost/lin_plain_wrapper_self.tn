@@ -1,0 +1,8 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+struct Wrap[A] { item: A }
+fn Wrap[A].drop_it(self) {}
+fn main() {
+    let w = Wrap { item: Claim { id: 1 } }
+    w.drop_it()
+}

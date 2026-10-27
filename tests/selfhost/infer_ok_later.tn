@@ -1,0 +1,6 @@
+fn main() {
+    var xs = []
+    xs.push(1)
+    let m = [:]
+    let n: Int = m.get_or("a", 0)
+}

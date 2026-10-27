@@ -59,10 +59,22 @@ fn Walk.walk_fn(mut self, fi: Int, assume: List[Str]) -> Result[Unit, ckast.Diag
 }
 
 fn Walk.walk_body(mut self, fi: Int, f: ckast.FnDecl, body: ckast.Block) -> Result[Unit, ckast.Diag] {
+    // Only a type declared linear/unique decides how its own values end; a plain
+    // generic type (`struct Wrap[A]`) holding a linear A gets no exemption.
+    let self_exempt = match self.env.fns[fi].owner {
+        Some(Con(n, _)) => match self.env.struct_idx(n) {
+            Some(i) => self.env.structs[i].kind != Plain,
+            None => match self.env.enum_idx(n) {
+                Some(i) => self.env.enums[i].kind != Plain,
+                None => false,
+            },
+        },
+        _ => false,
+    }
     for p in self.env.fns[fi].params {
         let k = self.kind_ty(p.1)
         let by_ref = f.params.any(fn(q) => q.name == p.0 and (q.by_ref or q.by_mut))
-        if k != Plain and p.0 != "self" { self.vars.push(Var { name: p.0, kind: k, moved: None, borrowed: by_ref }) }
+        if k != Plain and not (p.0 == "self" and self_exempt) { self.vars.push(Var { name: p.0, kind: k, moved: None, borrowed: by_ref }) }
     }
     self.block(body, true)?
     self.end_scope(0, body.sp)

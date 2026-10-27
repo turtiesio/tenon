@@ -23,6 +23,7 @@ pub struct Ck {
     pub tparams: List[Str],
     pub self_mut: Bool,
     pub in_callee: Bool, // checking the callee of a call (functions with `mut` params allowed)
+    pub let_types: List[(ckast.Span, Str, cktypes.Ty)], // `let` bindings, checked for unresolved types
     pub types: Map[Int, cktypes.Ty],
     pub res: Map[Int, ckenv.Res],
     pub captures: Map[Int, List[(Str, cktypes.Ty)]],
@@ -31,7 +32,7 @@ pub struct Ck {
 pub fn new_ck(env: ckenv.Env) -> Ck {
     Ck {
         env, sub: cktypes.new_subst(), scopes: [], ctx: [], ptypes: [:], pres: [:], pcaps: [:], lambdas: [],
-        tparams: [], self_mut: false, in_callee: false, types: [:], res: [:], captures: [:],
+        tparams: [], self_mut: false, in_callee: false, let_types: [], types: [:], res: [:], captures: [:],
     }
 }
 
@@ -68,7 +69,13 @@ pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Di
     self.scopes = [params]
     self.ctx = [Ctx { ret: info.ret, loops: 0 }]
     self.lambdas = []
+    self.let_types = []
     let _ = self.block(body, info.ret, true)?
+    for lt in self.let_types {
+        if self.sub.resolve(lt.2).any(is_var) {
+            return ckast.fail(lt.0, "cannot infer the type of '" + lt.1 + "'; add a type annotation (for example `let " + lt.1 + ": List[Int] = ...`)")
+        }
+    }
     self.flush()
     Ok(())
 }
@@ -236,6 +243,10 @@ fn Ck.stmt(mut self, s: ckast.Stmt) -> Result[Unit, ckast.Diag] {
                 }
             }
             self.pattern(pat, t, mutable)?
+            match pat.k {
+                QBind(n) => self.let_types.push((pat.sp, n, t)),
+                _ => {}
+            }
             if els.is_some() {
                 // A pattern that always matches makes the else block dead.
                 let arm = ckast.Arm { pat, guard: None, body: ckast.Expr { id: -1, sp: pat.sp, k: XUnit } }
@@ -646,6 +657,9 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
                 match self.env.incomparable_part(rt, false) {
                     Some(bad) => return ckast.fail(e.sp, "values of type " + rt.show() + " cannot be compared: they contain " + bad),
                     None => {}
+                }
+                if op != "Eq" and op != "Ne" and rt.any(fn(x) => x.is("Map")) {
+                    return ckast.fail(e.sp, "values of type " + rt.show() + " cannot be ordered: maps are not ordered")
                 }
                 return Ok(cktypes.t_bool())
             }

@@ -1,0 +1,2 @@
+const LOOP: Int = LOOP + 1
+fn main() {}
