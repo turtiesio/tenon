@@ -1,0 +1,226 @@
+const DB: Str = "todo.db"
+const TMP: Str = "todo.db.tmp"
+
+struct Item { id: Int, prio: Int, done: Bool, text: Str }
+
+struct Todo { items: Map[Int, Item], next: Int }
+
+// ---- validation helpers ----
+
+fn printable(s: Str) -> Bool {
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        if b < 32 or b > 126 { return false }
+    }
+    true
+}
+
+// [0-9]{1,9}, leading zeros allowed (command ids)
+fn parse_id(s: Str) -> Option[Int] {
+    if s.len() > 9 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+// [1-9][0-9]{0,8} (state file numbers)
+fn parse_canonical(s: Str) -> Option[Int] {
+    if s.is_empty() or s.byte(0) == '0' { return None }
+    parse_id(s)
+}
+
+fn parse_prio(s: Str) -> Option[Int] {
+    if s.len() != 1 { return None }
+    let b = s.byte(0)
+    if b >= '1' and b <= '9' { Some(b - '0') } else { None }
+}
+
+// ---- state file ----
+
+fn parse_state(text: Str) -> Result[Todo, Str] {
+    if not text.ends_with("\n") { return Err("missing final newline") }
+    let lines = text.lines()
+    if lines.len() < 2 { return Err("truncated file") }
+    if lines[0] != "TODO 1" { return Err("bad header") }
+    let Some(ns) = lines[1].strip_prefix("next ") else { return Err("bad next line") }
+    let Some(next) = parse_canonical(ns) else { return Err("bad next value") }
+    var items: Map[Int, Item] = [:]
+    var prev = 0
+    for k in 2..lines.len() {
+        let l = lines[k]
+        let bad = "bad item on line {k + 1}"
+        let Some(sp1) = l.find(" ") else { return Err(bad) }
+        let Some(id) = parse_canonical(l.slice(0, sp1)) else { return Err(bad) }
+        // after the id: "<prio> <o|d> <text>"
+        let rest = l.slice(sp1 + 1, l.len())
+        if rest.len() < 5 or rest.byte(1) != ' ' or rest.byte(3) != ' ' { return Err(bad) }
+        let Some(prio) = parse_prio(rest.slice(0, 1)) else { return Err(bad) }
+        let st = rest.slice(2, 3)
+        if st != "o" and st != "d" { return Err(bad) }
+        let body = rest.slice(4, rest.len())
+        if not printable(body) { return Err(bad) }
+        if id <= prev or id >= next { return Err("bad id on line {k + 1}") }
+        prev = id
+        items[id] = Item { id, prio, done: st == "d", text: body }
+    }
+    Ok(Todo { items, next })
+}
+
+fn Todo.serialize(self) -> Str {
+    var out = "TODO 1\nnext {self.next}\n"
+    for it in self.items.values() {
+        out += "{it.id} {it.prio} {if it.done { "d" } else { "o" }} {it.text}\n"
+    }
+    out
+}
+
+// Write the whole state to a temporary file, then rename it over the real one.
+fn Todo.save(self, fs: Fs) -> Result[Unit, IoError] {
+    fs.write(TMP, self.serialize())?
+    fs.rename(TMP, DB)
+}
+
+// ---- commands ----
+
+fn Item.show(self) -> Str {
+    "{self.id} {self.prio} {if self.done { "done" } else { "open" }} {self.text}"
+}
+
+fn Todo.open_items(self) -> List[Item] {
+    var open = self.items.values().filter(fn(it) => not it.done)
+    open.sort_by(fn(it) => (it.prio, it.id))
+    open
+}
+
+// Applies a command; the bool says whether the state changed.
+fn Todo.exec(mut self, line: Str) -> (Str, Bool) {
+    let bad = ("ERR bad command", false)
+    if line == "LIST" {
+        var out = "OPEN"
+        for it in self.open_items() { out += " {it.id}" }
+        return (out, false)
+    }
+    if line == "NEXT" {
+        let open = self.open_items()
+        return (if open.is_empty() { "NONE" } else { open[0].show() }, false)
+    }
+    if line == "PURGE" {
+        var kept: Map[Int, Item] = [:]
+        var purged = 0
+        for it in self.items.values() {
+            if it.done { purged += 1 } else { kept[it.id] = it }
+        }
+        self.items = kept
+        return ("PURGED {purged}", purged > 0)
+    }
+    if line == "STATS" {
+        let open = self.open_items().len()
+        return ("open={open} done={self.items.len() - open} next_id={self.next}", false)
+    }
+    if line.starts_with("ADD ") {
+        let rest = line.slice(4, line.len())
+        if rest.len() < 3 or rest.byte(1) != ' ' { return bad }
+        let Some(prio) = parse_prio(rest.slice(0, 1)) else { return bad }
+        let text = rest.slice(2, rest.len())
+        if not printable(text) { return bad }
+        let id = self.next
+        self.items[id] = Item { id, prio, done: false, text }
+        self.next += 1
+        return ("ADDED {id}", true)
+    }
+    let tok = line.split(" ")
+    if tok.len() != 2 { return bad }
+    let Some(id) = parse_id(tok[1]) else { return bad }
+    if tok[0] == "SHOW" {
+        return match self.items.get(id) {
+            Some(it) => (it.show(), false),
+            None => ("ERR no such item", false),
+        }
+    }
+    if tok[0] == "DONE" {
+        let Some(it) = self.items.get(id) else { return ("ERR no such item", false) }
+        if it.done { return ("ERR already done", false) }
+        self.items[id].done = true
+        return ("OK", true)
+    }
+    bad
+}
+
+// ---- startup ----
+
+fn parent_of(path: Str) -> Str {
+    var p = path
+    while p.len() > 1 and p.ends_with("/") { p = p.slice(0, p.len() - 1) }
+    var i = p.len() - 1
+    while i >= 0 and p.byte(i) != '/' { i -= 1 }
+    if i < 0 { "." } else if i == 0 { "/" } else { p.slice(0, i) }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: todo DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    if not sys.fs.exists(dir) {
+        if not sys.fs.is_dir(parent_of(dir)) {
+            con.eprintln("cannot create {dir}: parent directory missing")
+            return 1
+        }
+        match sys.fs.mkdir(dir) {
+            Ok(_) => {}
+            Err(e) => {
+                con.eprintln("cannot create {dir}: {e}")
+                return 1
+            }
+        }
+    }
+    if not sys.fs.is_dir(dir) {
+        con.eprintln("{dir} is not a directory")
+        return 1
+    }
+    let fs = sys.fs.within(dir)
+    if fs.exists(TMP) {
+        match fs.remove(TMP) {
+            Ok(_) => {}
+            Err(e) => {
+                con.eprintln("cannot remove {TMP}: {e}")
+                return 1
+            }
+        }
+    }
+    var todo = Todo { items: [:], next: 1 }
+    if fs.exists(DB) {
+        let text = match fs.read(DB) {
+            Ok(t) => t,
+            Err(e) => {
+                con.eprintln("cannot read {DB}: {e}")
+                return 1
+            }
+        }
+        match parse_state(text) {
+            Ok(t) => todo = t,
+            Err(e) => {
+                con.eprintln("invalid {DB}: {e}")
+                return 1
+            }
+        }
+    }
+
+    while true {
+        let Some(raw) = con.read_line() else { break }
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let (reply, changed) = todo.exec(line)
+        if changed {
+            match todo.save(fs) {
+                Ok(_) => {}
+                Err(e) => {
+                    con.eprintln("cannot save state: {e}")
+                    return 1
+                }
+            }
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

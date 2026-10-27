@@ -1,0 +1,89 @@
+fn valid(name: Str) -> Bool {
+    if name.is_empty() { return false }
+    for c in 0..name.len() {
+        let b = name.byte(c)
+        if not b.is_alnum() and not "_./-".contains(b.char()) { return false }
+    }
+    true
+}
+fn process(sys: Sys, targets: List[Str], levels: Bool) -> Result[Int, Str] {
+    var deps: Map[Str, Set[Str]] = [:]
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw).trim_chars(" ")
+        if line.is_empty() or line.starts_with("#") { continue }
+        let colon = line.find(":").ok_or("missing colon")?
+        let target = line.slice(0, colon).trim_chars(" ")
+        if not valid(target) { return Err("invalid target") }
+        if not deps.contains(target) { deps[target] = Set.new() }
+        for dep in line.slice(colon + 1, line.len()).split(" ") {
+            if dep.is_empty() { continue }
+            if not valid(dep) { return Err("invalid dependency") }
+            if not deps.contains(dep) { deps[dep] = Set.new() }
+            let _ = deps[target].insert(dep)
+        }
+    }
+    var selected: Set[Str] = Set.new()
+    var pending = if targets.is_empty() { deps.keys() } else { targets }
+    for t in pending { if not deps.contains(t) { return Err("unknown target {t}") } }
+    while not pending.is_empty() {
+        let node = pending.pop().unwrap()
+        if selected.insert(node) { pending.extend(deps[node].items()) }
+    }
+    var remaining: Map[Str, Int] = [:]
+    var reverse: Map[Str, List[Str]] = [:]
+    var height: Map[Str, Int] = [:]
+    var ready: Heap[Str] = Heap.new()
+    for node in selected.items() {
+        remaining[node] = deps[node].len()
+        height[node] = 0
+        if deps[node].is_empty() { ready.push(node) }
+        for dep in deps[node].items() {
+            if not reverse.contains(dep) { reverse[dep] = [] }
+            reverse[dep].push(node)
+        }
+    }
+    var order: List[Str] = []
+    while not ready.is_empty() {
+        let node = ready.pop().unwrap()
+        order.push(node)
+        for child in reverse.get_or(node, []) {
+            height[child] = height[child].max(height[node] + 1)
+            remaining[child] -= 1
+            if remaining[child] == 0 { ready.push(child) }
+        }
+    }
+    if order.len() != selected.len() {
+        var blocked: List[Str] = []
+        for (node, count) in remaining { if count > 0 { blocked.push(node) } }
+        blocked.sort()
+        sys.console.println("CYCLE " + blocked.join(" "))
+        return Ok(1)
+    }
+    if levels {
+        var groups: Map[Int, List[Str]] = [:]
+        var maximum = -1
+        for node in order {
+            let h = height[node]
+            maximum = maximum.max(h)
+            if not groups.contains(h) { groups[h] = [] }
+            groups[h].push(node)
+        }
+        for h in 0..(maximum + 1) { groups[h].sort(); sys.console.println("{h}: " + groups[h].join(" ")) }
+    } else { for node in order { sys.console.println(node) } }
+    Ok(0)
+}
+fn main(sys: Sys) -> Int {
+    var levels = false
+    var targets: List[Str] = []
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg == "-l" { levels = true } else if arg == "-t" {
+            i += 1
+            if i >= sys.args.len() { sys.console.eprintln("missing target"); return 2 }
+            targets.push(sys.args[i])
+        } else { sys.console.eprintln("bad option"); return 2 }
+        i += 1
+    }
+    match process(sys, targets, levels) { Ok(code) => code, Err(e) => { sys.console.eprintln(e); 3 } }
+}

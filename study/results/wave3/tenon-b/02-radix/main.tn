@@ -1,0 +1,108 @@
+struct Opts { from: Int, to: Int, width: Int, group: Int, upper: Bool }
+
+// digit value of a byte, or -1 when it is not a digit character
+fn digit_value(b: Int) -> Int {
+    if b.is_digit() { b - '0' }
+    else if b >= 'a' and b <= 'z' { b - 'a' + 10 }
+    else if b >= 'A' and b <= 'Z' { b - 'A' + 10 }
+    else { -1 }
+}
+
+fn parse_opt(s: Str, lo: Int, hi: Int) -> Option[Int] {
+    if not s.is_digits() or s.len() > 2 { return None }
+    let n = s.to_int()?
+    if n < lo or n > hi { None } else { Some(n) }
+}
+
+// absolute value of a signed number in `base`, or Err with the reason
+fn parse_value(s: Str, base: Int) -> Result[(Bool, Int), Str] {
+    let neg = s.starts_with("-")
+    let body = if neg { s.slice(1, s.len()) } else { s }
+    if body.is_empty() { return Err("no digits") }
+    var acc = 0
+    for i in 0..body.len() {
+        let d = digit_value(body.byte(i))
+        if d < 0 or d >= base { return Err("invalid digit '{body.slice(i, i + 1)}'") }
+        let Some(m) = acc.checked_mul(base) else { return Err("out of range") }
+        let Some(n) = m.checked_add(d) else { return Err("out of range") }
+        acc = n
+    }
+    Ok((neg and acc != 0, acc))
+}
+
+fn render(n: Int, o: Opts) -> Str {
+    let alphabet = if o.upper { "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" } else { "0123456789abcdefghijklmnopqrstuvwxyz" }
+    var digits: List[Str] = []
+    var rest = n
+    while rest > 0 {
+        let d = rest % o.to
+        digits.push(alphabet.slice(d, d + 1))
+        rest = rest / o.to
+    }
+    if digits.is_empty() { digits.push("0") }
+    while digits.len() < o.width { digits.push("0") }
+    digits.reverse()
+    if o.group > 0 {
+        var out = ""
+        let total = digits.len()
+        for (i, d) in digits.enumerate() {
+            if i > 0 and (total - i) % o.group == 0 { out += "_" }
+            out += d
+        }
+        out
+    } else {
+        digits.join("")
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var o = Opts { from: 10, to: 10, width: 0, group: 0, upper: false }
+    var values: List[Str] = []
+    var i = 0
+    let args = sys.args
+    while i < args.len() {
+        let a = args[i]
+        if a == "-u" {
+            o.upper = true
+            i += 1
+        } else if a == "-f" or a == "-t" or a == "-w" or a == "-g" {
+            if i + 1 >= args.len() {
+                con.eprintln("option {a} needs a value")
+                return 2
+            }
+            let v = args[i + 1]
+            let lim = if a == "-w" or a == "-g" { 64 } else { 36 }
+            let lo = if a == "-w" or a == "-g" { 1 } else { 2 }
+            let Some(n) = parse_opt(v, lo, lim) else {
+                con.eprintln("bad value for {a}: {v}")
+                return 2
+            }
+            if a == "-f" { o.from = n }
+            else if a == "-t" { o.to = n }
+            else if a == "-w" { o.width = n }
+            else { o.group = n }
+            i += 2
+        } else {
+            values.push(a)
+            i += 1
+        }
+    }
+    if values.is_empty() {
+        con.eprintln("no values given")
+        return 2
+    }
+    var status = 0
+    var out = ""
+    for v in values {
+        match parse_value(v, o.from) {
+            Ok((neg, n)) => out += (if neg { "-" } else { "" }) + render(n, o) + "\n",
+            Err(e) => {
+                con.eprintln("invalid value {v}: {e}")
+                status = 1
+            }
+        }
+    }
+    con.print(out)
+    status
+}

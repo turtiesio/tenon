@@ -1,0 +1,148 @@
+struct Options { levels: Bool, targets: List[Str] }
+
+fn parse_args(args: List[Str]) -> Result[Options, Str] {
+    var opts = Options { levels: false, targets: [] }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-l" {
+            opts.levels = true
+        } else if a == "-t" {
+            if i + 1 >= args.len() { return Err("-t needs a NAME") }
+            opts.targets.push(args[i + 1])
+            i += 1
+        } else {
+            return Err("unknown argument: {a}")
+        }
+        i += 1
+    }
+    Ok(opts)
+}
+
+fn is_name(s: Str) -> Bool {
+    if s.is_empty() { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_alnum() or c == '_' or c == '.' or c == '/' or c == '-') { return false }
+    }
+    true
+}
+
+// The dependency graph: items in first-seen order, deps as sets of names.
+struct Graph { deps: Map[Str, Set[Str]] }
+
+fn Graph.add_item(mut self, name: Str) {
+    if not self.deps.contains(name) { self.deps[name] = Set.new() }
+}
+
+fn parse_rules(text: Str) -> Result[Graph, Str] {
+    var g = Graph { deps: [:] }
+    for (i, raw) in text.lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let content = line.trim_chars(" ")
+        if content.is_empty() or content.starts_with("#") { continue }
+        let Some(colon) = line.find(":") else { return Err("line {i + 1}: missing ':'") }
+        let target = line.slice(0, colon).trim_chars(" ")
+        if not is_name(target) { return Err("line {i + 1}: bad target \"{target}\"") }
+        g.add_item(target)
+        for d in line.slice(colon + 1, line.len()).split(" ") {
+            if d.is_empty() { continue }
+            if not is_name(d) { return Err("line {i + 1}: bad dependency \"{d}\"") }
+            g.add_item(d)
+            let _ = g.deps[target].insert(d)
+        }
+    }
+    Ok(g)
+}
+
+// The selected items: everything, or the targets and their transitive dependencies.
+fn select(g: Graph, targets: List[Str]) -> Result[Set[Str], Str] {
+    if targets.is_empty() { return Ok(Set.of(g.deps.keys())) }
+    var selected: Set[Str] = Set.new()
+    var stack: List[Str] = []
+    for t in targets {
+        if not g.deps.contains(t) { return Err("unknown target: {t}") }
+        stack.push(t)
+    }
+    while true {
+        let Some(n) = stack.pop() else { break }
+        if not selected.insert(n) { continue }
+        for d in g.deps[n].items() { stack.push(d) }
+    }
+    Ok(selected)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(e) => {
+            con.eprintln("buildorder: {e}")
+            return 2
+        }
+    }
+    let g = match parse_rules(con.read_all()) {
+        Ok(g) => g,
+        Err(e) => {
+            con.eprintln("buildorder: {e}")
+            return 3
+        }
+    }
+    let selected = match select(g, opts.targets) {
+        Ok(s) => s,
+        Err(e) => {
+            con.eprintln("buildorder: {e}")
+            return 3
+        }
+    }
+
+    // Kahn's algorithm, always taking the smallest ready name.
+    var waiting: Map[Str, Int] = [:]          // number of unprinted dependencies
+    var dependents: Map[Str, List[Str]] = [:]
+    for n in selected.items() {
+        waiting[n] = g.deps[n].len()
+        dependents[n] = []
+    }
+    for n in selected.items() {
+        for d in g.deps[n].items() { dependents[d].push(n) }
+    }
+    var ready: Heap[Str] = Heap.new()
+    for n in selected.items() {
+        if waiting[n] == 0 { ready.push(n) }
+    }
+    var order: List[Str] = []
+    var level: Map[Str, Int] = [:]
+    while true {
+        let Some(n) = ready.pop() else { break }
+        order.push(n)
+        var lv = 0
+        for d in g.deps[n].items() { lv = lv.max(level[d] + 1) }
+        level[n] = lv
+        for m in dependents[n] {
+            waiting[m] -= 1
+            if waiting[m] == 0 { ready.push(m) }
+        }
+    }
+
+    if order.len() < selected.len() {
+        var stuck = selected.items().filter(fn(n) => not level.contains(n))
+        stuck.sort()
+        con.println("CYCLE " + stuck.join(" "))
+        return 1
+    }
+    var out = ""
+    if opts.levels {
+        var by_level: List[List[Str]] = []
+        for n in order {
+            while by_level.len() <= level[n] { by_level.push([]) }
+            by_level[level[n]].push(n)
+        }
+        for (lv, names) in by_level.enumerate() {
+            out += "{lv}: " + names.sorted().join(" ") + "\n"
+        }
+    } else {
+        for n in order { out += n + "\n" }
+    }
+    con.print(out)
+    0
+}

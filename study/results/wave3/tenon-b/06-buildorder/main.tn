@@ -1,0 +1,151 @@
+fn valid_name(s: Str) -> Bool {
+    if s.is_empty() { return false }
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        if not (b.is_alnum() or b == '_' or b == '.' or b == '/' or b == '-') { return false }
+    }
+    true
+}
+
+struct Rules {
+    items: List[Str],                 // every name, in first-seen order
+    deps: Map[Str, Set[Str]],         // target -> its dependencies
+}
+
+fn parse_rules(text: Str) -> Result[Rules, Str] {
+    var items: List[Str] = []
+    var deps: Map[Str, Set[Str]] = [:]
+    for (n, raw) in text.lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let trimmed = line.trim_chars(" ")
+        if trimmed.is_empty() or trimmed.starts_with("#") { continue }
+        let Some(colon) = line.find(":") else { return Err("line {n + 1}: missing ':'") }
+        let target = line.slice(0, colon).trim_chars(" ")
+        if not valid_name(target) { return Err("line {n + 1}: bad target '{target}'") }
+        var wanted: List[Str] = []
+        for d in line.slice(colon + 1, line.len()).split(" ") {
+            if d.is_empty() { continue }
+            if not valid_name(d) { return Err("line {n + 1}: bad dependency '{d}'") }
+            wanted.push(d)
+        }
+        if not deps.contains(target) {
+            deps[target] = Set.new()
+            items.push(target)
+        }
+        for d in wanted {
+            if not deps.contains(d) {
+                deps[d] = Set.new()
+                items.push(d)
+            }
+            let _ = deps[target].insert(d)
+        }
+    }
+    Ok(Rules { items, deps })
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var levels = false
+    var targets: List[Str] = []
+    var i = 0
+    while i < sys.args.len() {
+        let a = sys.args[i]
+        if a == "-l" {
+            levels = true
+        } else if a == "-t" {
+            if i + 1 >= sys.args.len() {
+                con.eprintln("-t needs a name")
+                return 2
+            }
+            targets.push(sys.args[i + 1])
+            i += 1
+        } else {
+            con.eprintln("unknown argument: {a}")
+            return 2
+        }
+        i += 1
+    }
+
+    let rules = match parse_rules(con.read_all()) {
+        Ok(r) => r,
+        Err(e) => {
+            con.eprintln("input error: {e}")
+            return 3
+        }
+    }
+    let deps = rules.deps
+
+    // selection: the targets plus everything they depend on
+    var selected: Set[Str] = Set.new()
+    if targets.is_empty() {
+        selected = Set.of(rules.items)
+    } else {
+        var stack: List[Str] = []
+        for t in targets {
+            if not deps.contains(t) {
+                con.eprintln("input error: unknown target {t}")
+                return 3
+            }
+            if selected.insert(t) { stack.push(t) }
+        }
+        while not stack.is_empty() {
+            let cur = stack.pop().unwrap()
+            for d in deps[cur].items() {
+                if selected.insert(d) { stack.push(d) }
+            }
+        }
+    }
+
+    // Kahn's algorithm; the heap hands out the smallest ready name first
+    var missing: Map[Str, Int] = [:]
+    var users: Map[Str, List[Str]] = [:]
+    var ready: Heap[Str] = Heap.new()
+    for name in selected.items() {
+        let ds = deps[name].items()
+        missing[name] = ds.len()
+        for d in ds {
+            if not users.contains(d) { users[d] = [] }
+            users[d].push(name)
+        }
+        if ds.is_empty() { ready.push(name) }
+    }
+
+    var order: List[Str] = []
+    var level: Map[Str, Int] = [:]
+    while true {
+        let Some(name) = ready.pop() else { break }
+        var lv = 0
+        for d in deps[name].items() { lv = lv.max(level[d] + 1) }
+        level[name] = lv
+        order.push(name)
+        for u in users.get_or(name, []) {
+            missing[u] -= 1
+            if missing[u] == 0 { ready.push(u) }
+        }
+    }
+
+    if order.len() < selected.len() {
+        var stuck: List[Str] = []
+        for name in selected.items() {
+            if not level.contains(name) { stuck.push(name) }
+        }
+        stuck.sort()
+        con.println("CYCLE " + stuck.join(" "))
+        return 1
+    }
+
+    if levels {
+        var by_level: List[List[Str]] = []
+        for name in order {
+            let lv = level[name]
+            while by_level.len() <= lv { by_level.push([]) }
+            by_level[lv].push(name)
+        }
+        for (lv, names) in by_level.enumerate() {
+            con.println("{lv}: " + names.sorted().join(" "))
+        }
+    } else {
+        for name in order { con.println(name) }
+    }
+    0
+}

@@ -1,0 +1,248 @@
+const COLS: Int = 26
+const ROWS: Int = 99
+const LIMIT: Int = 1000000000000
+
+enum Term {
+    Num(Int),
+    Ref(Int),                    // cell index
+    Range(Int, Int, Int, Int),   // first column, last column, first row, last row (0-based, normalized)
+}
+
+enum Content {
+    Empty,
+    Lit(Int),
+    Formula(List[(Int, Term)]),  // (sign, term) pairs
+}
+
+struct Sheet {
+    contents: List[Content],
+    raw: List[Str],
+    done: List[Bool],            // value cache, valid while `done[i]`
+    vals: List[Option[Int]],     // None means overflow
+}
+
+fn Sheet.new() -> Sheet {
+    let n = COLS * ROWS
+    Sheet {
+        contents: List.filled(n, Empty),
+        raw: List.filled(n, ""),
+        done: List.filled(n, false),
+        vals: List.filled(n, Some(0)),
+    }
+}
+
+fn cell_index(col: Int, row: Int) -> Int { col * ROWS + row }
+
+// "A1".."Z99" -> index, or None
+fn parse_cell(s: Str) -> Option[Int] {
+    if s.len() < 2 or s.len() > 3 { return None }
+    let c = s.byte(0)
+    if not c.is_upper() { return None }
+    let digits = s.slice(1, s.len())
+    if not digits.is_digits() or digits.byte(0) == '0' { return None }
+    Some(cell_index(c - 'A', digits.to_int()? - 1))
+}
+
+fn parse_literal(s: Str) -> Option[Int] {
+    let body = s.strip_prefix("-").unwrap_or(s)
+    if body.len() > 9 or not body.is_digits() { return None }
+    s.to_int()
+}
+
+// Reads a cell name at `p`: a letter then one or two digits (no leading zero).
+fn scan_cell(s: Str, p: Int) -> Option[(Int, Int)] {
+    if p >= s.len() or not s.byte(p).is_upper() { return None }
+    var q = p + 1
+    while q < s.len() and q < p + 3 and s.byte(q).is_digit() { q += 1 }
+    let idx = parse_cell(s.slice(p, q))?
+    Some((idx, q))
+}
+
+fn scan_term(s: Str, p: Int) -> Option[(Term, Int)] {
+    if p >= s.len() { return None }
+    if s.slice(p, s.len()).starts_with("SUM(") {
+        let (a, q) = scan_cell(s, p + 4)?
+        if q >= s.len() or s.byte(q) != ':' { return None }
+        let (b, r) = scan_cell(s, q + 1)?
+        if r >= s.len() or s.byte(r) != ')' { return None }
+        let (ca, ra) = (a / ROWS, a % ROWS)
+        let (cb, rb) = (b / ROWS, b % ROWS)
+        return Some((Range(ca.min(cb), ca.max(cb), ra.min(rb), ra.max(rb)), r + 1))
+    }
+    if s.byte(p).is_digit() {
+        var q = p
+        while q < s.len() and s.byte(q).is_digit() { q += 1 }
+        if q - p > 9 { return None }
+        return Some((Num(s.slice(p, q).to_int()?), q))
+    }
+    let (idx, q) = scan_cell(s, p)?
+    Some((Ref(idx), q))
+}
+
+fn parse_formula(s: Str) -> Option[List[(Int, Term)]] {
+    // s starts with "="
+    var p = 1
+    var sign = 1
+    if p < s.len() and s.byte(p) == '-' {
+        sign = -1
+        p += 1
+    }
+    var terms: List[(Int, Term)] = []
+    let (t, q) = scan_term(s, p)?
+    terms.push((sign, t))
+    p = q
+    while p < s.len() {
+        let op = s.byte(p)
+        if op != '+' and op != '-' { return None }
+        let (t2, q2) = scan_term(s, p + 1)?
+        terms.push((if op == '+' { 1 } else { -1 }, t2))
+        p = q2
+    }
+    Some(terms)
+}
+
+fn parse_contents(s: Str) -> Option[Content] {
+    if s.starts_with("=") {
+        return Some(Formula(parse_formula(s)?))
+    }
+    Some(Lit(parse_literal(s)?))
+}
+
+// every cell a content references, ranges expanded
+fn refs(c: Content) -> List[Int] {
+    var out: List[Int] = []
+    match c {
+        Formula(terms) => {
+            for (_, t) in terms {
+                match t {
+                    Num(_) => {}
+                    Ref(i) => out.push(i),
+                    Range(c1, c2, r1, r2) => {
+                        for col in c1..(c2 + 1) {
+                            for row in r1..(r2 + 1) { out.push(cell_index(col, row)) }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+fn Sheet.invalidate(mut self) {
+    self.done = List.filled(COLS * ROWS, false)
+}
+
+fn Sheet.value(mut self, i: Int) -> Option[Int] {
+    if self.done[i] { return self.vals[i] }
+    let result = match self.contents[i] {
+        Empty => Some(0),
+        Lit(n) => Some(n),
+        Formula(terms) => self.eval(terms),
+    }
+    self.done[i] = true
+    self.vals[i] = result
+    result
+}
+
+fn Sheet.eval(mut self, terms: List[(Int, Term)]) -> Option[Int] {
+    var total = 0
+    var overflow = false
+    for (sign, t) in terms {
+        match t {
+            Num(n) => total += sign * n,
+            Ref(i) => {
+                match self.value(i) {
+                    Some(v) => total += sign * v,
+                    None => overflow = true,
+                }
+            }
+            Range(c1, c2, r1, r2) => {
+                var sum = 0
+                for col in c1..(c2 + 1) {
+                    for row in r1..(r2 + 1) {
+                        match self.value(cell_index(col, row)) {
+                            Some(v) => sum += v,
+                            None => overflow = true,
+                        }
+                    }
+                }
+                total += sign * sum
+            }
+        }
+    }
+    if overflow or total.abs() > LIMIT { None } else { Some(total) }
+}
+
+// would `target` depend on itself if it referenced `start`?
+fn Sheet.reaches(self, start: List[Int], target: Int) -> Bool {
+    var seen = List.filled(COLS * ROWS, false)
+    var stack = start
+    while not stack.is_empty() {
+        let c = stack.pop().unwrap()
+        if c == target { return true }
+        if seen[c] { continue }
+        seen[c] = true
+        for r in refs(self.contents[c]) {
+            if not seen[r] { stack.push(r) }
+        }
+    }
+    false
+}
+
+fn Sheet.set(mut self, i: Int, raw: Str, c: Content) -> Str {
+    if self.reaches(refs(c), i) { return "ERR cycle" }
+    self.contents[i] = c
+    self.raw[i] = raw
+    self.invalidate()
+    "OK"
+}
+
+fn Sheet.exec(mut self, line: Str) -> Str {
+    let bad = "ERR bad command"
+    let tok = line.split(" ")
+    if tok.is_empty() { return bad }
+    if tok[0] == "SET" and tok.len() == 3 {
+        let Some(i) = parse_cell(tok[1]) else { return bad }
+        let Some(c) = parse_contents(tok[2]) else { return bad }
+        return self.set(i, tok[2], c)
+    }
+    if tok.len() != 2 { return bad }
+    let Some(i) = parse_cell(tok[1]) else { return bad }
+    if tok[0] == "CLEAR" {
+        self.contents[i] = Empty
+        self.raw[i] = ""
+        self.invalidate()
+        return "OK"
+    }
+    if tok[0] == "GET" {
+        return match self.value(i) {
+            Some(v) => "{v}",
+            None => "ERR overflow",
+        }
+    }
+    if tok[0] == "SHOW" {
+        return match self.contents[i] {
+            Empty => "EMPTY",
+            _ => self.raw[i],
+        }
+    }
+    bad
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 0 {
+        con.eprintln("sheet takes no arguments")
+        return 2
+    }
+    var sheet = Sheet.new()
+    while true {
+        let Some(raw) = con.read_line() else { break }
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        con.println(sheet.exec(line))
+        con.flush()
+    }
+    0
+}

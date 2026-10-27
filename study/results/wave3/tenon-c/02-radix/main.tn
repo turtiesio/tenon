@@ -1,0 +1,62 @@
+fn parse(s: Str, base: Int) -> Option[Int] {
+    let digits = s.strip_prefix("-").unwrap_or(s).lower()
+    if digits.is_empty() { return None }
+    var value = 0
+    for c in digits.chars() {
+        let d = "0123456789abcdefghijklmnopqrstuvwxyz".find(c)?
+        if d >= base { return None }
+        value = value.checked_mul(base)?.checked_add(d)?
+    }
+    Some(if s.starts_with("-") { -value } else { value })
+}
+fn render(value: Int, base: Int, width: Int, group: Int, upper: Bool) -> Str {
+    var n = value.abs()
+    var chars: List[Str] = []
+    let alphabet = if upper { "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" } else { "0123456789abcdefghijklmnopqrstuvwxyz" }
+    while true {
+        let digit = n % base
+        chars.push(alphabet.slice(digit, digit + 1))
+        n /= base
+        if n == 0 { break }
+    }
+    while chars.len() < width { chars.push("0") }
+    var out = if value < 0 { "-" } else { "" }
+    chars.reverse()
+    for (i, c) in chars.enumerate() {
+        if i > 0 and group > 0 and (chars.len() - i) % group == 0 { out += "_" }
+        out += c
+    }
+    out
+}
+fn main(sys: Sys) -> Int {
+    var from = 10
+    var to = 10
+    var width = 0
+    var group = 0
+    var upper = false
+    var values: List[Str] = []
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg == "-u" { upper = true } else if ["-f", "-t", "-w", "-g"].contains(arg) {
+            i += 1
+            if i >= sys.args.len() { sys.console.eprintln("missing option value"); return 2 }
+            let raw = sys.args[i]
+            if not raw.is_digits() or raw.len() > 2 { sys.console.eprintln("bad option value"); return 2 }
+            let v = raw.to_int().unwrap()
+            let is_base = arg == "-f" or arg == "-t"
+            if v < (if is_base { 2 } else { 1 }) or v > (if is_base { 36 } else { 64 }) { sys.console.eprintln("option out of range"); return 2 }
+            match arg { "-f" => from = v, "-t" => to = v, "-w" => width = v, _ => group = v }
+        } else { values.push(arg) }
+        i += 1
+    }
+    if values.is_empty() { sys.console.eprintln("no values"); return 2 }
+    var status = 0
+    for value in values {
+        match parse(value, from) {
+            Some(n) => sys.console.println(render(n, to, width, group, upper)),
+            None => { sys.console.eprintln("invalid value: {value}"); status = 1 }
+        }
+    }
+    status
+}

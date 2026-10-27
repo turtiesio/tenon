@@ -1,0 +1,103 @@
+struct Entry { block: Int, dirty: Bool }
+struct Cache { sets: List[List[Entry]], ways: Int, hits: Int, misses: Int, writebacks: Int }
+fn cache(sets: Int, ways: Int) -> Cache { Cache { sets: List.filled(sets, []), ways, hits: 0, misses: 0, writebacks: 0 } }
+fn Cache.touch(mut self, block: Int, dirty: Bool) -> Bool {
+    let set = block % self.sets.len()
+    for i in 0..self.sets[set].len() {
+        if self.sets[set][i].block == block {
+            var entry = self.sets[set].remove(i)
+            entry.dirty = entry.dirty or dirty
+            self.sets[set].push(entry)
+            return true
+        }
+    }
+    false
+}
+fn Cache.install(mut self, block: Int, dirty: Bool) -> Option[Entry] {
+    let set = block % self.sets.len()
+    let victim = if self.sets[set].len() == self.ways { Some(self.sets[set].remove(0)) } else { None }
+    self.sets[set].push(Entry { block, dirty })
+    victim
+}
+fn Cache.install_l2(mut self, block: Int, dirty: Bool) {
+    match self.install(block, dirty) {
+        Some(victim) => { if victim.dirty { self.writebacks += 1 } }
+        None => (),
+    }
+}
+fn option_number(s: Str, digits: Int, maximum: Int) -> Option[Int] {
+    if not s.is_digits() or s.len() > digits { return None }
+    let n = s.to_int()?
+    if n < 1 or n > maximum { None } else { Some(n) }
+}
+fn geometry(s: Str) -> Option[(Int, Int)] {
+    let parts = s.split(":")
+    if parts.len() != 2 { return None }
+    Some((option_number(parts[0], 4, 4096)?, option_number(parts[1], 2, 64)?))
+}
+fn address(line: Str) -> Option[Int] {
+    if line.len() < 5 or line.len() > 12 or (not line.starts_with("R 0x") and not line.starts_with("W 0x")) { return None }
+    var result = 0
+    for c in line.slice(4, line.len()).lower().chars() {
+        let n = "0123456789abcdef".find(c)?
+        result = result * 16 + n
+    }
+    Some(result)
+}
+fn main(sys: Sys) -> Int {
+    var block_size = 16
+    var g1 = (4, 2)
+    var g2 = (16, 4)
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if not ["-b", "-1", "-2"].contains(arg) or i + 1 >= sys.args.len() { sys.console.eprintln("bad options"); return 2 }
+        i += 1
+        let value = sys.args[i]
+        if arg == "-b" {
+            let Some(n) = option_number(value, 4, 4096) else { sys.console.eprintln("bad block size"); return 2 }
+            var power = n
+            while power > 1 and power % 2 == 0 { power /= 2 }
+            if power != 1 { sys.console.eprintln("block size must be a power of two"); return 2 }
+            block_size = n
+        } else {
+            let Some(g) = geometry(value) else { sys.console.eprintln("bad geometry"); return 2 }
+            if arg == "-1" { g1 = g } else { g2 = g }
+        }
+        i += 1
+    }
+    var accesses: List[(Str, Int)] = []
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() { continue }
+        let Some(a) = address(line) else { sys.console.eprintln("invalid trace"); return 1 }
+        accesses.push((line, a / block_size))
+    }
+    var l1 = cache(g1.0, g1.1)
+    var l2 = cache(g2.0, g2.1)
+    for (line, block) in accesses {
+        let write = line.starts_with("W")
+        var result = "L1"
+        if l1.touch(block, write) { l1.hits += 1 } else {
+            l1.misses += 1
+            if l2.touch(block, false) { l2.hits += 1; result = "L2" } else {
+                l2.misses += 1
+                result = "MEM"
+                l2.install_l2(block, false)
+            }
+            match l1.install(block, write) {
+                Some(victim) => {
+                    if victim.dirty {
+                        l1.writebacks += 1
+                        if not l2.touch(victim.block, true) { l2.install_l2(victim.block, true) }
+                    }
+                }
+                None => (),
+            }
+        }
+        sys.console.println("{line} {result}")
+    }
+    sys.console.println("L1 hits={l1.hits} misses={l1.misses} writebacks={l1.writebacks}")
+    sys.console.println("L2 hits={l2.hits} misses={l2.misses} writebacks={l2.writebacks}")
+    0
+}

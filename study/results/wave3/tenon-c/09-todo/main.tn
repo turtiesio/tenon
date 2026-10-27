@@ -1,0 +1,116 @@
+struct Item { id: Int, prio: Int, done: Bool, text: Str }
+struct State { next: Int, items: Map[Int, Item] }
+fn printable(s: Str) -> Bool {
+    if s.is_empty() { return false }
+    for i in 0..s.len() { if s.byte(i) < 32 or s.byte(i) > 126 { return false } }
+    true
+}
+fn id_number(s: Str, canonical: Bool) -> Option[Int] {
+    if not s.is_digits() or s.len() > 9 or (canonical and s.byte(0) == '0') { return None }
+    s.to_int()
+}
+fn priority(s: Str) -> Option[Int] {
+    if s.len() != 1 or s.byte(0) < '1' or s.byte(0) > '9' { None } else { s.to_int() }
+}
+fn load(text: Str) -> Option[State] {
+    if not text.ends_with("\n") { return None }
+    let lines = text.lines()
+    if lines.len() < 2 or lines[0] != "TODO 1" { return None }
+    let next = id_number(lines[1].strip_prefix("next ")?, true)?
+    var state = State { next, items: [:] }
+    var previous = 0
+    for i in 2..lines.len() {
+        let line = lines[i]
+        let cut = line.find(" ")?
+        let id = id_number(line.slice(0, cut), true)?
+        let rest = line.slice(cut + 1, line.len())
+        if rest.len() < 5 or rest.byte(1) != ' ' or rest.byte(3) != ' ' { return None }
+        let prio = priority(rest.slice(0, 1))?
+        let status = rest.slice(2, 3)
+        let body = rest.slice(4, rest.len())
+        if (status != "o" and status != "d") or not printable(body) or id <= previous or id >= next { return None }
+        state.items[id] = Item { id, prio, done: status == "d", text: body }
+        previous = id
+    }
+    Some(state)
+}
+fn State.save(self, fs: Fs) -> Result[Unit, Str] {
+    var text = "TODO 1\nnext {self.next}\n"
+    for id in self.items.keys().sorted() {
+        let item = self.items[id]
+        let status = if item.done { "d" } else { "o" }
+        text += "{id} {item.prio} {status} {item.text}\n"
+    }
+    fs.write("todo.db.tmp", text).map_err(fn(e) => e.to_str())?
+    fs.rename("todo.db.tmp", "todo.db").map_err(fn(e) => e.to_str())
+}
+fn show(item: Item) -> Str {
+    let status = if item.done { "done" } else { "open" }
+    "{item.id} {item.prio} {status} {item.text}"
+}
+fn State.command(mut self, line: Str) -> (Str, Bool) {
+    if not printable(line) { return ("ERR bad command", false) }
+    if line == "LIST" or line == "NEXT" {
+        var open = self.items.values().filter(fn(x) => not x.done)
+        open.sort_by(fn(x) => (x.prio, x.id))
+        if line == "NEXT" { return (if open.is_empty() { "NONE" } else { show(open[0]) }, false) }
+        let ids = open.map(fn(x) => x.id.to_str())
+        return ("OPEN" + if ids.is_empty() { "" } else { " " + ids.join(" ") }, false)
+    }
+    if line == "STATS" {
+        let done = self.items.values().count(fn(x) => x.done)
+        return ("open={self.items.len() - done} done={done} next_id={self.next}", false)
+    }
+    if line == "PURGE" {
+        var count = 0
+        for (id, item) in self.items {
+            if item.done { let _ = self.items.remove(id); count += 1 }
+        }
+        return ("PURGED {count}", count > 0)
+    }
+    if line.starts_with("ADD ") {
+        let rest = line.slice(4, line.len())
+        if rest.len() < 3 or rest.byte(1) != ' ' { return ("ERR bad command", false) }
+        let Some(prio) = priority(rest.slice(0, 1)) else { return ("ERR bad command", false) }
+        let body = rest.slice(2, rest.len())
+        let id = self.next
+        self.items[id] = Item { id, prio, done: false, text: body }
+        self.next += 1
+        return ("ADDED {id}", true)
+    }
+    let parts = line.split(" ")
+    if parts.len() != 2 or (parts[0] != "DONE" and parts[0] != "SHOW") { return ("ERR bad command", false) }
+    let Some(id) = id_number(parts[1], false) else { return ("ERR bad command", false) }
+    let Some(item) = self.items.get(id) else { return ("ERR no such item", false) }
+    if parts[0] == "SHOW" { return (show(item), false) }
+    if item.done { return ("ERR already done", false) }
+    self.items[id].done = true
+    ("OK", true)
+}
+fn run(sys: Sys, directory: Str) -> Result[Unit, Str] {
+    var dir = directory
+    while dir.len() > 1 and dir.ends_with("/") { dir = dir.slice(0, dir.len() - 1) }
+    if not sys.fs.exists(dir) {
+        var last = -1
+        for i in 0..dir.len() { if dir.byte(i) == '/' { last = i } }
+        let parent = if last < 0 { "." } else if last == 0 { "/" } else { dir.slice(0, last) }
+        if not sys.fs.is_dir(parent) { return Err("parent directory does not exist") }
+        sys.fs.mkdir(dir).map_err(fn(e) => e.to_str())?
+    }
+    if not sys.fs.is_dir(dir) { return Err("not a directory") }
+    let fs = sys.fs.within(dir)
+    if fs.exists("todo.db.tmp") { fs.remove("todo.db.tmp").map_err(fn(e) => e.to_str())? }
+    var state = if fs.exists("todo.db") { load(fs.read("todo.db").map_err(fn(e) => e.to_str())?).ok_or("invalid state file")? } else { State { next: 1, items: [:] } }
+    while true {
+        let Some(line) = sys.console.read_line() else { break }
+        let (response, changed) = state.command(line)
+        if changed { state.save(fs)? }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    Ok(())
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("one directory required"); return 2 }
+    match run(sys, sys.args[0]) { Ok(()) => 0, Err(e) => { sys.console.eprintln(e); 1 } }
+}

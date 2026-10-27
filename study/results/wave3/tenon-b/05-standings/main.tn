@@ -1,0 +1,153 @@
+struct Team {
+    name: Str,
+    played: Int,
+    won: Int,
+    drawn: Int,
+    lost: Int,
+    gf: Int,
+    ga: Int,
+    form: Str,
+}
+
+struct Result_ { home: Str, away: Str, hg: Int, ag: Int }
+
+fn Team.new(name: Str) -> Team {
+    Team { name, played: 0, won: 0, drawn: 0, lost: 0, gf: 0, ga: 0, form: "" }
+}
+
+fn Team.record(mut self, scored: Int, conceded: Int) {
+    self.played += 1
+    self.gf += scored
+    self.ga += conceded
+    var letter = "D"
+    if scored > conceded {
+        self.won += 1
+        letter = "W"
+    } else if scored < conceded {
+        self.lost += 1
+        letter = "L"
+    } else {
+        self.drawn += 1
+    }
+    self.form += letter
+    if self.form.len() > 5 { self.form = self.form.slice(self.form.len() - 5, self.form.len()) }
+}
+
+fn Team.gd(self) -> Int { self.gf - self.ga }
+
+fn Team.points(self, pts: (Int, Int, Int)) -> Int {
+    self.won * pts.0 + self.drawn * pts.1 + self.lost * pts.2
+}
+
+fn is_name_token(t: Str) -> Bool {
+    if t.is_empty() { return false }
+    for i in 0..t.len() {
+        let b = t.byte(i)
+        if not (b.is_alnum() or b == '.' or b == '&' or b == '\'') { return false }
+    }
+    true
+}
+
+// "<d>-<d>" with one or two digits on each side
+fn parse_score(t: Str) -> Option[(Int, Int)] {
+    let dash = t.find("-")?
+    let a = t.slice(0, dash)
+    let b = t.slice(dash + 1, t.len())
+    if a.len() > 2 or b.len() > 2 or not a.is_digits() or not b.is_digits() { return None }
+    Some((a.to_int()?, b.to_int()?))
+}
+
+fn parse_line(line: Str) -> Result[Result_, Str] {
+    let tokens = line.split(" ")
+    var score_at = -1
+    var score = (0, 0)
+    for (i, t) in tokens.enumerate() {
+        if is_name_token(t) { continue }
+        let Some(s) = parse_score(t) else { return Err("bad token '{t}'") }
+        if score_at >= 0 { return Err("more than one score") }
+        score_at = i
+        score = s
+    }
+    if score_at < 0 { return Err("no score") }
+    if score_at == 0 { return Err("no home team") }
+    if score_at == tokens.len() - 1 { return Err("no away team") }
+    let home = tokens.slice(0, score_at).join(" ")
+    let away = tokens.slice(score_at + 1, tokens.len()).join(" ")
+    if home == away { return Err("a team cannot play itself") }
+    Ok(Result_ { home, away, hg: score.0, ag: score.1 })
+}
+
+fn parse_points(s: Str) -> Option[(Int, Int, Int)] {
+    let parts = s.split(",")
+    if parts.len() != 3 { return None }
+    for p in parts {
+        if p.len() > 2 or not p.is_digits() { return None }
+    }
+    Some((parts[0].to_int()?, parts[1].to_int()?, parts[2].to_int()?))
+}
+
+fn signed(n: Int) -> Str {
+    if n > 0 { "+{n}" } else { "{n}" }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var pts = (3, 1, 0)
+    if sys.args.len() != 0 {
+        if sys.args.len() != 2 or sys.args[0] != "-p" {
+            con.eprintln("usage: standings [-p W,D,L]")
+            return 2
+        }
+        let Some(p) = parse_points(sys.args[1]) else {
+            con.eprintln("bad points: {sys.args[1]}")
+            return 2
+        }
+        pts = p
+    }
+
+    var results: List[Result_] = []
+    for (i, raw) in con.read_all().lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() or line.starts_with("#") { continue }
+        match parse_line(line) {
+            Ok(r) => results.push(r),
+            Err(e) => {
+                con.eprintln("line {i + 1}: {e}")
+                return 1
+            }
+        }
+    }
+
+    var teams: Map[Str, Team] = [:]
+    for r in results {
+        if not teams.contains(r.home) { teams[r.home] = Team.new(r.home) }
+        if not teams.contains(r.away) { teams[r.away] = Team.new(r.away) }
+        teams[r.home].record(r.hg, r.ag)
+        teams[r.away].record(r.ag, r.hg)
+    }
+
+    var table = teams.values()
+    table.sort_by(fn(t) => (-t.points(pts), -t.gd(), -t.gf, -t.won, t.name))
+
+    var width = 0
+    for t in table { width = width.max(t.name.len()) }
+
+    var out = ""
+    var position = 0
+    var prev = (0, 0, 0, 0)
+    for (i, t) in table.enumerate() {
+        let key = (t.points(pts), t.gd(), t.gf, t.won)
+        if i == 0 or key != prev { position = i + 1 }
+        prev = key
+        out += "{position}".pad_left(2, " ") + ". "
+        out += t.name.pad_right(width, " ")
+        out += "{t.played}".pad_left(3, " ") + "{t.won}".pad_left(3, " ")
+        out += "{t.drawn}".pad_left(3, " ") + "{t.lost}".pad_left(3, " ")
+        out += "{t.gf}:{t.ga}".pad_left(7, " ")
+        out += signed(t.gd()).pad_left(4, " ")
+        out += "{key.0}".pad_left(4, " ")
+        out += " " + t.form + "\n"
+    }
+    con.print(out)
+    0
+}

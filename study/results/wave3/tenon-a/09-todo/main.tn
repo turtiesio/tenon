@@ -1,0 +1,253 @@
+struct Item { id: Int, prio: Int, done: Bool, text: Str }
+
+// Items are kept in id order (ids only increase, so insertion order).
+struct State { next: Int, items: Map[Int, Item] }
+
+enum Command {
+    Add(Int, Str),
+    Done(Int),
+    Show(Int),
+    ListOpen,
+    Next,
+    Purge,
+    Stats,
+}
+
+fn is_printable(s: Str) -> Bool {
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if c < ' ' or c > '~' { return false }
+    }
+    true
+}
+
+fn parse_id(s: Str) -> Option[Int] {
+    if s.len() < 1 or s.len() > 9 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+fn parse_prio(s: Str) -> Option[Int] {
+    if s.len() != 1 or s.byte(0) < '1' or s.byte(0) > '9' { return None }
+    Some(s.byte(0) - '0')
+}
+
+fn parse(line: Str) -> Option[Command] {
+    if not is_printable(line) { return None }
+    if line == "LIST" { return Some(ListOpen) }
+    if line == "NEXT" { return Some(Next) }
+    if line == "PURGE" { return Some(Purge) }
+    if line == "STATS" { return Some(Stats) }
+    let Some(rest) = line.strip_prefix("ADD ") else {
+        let tokens = line.split(" ")
+        if tokens.len() != 2 { return None }
+        let id = parse_id(tokens[1])?
+        if tokens[0] == "DONE" { return Some(Done(id)) }
+        if tokens[0] == "SHOW" { return Some(Show(id)) }
+        return None
+    }
+    // "<prio> <text>"
+    if rest.len() < 3 or rest.byte(1) != ' ' { return None }
+    let prio = parse_prio(rest.slice(0, 1))?
+    Some(Add(prio, rest.slice(2, rest.len())))
+}
+
+// "<id> <prio> <o|d> <text>" from a state file line.
+fn parse_item_line(line: Str) -> Option[Item] {
+    let Some(sp) = line.find(" ") else { return None }
+    let id_text = line.slice(0, sp)
+    if id_text.starts_with("0") { return None }
+    let id = parse_id(id_text)?
+    let rest = line.slice(sp + 1, line.len())
+    if rest.len() < 5 or rest.byte(1) != ' ' or rest.byte(3) != ' ' { return None }
+    let prio = parse_prio(rest.slice(0, 1))?
+    let status = rest.slice(2, 3)
+    if status != "o" and status != "d" { return None }
+    let text = rest.slice(4, rest.len())
+    if text.is_empty() or not is_printable(text) { return None }
+    Some(Item { id, prio, done: status == "d", text })
+}
+
+fn parse_state(data: Str) -> Result[State, Str] {
+    if not data.ends_with("\n") { return Err("missing final newline") }
+    let lines = data.slice(0, data.len() - 1).split("\n")
+    if lines.len() < 2 or lines[0] != "TODO 1" { return Err("bad header") }
+    let Some(n_text) = lines[1].strip_prefix("next ") else { return Err("bad next line") }
+    if n_text.starts_with("0") { return Err("bad next value") }
+    let Some(next) = parse_id(n_text) else { return Err("bad next value") }
+    var items: Map[Int, Item] = [:]
+    var last = 0
+    for k in 2..lines.len() {
+        let Some(item) = parse_item_line(lines[k]) else { return Err("bad item on line {k + 1}") }
+        if item.id <= last { return Err("ids not increasing on line {k + 1}") }
+        if item.id >= next { return Err("id not below next on line {k + 1}") }
+        last = item.id
+        items[item.id] = item
+    }
+    Ok(State { next, items })
+}
+
+fn State.encode(self) -> Str {
+    var out = "TODO 1\nnext {self.next}\n"
+    for (_, it) in self.items {
+        let status = if it.done { "d" } else { "o" }
+        out += "{it.id} {it.prio} {status} {it.text}\n"
+    }
+    out
+}
+
+fn State.open_ids(self) -> List[Int] {
+    var open: List[Item] = []
+    for (_, it) in self.items {
+        if not it.done { open.push(it) }
+    }
+    open.sort_by(fn(it) => (it.prio, it.id))
+    open.map(fn(it) => it.id)
+}
+
+fn show(it: Item) -> Str {
+    let status = if it.done { "done" } else { "open" }
+    "{it.id} {it.prio} {status} {it.text}"
+}
+
+struct Store { fs: Fs, dir: Str }
+
+fn Store.path(self, name: Str) -> Str { self.dir + "/" + name }
+
+fn Store.save(self, st: State) -> Result[Unit, IoError] {
+    self.fs.write(self.path("todo.db.tmp"), st.encode())?
+    self.fs.rename(self.path("todo.db.tmp"), self.path("todo.db"))
+}
+
+// Runs one command; the Bool says whether the state changed.
+fn State.run(mut self, cmd: Command) -> (Str, Bool) {
+    match cmd {
+        Add(prio, text) => {
+            let id = self.next
+            self.items[id] = Item { id, prio, done: false, text }
+            self.next += 1
+            ("ADDED {id}", true)
+        }
+        Done(id) => {
+            let Some(it) = self.items.get(id) else { return ("ERR no such item", false) }
+            if it.done { return ("ERR already done", false) }
+            self.items[id].done = true
+            ("OK", true)
+        }
+        Show(id) => match self.items.get(id) {
+            Some(it) => (show(it), false),
+            None => ("ERR no such item", false),
+        },
+        ListOpen => {
+            let ids = self.open_ids()
+            var out = "OPEN"
+            for id in ids { out += " {id}" }
+            (out, false)
+        }
+        Next => match self.open_ids().first() {
+            Some(id) => (show(self.items[id]), false),
+            None => ("NONE", false),
+        },
+        Purge => {
+            var kept: Map[Int, Item] = [:]
+            var purged = 0
+            for (id, it) in self.items {
+                if it.done { purged += 1 } else { kept[id] = it }
+            }
+            self.items = kept
+            ("PURGED {purged}", purged > 0)
+        }
+        Stats => {
+            let done = self.items.values().count(fn(it) => it.done)
+            ("open={self.items.len() - done} done={done} next_id={self.next}", false)
+        }
+    }
+}
+
+// The parent directory of a path ("" when it is the current directory).
+fn parent(path: Str) -> Str {
+    var p = path
+    while p.len() > 1 and p.ends_with("/") { p = p.slice(0, p.len() - 1) }
+    var i = p.len() - 1
+    while i >= 0 and p.byte(i) != '/' { i -= 1 }
+    if i < 0 { "" } else if i == 0 { "/" } else { p.slice(0, i) }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: todo DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    let fs = sys.fs
+    if fs.exists(dir) {
+        if not fs.is_dir(dir) {
+            con.eprintln("todo: {dir} is not a directory")
+            return 1
+        }
+    } else {
+        let up = parent(dir)
+        if up != "" and not fs.is_dir(up) {
+            con.eprintln("todo: cannot create {dir}: parent directory missing")
+            return 1
+        }
+        match fs.mkdir(dir) {
+            Ok(()) => {}
+            Err(e) => {
+                con.eprintln("todo: cannot create {dir}: {e}")
+                return 1
+            }
+        }
+    }
+    let store = Store { fs, dir }
+    let tmp = store.path("todo.db.tmp")
+    if fs.exists(tmp) {
+        match fs.remove(tmp) {
+            Ok(()) => {}
+            Err(e) => {
+                con.eprintln("todo: cannot remove {tmp}: {e}")
+                return 1
+            }
+        }
+    }
+    let db = store.path("todo.db")
+    var state = State { next: 1, items: [:] }
+    if fs.exists(db) {
+        let data = match fs.read(db) {
+            Ok(d) => d,
+            Err(e) => {
+                con.eprintln("todo: cannot read {db}: {e}")
+                return 1
+            }
+        }
+        state = match parse_state(data) {
+            Ok(s) => s,
+            Err(e) => {
+                con.eprintln("todo: invalid {db}: {e}")
+                return 1
+            }
+        }
+    }
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let response = match parse(line) {
+            None => "ERR bad command",
+            Some(cmd) => {
+                let (text, changed) = state.run(cmd)
+                if changed {
+                    match store.save(state) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            con.eprintln("todo: cannot save state: {e}")
+                            return 1
+                        }
+                    }
+                }
+                text
+            }
+        }
+        con.println(response)
+        con.flush()
+    }
+    0
+}
