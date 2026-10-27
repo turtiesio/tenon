@@ -405,11 +405,20 @@ struct FnDef { params: List[Str], body: Expr }
 
 struct Interp { vars: Map[Str, Int], fns: Map[Str, FnDef] }
 
+// The parameters of the function being evaluated (empty at top level).
+struct Env { names: List[Str], vals: List[Int] }
+
+fn Env.get(self, name: Str) -> Option[Int] {
+    for i in 0..self.names.len() {
+        if self.names[i] == name { return Some(self.vals[i]) }
+    }
+    None
+}
+
 fn plural(n: Int, word: Str) -> Str { if n == 1 { "{n} {word}" } else { "{n} {word}s" } }
 
-// env holds the parameters of the function being evaluated (empty at top level);
 // depth is the number of user function calls currently active.
-fn Interp.eval(self, e: Expr, env: Map[Str, Int], depth: Int) -> Result[Int, Str] {
+fn Interp.eval(self, e: Expr, env: Env, depth: Int) -> Result[Int, Str] {
     match e {
         Num(n) => Ok(n),
         Var(name) => {
@@ -437,23 +446,23 @@ fn Interp.eval(self, e: Expr, env: Map[Str, Int], depth: Int) -> Result[Int, Str
     }
 }
 
-fn Interp.call(self, name: Str, args: List[Expr], env: Map[Str, Int], depth: Int) -> Result[Int, Str] {
+fn Interp.call(self, name: Str, args: List[Expr], env: Env, depth: Int) -> Result[Int, Str] {
     let f = match self.fns.get(name) {
         Some(f) => f,
         None => {
-            if self.vars.contains(name) or env.contains(name) { return Err("'{name}' is not a function") }
+            if self.vars.contains(name) or env.get(name) != None { return Err("'{name}' is not a function") }
             return Err("unknown function '{name}'")
         }
     }
     if args.len() != f.params.len() {
         return Err("function '{name}' takes {plural(f.params.len(), "argument")}, got {args.len()}")
     }
-    var inner: Map[Str, Int] = [:]
-    for i in 0..args.len() {
-        inner[f.params[i]] = self.eval(args[i], env, depth)?
+    var vals: List[Int] = []
+    for a in args {
+        vals.push(self.eval(a, env, depth)?)
     }
     if depth >= max_depth() { return Err("call depth limit ({max_depth()}) exceeded in '{name}'") }
-    self.eval(f.body, inner, depth + 1)
+    self.eval(f.body, Env { names: f.params, vals }, depth + 1)
 }
 
 // Runs one statement; Ok(Some(text)) is output to print.
@@ -461,7 +470,7 @@ fn Interp.run(mut self, stmt: Stmt) -> Result[Option[Str], Str] {
     match stmt {
         DefVar(name, e) => {
             if self.fns.contains(name) { return Err("'{name}' is already defined as a function") }
-            let v = self.eval(e, [:], 0)?
+            let v = self.eval(e, Env { names: [], vals: [] }, 0)?
             self.vars[name] = v
             Ok(None)
         }
@@ -470,7 +479,7 @@ fn Interp.run(mut self, stmt: Stmt) -> Result[Option[Str], Str] {
             self.fns[name] = FnDef { params, body }
             Ok(None)
         }
-        Show(e) => Ok(Some(self.eval(e, [:], 0)?.to_str())),
+        Show(e) => Ok(Some(self.eval(e, Env { names: [], vals: [] }, 0)?.to_str())),
     }
 }
 
