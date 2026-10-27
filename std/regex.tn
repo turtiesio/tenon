@@ -1,0 +1,810 @@
+// regex: regular expressions, written in Tenon. `import regex`.
+//
+//   regex.compile(pattern: Str) -> Result[Regex, Str]
+//   Regex.full(self, s: Str)     -> Option[List[Str]]          the WHOLE string must match
+//   Regex.is_full(self, s: Str)  -> Bool
+//   Regex.find(self, s: Str)     -> Option[(Int, List[Str])]   leftmost match: byte offset, groups
+//   Regex.find_all(self, s: Str) -> List[Str]                  non-overlapping matches, left to right
+//   Regex.replace_all(self, s: Str, with: Str) -> Str          `with` is literal text
+//
+// Groups: index 0 is the whole match, then one entry per capture group in the
+// order of their "(", with "" for a group that did not take part in the match.
+// A compile error is a message of the form "<problem> at byte <offset>", the
+// offset being a byte offset into the pattern.
+//
+// Syntax
+//   x             a literal character (any UTF-8 character; `{` `}` `]` are literal
+//                 where they cannot start a quantifier / close a class)
+//   .             any character except "\n"
+//   [abc] [a-z0-9_] [^...]    classes: ranges, `]` first is literal, `-` first or
+//                 last is literal, escapes inside (\d \w \s \D \W \S, \] \\ \- \n ...)
+//   \d \w \s      ASCII digit [0-9], word [A-Za-z0-9_], space [ \t\n\v\f\r]
+//   \D \W \S      their complements (so they match every non-ASCII character)
+//   \b \B         ASCII word boundary / not a word boundary
+//   \n \t \r \f \v \0    control characters; `\` + any other non-alphanumeric
+//                 character is that character (\. \\ \[ \( \| \* ...)
+//   ^ $           start / end of the string (never of a line)
+//   ( )  (?: )    capturing group / non-capturing group
+//   a|b           alternation (the first alternative that leads to a match wins)
+//   * + ? {m} {m,} {m,n} {,n}    greedy quantifiers (counts are at most 1000)
+//   *? +? ?? {m,n}?              lazy quantifiers
+//
+// Matching is by backtracking over UTF-8 text, one character at a time; all
+// offsets are byte offsets. `find` takes the leftmost match, and among matches
+// at that position the one the pattern's greedy / lazy / alternation choices
+// reach first (Perl and Python semantics). A pattern is compiled into a small
+// program for a backtracking machine with an explicit stack.
+//
+// Safety: backtracking can take exponential time on patterns like (a+)+b. Every
+// anchored match attempt may run at most 1,000,000 + 32 * len(subject) steps;
+// beyond that the program stops with `panic` naming the pattern. (A `find`
+// makes one attempt per start position; the limit applies to each attempt.)
+// Compile also refuses patterns whose expansion would exceed 50,000
+// instructions (nested counted repeats), or nest groups deeper than 100.
+//
+// Intentional differences from Python's `re` (cross-checked against it with
+// re.ASCII, and `$` rewritten to `\Z`, over every case in tests/run/std_regex.tn):
+//   * \d \w \s \b are ASCII only (like re.ASCII); there are no Unicode classes.
+//   * `$` matches only at the very end ("a\n" does not match "a$" with find);
+//     Python's `$` also matches before a final "\n".
+//   * A group that did not take part yields "" (Python: None).
+//   * An empty match advances the search by one character; Python 3.7+ also
+//     tries a non-empty match at the same position first (re.findall("|a","a")
+//     is ["", "a", ""] there, ["", ""] here).
+//   * Not supported (reported as compile errors): backreferences, lookahead and
+//     lookbehind, named groups, inline flags, possessive quantifiers (a*+),
+//     \A \Z \x \u escapes, and counts above 1000.
+//   * Error messages differ; Python reports a character offset, here a byte offset.
+
+enum Node {
+    Empty,
+    Lit(Int),
+    AnyChar,
+    Cls(Int),
+    Bol,
+    Eol,
+    Boundary(Bool),            // true: \b, false: \B
+    Cat(List[Node]),
+    Alt(List[Node]),
+    Group(Int, Node),          // capture number, or 0 for (?: )
+    Rep(Node, Int, Int, Bool), // min, max (-1: unbounded), greedy
+}
+
+enum Inst {
+    IChar(Int),
+    IAny,
+    IClass(Int),
+    ISplit(Int, Int),          // try the first target, on failure the second
+    IJmp(Int),
+    ISave(Int),                // slots[k] = position (undone on backtrack)
+    IProgress(Int, Int),       // if no input was consumed since slots[r], go to the target
+    IBol,
+    IEol,
+    IBound(Bool),
+    IMatch,
+}
+
+struct Frame { pc: Int, v: Int }   // pc >= 0: a branch to resume at position v; else restore slot -1 - pc to v
+
+const MAX_CP: Int = 1114111
+const MAX_COUNT: Int = 1000
+const MAX_PROG: Int = 50000
+const MAX_DEPTH: Int = 100
+const STEP_LIMIT: Int = 1000000
+const BIG: Int = 1000000
+
+fn cp_at(s: Str, i: Int) -> Int {
+    let b = s.byte(i)
+    if b < 128 { return b }
+    if b < 224 { return (b - 192) * 64 + (s.byte(i + 1) - 128) }
+    if b < 240 { return (b - 224) * 4096 + (s.byte(i + 1) - 128) * 64 + (s.byte(i + 2) - 128) }
+    (b - 240) * 262144 + (s.byte(i + 1) - 128) * 4096 + (s.byte(i + 2) - 128) * 64 + (s.byte(i + 3) - 128)
+}
+
+fn cp_len(c: Int) -> Int {
+    if c < 128 { 1 } else if c < 2048 { 2 } else if c < 65536 { 3 } else { 4 }
+}
+
+fn is_word(c: Int) -> Bool { c.is_alnum() or c == '_' }
+
+fn is_class_escape(e: Int) -> Bool {
+    e == 'd' or e == 'w' or e == 's' or e == 'D' or e == 'W' or e == 'S'
+}
+
+// Sorted (lo, hi) pairs, flattened, of \d \w \s (given the lower-case letter or its capital).
+fn esc_ranges(e: Int) -> List[Int] {
+    if e == 'd' or e == 'D' { [48, 57] } else if e == 'w' or e == 'W' { [48, 57, 65, 90, 95, 95, 97, 122] } else { [9, 13, 32, 32] }
+}
+
+// Complement of sorted, disjoint flattened ranges within 0..MAX_CP.
+fn complement(flat: List[Int]) -> List[Int] {
+    var out: List[Int] = []
+    var prev = 0
+    var i = 0
+    while i < flat.len() {
+        if flat[i] > prev {
+            out.push(prev)
+            out.push(flat[i] - 1)
+        }
+        prev = flat[i + 1] + 1
+        i += 2
+    }
+    if prev <= MAX_CP {
+        out.push(prev)
+        out.push(MAX_CP)
+    }
+    out
+}
+
+fn fail[T](msg: Str, at: Int) -> Result[T, Str] { Err("{msg} at byte {at}") }
+
+// ---- analysis of the syntax tree ----
+
+fn nullable(n: Node) -> Bool {
+    match n {
+        Empty => true,
+        Lit(_) => false,
+        AnyChar => false,
+        Cls(_) => false,
+        Bol => true,
+        Eol => true,
+        Boundary(_) => true,
+        Cat(items) => items.all(nullable),
+        Alt(bs) => bs.any(nullable),
+        Group(_, inner) => nullable(inner),
+        Rep(inner, lo, _, _) => lo == 0 or nullable(inner),
+    }
+}
+
+// The number of instructions a node compiles to, clamped at BIG.
+fn node_size(n: Node) -> Int {
+    match n {
+        Empty => 0,
+        Cat(items) => {
+            var t = 0
+            for x in items { t = (t + node_size(x)).min(BIG) }
+            t
+        }
+        Alt(bs) => {
+            var t = 0
+            for x in bs { t = (t + node_size(x) + 2).min(BIG) }
+            t
+        }
+        Group(k, inner) => (node_size(inner) + (if k > 0 { 2 } else { 0 })).min(BIG),
+        Rep(inner, lo, hi, _) => {
+            let b = node_size(inner)
+            let guard = if nullable(inner) { 1 } else { 0 }
+            if hi >= 0 {
+                (lo * b + (hi - lo) * (b + 1)).min(BIG)
+            } else if lo == 0 {
+                (b + 2 + guard).min(BIG)
+            } else {
+                ((lo - 1) * b + b + 1 + guard).min(BIG)
+            }
+        }
+        _ => 1,
+    }
+}
+
+fn starts_bol(n: Node) -> Bool {
+    match n {
+        Bol => true,
+        Cat(items) => starts_bol(items[0]),
+        Alt(bs) => bs.all(starts_bol),
+        Group(_, inner) => starts_bol(inner),
+        _ => false,
+    }
+}
+
+// The ASCII character every match must begin with, or -1.
+fn lead_lit(n: Node) -> Int {
+    match n {
+        Lit(c) => if c < 128 { c } else { -1 },
+        Cat(items) => lead_lit(items[0]),
+        Group(_, inner) => lead_lit(inner),
+        Rep(inner, lo, _, _) => if lo >= 1 { lead_lit(inner) } else { -1 },
+        _ => -1,
+    }
+}
+
+// ---- parser ----
+
+struct Parser {
+    pat: Str,
+    pos: Int,
+    ngroups: Int,
+    depth: Int,
+    cneg: List[Bool],
+    cstart: List[Int],
+    cend: List[Int],
+    rlo: List[Int],
+    rhi: List[Int],
+}
+
+fn Parser.peek(self) -> Int {
+    if self.pos < self.pat.len() { cp_at(self.pat, self.pos) } else { -1 }
+}
+
+// The character after the next one, or -1.
+fn Parser.peek2(self) -> Int {
+    if self.pos >= self.pat.len() { return -1 }
+    let q = self.pos + cp_len(cp_at(self.pat, self.pos))
+    if q < self.pat.len() { cp_at(self.pat, q) } else { -1 }
+}
+
+fn Parser.adv(mut self) {
+    self.pos += cp_len(cp_at(self.pat, self.pos))
+}
+
+fn Parser.add_class(mut self, neg: Bool, flat: List[Int]) -> Int {
+    let idx = self.cneg.len()
+    self.cneg.push(neg)
+    self.cstart.push(self.rlo.len())
+    var i = 0
+    while i < flat.len() {
+        self.rlo.push(flat[i])
+        self.rhi.push(flat[i + 1])
+        i += 2
+    }
+    self.cend.push(self.rlo.len())
+    idx
+}
+
+// {m} {m,} {m,n} {,n} {,} starting at the `{` at byte p: (min, max or -1, end offset).
+// Anything else is not a quantifier and the `{` is a literal.
+fn Parser.brace(self, p: Int) -> Option[(Int, Int, Int)] {
+    let n = self.pat.len()
+    var i = p + 1
+    var lo = 0
+    var have_lo = false
+    while i < n and self.pat.byte(i).is_digit() {
+        if lo < 100000 { lo = lo * 10 + (self.pat.byte(i) - '0') }
+        have_lo = true
+        i += 1
+    }
+    if i < n and self.pat.byte(i) == '}' {
+        if have_lo { return Some((lo, lo, i + 1)) }
+        return None
+    }
+    if i >= n or self.pat.byte(i) != ',' { return None }
+    i += 1
+    var hi = 0
+    var have_hi = false
+    while i < n and self.pat.byte(i).is_digit() {
+        if hi < 100000 { hi = hi * 10 + (self.pat.byte(i) - '0') }
+        have_hi = true
+        i += 1
+    }
+    if i < n and self.pat.byte(i) == '}' {
+        return Some((lo, if have_hi { hi } else { -1 }, i + 1))
+    }
+    None
+}
+
+// The code point of an escaped literal (the `\` and e are consumed; `at` is the `\`).
+fn Parser.esc_lit(self, e: Int, at: Int) -> Result[Int, Str] {
+    if e == 'n' { return Ok(10) }
+    if e == 't' { return Ok(9) }
+    if e == 'r' { return Ok(13) }
+    if e == 'f' { return Ok(12) }
+    if e == 'v' { return Ok(11) }
+    if e == '0' { return Ok(0) }
+    if e >= '1' and e <= '9' { return fail("backreferences are not supported", at) }
+    if e.is_alpha() { return fail("bad escape \\{e.char()}", at) }
+    Ok(e)
+}
+
+fn Parser.parse_alt(mut self) -> Result[Node, Str] {
+    var branches: List[Node] = [self.parse_cat()?]
+    while self.peek() == '|' {
+        self.adv()
+        branches.push(self.parse_cat()?)
+    }
+    if branches.len() == 1 { Ok(branches[0]) } else { Ok(Alt(branches)) }
+}
+
+fn Parser.parse_cat(mut self) -> Result[Node, Str] {
+    var items: List[Node] = []
+    while true {
+        let c = self.peek()
+        if c < 0 or c == '|' or c == ')' { break }
+        let atom = self.parse_atom()?
+        items.push(self.parse_quant(atom)?)
+    }
+    if items.len() == 1 { Ok(items[0]) } else if items.is_empty() { Ok(Empty) } else { Ok(Cat(items)) }
+}
+
+fn Parser.parse_atom(mut self) -> Result[Node, Str] {
+    let at = self.pos
+    let c = self.peek()
+    if c == '(' { return self.parse_group() }
+    if c == '[' { return self.parse_class() }
+    if c == '*' or c == '+' or c == '?' { return fail("nothing to repeat", at) }
+    if c == '{' and self.brace(at).is_some() { return fail("nothing to repeat", at) }
+    self.adv()
+    if c == '.' { return Ok(AnyChar) }
+    if c == '^' { return Ok(Bol) }
+    if c == '$' { return Ok(Eol) }
+    if c != '\\' { return Ok(Lit(c)) }
+    let e = self.peek()
+    if e < 0 { return fail("trailing backslash", at) }
+    self.adv()
+    if e == 'b' { return Ok(Boundary(true)) }
+    if e == 'B' { return Ok(Boundary(false)) }
+    if is_class_escape(e) {
+        let upper = e < 'a'
+        return Ok(Cls(self.add_class(upper, esc_ranges(e))))
+    }
+    Ok(Lit(self.esc_lit(e, at)?))
+}
+
+fn Parser.parse_group(mut self) -> Result[Node, Str] {
+    let open = self.pos
+    self.adv()
+    var idx = 0
+    if self.peek() == '?' {
+        if self.peek2() != ':' { return fail("unsupported group syntax (only (?: ) is supported)", open) }
+        self.adv()
+        self.adv()
+    } else {
+        self.ngroups += 1
+        idx = self.ngroups
+    }
+    self.depth += 1
+    if self.depth > MAX_DEPTH { return fail("groups nested too deeply", open) }
+    let inner = self.parse_alt()?
+    self.depth -= 1
+    if self.peek() != ')' { return fail("missing ')'", open) }
+    self.adv()
+    Ok(Group(idx, inner))
+}
+
+fn Parser.parse_class(mut self) -> Result[Node, Str] {
+    let open = self.pos
+    self.adv()
+    var neg = false
+    if self.peek() == '^' {
+        neg = true
+        self.adv()
+    }
+    var flat: List[Int] = []
+    var first = true
+    while true {
+        let c = self.peek()
+        if c < 0 { return fail("unterminated character set", open) }
+        if c == ']' and not first {
+            self.adv()
+            break
+        }
+        first = false
+        let start = self.pos
+        self.adv()
+        var lo = c
+        if c == '\\' {
+            let e = self.peek()
+            if e < 0 { return fail("trailing backslash", start) }
+            self.adv()
+            if is_class_escape(e) {
+                let pr = esc_ranges(e)
+                flat.extend(if e < 'a' { complement(pr) } else { pr })
+                if self.peek() == '-' and self.peek2() >= 0 and self.peek2() != ']' { return fail("bad character range", start) }
+                continue
+            }
+            lo = self.esc_lit(e, start)?
+        }
+        if self.peek() == '-' and self.peek2() >= 0 and self.peek2() != ']' {
+            self.adv()
+            let hs = self.pos
+            var hi = self.peek()
+            self.adv()
+            if hi == '\\' {
+                let e = self.peek()
+                if e < 0 { return fail("trailing backslash", hs) }
+                self.adv()
+                if is_class_escape(e) { return fail("bad character range", start) }
+                hi = self.esc_lit(e, hs)?
+            }
+            if hi < lo { return fail("bad character range", start) }
+            flat.push(lo)
+            flat.push(hi)
+        } else {
+            flat.push(lo)
+            flat.push(lo)
+        }
+    }
+    Ok(Cls(self.add_class(neg, flat)))
+}
+
+fn Parser.parse_quant(mut self, atom: Node) -> Result[Node, Str] {
+    let at = self.pos
+    let c = self.peek()
+    var lo = 0
+    var hi = -1
+    if c == '*' {
+        self.adv()
+    } else if c == '+' {
+        lo = 1
+        self.adv()
+    } else if c == '?' {
+        hi = 1
+        self.adv()
+    } else if c == '{' {
+        match self.brace(at) {
+            None => return Ok(atom),
+            Some((l, h, e)) => {
+                lo = l
+                hi = h
+                self.pos = e
+            }
+        }
+    } else {
+        return Ok(atom)
+    }
+    match atom {
+        Bol => return fail("nothing to repeat", at),
+        Eol => return fail("nothing to repeat", at),
+        Boundary(_) => return fail("nothing to repeat", at),
+        _ => (),
+    }
+    var greedy = true
+    if self.peek() == '?' {
+        greedy = false
+        self.adv()
+    }
+    let c2 = self.peek()
+    if c2 == '*' or c2 == '+' or c2 == '?' or (c2 == '{' and self.brace(self.pos).is_some()) {
+        return fail("multiple repeat", self.pos)
+    }
+    if hi >= 0 and lo > hi { return fail("min repeat greater than max repeat", at + 1) }
+    if lo > MAX_COUNT or hi > MAX_COUNT { return fail("repeat count above {MAX_COUNT}", at) }
+    let node = Rep(atom, lo, hi, greedy)
+    if node_size(node) > MAX_PROG { return fail("pattern too large", at) }
+    Ok(node)
+}
+
+// ---- code generation ----
+
+struct Gen { code: List[Inst], next: Int }
+
+fn Gen.emit(mut self, n: Node) {
+    match n {
+        Empty => (),
+        Lit(c) => self.code.push(IChar(c)),
+        AnyChar => self.code.push(IAny),
+        Cls(i) => self.code.push(IClass(i)),
+        Bol => self.code.push(IBol),
+        Eol => self.code.push(IEol),
+        Boundary(b) => self.code.push(IBound(b)),
+        Cat(items) => {
+            for x in items { self.emit(x) }
+        }
+        Alt(bs) => {
+            var jumps: List[Int] = []
+            let last = bs.len() - 1
+            for i in 0..bs.len() {
+                if i < last {
+                    let sp = self.code.len()
+                    self.code.push(ISplit(0, 0))
+                    self.emit(bs[i])
+                    jumps.push(self.code.len())
+                    self.code.push(IJmp(0))
+                    self.code[sp] = ISplit(sp + 1, self.code.len())
+                } else {
+                    self.emit(bs[i])
+                }
+            }
+            for j in jumps { self.code[j] = IJmp(self.code.len()) }
+        }
+        Group(k, inner) => {
+            if k > 0 { self.code.push(ISave(2 * k)) }
+            self.emit(inner)
+            if k > 0 { self.code.push(ISave(2 * k + 1)) }
+        }
+        Rep(inner, lo, hi, greedy) => self.emit_rep(inner, lo, hi, greedy),
+    }
+}
+
+fn Gen.emit_rep(mut self, inner: Node, lo: Int, hi: Int, greedy: Bool) {
+    if hi < 0 {
+        if lo == 0 {
+            self.emit_loop(inner, greedy, false)
+        } else {
+            for _ in 0..(lo - 1) { self.emit(inner) }
+            self.emit_loop(inner, greedy, true)
+        }
+        return
+    }
+    for _ in 0..lo { self.emit(inner) }
+    var splits: List[Int] = []
+    for _ in lo..hi {
+        splits.push(self.code.len())
+        self.code.push(ISplit(0, 0))
+        self.emit(inner)
+    }
+    let end = self.code.len()
+    for sp in splits {
+        self.code[sp] = if greedy { ISplit(sp + 1, end) } else { ISplit(end, sp + 1) }
+    }
+}
+
+// inner* (at_least_once: false) or inner+ (true). A body that can match the
+// empty string leaves the loop after an iteration that consumed nothing.
+fn Gen.emit_loop(mut self, inner: Node, greedy: Bool, at_least_once: Bool) {
+    let empty_ok = nullable(inner)
+    var r = 0
+    if empty_ok {
+        r = self.next
+        self.next += 1
+    }
+    let top = self.code.len()
+    if at_least_once {
+        if empty_ok { self.code.push(ISave(r)) }
+        self.emit(inner)
+        var guard = 0
+        if empty_ok {
+            guard = self.code.len()
+            self.code.push(IProgress(r, 0))
+        }
+        let sp = self.code.len()
+        self.code.push(ISplit(0, 0))
+        let exit = self.code.len()
+        self.code[sp] = if greedy { ISplit(top, exit) } else { ISplit(exit, top) }
+        if empty_ok { self.code[guard] = IProgress(r, exit) }
+    } else {
+        self.code.push(ISplit(0, 0))
+        let body = self.code.len()
+        var guard = 0
+        if empty_ok { self.code.push(ISave(r)) }
+        self.emit(inner)
+        if empty_ok {
+            guard = self.code.len()
+            self.code.push(IProgress(r, 0))
+        }
+        self.code.push(IJmp(top))
+        let exit = self.code.len()
+        self.code[top] = if greedy { ISplit(body, exit) } else { ISplit(exit, body) }
+        if empty_ok { self.code[guard] = IProgress(r, exit) }
+    }
+}
+
+// ---- the compiled regular expression ----
+
+pub struct Regex {
+    pat: Str,
+    code: List[Inst],
+    nslots: Int,
+    ngroups: Int,
+    cneg: List[Bool],
+    cstart: List[Int],
+    cend: List[Int],
+    rlo: List[Int],
+    rhi: List[Int],
+    ascii: List[Bool],   // class i, ASCII character c: ascii[i * 128 + c]
+    anchored: Bool,      // begins with ^: only position 0 can match
+    prefix: Str,         // every match begins with this ASCII character, or ""
+}
+
+pub fn compile(pattern: Str) -> Result[Regex, Str] {
+    var p = Parser { pat: pattern, pos: 0, ngroups: 0, depth: 0, cneg: [], cstart: [], cend: [], rlo: [], rhi: [] }
+    let ast = p.parse_alt()?
+    if p.pos < pattern.len() { return fail("unmatched ')'", p.pos) }
+    var g = Gen { code: [], next: 2 * (p.ngroups + 1) }
+    g.code.push(ISave(0))
+    g.emit(ast)
+    g.code.push(ISave(1))
+    g.code.push(IMatch)
+    var ascii: List[Bool] = []
+    for i in 0..p.cneg.len() {
+        for c in 0..128 {
+            var inside = false
+            for j in p.cstart[i]..p.cend[i] {
+                if c >= p.rlo[j] and c <= p.rhi[j] { inside = true }
+            }
+            ascii.push(inside != p.cneg[i])
+        }
+    }
+    let lead = lead_lit(ast)
+    Ok(Regex {
+        pat: pattern,
+        code: g.code,
+        nslots: g.next,
+        ngroups: p.ngroups,
+        cneg: p.cneg,
+        cstart: p.cstart,
+        cend: p.cend,
+        rlo: p.rlo,
+        rhi: p.rhi,
+        ascii,
+        anchored: starts_bol(ast),
+        prefix: if lead >= 0 { lead.char() } else { "" },
+    })
+}
+
+fn Regex.class_has(self, i: Int, c: Int) -> Bool {
+    for j in self.cstart[i]..self.cend[i] {
+        if c >= self.rlo[j] and c <= self.rhi[j] { return not self.cneg[i] }
+    }
+    self.cneg[i]
+}
+
+// One anchored attempt at byte `start`; with `full`, only a match that ends at
+// the end of the subject counts (the machine backtracks into other choices
+// until one does). Returns the capture slots (start, end per group, -1: unset).
+fn Regex.attempt(self, s: Str, start: Int, full: Bool) -> Option[List[Int]] {
+    var slots = List.filled(self.nslots, -1)
+    var stack: List[Frame] = []
+    let n = s.len()
+    let budget = STEP_LIMIT + 32 * n
+    var pc = 0
+    var pos = start
+    var steps = 0
+    while true {
+        steps += 1
+        if steps > budget {
+            return panic("regex /{self.pat}/: exceeded the backtracking limit of {budget} steps (the pattern is too ambiguous for this input)")
+        }
+        var failed = false
+        match self.code[pc] {
+            IChar(c) => {
+                if pos < n and cp_at(s, pos) == c {
+                    pos += cp_len(c)
+                    pc += 1
+                } else {
+                    failed = true
+                }
+            }
+            IAny => {
+                if pos < n and s.byte(pos) != 10 {
+                    pos += cp_len(cp_at(s, pos))
+                    pc += 1
+                } else {
+                    failed = true
+                }
+            }
+            IClass(i) => {
+                if pos < n {
+                    let c = cp_at(s, pos)
+                    if (if c < 128 { self.ascii[i * 128 + c] } else { self.class_has(i, c) }) {
+                        pos += cp_len(c)
+                        pc += 1
+                    } else {
+                        failed = true
+                    }
+                } else {
+                    failed = true
+                }
+            }
+            ISplit(a, b) => {
+                stack.push(Frame { pc: b, v: pos })
+                pc = a
+            }
+            IJmp(t) => pc = t,
+            ISave(k) => {
+                stack.push(Frame { pc: -1 - k, v: slots[k] })
+                slots[k] = pos
+                pc += 1
+            }
+            IProgress(r, t) => {
+                if slots[r] == pos { pc = t } else { pc += 1 }
+            }
+            IBol => {
+                if pos == 0 { pc += 1 } else { failed = true }
+            }
+            IEol => {
+                if pos == n { pc += 1 } else { failed = true }
+            }
+            IBound(want) => {
+                let before = pos > 0 and is_word(s.byte(pos - 1))
+                let after = pos < n and is_word(s.byte(pos))
+                if (before != after) == want { pc += 1 } else { failed = true }
+            }
+            IMatch => {
+                if full and pos != n {
+                    failed = true
+                } else {
+                    return Some(slots)
+                }
+            }
+        }
+        if failed {
+            var resumed = false
+            while not resumed {
+                match stack.pop() {
+                    None => return None,
+                    Some(f) => {
+                        if f.pc < 0 {
+                            slots[-1 - f.pc] = f.v
+                        } else {
+                            pc = f.pc
+                            pos = f.v
+                            resumed = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The leftmost match starting at or after byte `from`.
+fn Regex.search(self, s: Str, from: Int) -> Option[List[Int]] {
+    let n = s.len()
+    var p = from
+    while p <= n {
+        if self.anchored and p > 0 { return None }
+        if not self.prefix.is_empty() {
+            match s.find_from(self.prefix, p) {
+                None => return None,
+                Some(q) => p = q,
+            }
+        }
+        match self.attempt(s, p, false) {
+            Some(sl) => return Some(sl),
+            None => (),
+        }
+        p += if p < n { cp_len(cp_at(s, p)) } else { 1 }
+    }
+    None
+}
+
+fn Regex.groups(self, s: Str, sl: List[Int]) -> List[Str] {
+    var out: List[Str] = []
+    for k in 0..(self.ngroups + 1) {
+        let a = sl[2 * k]
+        let b = sl[2 * k + 1]
+        out.push(if a >= 0 and b >= a { s.slice(a, b) } else { "" })
+    }
+    out
+}
+
+// (start, end) of the non-overlapping matches, left to right.
+fn Regex.spans(self, s: Str) -> List[(Int, Int)] {
+    var out: List[(Int, Int)] = []
+    let n = s.len()
+    var pos = 0
+    while pos <= n {
+        match self.search(s, pos) {
+            None => break,
+            Some(sl) => {
+                out.push((sl[0], sl[1]))
+                if sl[1] > sl[0] {
+                    pos = sl[1]
+                } else if sl[1] < n {
+                    pos = sl[1] + cp_len(cp_at(s, sl[1]))
+                } else {
+                    pos = n + 1
+                }
+            }
+        }
+    }
+    out
+}
+
+pub fn Regex.full(self, s: Str) -> Option[List[Str]] {
+    let sl = self.attempt(s, 0, true)?
+    Some(self.groups(s, sl))
+}
+
+pub fn Regex.is_full(self, s: Str) -> Bool { self.attempt(s, 0, true).is_some() }
+
+pub fn Regex.find(self, s: Str) -> Option[(Int, List[Str])] {
+    let sl = self.search(s, 0)?
+    Some((sl[0], self.groups(s, sl)))
+}
+
+pub fn Regex.find_all(self, s: Str) -> List[Str] {
+    var out: List[Str] = []
+    for (a, b) in self.spans(s) { out.push(s.slice(a, b)) }
+    out
+}
+
+pub fn Regex.replace_all(self, s: Str, with: Str) -> Str {
+    var out = ""
+    var last = 0
+    for (a, b) in self.spans(s) {
+        out += s.slice(last, a)
+        out += with
+        last = b
+    }
+    out + s.slice(last, s.len())
+}
