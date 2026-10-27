@@ -12,8 +12,9 @@ for dir in programs/*/; do
   n=$((n+1))
   "$T" build "$src" -o "$tmp/$name" -O0
   # each scenario gets 60 s; the alarm kills it rather than hanging the check
-  RUN="$T run $PWD/$src" perl -e 'alarm 60; exec @ARGV' bash "$dir/test.sh" > "$tmp/$name.interp" 2>&1 || true
-  RUN="$tmp/$name" perl -e 'alarm 60; exec @ARGV' bash "$dir/test.sh" > "$tmp/$name.native" 2>&1 || true
+  # (SIGALRM reset to default: an inherited "ignore" would disable the timeout)
+  RUN="$T run $PWD/$src" perl -e '$SIG{ALRM}="DEFAULT"; alarm 60; exec @ARGV' bash "$dir/test.sh" > "$tmp/$name.interp" 2>&1 || true
+  RUN="$tmp/$name" perl -e '$SIG{ALRM}="DEFAULT"; alarm 60; exec @ARGV' bash "$dir/test.sh" > "$tmp/$name.native" 2>&1 || true
   if ! cmp -s "$tmp/$name.interp" "$tmp/$name.native"; then
     echo "FAIL $name: backends disagree"; diff "$tmp/$name.interp" "$tmp/$name.native" | head -20; fail=1; continue
   fi
