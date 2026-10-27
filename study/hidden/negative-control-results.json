@@ -1,0 +1,5273 @@
+{
+  "passed": 8,
+  "total": 250,
+  "results": [
+    {
+      "task": "01-wordfreq",
+      "case": "all-missing",
+      "passed": false,
+      "detail": "all-missing: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "all-missing",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.02
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "ascii-ties",
+      "passed": false,
+      "detail": "ascii-ties: stdout byte 0: expected b'1 0\\n1 9\\n1 A\\n1 A9\\n1 Z\\n1 a\\n1 a9\\n1 z\\n', got b'' (length 34/0)",
+      "steps": [
+        {
+          "step": "ascii-ties",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1 0\\n1 9\\n1 A\\n1 A9\\n1 Z\\n1 a\\n1 a9\\n1 z\\n', got b'' (length 34/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0208
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "combined-short",
+      "passed": false,
+      "detail": "combined-short: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "combined-short",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0194
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "default-ten",
+      "passed": false,
+      "detail": "default-ten: stdout byte 0: expected b'1 a\\n1 b\\n1 c\\n1 d\\n1 e\\n1 f\\n1 g\\n1 h\\n1 i\\n1 j\\n', got b'' (length 40/0)",
+      "steps": [
+        {
+          "step": "default-ten",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1 a\\n1 b\\n1 c\\n1 d\\n1 e\\n1 f\\n1 g\\n1 h\\n1 i\\n1 j\\n', got b'' (length 40/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.022
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0215
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "empty-top",
+      "passed": false,
+      "detail": "empty-top: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "empty-top",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0293
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "end-options",
+      "passed": false,
+      "detail": "end-options: stdout byte 0: expected b'2 Case\\n1 case\\n', got b'' (length 14/0)",
+      "steps": [
+        {
+          "step": "end-options",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'2 Case\\n1 case\\n', got b'' (length 14/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0208
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'2 the\\n1 The\\n1 and\\n1 cat\\n1 end\\n1 hat\\n', got b'' (length 36/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'2 the\\n1 The\\n1 and\\n1 cat\\n1 end\\n1 hat\\n', got b'' (length 36/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'3 the\\n1 and\\n', got b'' (length 12/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'3 the\\n1 and\\n', got b'' (length 12/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0181
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'1 TOWELS\\n1 panic\\n1 towels\\n', got b'' (length 26/0); exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1 TOWELS\\n1 panic\\n1 towels\\n', got b'' (length 26/0); exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0213
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: stdout byte 0: expected b'2 a1\\n1 b2\\n', got b'' (length 10/0)",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'2 a1\\n1 b2\\n', got b'' (length 10/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "file-stdin-repeat",
+      "passed": false,
+      "detail": "file-stdin-repeat: stdout byte 0: expected b'3 a\\n2 z\\n1 s\\n', got b'' (length 12/0)",
+      "steps": [
+        {
+          "step": "file-stdin-repeat",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'3 a\\n2 z\\n1 s\\n', got b'' (length 12/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0175
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "flag-value",
+      "passed": false,
+      "detail": "flag-value: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "flag-value",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0179
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "last-options",
+      "passed": false,
+      "detail": "last-options: stdout byte 0: expected b'2 bb\\n1 aa\\n', got b'' (length 10/0)",
+      "steps": [
+        {
+          "step": "last-options",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'2 bb\\n1 aa\\n', got b'' (length 10/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0188
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "length-boundary",
+      "passed": false,
+      "detail": "length-boundary: stdout byte 0: expected b'1 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', got b'' (length 1003/0)",
+      "steps": [
+        {
+          "step": "length-boundary",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', got b'' (length 1003/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0204
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "min-too-large",
+      "passed": false,
+      "detail": "min-too-large: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "min-too-large",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0188
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "min-zero",
+      "passed": false,
+      "detail": "min-zero: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "min-zero",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "missing-between",
+      "passed": false,
+      "detail": "missing-between: stdout byte 0: expected b'2 x\\n1 y\\n', got b'' (length 8/0); exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "missing-between",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'2 x\\n1 y\\n', got b'' (length 8/0); exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0185
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "missing-value",
+      "passed": false,
+      "detail": "run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0198
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0204
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0215
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "negative-value",
+      "passed": false,
+      "detail": "negative-value: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "negative-value",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0176
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "separators",
+      "passed": false,
+      "detail": "separators: stdout byte 0: expected b'2 007\\n1 don\\n1 t\\n1 x\\n1 y\\n1 z\\n', got b'' (length 28/0)",
+      "steps": [
+        {
+          "step": "separators",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'2 007\\n1 don\\n1 t\\n1 x\\n1 y\\n1 z\\n', got b'' (length 28/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0179
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "signed-number",
+      "passed": false,
+      "detail": "run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0197
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0207
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0181
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "top-too-large",
+      "passed": false,
+      "detail": "top-too-large: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "top-too-large",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        }
+      ]
+    },
+    {
+      "task": "01-wordfreq",
+      "case": "usage-after-file",
+      "passed": false,
+      "detail": "usage-after-file: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "usage-after-file",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0179
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "all-invalid",
+      "passed": false,
+      "detail": "all-invalid: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "all-invalid",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0203
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "build-alphabet",
+      "passed": false,
+      "detail": "build-alphabet: stdout byte 0: expected b'1.0.0-000a+0\\n1.0.0+000.Z-a.---\\n', got b'' (length 31/0)",
+      "steps": [
+        {
+          "step": "build-alphabet",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0-000a+0\\n1.0.0+000.Z-a.---\\n', got b'' (length 31/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0202
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "dash-is-option",
+      "passed": false,
+      "detail": "dash-is-option: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "dash-is-option",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0202
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0196
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "empty-identifiers",
+      "passed": false,
+      "detail": "empty-identifiers: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "empty-identifiers",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'0.9.12\\n1.0.0-alpha\\n1.0.0-alpha.1\\n1.0.0-alpha.beta\\n1.0.0', got b'' (length 105/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0.9.12\\n1.0.0-alpha\\n1.0.0-alpha.1\\n1.0.0-alpha.beta\\n1.0.0', got b'' (length 105/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0182
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'2.0.0+build.1\\n1.10.0\\n1.2.0\\n', got b'' (length 27/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'2.0.0+build.1\\n1.10.0\\n1.2.0\\n', got b'' (length 27/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0239
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'1.0.0-rc.1+001\\n1.2.3\\n', got b'' (length 21/0); exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0-rc.1+001\\n1.2.3\\n', got b'' (length 21/0); exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0211
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: stdout byte 0: expected b'0.1.0+meta\\n1.0.0\\n', got b'' (length 17/0)",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0.1.0+meta\\n1.0.0\\n', got b'' (length 17/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0194
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-5-missing",
+      "passed": false,
+      "detail": "example-5-missing: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-5-missing",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "example-5-option",
+      "passed": false,
+      "detail": "example-5-option: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-option",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0193
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "filter-all",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "filter-all",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.021
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "filter-unique-reverse",
+      "passed": false,
+      "detail": "filter-unique-reverse: stdout byte 0: expected b'1.0.0+x\\n0.0.0\\n', got b'' (length 14/0); exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "filter-unique-reverse",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0+x\\n0.0.0\\n', got b'' (length 14/0); exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0208
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "invalid-characters",
+      "passed": false,
+      "detail": "invalid-characters: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "invalid-characters",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0175
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "invalid-core-numbers",
+      "passed": false,
+      "detail": "invalid-core-numbers: stdout byte 0: expected b'1.0.0\\n', got b'' (length 6/0); exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "invalid-core-numbers",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0\\n', got b'' (length 6/0); exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "invalid-pre-numbers",
+      "passed": false,
+      "detail": "invalid-pre-numbers: stdout byte 0: expected b'1.0.0-00a\\n', got b'' (length 10/0); exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "invalid-pre-numbers",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0-00a\\n', got b'' (length 10/0); exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0181
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "max-numbers",
+      "passed": false,
+      "detail": "max-numbers: stdout byte 0: expected b'0.0.0-0\\n999999999.999999999.999999999-999999999+0000000', got b'' (length 59/0)",
+      "steps": [
+        {
+          "step": "max-numbers",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0.0.0-0\\n999999999.999999999.999999999-999999999+0000000', got b'' (length 59/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0174
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "numeric-cores",
+      "passed": false,
+      "detail": "numeric-cores: stdout byte 0: expected b'1.2.2\\n1.2.10\\n1.10.0\\n2.0.0\\n10.0.0\\n', got b'' (length 33/0)",
+      "steps": [
+        {
+          "step": "numeric-cores",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.2.2\\n1.2.10\\n1.10.0\\n2.0.0\\n10.0.0\\n', got b'' (length 33/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0223
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "pre-identifier-types",
+      "passed": false,
+      "detail": "pre-identifier-types: stdout byte 0: expected b'1.0.0-2\\n1.0.0-2.0\\n1.0.0-2.a\\n1.0.0-10\\n1.0.0--\\n1.0.0-Z\\n1.', got b'' (length 61/0)",
+      "steps": [
+        {
+          "step": "pre-identifier-types",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0-2\\n1.0.0-2.0\\n1.0.0-2.a\\n1.0.0-10\\n1.0.0--\\n1.0.0-Z\\n1.', got b'' (length 61/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0174
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "repeat-options-after-file",
+      "passed": false,
+      "detail": "repeat-options-after-file: stdout byte 0: expected b'1.0.0\\n', got b'' (length 6/0)",
+      "steps": [
+        {
+          "step": "repeat-options-after-file",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0\\n', got b'' (length 6/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "reverse-equals",
+      "passed": false,
+      "detail": "reverse-equals: stdout byte 0: expected b'1.0.0+b\\n1.0.0+a\\n0.0.0\\n', got b'' (length 22/0)",
+      "steps": [
+        {
+          "step": "reverse-equals",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0+b\\n1.0.0+a\\n0.0.0\\n', got b'' (length 22/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0191
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "stable-build",
+      "passed": false,
+      "detail": "stable-build: stdout byte 0: expected b'1.0.0+z\\n1.0.0+a\\n1.0.0\\n1.0.0+z\\n', got b'' (length 30/0)",
+      "steps": [
+        {
+          "step": "stable-build",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0+z\\n1.0.0+a\\n1.0.0\\n1.0.0+z\\n', got b'' (length 30/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0194
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "trim-crlf-final",
+      "passed": false,
+      "detail": "trim-crlf-final: stdout byte 0: expected b'0.0.0\\n1.0.0+X\\n', got b'' (length 14/0)",
+      "steps": [
+        {
+          "step": "trim-crlf-final",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0.0.0\\n1.0.0+X\\n', got b'' (length 14/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0207
+        }
+      ]
+    },
+    {
+      "task": "02-semsort",
+      "case": "unique-first",
+      "passed": false,
+      "detail": "unique-first: stdout byte 0: expected b'1.0.0-rc+z\\n1.0.0+z\\n', got b'' (length 19/0)",
+      "steps": [
+        {
+          "step": "unique-first",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1.0.0-rc+z\\n1.0.0+z\\n', got b'' (length 19/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0206
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "cr-is-data",
+      "passed": false,
+      "detail": "cr-is-data: stdout byte 0: expected b'b\\r,a\\n\\r,\\nno-newline,last\\n', got b'' (length 24/0)",
+      "steps": [
+        {
+          "step": "cr-is-data",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'b\\r,a\\n\\r,\\nno-newline,last\\n', got b'' (length 24/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0184
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.018
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-delimiter",
+      "passed": false,
+      "detail": "run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0196
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.022
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0201
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-element",
+      "passed": false,
+      "detail": "run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0; run-4: exit expected 2, got 0; run-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0191
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0208
+        },
+        {
+          "step": "run-4",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0184
+        },
+        {
+          "step": "run-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0207
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-fields-repeat",
+      "passed": false,
+      "detail": "empty-fields-repeat: stdout byte 0: expected b',,a,b,\\n', got b'' (length 7/0)",
+      "steps": [
+        {
+          "step": "empty-fields-repeat",
+          "passed": false,
+          "detail": "stdout byte 0: expected b',,a,b,\\n', got b'' (length 7/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0204
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-list",
+      "passed": false,
+      "detail": "empty-list: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "empty-list",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0176
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "empty-output-delimiter",
+      "passed": false,
+      "detail": "empty-output-delimiter: stdout byte 0: expected b'\\xf0\\x9f\\x99\\x82\\xc3\\xa9\\n', got b'' (length 7/0)",
+      "steps": [
+        {
+          "step": "empty-output-delimiter",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'\\xf0\\x9f\\x99\\x82\\xc3\\xa9\\n', got b'' (length 7/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0197
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "end-options",
+      "passed": false,
+      "detail": "end-options: stdout byte 0: expected b'x\\nplain\\n', got b'' (length 8/0)",
+      "steps": [
+        {
+          "step": "end-options",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'x\\nplain\\n', got b'' (length 8/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0205
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'c,a\\nd\\nnodelim\\n', got b'' (length 14/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'c,a\\nd\\nnodelim\\n', got b'' (length 14/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.021
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'y\\tz\\n', got b'' (length 4/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'y\\tz\\n', got b'' (length 4/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'root | x | x\\n', got b'' (length 13/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'root | x | x\\n', got b'' (length 13/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: stdout byte 0: expected b'1\\n', got b'' (length 2/0); exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1\\n', got b'' (length 2/0); exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0194
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0211
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5-delimiter",
+      "passed": false,
+      "detail": "example-5-delimiter: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-delimiter",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0236
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5-descending",
+      "passed": false,
+      "detail": "example-5-descending: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-descending",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.02
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "example-5-missing-fields",
+      "passed": false,
+      "detail": "example-5-missing-fields: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-missing-fields",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0185
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "files-stdin-repeat",
+      "passed": false,
+      "detail": "files-stdin-repeat: stdout byte 0: expected b'x\\ns\\nx\\n', got b'' (length 6/0)",
+      "steps": [
+        {
+          "step": "files-stdin-repeat",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'x\\ns\\nx\\n', got b'' (length 6/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0213
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "last-options",
+      "passed": false,
+      "detail": "last-options: stdout byte 0: expected b'b\\n', got b'' (length 2/0)",
+      "steps": [
+        {
+          "step": "last-options",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'b\\n', got b'' (length 2/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0194
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "leading-zero-range",
+      "passed": false,
+      "detail": "leading-zero-range: stdout byte 0: expected b'a,b,b,c\\n', got b'' (length 8/0)",
+      "steps": [
+        {
+          "step": "leading-zero-range",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'a,b,b,c\\n', got b'' (length 8/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0229
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "lone-range",
+      "passed": false,
+      "detail": "lone-range: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "lone-range",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0203
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "missing-all",
+      "passed": false,
+      "detail": "missing-all: stdout byte 0: expected b'\\nplain\\n\\n', got b'' (length 8/0)",
+      "steps": [
+        {
+          "step": "missing-all",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'\\nplain\\n\\n', got b'' (length 8/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0201
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "output-missing-equals",
+      "passed": false,
+      "detail": "run-1: exit expected 2, got 0; run-2: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0224
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0234
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "range-order",
+      "passed": false,
+      "detail": "range-order: stdout byte 0: expected b'c/d/a/b/b\\n', got b'' (length 10/0)",
+      "steps": [
+        {
+          "step": "range-order",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'c/d/a/b/b\\n', got b'' (length 10/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0208
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "range-too-large",
+      "passed": false,
+      "detail": "range-too-large: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "range-too-large",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0234
+        }
+      ]
+    },
+    {
+      "task": "03-fcut",
+      "case": "skip-only",
+      "passed": false,
+      "detail": "skip-only: stdout byte 0: expected b'\\nx\\n', got b'' (length 3/0)",
+      "steps": [
+        {
+          "step": "skip-only",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'\\nx\\n', got b'' (length 3/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0208
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "crlf-last-line",
+      "passed": false,
+      "detail": "crlf-last-line: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,1,0.01,0.0', got b'' (length 89/0)",
+      "steps": [
+        {
+          "step": "crlf-last-line",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,1,0.01,0.0', got b'' (length 89/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "csv-output-and-spaces",
+      "passed": false,
+      "detail": "csv-output-and-spaces: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\n\" A,\",2,2.00', got b'' (length 138/0)",
+      "steps": [
+        {
+          "step": "csv-output-and-spaces",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\n\" A,\",2,2.00', got b'' (length 138/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0205
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "dates-leap-and-bounds",
+      "passed": false,
+      "detail": "dates-leap-and-bounds: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,4,4.00,1.0', got b'' (length 89/0)",
+      "steps": [
+        {
+          "step": "dates-leap-and-bounds",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,4,4.00,1.0', got b'' (length 89/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0212
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nEast,11,55.0', got b'' (length 150/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nEast,11,55.0', got b'' (length 150/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0205
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nEast,1,30.00', got b'' (length 149/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nEast,1,30.00', got b'' (length 149/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.021
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0198
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nNorth,0,0.00', got b'' (length 91/0)",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nNorth,0,0.00', got b'' (length 91/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0225
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0197
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-5-date",
+      "passed": false,
+      "detail": "example-5-date: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-date",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0219
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "example-5-missing",
+      "passed": false,
+      "detail": "example-5-missing: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-5-missing",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "extra-files",
+      "passed": false,
+      "detail": "extra-files: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "extra-files",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0207
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "half-up-exact",
+      "passed": false,
+      "detail": "half-up-exact: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,2,0.01,0.0', got b'' (length 89/0)",
+      "steps": [
+        {
+          "step": "half-up-exact",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,2,0.01,0.0', got b'' (length 89/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0216
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "inexact-header",
+      "passed": false,
+      "detail": "inexact-header: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "inexact-header",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0185
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "invalid-option-leap",
+      "passed": false,
+      "detail": "run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0; run-4: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0221
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.019
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0204
+        },
+        {
+          "step": "run-4",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0225
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "last-filter-wins",
+      "passed": false,
+      "detail": "last-filter-wins: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,1,1.00,1.0', got b'' (length 89/0)",
+      "steps": [
+        {
+          "step": "last-filter-wins",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,1,1.00,1.0', got b'' (length 89/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0207
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "max-leading-zeros",
+      "passed": false,
+      "detail": "max-leading-zeros: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,10000,1000', got b'' (length 121/0)",
+      "steps": [
+        {
+          "step": "max-leading-zeros",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,10000,1000', got b'' (length 121/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0199
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "missing-option-value",
+      "passed": false,
+      "detail": "missing-option-value: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "missing-option-value",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0216
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "product-byte-tie",
+      "passed": false,
+      "detail": "product-byte-tie: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,2,2.00,1.0', got b'' (length 89/0)",
+      "steps": [
+        {
+          "step": "product-byte-tie",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nR,2,2.00,1.0', got b'' (length 89/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0204
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "reversed-filter",
+      "passed": false,
+      "detail": "reversed-filter: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+      "steps": [
+        {
+          "step": "reversed-filter",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0205
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "row-number-syntax",
+      "passed": false,
+      "detail": "row-number-syntax: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+      "steps": [
+        {
+          "step": "row-number-syntax",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0193
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "strict-csv",
+      "passed": false,
+      "detail": "strict-csv: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+      "steps": [
+        {
+          "step": "strict-csv",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0205
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "total-products-and-duplicates",
+      "passed": false,
+      "detail": "total-products-and-duplicates: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nA,3,8.00,2.6', got b'' (length 126/0)",
+      "steps": [
+        {
+          "step": "total-products-and-duplicates",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nA,3,8.00,2.6', got b'' (length 126/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0199
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "unknown-option",
+      "passed": false,
+      "detail": "unknown-option: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "unknown-option",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0216
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "validate-before-excluding",
+      "passed": false,
+      "detail": "validate-before-excluding: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+      "steps": [
+        {
+          "step": "validate-before-excluding",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'region,units,revenue,avg_price,top_product\\nTOTAL,0,0.00', got b'' (length 70/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0202
+        }
+      ]
+    },
+    {
+      "task": "04-salesreport",
+      "case": "zero-byte-header",
+      "passed": false,
+      "detail": "zero-byte-header: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "zero-byte-header",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0203
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "blanks-tabs-crlf",
+      "passed": false,
+      "detail": "blanks-tabs-crlf: stdout byte 0: expected b'GET / count=2 errors=0 err_pct=0.0 p50=0 p90=7 p99=7 ma', got b'' (length 79/0)",
+      "steps": [
+        {
+          "step": "blanks-tabs-crlf",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET / count=2 errors=0 err_pct=0.0 p50=0 p90=7 p99=7 ma', got b'' (length 79/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0217
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "count-ties",
+      "passed": false,
+      "detail": "count-ties: stdout byte 0: expected b'GET /a count=1 errors=0 err_pct=0.0 p50=3 p90=3 p99=3 m', got b'' (length 201/0)",
+      "steps": [
+        {
+          "step": "count-ties",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET /a count=1 errors=0 err_pct=0.0 p50=3 p90=3 p99=3 m', got b'' (length 201/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0197
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "empty-sort",
+      "passed": false,
+      "detail": "empty-sort: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "empty-sort",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0206
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 294/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 294/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0198
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 294/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 294/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0198
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 93/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 93/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0203
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: stdout byte 0: expected b'GET //a/ count=10 errors=1 err_pct=10.0 p50=50 p90=90 p', got b'' (length 91/0)",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET //a/ count=10 errors=1 err_pct=10.0 p50=50 p90=90 p', got b'' (length 91/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0197
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: stdout byte 0: expected b'total=0 malformed=0\\n', got b'' (length 20/0)",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'total=0 malformed=0\\n', got b'' (length 20/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.02
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5-min",
+      "passed": false,
+      "detail": "example-5-min: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-min",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0192
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5-missing",
+      "passed": false,
+      "detail": "example-5-missing: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-5-missing",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0205
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "example-5-sort",
+      "passed": false,
+      "detail": "example-5-sort: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-sort",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0178
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "extra-files",
+      "passed": false,
+      "detail": "extra-files: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "extra-files",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0181
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "filter-everything",
+      "passed": false,
+      "detail": "filter-everything: stdout byte 0: expected b'total=1 malformed=0\\n', got b'' (length 20/0)",
+      "steps": [
+        {
+          "step": "filter-everything",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'total=1 malformed=0\\n', got b'' (length 20/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0198
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "last-options-and-filter",
+      "passed": false,
+      "detail": "last-options-and-filter: stdout byte 0: expected b'GET /z count=2 errors=0 err_pct=0.0 p50=1 p90=2 p99=2 m', got b'' (length 80/0)",
+      "steps": [
+        {
+          "step": "last-options-and-filter",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET /z count=2 errors=0 err_pct=0.0 p50=1 p90=2 p99=2 m', got b'' (length 80/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0181
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "malformed-field-grammar",
+      "passed": false,
+      "detail": "malformed-field-grammar: stdout byte 0: expected b'total=0 malformed=10\\n', got b'' (length 21/0)",
+      "steps": [
+        {
+          "step": "malformed-field-grammar",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'total=0 malformed=10\\n', got b'' (length 21/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "method-boundary",
+      "passed": false,
+      "detail": "method-boundary: stdout byte 0: expected b'ABCDEFGHIJ / count=1 errors=1 err_pct=100.0 p50=0 p90=0', got b'' (length 88/0)",
+      "steps": [
+        {
+          "step": "method-boundary",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ABCDEFGHIJ / count=1 errors=1 err_pct=100.0 p50=0 p90=0', got b'' (length 88/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "min-empty",
+      "passed": false,
+      "detail": "min-empty: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "min-empty",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.02
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "min-signed",
+      "passed": false,
+      "detail": "min-signed: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "min-signed",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0205
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "min-too-large",
+      "passed": false,
+      "detail": "min-too-large: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "min-too-large",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0178
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "normalization",
+      "passed": false,
+      "detail": "normalization: stdout byte 0: expected b'GET /a//:id/ count=2 errors=1 err_pct=50.0 p50=0 p90=99', got b'' (length 241/0)",
+      "steps": [
+        {
+          "step": "normalization",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET /a//:id/ count=2 errors=1 err_pct=50.0 p50=0 p90=99', got b'' (length 241/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "p99-distinct-from-max",
+      "passed": false,
+      "detail": "p99-distinct-from-max: stdout byte 0: expected b'GET / count=101 errors=0 err_pct=0.0 p50=51 p90=91 p99=', got b'' (length 89/0)",
+      "steps": [
+        {
+          "step": "p99-distinct-from-max",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET / count=101 errors=0 err_pct=0.0 p50=51 p90=91 p99=', got b'' (length 89/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.023
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "p99-ties",
+      "passed": false,
+      "detail": "p99-ties: stdout byte 0: expected b'GET /a count=1 errors=0 err_pct=0.0 p50=5 p90=5 p99=5 m', got b'' (length 200/0)",
+      "steps": [
+        {
+          "step": "p99-ties",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET /a count=1 errors=0 err_pct=0.0 p50=5 p90=5 p99=5 m', got b'' (length 200/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0204
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "rounding-half-up",
+      "passed": false,
+      "detail": "rounding-half-up: stdout byte 0: expected b'GET / count=16 errors=1 err_pct=6.3 p50=7 p90=14 p99=15', got b'' (length 84/0)",
+      "steps": [
+        {
+          "step": "rounding-half-up",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET / count=16 errors=1 err_pct=6.3 p50=7 p90=14 p99=15', got b'' (length 84/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.022
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "rounding-two-thirds",
+      "passed": false,
+      "detail": "rounding-two-thirds: stdout byte 0: expected b'GET / count=3 errors=2 err_pct=66.7 p50=2 p90=2 p99=2 m', got b'' (length 80/0)",
+      "steps": [
+        {
+          "step": "rounding-two-thirds",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'GET / count=3 errors=2 err_pct=66.7 p50=2 p90=2 p99=2 m', got b'' (length 80/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0206
+        }
+      ]
+    },
+    {
+      "task": "05-latency",
+      "case": "unknown-option",
+      "passed": false,
+      "detail": "unknown-option: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "unknown-option",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0192
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "canonical-zero",
+      "passed": false,
+      "detail": "canonical-zero: stdout byte 0: expected b'-1\\n0\\n0\\n0\\n2\\n', got b'' (length 11/0)",
+      "steps": [
+        {
+          "step": "canonical-zero",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'-1\\n0\\n0\\n0\\n2\\n', got b'' (length 11/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0226
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "count-overwrite-delete",
+      "passed": false,
+      "detail": "count-overwrite-delete: stdout byte 0: expected b'OK\\nOK\\nOK\\n1\\n1\\n1\\n0\\n0\\na\\n', got b'' (length 21/0)",
+      "steps": [
+        {
+          "step": "count-overwrite-delete",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\n1\\n1\\n1\\n0\\n0\\na\\n', got b'' (length 21/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "delete-recreate-nested",
+      "passed": false,
+      "detail": "delete-recreate-nested: stdout byte 0: expected b'OK\\nOK\\n1\\nOK\\nOK\\nOK\\n1\\nOK\\nx\\n1\\n', got b'' (length 26/0)",
+      "steps": [
+        {
+          "step": "delete-recreate-nested",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\n1\\nOK\\nOK\\nOK\\n1\\nOK\\nx\\n1\\n', got b'' (length 26/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0188
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "depth-100",
+      "passed": false,
+      "detail": "depth-100: stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nO', got b'' (length 610/0)",
+      "steps": [
+        {
+          "step": "depth-100",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nOK\\nO', got b'' (length 610/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'OK\\n10\\n15\\nNULL\\n1\\n0\\n(empty)\\n', got b'' (length 26/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\n10\\n15\\nNULL\\n1\\n0\\n(empty)\\n', got b'' (length 26/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\n1\\nNULL\\nOK\\n2\\nOK\\n2\\nERR no transaction\\n', got b'' (length 48/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\n1\\nNULL\\nOK\\n2\\nOK\\n2\\nERR no transaction\\n', got b'' (length 48/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0175
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\n2\\na b c\\nOK\\n2\\n0\\na b\\n', got b'' (length 34/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\n2\\na b c\\nOK\\n2\\n0\\na b\\n', got b'' (length 34/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: stdout byte 0: expected b'1\\nOK\\nERR not an integer\\n1000000000000000\\nERR overflow\\n1', got b'' (length 122/0)",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'1\\nOK\\nERR not an integer\\n1000000000000000\\nERR overflow\\n1', got b'' (length 122/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "fresh-process-state",
+      "passed": false,
+      "detail": "run-1: stdout byte 0: expected b'OK\\nOK\\nOK\\n', got b'' (length 9/0); run-2: stdout byte 0: expected b'(empty)\\nNULL\\nNULL\\n', got b'' (length 18/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\n', got b'' (length 9/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'(empty)\\nNULL\\nNULL\\n', got b'' (length 18/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.017
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "inner-commit-outer-rollback",
+      "passed": false,
+      "detail": "inner-commit-outer-rollback: stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\nOK\\nnew\\nOK\\nold\\nNULL\\na\\n', got b'' (length 36/0)",
+      "steps": [
+        {
+          "step": "inner-commit-outer-rollback",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\nOK\\nnew\\nOK\\nold\\nNULL\\na\\n', got b'' (length 36/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0169
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "invalid-deltas-no-create",
+      "passed": false,
+      "detail": "invalid-deltas-no-create: stdout byte 0: expected b'ERR not an integer\\nERR not an integer\\nERR not an intege', got b'' (length 108/0)",
+      "steps": [
+        {
+          "step": "invalid-deltas-no-create",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR not an integer\\nERR not an integer\\nERR not an intege', got b'' (length 108/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "invalid-integer-values",
+      "passed": false,
+      "detail": "invalid-integer-values: stdout byte 0: expected b'OK\\nERR not an integer\\n00\\nOK\\nERR not an integer\\n+5\\nOK\\nER', got b'' (length 115/0)",
+      "steps": [
+        {
+          "step": "invalid-integer-values",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nERR not an integer\\n00\\nOK\\nERR not an integer\\n+5\\nOK\\nER', got b'' (length 115/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0166
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "key-ascii-order",
+      "passed": false,
+      "detail": "key-ascii-order: stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\nOK\\n! 0 A _ a z\\n6\\n', got b'' (length 32/0)",
+      "steps": [
+        {
+          "step": "key-ascii-order",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\nOK\\nOK\\n! 0 A _ a z\\n6\\n', got b'' (length 32/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "lockstep-flush",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK\\nx\\n1\\n', got b'' (length 7/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK\\nx\\n1\\n', got b'' (length 7/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "lower-overflow",
+      "passed": false,
+      "detail": "lower-overflow: stdout byte 0: expected b'-1000000000000000\\nERR overflow\\n-1000000000000000\\n0\\n', got b'' (length 51/0)",
+      "steps": [
+        {
+          "step": "lower-overflow",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'-1000000000000000\\nERR overflow\\n-1000000000000000\\n0\\n', got b'' (length 51/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0158
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "malformed",
+      "passed": false,
+      "detail": "malformed: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 208/0)",
+      "steps": [
+        {
+          "step": "malformed",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 208/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "max-token",
+      "passed": false,
+      "detail": "max-token: stdout byte 0: expected b'OK\\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv', got b'' (length 104/0)",
+      "steps": [
+        {
+          "step": "max-token",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv', got b'' (length 104/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0203
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "nested-count-rollback",
+      "passed": false,
+      "detail": "nested-count-rollback: stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\n2\\nOK\\n1\\nOK\\n1\\n', got b'' (length 24/0)",
+      "steps": [
+        {
+          "step": "nested-count-rollback",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nOK\\nOK\\n2\\nOK\\n1\\nOK\\n1\\n', got b'' (length 24/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0179
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "no-transaction",
+      "passed": false,
+      "detail": "no-transaction: stdout byte 0: expected b'ERR no transaction\\nERR no transaction\\nNULL\\n(empty)\\n', got b'' (length 51/0)",
+      "steps": [
+        {
+          "step": "no-transaction",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR no transaction\\nERR no transaction\\nNULL\\n(empty)\\n', got b'' (length 51/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "open-at-eof",
+      "passed": false,
+      "detail": "open-at-eof: stdout byte 0: expected b'OK\\nOK\\nx\\n', got b'' (length 8/0)",
+      "steps": [
+        {
+          "step": "open-at-eof",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\nx\\n', got b'' (length 8/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0167
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "space-crlf-final",
+      "passed": false,
+      "detail": "space-crlf-final: stdout byte 0: expected b'OK\\nvalue\\n1\\n', got b'' (length 11/0)",
+      "steps": [
+        {
+          "step": "space-crlf-final",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nvalue\\n1\\n', got b'' (length 11/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0165
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "transaction-incr-rollback",
+      "passed": false,
+      "detail": "transaction-incr-rollback: stdout byte 0: expected b'OK\\nOK\\n-5\\nOK\\n-4\\nOK\\n-4\\nOK\\n5\\n', got b'' (length 26/0)",
+      "steps": [
+        {
+          "step": "transaction-incr-rollback",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nOK\\n-5\\nOK\\n-4\\nOK\\n-4\\nOK\\n5\\n', got b'' (length 26/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.016
+        }
+      ]
+    },
+    {
+      "task": "06-kvtx",
+      "case": "upper-overflow",
+      "passed": false,
+      "detail": "upper-overflow: stdout byte 0: expected b'OK\\nERR overflow\\n1000000000000000\\n0\\n', got b'' (length 35/0)",
+      "steps": [
+        {
+          "step": "upper-overflow",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK\\nERR overflow\\n1000000000000000\\n0\\n', got b'' (length 35/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "acceptance-time-remainder",
+      "passed": false,
+      "detail": "acceptance-time-remainder: stdout byte 0: expected b'OK s filled=0 resting=2 trades=-\\nOK z filled=2 resting=', got b'' (length 167/0)",
+      "steps": [
+        {
+          "step": "acceptance-time-remainder",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK s filled=0 resting=2 trades=-\\nOK z filled=2 resting=', got b'' (length 167/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "bad-spacing",
+      "passed": false,
+      "detail": "bad-spacing: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 112/0)",
+      "steps": [
+        {
+          "step": "bad-spacing",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 112/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0156
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "book-numeric-price-order",
+      "passed": false,
+      "detail": "book-numeric-price-order: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nOK b filled=0 resting=', got b'' (length 167/0)",
+      "steps": [
+        {
+          "step": "book-numeric-price-order",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nOK b filled=0 resting=', got b'' (length 167/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "buy-remainder-rests",
+      "passed": false,
+      "detail": "buy-remainder-rests: stdout byte 0: expected b'OK s filled=0 resting=2 trades=-\\nOK b filled=2 resting=', got b'' (length 124/0)",
+      "steps": [
+        {
+          "step": "buy-remainder-rests",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK s filled=0 resting=2 trades=-\\nOK b filled=2 resting=', got b'' (length 124/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "cancelled-id-never-reused",
+      "passed": false,
+      "detail": "cancelled-id-never-reused: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nCANCELED a 1\\nERR dupli', got b'' (length 81/0)",
+      "steps": [
+        {
+          "step": "cancelled-id-never-reused",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nCANCELED a 1\\nERR dupli', got b'' (length 81/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "crlf-final",
+      "passed": false,
+      "detail": "crlf-final: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nBOOK bids=2:1 asks=-\\n', got b'' (length 54/0)",
+      "steps": [
+        {
+          "step": "crlf-final",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nBOOK bids=2:1 asks=-\\n', got b'' (length 54/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "cross-at-equality",
+      "passed": false,
+      "detail": "cross-at-equality: stdout byte 0: expected b'OK b filled=0 resting=1 trades=-\\nOK s filled=1 resting=', got b'' (length 124/0)",
+      "steps": [
+        {
+          "step": "cross-at-equality",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK b filled=0 resting=1 trades=-\\nOK s filled=1 resting=', got b'' (length 124/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "empty",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "empty-book-cancel",
+      "passed": false,
+      "detail": "empty-book-cancel: stdout byte 0: expected b'BOOK bids=- asks=-\\nERR unknown order\\n', got b'' (length 37/0)",
+      "steps": [
+        {
+          "step": "empty-book-cancel",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'BOOK bids=- asks=-\\nERR unknown order\\n', got b'' (length 37/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0159
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'OK s1 filled=0 resting=10 trades=-\\nOK s2 filled=0 resti', got b'' (length 186/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK s1 filled=0 resting=10 trades=-\\nOK s2 filled=0 resti', got b'' (length 186/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0156
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'OK b1 filled=0 resting=5 trades=-\\nOK b2 filled=0 restin', got b'' (length 204/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK b1 filled=0 resting=5 trades=-\\nOK b2 filled=0 restin', got b'' (length 204/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0158
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'ERR bad command\\nOK a filled=0 resting=5 trades=-\\nERR du', got b'' (length 166/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nOK a filled=0 resting=5 trades=-\\nERR du', got b'' (length 166/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: stdout byte 0: expected b'OK x filled=0 resting=3 trades=-\\nOK y filled=0 resting=', got b'' (length 235/0)",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK x filled=0 resting=3 trades=-\\nOK y filled=0 resting=', got b'' (length 235/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "flush-lockstep",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nBOOK bids=2:1 asks=-\\n', got b'' (length 54/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\nBOOK bids=2:1 asks=-\\n', got b'' (length 54/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 2,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0161
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "fresh-process-state",
+      "passed": false,
+      "detail": "run-1: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\n', got b'' (length 33/0); run-2: stdout byte 0: expected b'BOOK bids=- asks=-\\nOK a filled=0 resting=1 trades=-\\n', got b'' (length 52/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\\n', got b'' (length 33/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'BOOK bids=- asks=-\\nOK a filled=0 resting=1 trades=-\\n', got b'' (length 52/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "id-grammar",
+      "passed": false,
+      "detail": "id-grammar: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nOK A_0- filled=0 restin', got b'' (length 84/0)",
+      "steps": [
+        {
+          "step": "id-grammar",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nOK A_0- filled=0 restin', got b'' (length 84/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "invalid-numbers",
+      "passed": false,
+      "detail": "invalid-numbers: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 96/0)",
+      "steps": [
+        {
+          "step": "invalid-numbers",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 96/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0173
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "large-level-total",
+      "passed": false,
+      "detail": "large-level-total: stdout byte 0: expected b'OK a filled=0 resting=999999999 trades=-\\nOK b filled=0 ', got b'' (length 153/0)",
+      "steps": [
+        {
+          "step": "large-level-total",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK a filled=0 resting=999999999 trades=-\\nOK b filled=0 ', got b'' (length 153/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.017
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "malformed-id-not-consumed",
+      "passed": false,
+      "detail": "malformed-id-not-consumed: stdout byte 0: expected b'ERR bad command\\nOK a filled=0 resting=1 trades=-\\nERR ba', got b'' (length 103/0)",
+      "steps": [
+        {
+          "step": "malformed-id-not-consumed",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nOK a filled=0 resting=1 trades=-\\nERR ba', got b'' (length 103/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "maximum-order",
+      "passed": false,
+      "detail": "maximum-order: stdout byte 0: expected b'OK abcdefghijklmnop filled=0 resting=999999999 trades=-', got b'' (length 151/0)",
+      "steps": [
+        {
+          "step": "maximum-order",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK abcdefghijklmnop filled=0 resting=999999999 trades=-', got b'' (length 151/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0176
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "no-cross",
+      "passed": false,
+      "detail": "no-cross: stdout byte 0: expected b'OK b filled=0 resting=2 trades=-\\nOK s filled=0 resting=', got b'' (length 90/0)",
+      "steps": [
+        {
+          "step": "no-cross",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK b filled=0 resting=2 trades=-\\nOK s filled=0 resting=', got b'' (length 90/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "partial-maker-keeps-time",
+      "passed": false,
+      "detail": "partial-maker-keeps-time: stdout byte 0: expected b'OK z filled=0 resting=5 trades=-\\nOK a filled=0 resting=', got b'' (length 171/0)",
+      "steps": [
+        {
+          "step": "partial-maker-keeps-time",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK z filled=0 resting=5 trades=-\\nOK a filled=0 resting=', got b'' (length 171/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "sell-sweep-maker-prices",
+      "passed": false,
+      "detail": "sell-sweep-maker-prices: stdout byte 0: expected b'OK low filled=0 resting=3 trades=-\\nOK high filled=0 res', got b'' (length 188/0)",
+      "steps": [
+        {
+          "step": "sell-sweep-maker-prices",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK low filled=0 resting=3 trades=-\\nOK high filled=0 res', got b'' (length 188/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "07-orderbook",
+      "case": "wrong-count-case",
+      "passed": false,
+      "detail": "wrong-count-case: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 96/0)",
+      "steps": [
+        {
+          "step": "wrong-count-case",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 96/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0182
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "balance-limits-and-precedence",
+      "passed": false,
+      "detail": "balance-limits-and-precedence: stdout byte 0: expected b'ERR x limit\\nERR y insufficient\\nERR z limit\\nOK x 9999999', got b'' (length 98/0)",
+      "steps": [
+        {
+          "step": "balance-limits-and-precedence",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR x limit\\nERR y insufficient\\nERR z limit\\nOK x 9999999', got b'' (length 98/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0186
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "corrupt-complete-blank",
+      "passed": false,
+      "detail": "corrupt-complete-blank: exit expected 3, got 0",
+      "steps": [
+        {
+          "step": "corrupt-complete-blank",
+          "passed": false,
+          "detail": "exit expected 3, got 0",
+          "exit": 0,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.018
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "corrupt-numeric-record",
+      "passed": false,
+      "detail": "corrupt-numeric-record: exit expected 3, got 0",
+      "steps": [
+        {
+          "step": "corrupt-numeric-record",
+          "passed": false,
+          "detail": "exit expected 3, got 0",
+          "exit": 0,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "corrupt-readonly-record",
+      "passed": false,
+      "detail": "corrupt-readonly-record: exit expected 3, got 0",
+      "steps": [
+        {
+          "step": "corrupt-readonly-record",
+          "passed": false,
+          "detail": "exit expected 3, got 0",
+          "exit": 0,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0168
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "dir-is-file",
+      "passed": false,
+      "detail": "dir-is-file: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "dir-is-file",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0161
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "empty-eof",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-eof",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.016
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "empty-queries",
+      "passed": false,
+      "detail": "empty-queries: stdout byte 0: expected b'-\\nERR no such account\\n', got b'' (length 22/0)",
+      "steps": [
+        {
+          "step": "empty-queries",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'-\\nERR no such account\\n', got b'' (length 22/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0165
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'OK r1\\nOK r2\\nOK r3 100\\nOK r4\\nERR r5 insufficient\\nDUP r3\\n', got b'' (length 80/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK r1\\nOK r2\\nOK r3 100\\nOK r4\\nERR r5 insufficient\\nDUP r3\\n', got b'' (length 80/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-2",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK t1\\nOK t2 500\\n', got b'' (length 16/0); run-2: stdout byte 0: expected b'DUP t1\\nDUP t2\\nOK t3 300\\n', got b'' (length 24/0); run-3: stdout byte 0: expected b'carol 300\\n', got b'' (length 10/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK t1\\nOK t2 500\\n', got b'' (length 16/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 2,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0165
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'DUP t1\\nDUP t2\\nOK t3 300\\n', got b'' (length 24/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0162
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'carol 300\\n', got b'' (length 10/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0158
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'dave 70\\nOK a3 75\\ndave 75\\n', got b'' (length 25/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'dave 70\\nOK a3 75\\ndave 75\\n', got b'' (length 25/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: exit expected 3, got 0",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "exit expected 3, got 0",
+          "exit": 0,
+          "expected_exit": 3,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "example-5-semantic",
+      "passed": false,
+      "detail": "example-5-semantic: stdout byte 0: expected b'ERR bad command\\nOK x1\\nERR x2 exists\\nERR x3 same account', got b'' (length 135/0)",
+      "steps": [
+        {
+          "step": "example-5-semantic",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nOK x1\\nERR x2 exists\\nERR x3 same account', got b'' (length 135/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "extra-arguments",
+      "passed": false,
+      "detail": "extra-arguments: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "extra-arguments",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "failed-rid-reusable",
+      "passed": false,
+      "detail": "failed-rid-reusable: stdout byte 0: expected b'ERR x no such account\\nOK x\\nERR y insufficient\\nOK y 1\\nER', got b'' (length 79/0)",
+      "steps": [
+        {
+          "step": "failed-rid-reusable",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR x no such account\\nOK x\\nERR y insufficient\\nOK y 1\\nER', got b'' (length 79/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "kill-failed-request-not-recorded",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'ERR x no such account\\n', got b'' (length 22/0); run-2: stdout byte 0: expected b'OK x\\nDUP x\\n', got b'' (length 11/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'ERR x no such account\\n', got b'' (length 22/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 1,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK x\\nDUP x\\n', got b'' (length 11/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "kill-transfer-retry",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK a\\nOK b\\nOK c 50\\nOK d\\n', got b'' (length 23/0); run-2: stdout byte 0: expected b'DUP d\\nOK e 15\\nalice=30 bob=15\\n', got b'' (length 30/0); run-3: stdout byte 0: expected b'alice=30 bob=15\\n', got b'' (length 16/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK a\\nOK b\\nOK c 50\\nOK d\\n', got b'' (length 23/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 4,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'DUP d\\nOK e 15\\nalice=30 bob=15\\n', got b'' (length 30/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'alice=30 bob=15\\n', got b'' (length 16/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "malformed-protocol",
+      "passed": false,
+      "detail": "malformed-protocol: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 176/0)",
+      "steps": [
+        {
+          "step": "malformed-protocol",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 176/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "max-identifiers-crlf-final",
+      "passed": false,
+      "detail": "max-identifiers-crlf-final: stdout byte 0: expected b'OK RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR\\na111111111111111 0\\n', got b'' (length 55/0)",
+      "steps": [
+        {
+          "step": "max-identifiers-crlf-final",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR\\na111111111111111 0\\n', got b'' (length 55/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "parent-missing",
+      "passed": false,
+      "detail": "parent-missing: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "parent-missing",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0166
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "parse-and-spacing",
+      "passed": false,
+      "detail": "parse-and-spacing: stdout byte 0: expected b'OK r1\\nERR bad command\\nOK r2 1\\nERR bad command\\nDUP r1\\na ', got b'' (length 61/0)",
+      "steps": [
+        {
+          "step": "parse-and-spacing",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK r1\\nERR bad command\\nOK r2 1\\nERR bad command\\nDUP r1\\na ', got b'' (length 61/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "replay-multiple-spaces",
+      "passed": false,
+      "detail": "replay-multiple-spaces: stdout byte 0: expected b'a=7 z=2\\nDUP r\\n', got b'' (length 14/0)",
+      "steps": [
+        {
+          "step": "replay-multiple-spaces",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'a=7 z=2\\nDUP r\\n', got b'' (length 14/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "torn-tail-truncation",
+      "passed": false,
+      "detail": "run-1: stdout byte 0: expected b'a 9\\nOK x 10\\n', got b'' (length 12/0); run-2: stdout byte 0: expected b'a 10\\nDUP x\\n', got b'' (length 11/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'a 9\\nOK x 10\\n', got b'' (length 12/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0182
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'a 10\\nDUP x\\n', got b'' (length 11/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0179
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "transfer-error-order",
+      "passed": false,
+      "detail": "transfer-error-order: stdout byte 0: expected b'OK r\\nERR s same account\\nERR s no such account\\nERR s no ', got b'' (length 112/0)",
+      "steps": [
+        {
+          "step": "transfer-error-order",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK r\\nERR s same account\\nERR s no such account\\nERR s no ', got b'' (length 112/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0188
+        }
+      ]
+    },
+    {
+      "task": "08-ledger",
+      "case": "whole-file-torn",
+      "passed": false,
+      "detail": "run-1: stdout byte 0: expected b'-\\nOK r\\n', got b'' (length 7/0); run-2: stdout byte 0: expected b'a=0\\nDUP r\\n', got b'' (length 10/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'-\\nOK r\\n', got b'' (length 7/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'a=0\\nDUP r\\n', got b'' (length 10/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0194
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "ack-only-inflight",
+      "passed": false,
+      "detail": "ack-only-inflight: stdout byte 0: expected b'OK 1\\nERR not in flight\\nERR not in flight\\nJOB 1 1 a\\nOK\\nE', got b'' (length 129/0)",
+      "steps": [
+        {
+          "step": "ack-only-inflight",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nERR not in flight\\nERR not in flight\\nJOB 1 1 a\\nOK\\nE', got b'' (length 129/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0188
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "arbitrary-temporaries",
+      "passed": false,
+      "detail": "arbitrary-temporaries: stdout byte 0: expected b'EMPTY\\nOK 1\\nJOB 1 1 a\\n', got b'' (length 21/0)",
+      "steps": [
+        {
+          "step": "arbitrary-temporaries",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'EMPTY\\nOK 1\\nJOB 1 1 a\\n', got b'' (length 21/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "crlf-final",
+      "passed": false,
+      "detail": "crlf-final: stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\nready=0 inflight=0 acked=1 next=2\\n', got b'' (length 52/0)",
+      "steps": [
+        {
+          "step": "crlf-final",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\nready=0 inflight=0 acked=1 next=2\\n', got b'' (length 52/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "dir-is-file",
+      "passed": false,
+      "detail": "dir-is-file: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "dir-is-file",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0174
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "duplicate-payloads",
+      "passed": false,
+      "detail": "duplicate-payloads: stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 same\\nOK\\nJOB 2 1 same\\n', got b'' (length 39/0)",
+      "steps": [
+        {
+          "step": "duplicate-payloads",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 same\\nOK\\nJOB 2 1 same\\n', got b'' (length 39/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "empty-eof",
+      "passed": true,
+      "detail": "",
+      "steps": [
+        {
+          "step": "empty-eof",
+          "passed": true,
+          "detail": "",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 email:1\\nJOB 2 1 email:2\\nOK\\nERR not in', got b'' (length 122/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 email:1\\nJOB 2 1 email:2\\nOK\\nERR not in', got b'' (length 122/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-2",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 a\\n', got b'' (length 20/0); run-2: stdout byte 0: expected b'ready=2 inflight=0 acked=0 next=3\\nJOB 1 2 a\\nOK\\nJOB 2 1 ', got b'' (length 91/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 a\\n', got b'' (length 20/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0175
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ready=2 inflight=0 acked=0 next=3\\nJOB 1 2 a\\nOK\\nJOB 2 1 ', got b'' (length 91/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0176
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'ready=0 inflight=0 acked=0 next=1\\nOK 1\\n', got b'' (length 39/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ready=0 inflight=0 acked=0 next=1\\nOK 1\\n', got b'' (length 39/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-4",
+      "passed": false,
+      "detail": "run-1: stdout byte 0: expected b'OK 1\\nOK 2\\nOK 3\\nJOB 1 1 p1\\nJOB 2 1 p2\\nOK\\n', got b'' (length 40/0); run-2: stdout byte 0: expected b'OK 4\\nJOB 1 2 p1\\nJOB 3 1 p3\\nJOB 4 1 p4\\nEMPTY\\nERR not in ', got b'' (length 78/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nOK 2\\nOK 3\\nJOB 1 1 p1\\nJOB 2 1 p2\\nOK\\n', got b'' (length 40/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0167
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 4\\nJOB 1 2 p1\\nJOB 3 1 p3\\nJOB 4 1 p4\\nEMPTY\\nERR not in ', got b'' (length 78/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "example-5-extra",
+      "passed": false,
+      "detail": "example-5-extra: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-extra",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "initial-empty",
+      "passed": false,
+      "detail": "initial-empty: stdout byte 0: expected b'EMPTY\\nready=0 inflight=0 acked=0 next=1\\nERR not in flig', got b'' (length 94/0)",
+      "steps": [
+        {
+          "step": "initial-empty",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'EMPTY\\nready=0 inflight=0 acked=0 next=1\\nERR not in flig', got b'' (length 94/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "kill-ack-durable",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\n', got b'' (length 18/0); run-2: stdout byte 0: expected b'ready=0 inflight=0 acked=1 next=2\\nEMPTY\\nOK 2\\nJOB 2 1 b\\n', got b'' (length 55/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\n', got b'' (length 18/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ready=0 inflight=0 acked=1 next=2\\nEMPTY\\nOK 2\\nJOB 2 1 b\\n', got b'' (length 55/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "kill-after-put",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\\n', got b'' (length 5/0); run-2: stdout byte 0: expected b'ready=1 inflight=0 acked=0 next=2\\nOK 2\\nJOB 1 1 a\\nJOB 2 ', got b'' (length 59/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK 1\\n', got b'' (length 5/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 1,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ready=1 inflight=0 acked=0 next=2\\nOK 2\\nJOB 1 1 a\\nJOB 2 ', got b'' (length 59/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "kill-nack-durable",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\n', got b'' (length 18/0); run-2: stdout byte 0: expected b'ERR not in flight\\nready=1 inflight=0 acked=0 next=2\\nJOB', got b'' (length 65/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\n', got b'' (length 18/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR not in flight\\nready=1 inflight=0 acked=0 next=2\\nJOB', got b'' (length 65/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "malformed-ids",
+      "passed": false,
+      "detail": "malformed-ids: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 144/0)",
+      "steps": [
+        {
+          "step": "malformed-ids",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 144/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "malformed-spacing",
+      "passed": false,
+      "detail": "malformed-spacing: stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 128/0)",
+      "steps": [
+        {
+          "step": "malformed-spacing",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ERR bad command\\nERR bad command\\nERR bad command\\nERR bad', got b'' (length 128/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0153
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "missing-parent",
+      "passed": false,
+      "detail": "missing-parent: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "missing-parent",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "nack-smallest-first",
+      "passed": false,
+      "detail": "nack-smallest-first: stdout byte 0: expected b'OK 1\\nOK 2\\nOK 3\\nJOB 1 1 a\\nJOB 2 1 b\\nOK\\nJOB 1 2 a\\nJOB 3 1', got b'' (length 92/0)",
+      "steps": [
+        {
+          "step": "nack-smallest-first",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nOK 2\\nOK 3\\nJOB 1 1 a\\nJOB 2 1 b\\nOK\\nJOB 1 2 a\\nJOB 3 1', got b'' (length 92/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "normal-exit-ack-and-next",
+      "passed": false,
+      "detail": "run-1: stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\n', got b'' (length 18/0); run-2: stdout byte 0: expected b'ready=0 inflight=0 acked=1 next=2\\nOK 2\\nJOB 2 1 b\\nOK\\n', got b'' (length 52/0); run-3: stdout byte 0: expected b'JOB 2 2 b\\nready=0 inflight=1 acked=1 next=3\\n', got b'' (length 44/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\n', got b'' (length 18/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ready=0 inflight=0 acked=1 next=2\\nOK 2\\nJOB 2 1 b\\nOK\\n', got b'' (length 52/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'JOB 2 2 b\\nready=0 inflight=1 acked=1 next=3\\n', got b'' (length 44/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "numeric-ready-order",
+      "passed": false,
+      "detail": "numeric-ready-order: stdout byte 0: expected b'OK 1\\nOK 2\\nOK 3\\nOK 4\\nOK 5\\nOK 6\\nOK 7\\nOK 8\\nOK 9\\nOK 10\\nOK 1', got b'' (length 201/0)",
+      "steps": [
+        {
+          "step": "numeric-ready-order",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nOK 2\\nOK 3\\nOK 4\\nOK 5\\nOK 6\\nOK 7\\nOK 8\\nOK 9\\nOK 10\\nOK 1', got b'' (length 201/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "payload-boundaries",
+      "passed": false,
+      "detail": "payload-boundaries: stdout byte 0: expected b'OK 1\\nOK 2\\nERR bad command\\nERR bad command\\nERR bad comma', got b'' (length 175/0)",
+      "steps": [
+        {
+          "step": "payload-boundaries",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nOK 2\\nERR bad command\\nERR bad command\\nERR bad comma', got b'' (length 175/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "repeat-deliveries",
+      "passed": false,
+      "detail": "repeat-deliveries: stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\nJOB 1 2 a\\nOK\\nJOB 1 3 a\\nOK\\nJOB 1 4 a\\nO', got b'' (length 167/0)",
+      "steps": [
+        {
+          "step": "repeat-deliveries",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'OK 1\\nJOB 1 1 a\\nOK\\nJOB 1 2 a\\nOK\\nJOB 1 3 a\\nOK\\nJOB 1 4 a\\nO', got b'' (length 167/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "09-durable-queue",
+      "case": "repeated-crashes",
+      "passed": false,
+      "detail": "run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 a\\n', got b'' (length 20/0); run-2: stdout closed before N responses; stdout byte 0: expected b'JOB 1 2 a\\nJOB 2 1 b\\n', got b'' (length 20/0); run-3: stdout closed before N responses; stdout byte 0: expected b'JOB 1 3 a\\nOK\\nJOB 2 2 b\\n', got b'' (length 23/0); run-4: stdout byte 0: expected b'ready=1 inflight=0 acked=1 next=3\\nJOB 2 3 b\\nOK\\nOK 3\\n', got b'' (length 52/0)",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'OK 1\\nOK 2\\nJOB 1 1 a\\n', got b'' (length 20/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'JOB 1 2 a\\nJOB 2 1 b\\n', got b'' (length 20/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 2,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "stdout closed before N responses; stdout byte 0: expected b'JOB 1 3 a\\nOK\\nJOB 2 2 b\\n', got b'' (length 23/0)",
+          "exit": 0,
+          "expected_exit": null,
+          "kill_after": 3,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        },
+        {
+          "step": "run-4",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'ready=1 inflight=0 acked=1 next=3\\nJOB 2 3 b\\nOK\\nOK 3\\n', got b'' (length 52/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0172
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "ascii-name-ties",
+      "passed": false,
+      "detail": "ascii-name-ties: stdout byte 0: expected b'0 start - w1\\n1 finish - w1\\n1 start . w1\\n2 finish . w1\\n2', got b'' (length 169/0)",
+      "steps": [
+        {
+          "step": "ascii-name-ties",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start - w1\\n1 finish - w1\\n1 start . w1\\n2 finish . w1\\n2', got b'' (length 169/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0178
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "comments-crlf-final",
+      "passed": false,
+      "detail": "comments-crlf-final: stdout byte 0: expected b'0 start a w1\\n1 finish a w1\\ndone 1\\n', got b'' (length 34/0)",
+      "steps": [
+        {
+          "step": "comments-crlf-final",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start a w1\\n1 finish a w1\\ndone 1\\n', got b'' (length 34/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "duplicate-job",
+      "passed": false,
+      "detail": "duplicate-job: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "duplicate-job",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0193
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "empty-dependency-element",
+      "passed": false,
+      "detail": "run-1: exit expected 1, got 0; run-2: exit expected 1, got 0; run-3: exit expected 1, got 0; run-4: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0193
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0188
+        },
+        {
+          "step": "run-4",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0183
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-1",
+      "passed": false,
+      "detail": "example-1: stdout byte 0: expected b'0 start configure w1\\n0 start fetch w2\\n2 finish configur', got b'' (length 186/0)",
+      "steps": [
+        {
+          "step": "example-1",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start configure w1\\n0 start fetch w2\\n2 finish configur', got b'' (length 186/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0185
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-2",
+      "passed": false,
+      "detail": "example-2: stdout byte 0: expected b'0 start configure w1\\n2 finish configure w1\\n2 start docs', got b'' (length 190/0)",
+      "steps": [
+        {
+          "step": "example-2",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start configure w1\\n2 finish configure w1\\n2 start docs', got b'' (length 190/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0185
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-3",
+      "passed": false,
+      "detail": "example-3: stdout byte 0: expected b'0 start a w1\\n0 start b w2\\n0 start d w3\\n2 finish a w1\\n2 ', got b'' (length 142/0)",
+      "steps": [
+        {
+          "step": "example-3",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start a w1\\n0 start b w2\\n0 start d w3\\n2 finish a w1\\n2 ', got b'' (length 142/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0187
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-4",
+      "passed": false,
+      "detail": "example-4: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-4",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0185
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-4-empty",
+      "passed": false,
+      "detail": "example-4-empty: stdout byte 0: expected b'done 0\\n', got b'' (length 7/0)",
+      "steps": [
+        {
+          "step": "example-4-empty",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'done 0\\n', got b'' (length 7/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0181
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-5",
+      "passed": false,
+      "detail": "example-5: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0178
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-5-dependency",
+      "passed": false,
+      "detail": "example-5-dependency: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "example-5-dependency",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0176
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "example-5-missing-file",
+      "passed": false,
+      "detail": "example-5-missing-file: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "example-5-missing-file",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0163
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "extra-file",
+      "passed": false,
+      "detail": "extra-file: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "extra-file",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0157
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "forward-and-duplicate-deps",
+      "passed": false,
+      "detail": "forward-and-duplicate-deps: stdout byte 0: expected b'0 start a w1\\n1 finish a w1\\n1 start b w1\\n2 finish b w1\\n2', got b'' (length 88/0)",
+      "steps": [
+        {
+          "step": "forward-and-duplicate-deps",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start a w1\\n1 finish a w1\\n1 start b w1\\n2 finish b w1\\n2', got b'' (length 88/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0155
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "invalid-duration",
+      "passed": false,
+      "detail": "run-1: exit expected 1, got 0; run-2: exit expected 1, got 0; run-3: exit expected 1, got 0; run-4: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0152
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        },
+        {
+          "step": "run-4",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0147
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "invalid-name",
+      "passed": false,
+      "detail": "run-1: exit expected 1, got 0; run-2: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "invalid-priority",
+      "passed": false,
+      "detail": "run-1: exit expected 1, got 0; run-2: exit expected 1, got 0; run-3: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.015
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0148
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0149
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "last-workers-wins",
+      "passed": false,
+      "detail": "last-workers-wins: stdout byte 0: expected b'0 start a w1\\n0 start b w2\\n1 finish a w1\\n1 finish b w2\\nd', got b'' (length 61/0)",
+      "steps": [
+        {
+          "step": "last-workers-wins",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start a w1\\n0 start b w2\\n1 finish a w1\\n1 finish b w2\\nd', got b'' (length 61/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "numeric-boundaries-leading-zero",
+      "passed": false,
+      "detail": "numeric-boundaries-leading-zero: stdout byte 0: expected b'0 start aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa w1\\n1000000 fin', got b'' (length 147/0)",
+      "steps": [
+        {
+          "step": "numeric-boundaries-leading-zero",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa w1\\n1000000 fin', got b'' (length 147/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "reuse-lowest-free-worker",
+      "passed": false,
+      "detail": "reuse-lowest-free-worker: stdout byte 0: expected b'0 start a w1\\n0 start b w2\\n0 start c w3\\n1 finish c w3\\n1 ', got b'' (length 142/0)",
+      "steps": [
+        {
+          "step": "reuse-lowest-free-worker",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start a w1\\n0 start b w2\\n0 start c w3\\n1 finish c w3\\n1 ', got b'' (length 142/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "self-cycle-before-output",
+      "passed": false,
+      "detail": "self-cycle-before-output: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "self-cycle-before-output",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0151
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "simultaneous-finish-before-start",
+      "passed": false,
+      "detail": "simultaneous-finish-before-start: stdout byte 0: expected b'0 start z w1\\n0 start a w2\\n2 finish a w2\\n2 finish z w1\\n2', got b'' (length 115/0)",
+      "steps": [
+        {
+          "step": "simultaneous-finish-before-start",
+          "passed": false,
+          "detail": "stdout byte 0: expected b'0 start z w1\\n0 start a w2\\n2 finish a w2\\n2 finish z w1\\n2', got b'' (length 115/0)",
+          "exit": 0,
+          "expected_exit": 0,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0154
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "unknown-option",
+      "passed": false,
+      "detail": "run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0; run-4: exit expected 2, got 0; run-5: exit expected 2, got 0; run-6: exit expected 2, got 0",
+      "steps": [
+        {
+          "step": "run-1",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0158
+        },
+        {
+          "step": "run-2",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0174
+        },
+        {
+          "step": "run-3",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0171
+        },
+        {
+          "step": "run-4",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0178
+        },
+        {
+          "step": "run-5",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0177
+        },
+        {
+          "step": "run-6",
+          "passed": false,
+          "detail": "exit expected 2, got 0",
+          "exit": 0,
+          "expected_exit": 2,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0185
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "unreadable-file",
+      "passed": false,
+      "detail": "unreadable-file: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "unreadable-file",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0189
+        }
+      ]
+    },
+    {
+      "task": "10-jobsched",
+      "case": "wrong-token-count",
+      "passed": false,
+      "detail": "wrong-token-count: exit expected 1, got 0",
+      "steps": [
+        {
+          "step": "wrong-token-count",
+          "passed": false,
+          "detail": "exit expected 1, got 0",
+          "exit": 0,
+          "expected_exit": 1,
+          "kill_after": null,
+          "stdout_b64": "",
+          "stderr_b64": "",
+          "seconds": 0.0184
+        }
+      ]
+    }
+  ]
+}

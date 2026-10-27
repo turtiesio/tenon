@@ -1,0 +1,11 @@
+01-wordfreq 25
+02-semsort 25
+03-fcut 25
+04-salesreport 25
+05-latency 25
+06-kvtx 25
+07-orderbook 25
+08-ledger 25
+09-durable-queue 25
+10-jobsched 25
+250 cases; 285 normal invocations; 12 kill invocations

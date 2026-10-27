@@ -1,0 +1,3 @@
+// error: functions cannot be encoded
+fn f(x: Int) -> Int { x }
+fn main() { let s = encode(f) }

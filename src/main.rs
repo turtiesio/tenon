@@ -2,6 +2,7 @@
 
 mod ast;
 mod check;
+mod codec;
 mod diag;
 mod emit_body;
 mod emit_c;

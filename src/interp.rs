@@ -41,6 +41,7 @@ pub struct Interp<'a> {
     depth: usize,
     out: std::io::BufWriter<std::io::Stdout>,
     snames: Vec<(String, Vec<Option<String>>)>,
+    snames_full: Vec<(String, Vec<Option<String>>)>, // for `encode`: every field
     enames: Vec<(String, Vec<String>)>,
     mono_origin: std::time::Instant,
     args: Vec<String>,
@@ -264,6 +265,7 @@ pub fn run(c: &Checked, sm: &SourceMap, args: Vec<String>) -> i32 {
         depth: 0,
         out: std::io::BufWriter::with_capacity(1 << 16, std::io::stdout()),
         snames: c.structs.iter().map(|s| (display(&s.name).to_string(), shown_fields(s))).collect(),
+        snames_full: c.structs.iter().map(|s| (display(&s.name).to_string(), s.fields.iter().map(|f| Some(f.0.clone())).collect())).collect(),
         enames: c.enums.iter().map(|e| (display(&e.name).to_string(), e.variants.iter().map(|v| v.0.clone()).collect())).collect(),
         mono_origin: std::time::Instant::now(),
         args,
@@ -298,6 +300,9 @@ pub fn run(c: &Checked, sm: &SourceMap, args: Vec<String>) -> i32 {
 impl<'a> Interp<'a> {
     fn names(&self) -> Names<'_> {
         Names { structs: &self.snames, enums: &self.enames }
+    }
+    fn names_full(&self) -> Names<'_> {
+        Names { structs: &self.snames_full, enums: &self.enames }
     }
     fn show_top(&self, v: &V) -> String {
         let mut s = String::new();
@@ -633,6 +638,15 @@ impl<'a> Interp<'a> {
                     return self.apply(&f, av, e.span);
                 }
                 match self.c.res.get(&callee.id).cloned() {
+                    Some(Res::Fn(fi, targs)) if self.c.fns[fi].name == "decode" => {
+                        let av = self.eval_args(args)?;
+                        let V::Str(text) = &av[0] else { unreachable!() };
+                        let r = crate::codec::decode(self.c, &self.names_full(), &targs[0], text);
+                        Ok(match r {
+                            Ok(v) => self.ok(v),
+                            Err(m) => self.variant("Result", "Err", vec![V::Str(m.into())]),
+                        })
+                    }
                     Some(Res::Fn(fi, _)) => {
                         let av = self.eval_args(args)?;
                         self.call_fn(fi, av, e.span)
@@ -1027,6 +1041,11 @@ impl<'a> Interp<'a> {
         let list = |v: Vec<V>| V::List(Rc::new(v));
         Ok(match name {
             "panic" => return trap(s(0), sp),
+            "encode" => {
+                let mut out = String::new();
+                show(&a[0], false, &self.names_full(), &mut out);
+                strv(&out)
+            }
             "assert" => {
                 if let Bool(false) = a[0] {
                     return trap("assertion failed", sp);

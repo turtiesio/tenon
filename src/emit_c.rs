@@ -402,9 +402,11 @@ impl<'a> Emitter<'a> {
             protos,
             "static TN_UNUSED {n} {n}_retain({n} x); static TN_UNUSED void {n}_release({n} x); \
              static TN_UNUSED bool {n}_eq({n} a, {n} b); static TN_UNUSED int {n}_cmp({n} a, {n} b); \
-             static TN_UNUSED uint64_t {n}_hash({n} x); static TN_UNUSED void {n}_show(tn_buf *b, {n} x, bool top); \
-             static inline TN_UNUSED bool {n}_same({n} a, {n} b) {{ (void)a; (void)b; return false; }}"
+             static TN_UNUSED uint64_t {n}_hash({n} x); static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode); \
+             static inline TN_UNUSED bool {n}_same({n} a, {n} b) {{ (void)a; (void)b; return false; }} \
+             static TN_UNUSED bool {n}_dec(tn_dec *d, {n} *out);"
         );
+        self.decoder_for(t, &n, b);
         if let Some(vs) = self.c.enum_variants(t) {
             let boxed = self.is_boxed(t);
             let acc = if boxed { "->" } else { "." };
@@ -470,13 +472,13 @@ impl<'a> Emitter<'a> {
                         if j > 0 {
                             sh.push_str("tn_buf_add(b, \", \", 2); ");
                         }
-                        let _ = write!(sh, "{tn}_show(b, x{acc}u.v{i}.f{j}, false); ");
+                        let _ = write!(sh, "{tn}_show(b, x{acc}u.v{i}.f{j}, mode & TN_FULL); ");
                     }
                     sh.push_str("tn_buf_add(b, \")\", 1); ");
                 }
                 sh.push_str("break; ");
             }
-            let _ = writeln!(b, "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, bool top) {{ (void)top; switch (x{acc}tag) {{ {sh}}} }}");
+            let _ = writeln!(b, "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode) {{ (void)mode; switch (x{acc}tag) {{ {sh}}} }}");
             return;
         }
         // struct or tuple
@@ -511,21 +513,21 @@ impl<'a> Emitter<'a> {
             let _ = write!(eq, " && {tn}_eq(a.{f}, b.{f})");
             let _ = write!(cm, "if ((c = {tn}_cmp(a.{f}, b.{f}))) return c; ");
             let _ = write!(hs, "h = tn_mix(h * 31 + {tn}_hash(x.{f})); ");
-            if hidden {
-                continue;
-            }
             if k > 0 {
                 sh.push_str("tn_buf_add(b, \", \", 2); ");
             }
             if !is_tuple && matches!(shown.get(k), Some(None)) {
-                sh.push_str("tn_buf_cstr(b, \"..\"); ");
+                // private to another module: hidden unless encoding
+                sh.push_str("if (!(mode & TN_FULL)) { tn_buf_cstr(b, \"..\"); goto end; } ");
                 hidden = true;
-                continue;
             }
             if !is_tuple {
                 let _ = write!(sh, "tn_buf_cstr(b, {}); ", c_string(&format!("{}: ", &f[2..])));
             }
-            let _ = write!(sh, "{tn}_show(b, x.{f}, false); ");
+            let _ = write!(sh, "{tn}_show(b, x.{f}, mode & TN_FULL); ");
+        }
+        if hidden {
+            sh.push_str("end: ");
         }
         if is_tuple {
             sh.push_str("tn_buf_add(b, \")\", 1); ");
@@ -537,7 +539,74 @@ impl<'a> Emitter<'a> {
         let _ = writeln!(b, "static TN_UNUSED bool {n}_eq({n} a, {n} b) {{ (void)a; (void)b; return {eq}; }}");
         let _ = writeln!(b, "static TN_UNUSED int {n}_cmp({n} a, {n} b) {{ int c; (void)a; (void)b; (void)c; {cm}return 0; }}");
         let _ = writeln!(b, "static TN_UNUSED uint64_t {n}_hash({n} x) {{ uint64_t h = 3; {hs}(void)x; return h; }}");
-        let _ = writeln!(b, "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, bool top) {{ (void)top; (void)x; {sh}}}");
+        let _ = writeln!(b, "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode) {{ (void)mode; (void)x; {sh}}}");
+    }
+
+    // Strict decoder, step for step the same as codec.rs (so failure offsets agree).
+    fn decoder_for(&mut self, t: &Ty, n: &str, b: &mut String) {
+        let ex = |l: &str| format!("if (!tn_dec_expect(d, {})) goto fail; ", c_string(l));
+        let mut body = String::new();
+        let mut fail = String::new(); // releases, guarded by how far decoding got
+        if let Some(vs) = self.c.enum_variants(t) {
+            body.push_str("int64_t st = d->pos; tn_Str nm = tn_dec_run(d, 2); ");
+            for (i, (vn, fs)) in vs.iter().enumerate() {
+                let _ = write!(body, "if (tn_str_eq_c(nm, {})) {{ ", c_string(vn));
+                let mut args = Vec::new();
+                if !fs.is_empty() {
+                    body.push_str(&ex("("));
+                    for (j, ft) in fs.iter().enumerate() {
+                        let tn = self.cty(ft);
+                        let _ = write!(body, "{tn} a{j}; ");
+                        if j > 0 {
+                            body.push_str(&format!("if (!tn_dec_expect(d, \", \")) {{ {}goto fail; }} ", self.rel_args(fs, j)));
+                        }
+                        let _ = write!(body, "if (!{tn}_dec(d, &a{j})) {{ {}goto fail; }} ", self.rel_args(fs, j));
+                        args.push(format!("a{}", j));
+                    }
+                    let _ = write!(body, "if (!tn_dec_expect(d, \")\")) {{ {}goto fail; }} ", self.rel_args(fs, fs.len()));
+                }
+                let _ = write!(body, "*out = {}_mk{}({}); return true; }} ", n, i, args.join(", "));
+            }
+            body.push_str("tn_dec_fail(d, st); ");
+        } else {
+            let fs = self.fields_of(t);
+            let is_tuple = matches!(t, Ty::Tuple(_));
+            let _ = write!(body, "{n} x; ");
+            if is_tuple {
+                body.push_str(&ex("("));
+            } else {
+                let disp = match t {
+                    Ty::Con(tn, _) => crate::interp::display(tn).to_string(),
+                    _ => unreachable!(),
+                };
+                body.push_str(&ex(&disp));
+                body.push_str(&ex(if fs.is_empty() { " {}" } else { " { " }));
+            }
+            for (k, (f, ft)) in fs.iter().enumerate() {
+                let tn = self.cty(ft);
+                let rel: String = fs[..k].iter().map(|(g, gt)| format!("{}_release(x.{}); ", self.cty(gt), g)).collect();
+                if k > 0 {
+                    let _ = write!(body, "if (!tn_dec_expect(d, \", \")) {{ {rel}goto fail; }} ");
+                }
+                if !is_tuple {
+                    let _ = write!(body, "if (!tn_dec_expect(d, {})) {{ {rel}goto fail; }} ", c_string(&f[2..]));
+                    let _ = write!(body, "if (!tn_dec_expect(d, \": \")) {{ {rel}goto fail; }} ");
+                }
+                let _ = write!(body, "if (!{tn}_dec(d, &x.{f})) {{ {rel}goto fail; }} ");
+            }
+            let rel: String = fs.iter().map(|(g, gt)| format!("{}_release(x.{}); ", self.cty(gt), g)).collect();
+            let close = if is_tuple { ")" } else if fs.is_empty() { "" } else { " }" };
+            if !close.is_empty() {
+                let _ = write!(body, "if (!tn_dec_expect(d, {})) {{ {rel}goto fail; }} ", c_string(close));
+            }
+            body.push_str("*out = x; return true; ");
+        }
+        fail.push_str("fail: return false;");
+        let _ = writeln!(b, "static TN_UNUSED bool {n}_dec(tn_dec *d, {n} *out) {{ {body}{fail} }}");
+    }
+
+    fn rel_args(&mut self, fs: &[Ty], upto: usize) -> String {
+        fs[..upto].iter().enumerate().map(|(j, ft)| format!("{}_release(a{}); ", self.cty(ft), j)).collect()
     }
 
     fn main_wrapper(&mut self, main_name: &str) -> String {

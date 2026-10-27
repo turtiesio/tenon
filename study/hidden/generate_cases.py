@@ -1,5 +1,6 @@
 """Rebuild explicit, spec-derived fixtures. Never imports or runs references."""
 from pathlib import Path
+import shutil
 ROOT=Path(__file__).resolve().parent
 
 def write(path,data):
@@ -8,6 +9,7 @@ def write(path,data):
 
 def C(task,name,args=(),stdin='',stdout='',exit=0,setup=None,base=None):
     p=(ROOT/task/'cases'/name) if base is None else base/name
+    if base is None and p.exists(): shutil.rmtree(p)
     write(p/'cmd',''.join(x+'\n' for x in args))
     if stdin: write(p/'stdin',stdin)
     write(p/'expected_stdout',stdout)
@@ -17,6 +19,7 @@ def C(task,name,args=(),stdin='',stdout='',exit=0,setup=None,base=None):
 
 def M(task,name,steps,setup=None):
     p=ROOT/task/'cases'/name
+    if p.exists(): shutil.rmtree(p)
     order=[]
     for i,step in enumerate(steps,1):
         args,stdin,stdout,*rest=step
@@ -100,7 +103,7 @@ C(t,'missing-all',['-f1000000','-d,'],'a,b\nplain\n\n','\nplain\n\n')
 C(t,'range-order',['-f3-,1-2,2,9-10','-d:','--output-delimiter=/'],'a:b:c:d\n','c/d/a/b/b\n')
 C(t,'cr-is-data',['-f2,1','-d,'],'a,b\r\n,\r\nlast,no-newline','b\r,a\n\r,\nno-newline,last\n')
 C(t,'skip-only',['-f1','--only-delimited','-d,'],'\nplain\n,\nx,y\n','\nx\n')
-C(t,'empty-output-delimiter',['-f2,1','-d,','--output-delimiter='],'a,b\n','ba\n')
+C(t,'empty-output-delimiter',['-f2,1','-d,','--output-delimiter='],'é,🙂\n','🙂é\n')
 C(t,'last-options',['-f1','-d,','-f2','-d:','--output-delimiter=xxx','--output-delimiter= '],'a:b:c\n','b\n')
 C(t,'files-stdin-repeat',['a','-f1','-','a','-d,'],'s,t\n','x\ns\nx\n',setup={'a':'x,y\n'})
 C(t,'end-options',['-f1','-d,','--','-s'],stdout='x\nplain\n',setup={'-s':'x,y\nplain\n'})
@@ -131,7 +134,7 @@ C(t,'row-number-syntax',['f'],stdout=RH+'TOTAL,0,0.00,-,-\nskipped 9\n',setup={'
 C(t,'dates-leap-and-bounds',['f'],stdout=RH+'R,4,4.00,1.00,p\nTOTAL,4,4.00,1.00,p\nskipped 6\n',setup={'f':H+''.join(d+',R,p,1,1.00\n' for d in ['0001-01-01','9999-12-31','2000-02-29','2024-02-29','1900-02-29','2023-02-29','0000-01-01','2026-04-31','2026-1-01','2026-01-00'])})
 C(t,'half-up-exact',['f'],stdout=RH+'R,2,0.01,0.01,p\nTOTAL,2,0.01,0.01,p\nskipped 0\n',setup={'f':H+lines('2026-01-01,R,p,1,0.00','2026-01-01,R,p,1,0.01')})
 C(t,'max-leading-zeros',['f'],stdout=RH+'R,10000,100000000.00,10000.00,p\nTOTAL,10000,100000000.00,10000.00,p\nskipped 0\n',setup={'f':H+'2026-01-01,R,p,00010000,00010000.00\n'})
-C(t,'csv-output-and-spaces',['f'],stdout=RH+'" A,",2,2.00,1.00,"P""q"\n Z,1,1.00,1.00,p\nTOTAL,3,3.00,1.00,"P""q"\nskipped 0\n',setup={'f':H+lines('2026-01-01," A,","P""q",2,1.00','2026-01-01, Z,p,1,1.00')})
+C(t,'csv-output-and-spaces',['f'],stdout=RH+'" A,",2,2.00,1.00,"P""q"\n Z,1,1.00,1.00,p\né,1,1.00,1.00,é\nTOTAL,4,4.00,1.00,"P""q"\nskipped 0\n',setup={'f':H+lines('2026-01-01," A,","P""q",2,1.00','2026-01-01, Z,p,1,1.00','2026-01-01,é,é,1,1.00')})
 C(t,'total-products-and-duplicates',['f'],stdout=RH+'A,3,8.00,2.67,y\nB,2,6.00,3.00,x\nTOTAL,1,1.00,1.00,z\nTOTAL,6,15.00,2.50,x\nskipped 0\n',setup={'f':H+lines('2026-01-01,A,x,1,3.00','2026-01-01,A,y,1,5.00','2026-01-01,A,z,1,0.00','2026-01-01,B,x,1,3.00','2026-01-01,B,x,1,3.00','2026-01-01,TOTAL,z,1,1.00')})
 C(t,'validate-before-excluding',['--from=2026-02-01','--to','2026-02-01','f'],stdout=RH+'TOTAL,0,0.00,-,-\nskipped 1\n',setup={'f':H+lines('2026-01-01,R,p,1,1.00','2026-01-01,R,p,bad,1.00','')})
 C(t,'reversed-filter',['--from=2026-03-01','f','--to=2026-01-01'],stdout=EMPTY,setup={'f':H+'2026-02-01,R,p,1,1.00\n'})
@@ -196,8 +199,8 @@ C(t,'nested-count-rollback',stdin=lines('BEGIN','SET a x','BEGIN','SET b x','COU
 C(t,'no-transaction',stdin=lines('COMMIT','ROLLBACK','GET absent','KEYS'),stdout=lines('ERR no transaction','ERR no transaction','NULL','(empty)'))
 C(t,'open-at-eof',stdin=lines('BEGIN','SET a x','GET a'),stdout=lines('OK','OK','x'))
 C(t,'canonical-zero',stdin=lines('INCR a -1','INCR a','GET a','INCR b 0','COUNT 0'),stdout=lines('-1','0','0','0','2'))
-C(t,'invalid-integer-values',stdin=''.join('SET k '+v+'\nINCR k\nGET k\n' for v in ['-0','+5','007','9999999999999999']),stdout=''.join('OK\nERR not an integer\n'+v+'\n' for v in ['-0','+5','007','9999999999999999']))
-C(t,'invalid-deltas-no-create',stdin=lines('INCR k -0','INCR k +1','INCR k 00','INCR k abc','INCR k 1000000000000001','GET k','KEYS'),stdout=lines('ERR not an integer','ERR not an integer','ERR not an integer','ERR not an integer','ERR not an integer','NULL','(empty)'))
+C(t,'invalid-integer-values',stdin=''.join('SET k '+v+'\nINCR k\nGET k\n' for v in ['00','+5','007','9999999999999999']),stdout=''.join('OK\nERR not an integer\n'+v+'\n' for v in ['00','+5','007','9999999999999999']))
+C(t,'invalid-deltas-no-create',stdin=lines('INCR k 01','INCR k +1','INCR k 00','INCR k abc','INCR k 1000000000000001','GET k','KEYS'),stdout=lines('ERR not an integer','ERR not an integer','ERR not an integer','ERR not an integer','ERR not an integer','NULL','(empty)'))
 C(t,'lower-overflow',stdin=lines('INCR k -1000000000000000','INCR k -1','GET k','INCR k 1000000000000000'),stdout=lines('-1000000000000000','ERR overflow','-1000000000000000','0'))
 C(t,'upper-overflow',stdin=lines('SET k 1000000000000000','INCR k','GET k','INCR k -1000000000000000'),stdout=lines('OK','ERR overflow','1000000000000000','0'))
 C(t,'transaction-incr-rollback',stdin=lines('SET k 5','BEGIN','INCR k -10','BEGIN','INCR k','COMMIT','GET k','ROLLBACK','GET k'),stdout=lines('OK','OK','-5','OK','-4','OK','-4','OK','5'))
@@ -303,7 +306,7 @@ C(t,'comments-crlf-final',['-'],'  # comment\r\n\t\r\n\ta\t1\t0\t-\r\n#last',lin
 C(t,'simultaneous-finish-before-start',['-w','2','-'],lines('z 2 10 -','a 2 0 -','b 1 100 a','c 1 99 z'),lines('0 start z w1','0 start a w2','2 finish a w2','2 finish z w1','2 start b w1','2 start c w2','3 finish b w1','3 finish c w2','done 3'))
 C(t,'reuse-lowest-free-worker',['--workers','3','-'],lines('a 4 0 -','b 2 0 -','c 1 0 -','d 1 0 c','e 1 0 b,d'),lines('0 start a w1','0 start b w2','0 start c w3','1 finish c w3','1 start d w3','2 finish b w2','2 finish d w3','2 start e w2','3 finish e w2','4 finish a w1','done 4'))
 C(t,'forward-and-duplicate-deps',['-'],lines('b 1 0 a,a','a 1 0 -','c 1 0 a,b,b'),lines('0 start a w1','1 finish a w1','1 start b w1','2 finish b w1','2 start c w1','3 finish c w1','done 3'))
-C(t,'numeric-boundaries-leading-zero',['--workers=1000','-'],lines('a 01000000 01000 -','b 0001 0000 a'),lines('0 start a w1','1000000 finish a w1','1000000 start b w1','1000001 finish b w1','done 1000001'))
+C(t,'numeric-boundaries-leading-zero',['--workers=1000','-'],lines('a'*32+' 01000000 01000 -','b 0001 0000 '+'a'*32),lines('0 start '+'a'*32+' w1','1000000 finish '+'a'*32+' w1','1000000 start b w1','1000001 finish b w1','done 1000001'))
 C(t,'ascii-name-ties',['-'],lines('a 1 0 -','Z 1 0 -','0 1 0 -','_ 1 0 -','- 1 0 -','. 1 0 -'),lines('0 start - w1','1 finish - w1','1 start . w1','2 finish . w1','2 start 0 w1','3 finish 0 w1','3 start Z w1','4 finish Z w1','4 start _ w1','5 finish _ w1','5 start a w1','6 finish a w1','done 6'))
 C(t,'invalid-name',['-'],'bad/name 1 0 -\n',exit=1)
 C(t,'invalid-duration',['-'],'a 1000001 0 -\n',exit=1)
@@ -316,6 +319,33 @@ C(t,'unknown-option',['--unknown','-'],exit=2)
 C(t,'last-workers-wins',['--workers=1','-','-w','0002'],lines('a 1 0 -','b 1 0 -'),lines('0 start a w1','0 start b w2','1 finish a w1','1 finish b w2','done 1'))
 C(t,'unreadable-file',['missing'],exit=1)
 C(t,'extra-file',['a','b'],exit=2)
+
+def augment(task,name,extra):
+    p=ROOT/task/'cases'/name
+    first=p/'run-1'
+    first.mkdir()
+    for f in ('cmd','stdin','expected_stdout','expected_exit'):
+        if (p/f).exists(): (p/f).rename(first/f)
+    order=['run-1']
+    for i,(args,stdin,stdout,code) in enumerate(extra,2):
+        n='run-'+str(i)
+        C(task,n,args,stdin,stdout,code,base=p)
+        order.append(n)
+    write(p/'steps','\n'.join(order)+'\n')
+
+# Each substep remains a complete black-box invocation. Group related syntax
+# failures to cover the complete grammar without exceeding 25 cases per task.
+augment('01-wordfreq','missing-value',[(['-m'],'','',2),(['-n','--'],'','',2)])
+augment('01-wordfreq','signed-number',[(['-n','1.0'],'','',2),(['-m','x'],'','',2)])
+augment('03-fcut','empty-element',[(['-f1,'],'','',2),(['-f,1'],'','',2),(['-f1-x'],'','',2),(['-f1 2'],'','',2)])
+augment('03-fcut','empty-delimiter',[(['-f1','-d'],'','',2),(['-f'],'','',2)])
+augment('03-fcut','output-missing-equals',[(['-f1','--unknown'],'','',2)])
+augment('04-salesreport','invalid-option-leap',[(['--from=0000-01-01','f'],'','',2),(['--from=2026-1-01','f'],'','',2),(['--to=','f'],'','',2)])
+augment('10-jobsched','invalid-name',[(['-'],'abcdefghijklmnopqrstuvwxyzzabcdefg 1 0 -\n','',1)])
+augment('10-jobsched','invalid-duration',[(['-'],'a 0 0 -\n','',1),(['-'],'a -1 0 -\n','',1),(['-'],'a 1.5 0 -\n','',1)])
+augment('10-jobsched','invalid-priority',[(['-'],'a 1 -1 -\n','',1),(['-'],'a 1 +1 -\n','',1)])
+augment('10-jobsched','empty-dependency-element',[(['-'],'a 1 0 ,b\nb 1 0 -\n','',1),(['-'],'a 1 0 b,,c\nb 1 0 -\nc 1 0 -\n','',1),(['-'],'a 1 0 bad/name\n','',1)])
+augment('10-jobsched','unknown-option',[(['-w'],'','',2),(['--workers=1001','-'],'','',2),(['--workers=+1','-'],'','',2),(['--workers=','-'],'','',2),([], '', '', 2)])
 
 if __name__=='__main__':
     for task in sorted(ROOT.glob('[0-9][0-9]-*')):

@@ -1,0 +1,251 @@
+FAIL 01-wordfreq/all-missing: all-missing: exit expected 1, got 0
+FAIL 01-wordfreq/ascii-ties: ascii-ties: stdout byte 0: expected b'1 0\n1 9\n1 A\n1 A9\n1 Z\n1 a\n1 a9\n1 z\n', got b'' (length 34/0)
+FAIL 01-wordfreq/combined-short: combined-short: exit expected 2, got 0
+FAIL 01-wordfreq/default-ten: default-ten: stdout byte 0: expected b'1 a\n1 b\n1 c\n1 d\n1 e\n1 f\n1 g\n1 h\n1 i\n1 j\n', got b'' (length 40/0)
+PASS 01-wordfreq/empty
+FAIL 01-wordfreq/empty-top: empty-top: exit expected 2, got 0
+FAIL 01-wordfreq/end-options: end-options: stdout byte 0: expected b'2 Case\n1 case\n', got b'' (length 14/0)
+FAIL 01-wordfreq/example-1: example-1: stdout byte 0: expected b'2 the\n1 The\n1 and\n1 cat\n1 end\n1 hat\n', got b'' (length 36/0)
+FAIL 01-wordfreq/example-2: example-2: stdout byte 0: expected b'3 the\n1 and\n', got b'' (length 12/0)
+FAIL 01-wordfreq/example-3: example-3: stdout byte 0: expected b'1 TOWELS\n1 panic\n1 towels\n', got b'' (length 26/0); exit expected 1, got 0
+FAIL 01-wordfreq/example-4: example-4: stdout byte 0: expected b'2 a1\n1 b2\n', got b'' (length 10/0)
+FAIL 01-wordfreq/example-5: example-5: exit expected 2, got 0
+FAIL 01-wordfreq/file-stdin-repeat: file-stdin-repeat: stdout byte 0: expected b'3 a\n2 z\n1 s\n', got b'' (length 12/0)
+FAIL 01-wordfreq/flag-value: flag-value: exit expected 2, got 0
+FAIL 01-wordfreq/last-options: last-options: stdout byte 0: expected b'2 bb\n1 aa\n', got b'' (length 10/0)
+FAIL 01-wordfreq/length-boundary: length-boundary: stdout byte 0: expected b'1 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', got b'' (length 1003/0)
+FAIL 01-wordfreq/min-too-large: min-too-large: exit expected 2, got 0
+FAIL 01-wordfreq/min-zero: min-zero: exit expected 2, got 0
+FAIL 01-wordfreq/missing-between: missing-between: stdout byte 0: expected b'2 x\n1 y\n', got b'' (length 8/0); exit expected 1, got 0
+FAIL 01-wordfreq/missing-value: run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0
+FAIL 01-wordfreq/negative-value: negative-value: exit expected 2, got 0
+FAIL 01-wordfreq/separators: separators: stdout byte 0: expected b'2 007\n1 don\n1 t\n1 x\n1 y\n1 z\n', got b'' (length 28/0)
+FAIL 01-wordfreq/signed-number: run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0
+FAIL 01-wordfreq/top-too-large: top-too-large: exit expected 2, got 0
+FAIL 01-wordfreq/usage-after-file: usage-after-file: exit expected 2, got 0
+FAIL 02-semsort/all-invalid: all-invalid: exit expected 1, got 0
+FAIL 02-semsort/build-alphabet: build-alphabet: stdout byte 0: expected b'1.0.0-000a+0\n1.0.0+000.Z-a.---\n', got b'' (length 31/0)
+FAIL 02-semsort/dash-is-option: dash-is-option: exit expected 2, got 0
+PASS 02-semsort/empty
+FAIL 02-semsort/empty-identifiers: empty-identifiers: exit expected 1, got 0
+FAIL 02-semsort/example-1: example-1: stdout byte 0: expected b'0.9.12\n1.0.0-alpha\n1.0.0-alpha.1\n1.0.0-alpha.beta\n1.0.0', got b'' (length 105/0)
+FAIL 02-semsort/example-2: example-2: stdout byte 0: expected b'2.0.0+build.1\n1.10.0\n1.2.0\n', got b'' (length 27/0)
+FAIL 02-semsort/example-3: example-3: stdout byte 0: expected b'1.0.0-rc.1+001\n1.2.3\n', got b'' (length 21/0); exit expected 1, got 0
+FAIL 02-semsort/example-4: example-4: stdout byte 0: expected b'0.1.0+meta\n1.0.0\n', got b'' (length 17/0)
+FAIL 02-semsort/example-5: example-5: exit expected 2, got 0
+FAIL 02-semsort/example-5-missing: example-5-missing: exit expected 1, got 0
+FAIL 02-semsort/example-5-option: example-5-option: exit expected 2, got 0
+PASS 02-semsort/filter-all
+FAIL 02-semsort/filter-unique-reverse: filter-unique-reverse: stdout byte 0: expected b'1.0.0+x\n0.0.0\n', got b'' (length 14/0); exit expected 1, got 0
+FAIL 02-semsort/invalid-characters: invalid-characters: exit expected 1, got 0
+FAIL 02-semsort/invalid-core-numbers: invalid-core-numbers: stdout byte 0: expected b'1.0.0\n', got b'' (length 6/0); exit expected 1, got 0
+FAIL 02-semsort/invalid-pre-numbers: invalid-pre-numbers: stdout byte 0: expected b'1.0.0-00a\n', got b'' (length 10/0); exit expected 1, got 0
+FAIL 02-semsort/max-numbers: max-numbers: stdout byte 0: expected b'0.0.0-0\n999999999.999999999.999999999-999999999+0000000', got b'' (length 59/0)
+FAIL 02-semsort/numeric-cores: numeric-cores: stdout byte 0: expected b'1.2.2\n1.2.10\n1.10.0\n2.0.0\n10.0.0\n', got b'' (length 33/0)
+FAIL 02-semsort/pre-identifier-types: pre-identifier-types: stdout byte 0: expected b'1.0.0-2\n1.0.0-2.0\n1.0.0-2.a\n1.0.0-10\n1.0.0--\n1.0.0-Z\n1.', got b'' (length 61/0)
+FAIL 02-semsort/repeat-options-after-file: repeat-options-after-file: stdout byte 0: expected b'1.0.0\n', got b'' (length 6/0)
+FAIL 02-semsort/reverse-equals: reverse-equals: stdout byte 0: expected b'1.0.0+b\n1.0.0+a\n0.0.0\n', got b'' (length 22/0)
+FAIL 02-semsort/stable-build: stable-build: stdout byte 0: expected b'1.0.0+z\n1.0.0+a\n1.0.0\n1.0.0+z\n', got b'' (length 30/0)
+FAIL 02-semsort/trim-crlf-final: trim-crlf-final: stdout byte 0: expected b'0.0.0\n1.0.0+X\n', got b'' (length 14/0)
+FAIL 02-semsort/unique-first: unique-first: stdout byte 0: expected b'1.0.0-rc+z\n1.0.0+z\n', got b'' (length 19/0)
+FAIL 03-fcut/cr-is-data: cr-is-data: stdout byte 0: expected b'b\r,a\n\r,\nno-newline,last\n', got b'' (length 24/0)
+PASS 03-fcut/empty
+FAIL 03-fcut/empty-delimiter: run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0
+FAIL 03-fcut/empty-element: run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0; run-4: exit expected 2, got 0; run-5: exit expected 2, got 0
+FAIL 03-fcut/empty-fields-repeat: empty-fields-repeat: stdout byte 0: expected b',,a,b,\n', got b'' (length 7/0)
+FAIL 03-fcut/empty-list: empty-list: exit expected 2, got 0
+FAIL 03-fcut/empty-output-delimiter: empty-output-delimiter: stdout byte 0: expected b'\xf0\x9f\x99\x82\xc3\xa9\n', got b'' (length 7/0)
+FAIL 03-fcut/end-options: end-options: stdout byte 0: expected b'x\nplain\n', got b'' (length 8/0)
+FAIL 03-fcut/example-1: example-1: stdout byte 0: expected b'c,a\nd\nnodelim\n', got b'' (length 14/0)
+FAIL 03-fcut/example-2: example-2: stdout byte 0: expected b'y\tz\n', got b'' (length 4/0)
+FAIL 03-fcut/example-3: example-3: stdout byte 0: expected b'root | x | x\n', got b'' (length 13/0)
+FAIL 03-fcut/example-4: example-4: stdout byte 0: expected b'1\n', got b'' (length 2/0); exit expected 1, got 0
+FAIL 03-fcut/example-5: example-5: exit expected 2, got 0
+FAIL 03-fcut/example-5-delimiter: example-5-delimiter: exit expected 2, got 0
+FAIL 03-fcut/example-5-descending: example-5-descending: exit expected 2, got 0
+FAIL 03-fcut/example-5-missing-fields: example-5-missing-fields: exit expected 2, got 0
+FAIL 03-fcut/files-stdin-repeat: files-stdin-repeat: stdout byte 0: expected b'x\ns\nx\n', got b'' (length 6/0)
+FAIL 03-fcut/last-options: last-options: stdout byte 0: expected b'b\n', got b'' (length 2/0)
+FAIL 03-fcut/leading-zero-range: leading-zero-range: stdout byte 0: expected b'a,b,b,c\n', got b'' (length 8/0)
+FAIL 03-fcut/lone-range: lone-range: exit expected 2, got 0
+FAIL 03-fcut/missing-all: missing-all: stdout byte 0: expected b'\nplain\n\n', got b'' (length 8/0)
+FAIL 03-fcut/output-missing-equals: run-1: exit expected 2, got 0; run-2: exit expected 2, got 0
+FAIL 03-fcut/range-order: range-order: stdout byte 0: expected b'c/d/a/b/b\n', got b'' (length 10/0)
+FAIL 03-fcut/range-too-large: range-too-large: exit expected 2, got 0
+FAIL 03-fcut/skip-only: skip-only: stdout byte 0: expected b'\nx\n', got b'' (length 3/0)
+FAIL 04-salesreport/crlf-last-line: crlf-last-line: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nR,1,0.01,0.0', got b'' (length 89/0)
+FAIL 04-salesreport/csv-output-and-spaces: csv-output-and-spaces: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\n" A,",2,2.00', got b'' (length 138/0)
+FAIL 04-salesreport/dates-leap-and-bounds: dates-leap-and-bounds: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nR,4,4.00,1.0', got b'' (length 89/0)
+FAIL 04-salesreport/example-1: example-1: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nEast,11,55.0', got b'' (length 150/0)
+FAIL 04-salesreport/example-2: example-2: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nEast,1,30.00', got b'' (length 149/0)
+FAIL 04-salesreport/example-3: example-3: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nTOTAL,0,0.00', got b'' (length 70/0)
+FAIL 04-salesreport/example-4: example-4: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nNorth,0,0.00', got b'' (length 91/0)
+FAIL 04-salesreport/example-5: example-5: exit expected 2, got 0
+FAIL 04-salesreport/example-5-date: example-5-date: exit expected 2, got 0
+FAIL 04-salesreport/example-5-missing: example-5-missing: exit expected 1, got 0
+FAIL 04-salesreport/extra-files: extra-files: exit expected 2, got 0
+FAIL 04-salesreport/half-up-exact: half-up-exact: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nR,2,0.01,0.0', got b'' (length 89/0)
+FAIL 04-salesreport/inexact-header: inexact-header: exit expected 1, got 0
+FAIL 04-salesreport/invalid-option-leap: run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0; run-4: exit expected 2, got 0
+FAIL 04-salesreport/last-filter-wins: last-filter-wins: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nR,1,1.00,1.0', got b'' (length 89/0)
+FAIL 04-salesreport/max-leading-zeros: max-leading-zeros: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nR,10000,1000', got b'' (length 121/0)
+FAIL 04-salesreport/missing-option-value: missing-option-value: exit expected 2, got 0
+FAIL 04-salesreport/product-byte-tie: product-byte-tie: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nR,2,2.00,1.0', got b'' (length 89/0)
+FAIL 04-salesreport/reversed-filter: reversed-filter: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nTOTAL,0,0.00', got b'' (length 70/0)
+FAIL 04-salesreport/row-number-syntax: row-number-syntax: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nTOTAL,0,0.00', got b'' (length 70/0)
+FAIL 04-salesreport/strict-csv: strict-csv: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nTOTAL,0,0.00', got b'' (length 70/0)
+FAIL 04-salesreport/total-products-and-duplicates: total-products-and-duplicates: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nA,3,8.00,2.6', got b'' (length 126/0)
+FAIL 04-salesreport/unknown-option: unknown-option: exit expected 2, got 0
+FAIL 04-salesreport/validate-before-excluding: validate-before-excluding: stdout byte 0: expected b'region,units,revenue,avg_price,top_product\nTOTAL,0,0.00', got b'' (length 70/0)
+FAIL 04-salesreport/zero-byte-header: zero-byte-header: exit expected 1, got 0
+FAIL 05-latency/blanks-tabs-crlf: blanks-tabs-crlf: stdout byte 0: expected b'GET / count=2 errors=0 err_pct=0.0 p50=0 p90=7 p99=7 ma', got b'' (length 79/0)
+FAIL 05-latency/count-ties: count-ties: stdout byte 0: expected b'GET /a count=1 errors=0 err_pct=0.0 p50=3 p90=3 p99=3 m', got b'' (length 201/0)
+FAIL 05-latency/empty-sort: empty-sort: exit expected 2, got 0
+FAIL 05-latency/example-1: example-1: stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 294/0)
+FAIL 05-latency/example-2: example-2: stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 294/0)
+FAIL 05-latency/example-3: example-3: stdout byte 0: expected b'GET /users/:id count=3 errors=1 err_pct=33.3 p50=30 p90', got b'' (length 93/0)
+FAIL 05-latency/example-4: example-4: stdout byte 0: expected b'GET //a/ count=10 errors=1 err_pct=10.0 p50=50 p90=90 p', got b'' (length 91/0)
+FAIL 05-latency/example-5: example-5: stdout byte 0: expected b'total=0 malformed=0\n', got b'' (length 20/0)
+FAIL 05-latency/example-5-min: example-5-min: exit expected 2, got 0
+FAIL 05-latency/example-5-missing: example-5-missing: exit expected 1, got 0
+FAIL 05-latency/example-5-sort: example-5-sort: exit expected 2, got 0
+FAIL 05-latency/extra-files: extra-files: exit expected 2, got 0
+FAIL 05-latency/filter-everything: filter-everything: stdout byte 0: expected b'total=1 malformed=0\n', got b'' (length 20/0)
+FAIL 05-latency/last-options-and-filter: last-options-and-filter: stdout byte 0: expected b'GET /z count=2 errors=0 err_pct=0.0 p50=1 p90=2 p99=2 m', got b'' (length 80/0)
+FAIL 05-latency/malformed-field-grammar: malformed-field-grammar: stdout byte 0: expected b'total=0 malformed=10\n', got b'' (length 21/0)
+FAIL 05-latency/method-boundary: method-boundary: stdout byte 0: expected b'ABCDEFGHIJ / count=1 errors=1 err_pct=100.0 p50=0 p90=0', got b'' (length 88/0)
+FAIL 05-latency/min-empty: min-empty: exit expected 2, got 0
+FAIL 05-latency/min-signed: min-signed: exit expected 2, got 0
+FAIL 05-latency/min-too-large: min-too-large: exit expected 2, got 0
+FAIL 05-latency/normalization: normalization: stdout byte 0: expected b'GET /a//:id/ count=2 errors=1 err_pct=50.0 p50=0 p90=99', got b'' (length 241/0)
+FAIL 05-latency/p99-distinct-from-max: p99-distinct-from-max: stdout byte 0: expected b'GET / count=101 errors=0 err_pct=0.0 p50=51 p90=91 p99=', got b'' (length 89/0)
+FAIL 05-latency/p99-ties: p99-ties: stdout byte 0: expected b'GET /a count=1 errors=0 err_pct=0.0 p50=5 p90=5 p99=5 m', got b'' (length 200/0)
+FAIL 05-latency/rounding-half-up: rounding-half-up: stdout byte 0: expected b'GET / count=16 errors=1 err_pct=6.3 p50=7 p90=14 p99=15', got b'' (length 84/0)
+FAIL 05-latency/rounding-two-thirds: rounding-two-thirds: stdout byte 0: expected b'GET / count=3 errors=2 err_pct=66.7 p50=2 p90=2 p99=2 m', got b'' (length 80/0)
+FAIL 05-latency/unknown-option: unknown-option: exit expected 2, got 0
+FAIL 06-kvtx/canonical-zero: canonical-zero: stdout byte 0: expected b'-1\n0\n0\n0\n2\n', got b'' (length 11/0)
+FAIL 06-kvtx/count-overwrite-delete: count-overwrite-delete: stdout byte 0: expected b'OK\nOK\nOK\n1\n1\n1\n0\n0\na\n', got b'' (length 21/0)
+FAIL 06-kvtx/delete-recreate-nested: delete-recreate-nested: stdout byte 0: expected b'OK\nOK\n1\nOK\nOK\nOK\n1\nOK\nx\n1\n', got b'' (length 26/0)
+FAIL 06-kvtx/depth-100: depth-100: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nOK\nO', got b'' (length 610/0)
+PASS 06-kvtx/empty
+FAIL 06-kvtx/example-1: example-1: stdout byte 0: expected b'OK\n10\n15\nNULL\n1\n0\n(empty)\n', got b'' (length 26/0)
+FAIL 06-kvtx/example-2: example-2: stdout byte 0: expected b'OK\nOK\nOK\nOK\n1\nNULL\nOK\n2\nOK\n2\nERR no transaction\n', got b'' (length 48/0)
+FAIL 06-kvtx/example-3: example-3: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\n2\na b c\nOK\n2\n0\na b\n', got b'' (length 34/0)
+FAIL 06-kvtx/example-4: example-4: stdout byte 0: expected b'1\nOK\nERR not an integer\n1000000000000000\nERR overflow\n1', got b'' (length 122/0)
+FAIL 06-kvtx/example-5: example-5: exit expected 2, got 0
+FAIL 06-kvtx/fresh-process-state: run-1: stdout byte 0: expected b'OK\nOK\nOK\n', got b'' (length 9/0); run-2: stdout byte 0: expected b'(empty)\nNULL\nNULL\n', got b'' (length 18/0)
+FAIL 06-kvtx/inner-commit-outer-rollback: inner-commit-outer-rollback: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\nOK\nnew\nOK\nold\nNULL\na\n', got b'' (length 36/0)
+FAIL 06-kvtx/invalid-deltas-no-create: invalid-deltas-no-create: stdout byte 0: expected b'ERR not an integer\nERR not an integer\nERR not an intege', got b'' (length 108/0)
+FAIL 06-kvtx/invalid-integer-values: invalid-integer-values: stdout byte 0: expected b'OK\nERR not an integer\n00\nOK\nERR not an integer\n+5\nOK\nER', got b'' (length 115/0)
+FAIL 06-kvtx/key-ascii-order: key-ascii-order: stdout byte 0: expected b'OK\nOK\nOK\nOK\nOK\nOK\n! 0 A _ a z\n6\n', got b'' (length 32/0)
+FAIL 06-kvtx/lockstep-flush: run-1: stdout closed before N responses; stdout byte 0: expected b'OK\nx\n1\n', got b'' (length 7/0)
+FAIL 06-kvtx/lower-overflow: lower-overflow: stdout byte 0: expected b'-1000000000000000\nERR overflow\n-1000000000000000\n0\n', got b'' (length 51/0)
+FAIL 06-kvtx/malformed: malformed: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 208/0)
+FAIL 06-kvtx/max-token: max-token: stdout byte 0: expected b'OK\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv', got b'' (length 104/0)
+FAIL 06-kvtx/nested-count-rollback: nested-count-rollback: stdout byte 0: expected b'OK\nOK\nOK\nOK\n2\nOK\n1\nOK\n1\n', got b'' (length 24/0)
+FAIL 06-kvtx/no-transaction: no-transaction: stdout byte 0: expected b'ERR no transaction\nERR no transaction\nNULL\n(empty)\n', got b'' (length 51/0)
+FAIL 06-kvtx/open-at-eof: open-at-eof: stdout byte 0: expected b'OK\nOK\nx\n', got b'' (length 8/0)
+FAIL 06-kvtx/space-crlf-final: space-crlf-final: stdout byte 0: expected b'OK\nvalue\n1\n', got b'' (length 11/0)
+FAIL 06-kvtx/transaction-incr-rollback: transaction-incr-rollback: stdout byte 0: expected b'OK\nOK\n-5\nOK\n-4\nOK\n-4\nOK\n5\n', got b'' (length 26/0)
+FAIL 06-kvtx/upper-overflow: upper-overflow: stdout byte 0: expected b'OK\nERR overflow\n1000000000000000\n0\n', got b'' (length 35/0)
+FAIL 07-orderbook/acceptance-time-remainder: acceptance-time-remainder: stdout byte 0: expected b'OK s filled=0 resting=2 trades=-\nOK z filled=2 resting=', got b'' (length 167/0)
+FAIL 07-orderbook/bad-spacing: bad-spacing: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 112/0)
+FAIL 07-orderbook/book-numeric-price-order: book-numeric-price-order: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\nOK b filled=0 resting=', got b'' (length 167/0)
+FAIL 07-orderbook/buy-remainder-rests: buy-remainder-rests: stdout byte 0: expected b'OK s filled=0 resting=2 trades=-\nOK b filled=2 resting=', got b'' (length 124/0)
+FAIL 07-orderbook/cancelled-id-never-reused: cancelled-id-never-reused: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\nCANCELED a 1\nERR dupli', got b'' (length 81/0)
+FAIL 07-orderbook/crlf-final: crlf-final: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\nBOOK bids=2:1 asks=-\n', got b'' (length 54/0)
+FAIL 07-orderbook/cross-at-equality: cross-at-equality: stdout byte 0: expected b'OK b filled=0 resting=1 trades=-\nOK s filled=1 resting=', got b'' (length 124/0)
+PASS 07-orderbook/empty
+FAIL 07-orderbook/empty-book-cancel: empty-book-cancel: stdout byte 0: expected b'BOOK bids=- asks=-\nERR unknown order\n', got b'' (length 37/0)
+FAIL 07-orderbook/example-1: example-1: stdout byte 0: expected b'OK s1 filled=0 resting=10 trades=-\nOK s2 filled=0 resti', got b'' (length 186/0)
+FAIL 07-orderbook/example-2: example-2: stdout byte 0: expected b'OK b1 filled=0 resting=5 trades=-\nOK b2 filled=0 restin', got b'' (length 204/0)
+FAIL 07-orderbook/example-3: example-3: stdout byte 0: expected b'ERR bad command\nOK a filled=0 resting=5 trades=-\nERR du', got b'' (length 166/0)
+FAIL 07-orderbook/example-4: example-4: stdout byte 0: expected b'OK x filled=0 resting=3 trades=-\nOK y filled=0 resting=', got b'' (length 235/0)
+FAIL 07-orderbook/example-5: example-5: exit expected 2, got 0
+FAIL 07-orderbook/flush-lockstep: run-1: stdout closed before N responses; stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\nBOOK bids=2:1 asks=-\n', got b'' (length 54/0)
+FAIL 07-orderbook/fresh-process-state: run-1: stdout byte 0: expected b'OK a filled=0 resting=1 trades=-\n', got b'' (length 33/0); run-2: stdout byte 0: expected b'BOOK bids=- asks=-\nOK a filled=0 resting=1 trades=-\n', got b'' (length 52/0)
+FAIL 07-orderbook/id-grammar: id-grammar: stdout byte 0: expected b'ERR bad command\nERR bad command\nOK A_0- filled=0 restin', got b'' (length 84/0)
+FAIL 07-orderbook/invalid-numbers: invalid-numbers: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 96/0)
+FAIL 07-orderbook/large-level-total: large-level-total: stdout byte 0: expected b'OK a filled=0 resting=999999999 trades=-\nOK b filled=0 ', got b'' (length 153/0)
+FAIL 07-orderbook/malformed-id-not-consumed: malformed-id-not-consumed: stdout byte 0: expected b'ERR bad command\nOK a filled=0 resting=1 trades=-\nERR ba', got b'' (length 103/0)
+FAIL 07-orderbook/maximum-order: maximum-order: stdout byte 0: expected b'OK abcdefghijklmnop filled=0 resting=999999999 trades=-', got b'' (length 151/0)
+FAIL 07-orderbook/no-cross: no-cross: stdout byte 0: expected b'OK b filled=0 resting=2 trades=-\nOK s filled=0 resting=', got b'' (length 90/0)
+FAIL 07-orderbook/partial-maker-keeps-time: partial-maker-keeps-time: stdout byte 0: expected b'OK z filled=0 resting=5 trades=-\nOK a filled=0 resting=', got b'' (length 171/0)
+FAIL 07-orderbook/sell-sweep-maker-prices: sell-sweep-maker-prices: stdout byte 0: expected b'OK low filled=0 resting=3 trades=-\nOK high filled=0 res', got b'' (length 188/0)
+FAIL 07-orderbook/wrong-count-case: wrong-count-case: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 96/0)
+FAIL 08-ledger/balance-limits-and-precedence: balance-limits-and-precedence: stdout byte 0: expected b'ERR x limit\nERR y insufficient\nERR z limit\nOK x 9999999', got b'' (length 98/0)
+FAIL 08-ledger/corrupt-complete-blank: corrupt-complete-blank: exit expected 3, got 0
+FAIL 08-ledger/corrupt-numeric-record: corrupt-numeric-record: exit expected 3, got 0
+FAIL 08-ledger/corrupt-readonly-record: corrupt-readonly-record: exit expected 3, got 0
+FAIL 08-ledger/dir-is-file: dir-is-file: exit expected 1, got 0
+PASS 08-ledger/empty-eof
+FAIL 08-ledger/empty-queries: empty-queries: stdout byte 0: expected b'-\nERR no such account\n', got b'' (length 22/0)
+FAIL 08-ledger/example-1: example-1: stdout byte 0: expected b'OK r1\nOK r2\nOK r3 100\nOK r4\nERR r5 insufficient\nDUP r3\n', got b'' (length 80/0)
+FAIL 08-ledger/example-2: run-1: stdout closed before N responses; stdout byte 0: expected b'OK t1\nOK t2 500\n', got b'' (length 16/0); run-2: stdout byte 0: expected b'DUP t1\nDUP t2\nOK t3 300\n', got b'' (length 24/0); run-3: stdout byte 0: expected b'carol 300\n', got b'' (length 10/0)
+FAIL 08-ledger/example-3: example-3: stdout byte 0: expected b'dave 70\nOK a3 75\ndave 75\n', got b'' (length 25/0)
+FAIL 08-ledger/example-4: example-4: exit expected 3, got 0
+FAIL 08-ledger/example-5: example-5: exit expected 2, got 0
+FAIL 08-ledger/example-5-semantic: example-5-semantic: stdout byte 0: expected b'ERR bad command\nOK x1\nERR x2 exists\nERR x3 same account', got b'' (length 135/0)
+FAIL 08-ledger/extra-arguments: extra-arguments: exit expected 2, got 0
+FAIL 08-ledger/failed-rid-reusable: failed-rid-reusable: stdout byte 0: expected b'ERR x no such account\nOK x\nERR y insufficient\nOK y 1\nER', got b'' (length 79/0)
+FAIL 08-ledger/kill-failed-request-not-recorded: run-1: stdout closed before N responses; stdout byte 0: expected b'ERR x no such account\n', got b'' (length 22/0); run-2: stdout byte 0: expected b'OK x\nDUP x\n', got b'' (length 11/0)
+FAIL 08-ledger/kill-transfer-retry: run-1: stdout closed before N responses; stdout byte 0: expected b'OK a\nOK b\nOK c 50\nOK d\n', got b'' (length 23/0); run-2: stdout byte 0: expected b'DUP d\nOK e 15\nalice=30 bob=15\n', got b'' (length 30/0); run-3: stdout byte 0: expected b'alice=30 bob=15\n', got b'' (length 16/0)
+FAIL 08-ledger/malformed-protocol: malformed-protocol: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 176/0)
+FAIL 08-ledger/max-identifiers-crlf-final: max-identifiers-crlf-final: stdout byte 0: expected b'OK RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR\na111111111111111 0\n', got b'' (length 55/0)
+FAIL 08-ledger/parent-missing: parent-missing: exit expected 1, got 0
+FAIL 08-ledger/parse-and-spacing: parse-and-spacing: stdout byte 0: expected b'OK r1\nERR bad command\nOK r2 1\nERR bad command\nDUP r1\na ', got b'' (length 61/0)
+FAIL 08-ledger/replay-multiple-spaces: replay-multiple-spaces: stdout byte 0: expected b'a=7 z=2\nDUP r\n', got b'' (length 14/0)
+FAIL 08-ledger/torn-tail-truncation: run-1: stdout byte 0: expected b'a 9\nOK x 10\n', got b'' (length 12/0); run-2: stdout byte 0: expected b'a 10\nDUP x\n', got b'' (length 11/0)
+FAIL 08-ledger/transfer-error-order: transfer-error-order: stdout byte 0: expected b'OK r\nERR s same account\nERR s no such account\nERR s no ', got b'' (length 112/0)
+FAIL 08-ledger/whole-file-torn: run-1: stdout byte 0: expected b'-\nOK r\n', got b'' (length 7/0); run-2: stdout byte 0: expected b'a=0\nDUP r\n', got b'' (length 10/0)
+FAIL 09-durable-queue/ack-only-inflight: ack-only-inflight: stdout byte 0: expected b'OK 1\nERR not in flight\nERR not in flight\nJOB 1 1 a\nOK\nE', got b'' (length 129/0)
+FAIL 09-durable-queue/arbitrary-temporaries: arbitrary-temporaries: stdout byte 0: expected b'EMPTY\nOK 1\nJOB 1 1 a\n', got b'' (length 21/0)
+FAIL 09-durable-queue/crlf-final: crlf-final: stdout byte 0: expected b'OK 1\nJOB 1 1 a\nOK\nready=0 inflight=0 acked=1 next=2\n', got b'' (length 52/0)
+FAIL 09-durable-queue/dir-is-file: dir-is-file: exit expected 1, got 0
+FAIL 09-durable-queue/duplicate-payloads: duplicate-payloads: stdout byte 0: expected b'OK 1\nOK 2\nJOB 1 1 same\nOK\nJOB 2 1 same\n', got b'' (length 39/0)
+PASS 09-durable-queue/empty-eof
+FAIL 09-durable-queue/example-1: example-1: stdout byte 0: expected b'OK 1\nOK 2\nJOB 1 1 email:1\nJOB 2 1 email:2\nOK\nERR not in', got b'' (length 122/0)
+FAIL 09-durable-queue/example-2: run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\nOK 2\nJOB 1 1 a\n', got b'' (length 20/0); run-2: stdout byte 0: expected b'ready=2 inflight=0 acked=0 next=3\nJOB 1 2 a\nOK\nJOB 2 1 ', got b'' (length 91/0)
+FAIL 09-durable-queue/example-3: example-3: stdout byte 0: expected b'ready=0 inflight=0 acked=0 next=1\nOK 1\n', got b'' (length 39/0)
+FAIL 09-durable-queue/example-4: run-1: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\nJOB 1 1 p1\nJOB 2 1 p2\nOK\n', got b'' (length 40/0); run-2: stdout byte 0: expected b'OK 4\nJOB 1 2 p1\nJOB 3 1 p3\nJOB 4 1 p4\nEMPTY\nERR not in ', got b'' (length 78/0)
+FAIL 09-durable-queue/example-5: example-5: exit expected 2, got 0
+FAIL 09-durable-queue/example-5-extra: example-5-extra: exit expected 2, got 0
+FAIL 09-durable-queue/initial-empty: initial-empty: stdout byte 0: expected b'EMPTY\nready=0 inflight=0 acked=0 next=1\nERR not in flig', got b'' (length 94/0)
+FAIL 09-durable-queue/kill-ack-durable: run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\nJOB 1 1 a\nOK\n', got b'' (length 18/0); run-2: stdout byte 0: expected b'ready=0 inflight=0 acked=1 next=2\nEMPTY\nOK 2\nJOB 2 1 b\n', got b'' (length 55/0)
+FAIL 09-durable-queue/kill-after-put: run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\n', got b'' (length 5/0); run-2: stdout byte 0: expected b'ready=1 inflight=0 acked=0 next=2\nOK 2\nJOB 1 1 a\nJOB 2 ', got b'' (length 59/0)
+FAIL 09-durable-queue/kill-nack-durable: run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\nJOB 1 1 a\nOK\n', got b'' (length 18/0); run-2: stdout byte 0: expected b'ERR not in flight\nready=1 inflight=0 acked=0 next=2\nJOB', got b'' (length 65/0)
+FAIL 09-durable-queue/malformed-ids: malformed-ids: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 144/0)
+FAIL 09-durable-queue/malformed-spacing: malformed-spacing: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 128/0)
+FAIL 09-durable-queue/missing-parent: missing-parent: exit expected 1, got 0
+FAIL 09-durable-queue/nack-smallest-first: nack-smallest-first: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\nJOB 1 1 a\nJOB 2 1 b\nOK\nJOB 1 2 a\nJOB 3 1', got b'' (length 92/0)
+FAIL 09-durable-queue/normal-exit-ack-and-next: run-1: stdout byte 0: expected b'OK 1\nJOB 1 1 a\nOK\n', got b'' (length 18/0); run-2: stdout byte 0: expected b'ready=0 inflight=0 acked=1 next=2\nOK 2\nJOB 2 1 b\nOK\n', got b'' (length 52/0); run-3: stdout byte 0: expected b'JOB 2 2 b\nready=0 inflight=1 acked=1 next=3\n', got b'' (length 44/0)
+FAIL 09-durable-queue/numeric-ready-order: numeric-ready-order: stdout byte 0: expected b'OK 1\nOK 2\nOK 3\nOK 4\nOK 5\nOK 6\nOK 7\nOK 8\nOK 9\nOK 10\nOK 1', got b'' (length 201/0)
+FAIL 09-durable-queue/payload-boundaries: payload-boundaries: stdout byte 0: expected b'OK 1\nOK 2\nERR bad command\nERR bad command\nERR bad comma', got b'' (length 175/0)
+FAIL 09-durable-queue/repeat-deliveries: repeat-deliveries: stdout byte 0: expected b'OK 1\nJOB 1 1 a\nOK\nJOB 1 2 a\nOK\nJOB 1 3 a\nOK\nJOB 1 4 a\nO', got b'' (length 167/0)
+FAIL 09-durable-queue/repeated-crashes: run-1: stdout closed before N responses; stdout byte 0: expected b'OK 1\nOK 2\nJOB 1 1 a\n', got b'' (length 20/0); run-2: stdout closed before N responses; stdout byte 0: expected b'JOB 1 2 a\nJOB 2 1 b\n', got b'' (length 20/0); run-3: stdout closed before N responses; stdout byte 0: expected b'JOB 1 3 a\nOK\nJOB 2 2 b\n', got b'' (length 23/0); run-4: stdout byte 0: expected b'ready=1 inflight=0 acked=1 next=3\nJOB 2 3 b\nOK\nOK 3\n', got b'' (length 52/0)
+FAIL 10-jobsched/ascii-name-ties: ascii-name-ties: stdout byte 0: expected b'0 start - w1\n1 finish - w1\n1 start . w1\n2 finish . w1\n2', got b'' (length 169/0)
+FAIL 10-jobsched/comments-crlf-final: comments-crlf-final: stdout byte 0: expected b'0 start a w1\n1 finish a w1\ndone 1\n', got b'' (length 34/0)
+FAIL 10-jobsched/duplicate-job: duplicate-job: exit expected 1, got 0
+FAIL 10-jobsched/empty-dependency-element: run-1: exit expected 1, got 0; run-2: exit expected 1, got 0; run-3: exit expected 1, got 0; run-4: exit expected 1, got 0
+FAIL 10-jobsched/example-1: example-1: stdout byte 0: expected b'0 start configure w1\n0 start fetch w2\n2 finish configur', got b'' (length 186/0)
+FAIL 10-jobsched/example-2: example-2: stdout byte 0: expected b'0 start configure w1\n2 finish configure w1\n2 start docs', got b'' (length 190/0)
+FAIL 10-jobsched/example-3: example-3: stdout byte 0: expected b'0 start a w1\n0 start b w2\n0 start d w3\n2 finish a w1\n2 ', got b'' (length 142/0)
+FAIL 10-jobsched/example-4: example-4: exit expected 1, got 0
+FAIL 10-jobsched/example-4-empty: example-4-empty: stdout byte 0: expected b'done 0\n', got b'' (length 7/0)
+FAIL 10-jobsched/example-5: example-5: exit expected 2, got 0
+FAIL 10-jobsched/example-5-dependency: example-5-dependency: exit expected 1, got 0
+FAIL 10-jobsched/example-5-missing-file: example-5-missing-file: exit expected 2, got 0
+FAIL 10-jobsched/extra-file: extra-file: exit expected 2, got 0
+FAIL 10-jobsched/forward-and-duplicate-deps: forward-and-duplicate-deps: stdout byte 0: expected b'0 start a w1\n1 finish a w1\n1 start b w1\n2 finish b w1\n2', got b'' (length 88/0)
+FAIL 10-jobsched/invalid-duration: run-1: exit expected 1, got 0; run-2: exit expected 1, got 0; run-3: exit expected 1, got 0; run-4: exit expected 1, got 0
+FAIL 10-jobsched/invalid-name: run-1: exit expected 1, got 0; run-2: exit expected 1, got 0
+FAIL 10-jobsched/invalid-priority: run-1: exit expected 1, got 0; run-2: exit expected 1, got 0; run-3: exit expected 1, got 0
+FAIL 10-jobsched/last-workers-wins: last-workers-wins: stdout byte 0: expected b'0 start a w1\n0 start b w2\n1 finish a w1\n1 finish b w2\nd', got b'' (length 61/0)
+FAIL 10-jobsched/numeric-boundaries-leading-zero: numeric-boundaries-leading-zero: stdout byte 0: expected b'0 start aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa w1\n1000000 fin', got b'' (length 147/0)
+FAIL 10-jobsched/reuse-lowest-free-worker: reuse-lowest-free-worker: stdout byte 0: expected b'0 start a w1\n0 start b w2\n0 start c w3\n1 finish c w3\n1 ', got b'' (length 142/0)
+FAIL 10-jobsched/self-cycle-before-output: self-cycle-before-output: exit expected 1, got 0
+FAIL 10-jobsched/simultaneous-finish-before-start: simultaneous-finish-before-start: stdout byte 0: expected b'0 start z w1\n0 start a w2\n2 finish a w2\n2 finish z w1\n2', got b'' (length 115/0)
+FAIL 10-jobsched/unknown-option: run-1: exit expected 2, got 0; run-2: exit expected 2, got 0; run-3: exit expected 2, got 0; run-4: exit expected 2, got 0; run-5: exit expected 2, got 0; run-6: exit expected 2, got 0
+FAIL 10-jobsched/unreadable-file: unreadable-file: exit expected 1, got 0
+FAIL 10-jobsched/wrong-token-count: wrong-token-count: exit expected 1, got 0
+8/250 passed; 242 failed

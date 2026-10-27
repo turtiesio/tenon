@@ -1,0 +1,12 @@
+Moved(Pt { x: -3, y: 1.5, name: "a \"q\"\n" }, [1, 2]) => Ok(Moved(Pt { x: -3, y: 1.5, name: "a \"q\"\n" }, [1, 2])) true
+Note("hi") => Ok(Note("hi")) true
+Quit => Ok(Quit) true
+Quit  => Err("cannot decode Ev at byte 4")
+Note(hi) => Err("cannot decode Ev at byte 5")
+Moved(Pt { x: 01, y: 1.5, name: "" }, []) => Err("cannot decode Ev at byte 14")
+Note("x") => Ok(Note("x"))
+Nope => Err("cannot decode Ev at byte 0")
+Note("\u41") => Err("cannot decode Ev at byte 8")
+["k": [(1, true)], "": []] true
+Err("cannot decode Map[Str, Int] at byte 9") Ok([1.0, 2.5e-7, nan, -inf, 1e300]) Err("cannot decode List[Float] at byte 1")
+exit: 0

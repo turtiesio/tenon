@@ -379,6 +379,12 @@ impl<'a> Walk<'a> {
             ExprKind::Call(callee, args) => {
                 if let Some(Res::Fn(fi, targs)) = self.c.res.get(&callee.id) {
                     self.generic_args_ok(*fi, targs, e.span)?;
+                    let name = self.c.fns[*fi].name.as_str();
+                    if name == "encode" || name == "decode" {
+                        if let Err(m) = codec_ok(self.c, &targs[0], e.span.file, &mut vec![]) {
+                            return err(e.span, format!("cannot {} {}: {}", name, targs[0], m));
+                        }
+                    }
                 }
                 self.expr(callee, false)?;
                 for a in args {
@@ -484,6 +490,40 @@ impl<'a> Walk<'a> {
                 inner.expr(body, true)?;
                 inner.end_scope(0, body.span)
             }
+        }
+    }
+}
+
+// Can values of type t be encoded/decoded by code in `file`?
+fn codec_ok(c: &Checked, t: &Ty, file: u16, seen: &mut Vec<Ty>) -> Result<(), String> {
+    if seen.contains(t) {
+        return Ok(());
+    }
+    seen.push(t.clone());
+    match t {
+        Ty::Fn(..) => Err("functions cannot be encoded".into()),
+        Ty::Param(_) | Ty::Var(_) => Err("the type must be concrete".into()),
+        Ty::Tuple(ts) => ts.iter().try_for_each(|t| codec_ok(c, t, file, seen)),
+        Ty::Con(n, args) => {
+            if crate::types::is_capability(n) {
+                return Err(format!("{} is a capability", n));
+            }
+            if c.kind_of(t) != Kind::Plain {
+                return Err(format!("{} is {}", n, word(c.kind_of(t))));
+            }
+            if let Some(si) = c.struct_idx(n) {
+                let s = &c.structs[si];
+                if s.file != file && s.pub_fields.iter().any(|p| !p) {
+                    return Err(format!("{} has private fields", n));
+                }
+            }
+            if let Some(fs) = c.struct_fields(t) {
+                fs.iter().try_for_each(|(_, t)| codec_ok(c, t, file, seen))?;
+            }
+            if let Some(vs) = c.enum_variants(t) {
+                vs.iter().flat_map(|(_, f)| f.iter()).try_for_each(|t| codec_ok(c, t, file, seen))?;
+            }
+            args.iter().try_for_each(|t| codec_ok(c, t, file, seen))
         }
     }
 }
