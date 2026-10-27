@@ -1,0 +1,20 @@
+// Fs.mkdir_one creates exactly one directory: the parent must exist and the path must not.
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    let _ = sys.fs.mkdir("mkdir_one_tmp")
+    let d = sys.fs.within("mkdir_one_tmp")
+    c.println("{d.mkdir_one("a")} {d.is_dir("a")}")
+    c.println("{d.mkdir_one("a")}")
+    c.println("{d.mkdir_one("x/y")} {d.exists("x")}")
+    c.println("{d.mkdir_one("a/b")} {d.is_dir("a/b")}")
+    d.write("f", "data")?
+    c.println("{d.mkdir_one("f")} {d.mkdir_one("f/g")}")
+    c.println("{d.read_only().mkdir_one("r")} {d.mkdir_one("../r")} {d.mkdir_one("/tmp/r")} {d.mkdir_one("r\0x")} {d.exists("r")}")
+    c.println("{sys.fs.within("fs_jail").mkdir_one("up/mkdir_one_escape")} {sys.fs.exists("mkdir_one_escape")}")
+    d.remove("f")?
+    d.remove("a/b")?
+    d.remove("a")?
+    sys.fs.remove("mkdir_one_tmp")?
+    c.println("{sys.fs.exists("mkdir_one_tmp")}")
+    Ok(())
+}

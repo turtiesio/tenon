@@ -1,0 +1,15 @@
+// Result mirrors Option: map, and_then, map_or, is_ok_and, is_err_and, err (plus ok, map_err, unwrap_or).
+fn half(x: Int) -> Result[Int, Str] { if x % 2 == 0 { Ok(x / 2) } else { Err("odd {x}") } }
+fn main(sys: Sys) {
+    let c = sys.console
+    let good: Result[Int, Str] = Ok(8)
+    let bad: Result[Int, Str] = Err("boom")
+    c.println("{good.map(fn(x) => x + 1)} {bad.map(fn(x) => x + 1)} {good.map(fn(x) => "#{x}")}")
+    c.println("{good.and_then(half)} {good.and_then(half).and_then(half).and_then(half).and_then(half)} {bad.and_then(half)}")
+    c.println("{good.map_or(0, fn(x) => x * 10)} {bad.map_or(0, fn(x) => x * 10)}")
+    c.println("{good.is_ok_and(fn(x) => x > 5)} {good.is_ok_and(fn(x) => x > 50)} {bad.is_ok_and(fn(x) => x > 5)}")
+    c.println("{good.is_err_and(fn(e) => e == "boom")} {bad.is_err_and(fn(e) => e == "boom")}")
+    c.println("{good.ok()} {bad.ok()} {good.err()} {bad.err()}")
+    c.println("{good.unwrap_or(0)} {bad.unwrap_or(0)} {bad.map_err(fn(e) => e.len())}")
+    c.println("{"12".to_int().ok_or("nan").map(fn(x) => x * 2)} {"x".to_int().ok_or("nan").and_then(half)}")
+}

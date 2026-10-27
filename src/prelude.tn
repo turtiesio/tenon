@@ -38,6 +38,46 @@ fn Int.rem_euclid(self, d: Int) -> Int {
     if r < 0 { r + d.abs() } else { r }
 }
 fn Int.div_euclid(self, d: Int) -> Int { (self - self.rem_euclid(d)) / d }
+// self to the power e (e >= 0, else trap); overflow traps like `*`. 0.pow(0) == 1.
+fn Int.pow(self, e: Int) -> Int {
+    if e < 0 { panic("pow with a negative exponent {e}") }
+    var r = 1
+    var b = self
+    var k = e
+    while k > 0 {
+        if k % 2 == 1 { r *= b }
+        k /= 2
+        if k > 0 { b *= b } // if this overflows, so does the result
+    }
+    r
+}
+// None on overflow or a negative exponent.
+fn Int.checked_pow(self, e: Int) -> Option[Int] {
+    if e < 0 { return None }
+    var r = 1
+    var b = self
+    var k = e
+    while k > 0 {
+        if k % 2 == 1 { r = r.checked_mul(b)? }
+        k /= 2
+        if k > 0 { b = b.checked_mul(b)? }
+    }
+    Some(r)
+}
+// Digits 0-9 then a-z, '-' for negatives: 255.to_str_radix(16) == "ff". Base 2..36, else trap.
+fn Int.to_str_radix(self, base: Int) -> Str {
+    if base < 2 or base > 36 { panic("to_str_radix: base {base} is not in 2..36") }
+    if self == 0 { return "0" }
+    var n = if self < 0 { self } else { -self } // negative, so INT_MIN works
+    var digits: List[Str] = []
+    while n != 0 {
+        let d = -(n % base)
+        digits.push((if d < 10 { '0' + d } else { 'a' + d - 10 }).char())
+        n /= base
+    }
+    digits.reverse()
+    (if self < 0 { "-" } else { "" }) + digits.join("")
+}
 // Fixed-point text: 1234.fmt_fixed(2) == "12.34", (-5).fmt_fixed(2) == "-0.05".
 fn Int.fmt_fixed(self, scale: Int) -> Str {
     if scale <= 0 { return self.to_str() }
@@ -77,6 +117,22 @@ extern fn Str.trim_end(self) -> Str
 extern fn Str.starts_with(self, prefix: Str) -> Bool
 extern fn Str.ends_with(self, suffix: Str) -> Bool
 extern fn Str.to_int(self) -> Option[Int]
+// Strict: optional '-', then one or more digits of `base` (2..36, else trap),
+// letters in either case; no '+', spaces or '_'. None if invalid or on overflow.
+fn Str.to_int_radix(self, base: Int) -> Option[Int] {
+    if base < 2 or base > 36 { panic("to_int_radix: base {base} is not in 2..36") }
+    let neg = self.starts_with("-")
+    let start = if neg { 1 } else { 0 }
+    if start == self.len() { return None }
+    var n = 0 // accumulated negatively, so INT_MIN parses
+    for i in start..self.len() {
+        let c = self.byte(i)
+        let d = if c.is_digit() { c - '0' } else if c.is_lower() { c - 'a' + 10 } else if c.is_upper() { c - 'A' + 10 } else { 36 }
+        if d >= base { return None }
+        n = n.checked_mul(base)?.checked_sub(d)?
+    }
+    if neg { Some(n) } else { n.checked_mul(-1) }
+}
 extern fn Str.to_float(self) -> Option[Float]
 extern fn Str.upper(self) -> Str
 extern fn Str.lower(self) -> Str
@@ -105,6 +161,25 @@ fn Str.trim_chars(self, chars: Str) -> Str {
     self.slice(a, b)
 }
 fn Str.contains(self, sub: Str) -> Bool { self.find(sub).is_some() }
+// Byte offset of the last match; "".rfind("") == Some(0), s.rfind("") == Some(s.len()).
+fn Str.rfind(self, sub: Str) -> Option[Int] {
+    if sub.is_empty() { return Some(self.len()) }
+    var last = self.find(sub)?
+    while true {
+        let Some(i) = self.find_from(sub, last + 1) else { return Some(last) }
+        last = i
+    }
+}
+// Split around the first (split_once) or last (rsplit_once) match of sep:
+// "k=v=w".split_once("=") == Some(("k", "v=w")); the pieces share bytes, like slice.
+fn Str.split_once(self, sep: Str) -> Option[(Str, Str)] {
+    let i = self.find(sep)?
+    Some((self.slice(0, i), self.slice(i + sep.len(), self.len())))
+}
+fn Str.rsplit_once(self, sep: Str) -> Option[(Str, Str)] {
+    let i = self.rfind(sep)?
+    Some((self.slice(0, i), self.slice(i + sep.len(), self.len())))
+}
 // Lines without their "\n"; a final empty line is dropped.
 extern fn Str.lines(self) -> List[Str]
 // Pieces separated by runs of spaces, tabs, "\r" or "\n".
@@ -250,6 +325,10 @@ extern fn Map[K, V].values(self) -> List[V]
 fn Map[K, V].is_empty(self) -> Bool { self.len() == 0 }
 fn Map[K, V].contains(self, k: K) -> Bool { self.get(k).is_some() }
 fn Map[K, V].get_or(self, k: K, default: V) -> V { self.get(k).unwrap_or(default) }
+// Insert v only if k is absent: `m.or_insert(k, []); m[k].push(x)` groups values.
+fn Map[K, V].or_insert(mut self, k: K, v: V) {
+    if not self.contains(k) { self[k] = v }
+}
 // m.update(k, 0, fn(n) => n + 1): apply f to the value at k (default if absent) and store it.
 fn Map[K, V].update(mut self, k: K, default: V, f: fn(V) -> V) {
     let v = f(self.get_or(k, default))
@@ -354,6 +433,22 @@ fn Result[T, E].unwrap_or(self, default: T) -> T { match self { Ok(x) => x, Err(
 fn Result[T, E].map_err[F](self, f: fn(E) -> F) -> Result[T, F] {
     match self { Ok(x) => Ok(x), Err(e) => Err(f(e)) }
 }
+fn Result[T, E].err(self) -> Option[E] { match self { Ok(_) => None, Err(e) => Some(e) } }
+fn Result[T, E].map[U](self, f: fn(T) -> U) -> Result[U, E] {
+    match self { Ok(x) => Ok(f(x)), Err(e) => Err(e) }
+}
+fn Result[T, E].and_then[U](self, f: fn(T) -> Result[U, E]) -> Result[U, E] {
+    match self { Ok(x) => f(x), Err(e) => Err(e) }
+}
+fn Result[T, E].map_or[U](self, default: U, f: fn(T) -> U) -> U {
+    match self { Ok(x) => f(x), Err(_) => default }
+}
+fn Result[T, E].is_ok_and(self, pred: fn(T) -> Bool) -> Bool {
+    match self { Ok(x) => pred(x), Err(_) => false }
+}
+fn Result[T, E].is_err_and(self, pred: fn(E) -> Bool) -> Bool {
+    match self { Ok(_) => false, Err(e) => pred(e) }
+}
 
 // ---- Capabilities ----
 extern fn Console.print(self, s: Str)
@@ -372,10 +467,42 @@ extern fn Fs.exists(self, path: Str) -> Bool
 extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError] // file or empty directory
 extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]
 extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError] // also creates missing parents
+extern fn Fs.mkdir_one(self, path: Str) -> Result[Unit, IoError] // exactly one; parent must exist, path must not
 extern fn Fs.rename(self, from: Str, to: Str) -> Result[Unit, IoError] // atomic; replaces `to`
 extern fn Fs.is_dir(self, path: Str) -> Bool
 extern fn Fs.within(self, dir: Str) -> Fs
 extern fn Fs.read_only(self) -> Fs
+
+// Path text helpers ('/'-separated, purely lexical; they never touch the disk).
+// path_join("a", "b") == "a/b", path_join("a/", "b") == "a/b"; an absolute
+// second part replaces the first: path_join("a", "/b") == "/b"; an empty part
+// yields the other one.
+fn path_join(a: Str, b: Str) -> Str {
+    if a.is_empty() or b.starts_with("/") { return b }
+    if b.is_empty() { return a }
+    if a.ends_with("/") { a + b } else { a + "/" + b }
+}
+// Trailing slashes are ignored. path_parent("a/b") == "a", path_parent("a/b/") == "a",
+// path_parent("a") == ".", path_parent("") == ".", path_parent("/a") == "/",
+// path_parent("/") == "/". `..` is not resolved: path_parent("a/..") == "a".
+fn path_parent(p: Str) -> Str {
+    var n = p.len()
+    while n > 0 and p.byte(n - 1) == '/' { n -= 1 } // drop trailing slashes
+    while n > 0 and p.byte(n - 1) != '/' { n -= 1 } // drop the last component
+    if n == 0 { return if p.starts_with("/") { "/" } else { "." } }
+    while n > 1 and p.byte(n - 1) == '/' { n -= 1 }  // drop the separator(s)
+    p.slice(0, n)
+}
+// The last component; trailing slashes are ignored. path_base("a/b") == "b",
+// path_base("a/b/") == "b", path_base("a") == "a", path_base("/") == "/", path_base("") == "".
+fn path_base(p: Str) -> Str {
+    var end = p.len()
+    while end > 0 and p.byte(end - 1) == '/' { end -= 1 }
+    if end == 0 { return if p.is_empty() { "" } else { "/" } }
+    var start = end
+    while start > 0 and p.byte(start - 1) != '/' { start -= 1 }
+    p.slice(start, end)
+}
 
 // TCP on 127.0.0.1 or a named host. Listener and Conn are unique handles:
 // they cannot be copied, and dropping one closes it.

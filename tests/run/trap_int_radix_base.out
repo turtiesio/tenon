@@ -1,0 +1,4 @@
+Some(2)
+exit: 70
+stderr: trap: to_int_radix: base 1 is not in 2..36
+stderr:   at trap_int_radix_base.tn:4:29

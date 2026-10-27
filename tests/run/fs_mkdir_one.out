@@ -1,0 +1,9 @@
+Ok(()) true
+Err(Failed("a: File exists"))
+Err(NotFound("x/y")) false
+Ok(()) true
+Err(Failed("f: File exists")) Err(Failed("f/g: Not a directory"))
+Err(Denied("read-only Fs: r")) Err(Denied("path escapes the Fs root: ../r")) Err(Denied("path escapes the Fs root: /tmp/r")) Err(Denied("path escapes the Fs root: r\u{0}x")) false
+Err(Denied("path escapes the Fs root: up/mkdir_one_escape")) false
+false
+exit: 0

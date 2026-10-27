@@ -1,0 +1,4 @@
+1
+exit: 70
+stderr: trap: pow with a negative exponent -1
+stderr:   at trap_pow_negative.tn:4:28

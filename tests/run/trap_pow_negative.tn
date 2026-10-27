@@ -1,0 +1,5 @@
+// Int.pow traps on a negative exponent.
+fn main(sys: Sys) {
+    sys.console.println("{2.pow(0)}")
+    sys.console.println("{2.pow(-1)}")
+}

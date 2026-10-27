@@ -1729,6 +1729,13 @@ static TN_UNUSED int tn_fs_mkdir(tn_Fs f, tn_Str p, tn_Str *msg) {
     tn_free(pb.p);
     return TN_IO_OK;
 }
+/* Exactly one directory: the parent must exist and the path must not. */
+static TN_UNUSED int tn_fs_mkdir_one(tn_Fs f, tn_Str p, tn_Str *msg) {
+    TN_FS_PRE(true)
+    if (mkdir(full, 0755) != 0) TN_FS_FAIL(errno);
+    tn_free(pb.p);
+    return TN_IO_OK;
+}
 static int tn_cmp_cstr(const void *a, const void *b) {
     return tn_Str_cmp(*(const tn_Str *)a, *(const tn_Str *)b);
 }

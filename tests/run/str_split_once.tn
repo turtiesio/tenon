@@ -1,0 +1,18 @@
+// Str.rfind, split_once, rsplit_once; Map.or_insert.
+fn main(sys: Sys) {
+    let c = sys.console
+    c.println("{"a/b/c".rfind("/")} {"abc".rfind("/")} {"aaa".rfind("aa")} {"abcabc".rfind("abc")} {"".rfind("a")}")
+    c.println("{"abc".rfind("")} {"".rfind("")} {"héllo é".rfind("é")} {"ab".rfind("abc")}")
+    c.println("{"k=v=w".split_once("=")} {"k=v=w".rsplit_once("=")} {"kv".split_once("=")} {"kv".rsplit_once("=")}")
+    c.println("{"=x".split_once("=")} {"x=".split_once("=")} {"a::b::c".split_once("::")} {"a::b::c".rsplit_once("::")} {"".split_once(",")}")
+    let Some((key, value)) = "name: Ada".split_once(": ") else { return }
+    c.println("{key}|{value}")
+    var groups: Map[Str, List[Int]] = [:]
+    for (k, v) in [("a", 1), ("b", 2), ("a", 3)] {
+        groups.or_insert(k, [])
+        groups[k].push(v)
+    }
+    groups.or_insert("a", [99])
+    groups.or_insert("c", [7])
+    c.println("{groups}")
+}

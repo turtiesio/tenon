@@ -1,0 +1,10 @@
+// error: this block must end with a value of type Int
+fn find(xs: List[Int]) -> Int {
+    var i = 0
+    while true {
+        if xs[i] < 0 { return i }
+        if i > 5 { break }
+        i += 1
+    }
+}
+fn main() { let _ = find([1, -1]) }

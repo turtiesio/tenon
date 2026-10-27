@@ -1,0 +1,3 @@
+// error: function 'path_join' is already defined
+fn path_join(a: Str, b: Str) -> Str { a + b }
+fn main() { let _ = path_join("a", "b") }

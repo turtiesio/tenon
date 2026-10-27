@@ -1,0 +1,28 @@
+// Int.to_str_radix / Str.to_int_radix / Int.pow / Int.checked_pow.
+fn main(sys: Sys) {
+    let c = sys.console
+    c.println("{255.to_str_radix(16)} {255.to_str_radix(2)} {(-255).to_str_radix(16)} {0.to_str_radix(7)} {35.to_str_radix(36)} {36.to_str_radix(36)}")
+    c.println("{INT_MAX.to_str_radix(36)} {INT_MIN.to_str_radix(16)} {INT_MIN.to_str_radix(2)}")
+    c.println("{INT_MAX.to_str_radix(10) == INT_MAX.to_str()} {(-7).to_str_radix(10)}")
+    c.println("{"ff".to_int_radix(16)} {"FF".to_int_radix(16)} {"-fF".to_int_radix(16)} {"101".to_int_radix(2)} {"zz".to_int_radix(36)} {"Zz".to_int_radix(36)}")
+    c.println("{"0".to_int_radix(2)} {"-0".to_int_radix(2)} {"007".to_int_radix(8)}")
+    // invalid: empty, lone sign, '+', spaces, underscores, digit out of range, prefixes
+    c.println("{"".to_int_radix(10)} {"-".to_int_radix(10)} {"+1".to_int_radix(10)} {" 1".to_int_radix(10)} {"1 ".to_int_radix(10)} {"1_0".to_int_radix(10)}")
+    c.println("{"2".to_int_radix(2)} {"8".to_int_radix(8)} {"g".to_int_radix(16)} {"0x10".to_int_radix(16)} {"--1".to_int_radix(10)} {"é".to_int_radix(36)}")
+    // limits: INT_MAX and INT_MIN parse, one more overflows to None
+    c.println("{"7fffffffffffffff".to_int_radix(16)} {"8000000000000000".to_int_radix(16)}")
+    c.println("{"-8000000000000000".to_int_radix(16)} {"-8000000000000001".to_int_radix(16)}")
+    c.println("{"9223372036854775807".to_int_radix(10)} {"9223372036854775808".to_int_radix(10)} {"-9223372036854775808".to_int_radix(10)}")
+    c.println("{"1y2p0ij32e8e7".to_int_radix(36)} {"1y2p0ij32e8e8".to_int_radix(36)} {"99999999999999999999999".to_int_radix(10)}")
+    // round trip in every base
+    var ok = true
+    for b in 2..37 {
+        for x in [0, 1, -1, 12345, -987654321, INT_MAX, INT_MIN] {
+            if x.to_str_radix(b).to_int_radix(b) != Some(x) { ok = false }
+        }
+    }
+    c.println("round trip: {ok}")
+    c.println("{2.pow(10)} {(-2).pow(3)} {(-2).pow(63) == INT_MIN} {2.pow(62)} {0.pow(0)} {0.pow(5)} {7.pow(0)} {(-1).pow(INT_MAX)} {1.pow(INT_MAX)} {10.pow(18)}")
+    c.println("{2.checked_pow(62)} {2.checked_pow(63)} {(-2).checked_pow(63)} {(-2).checked_pow(64)} {3.checked_pow(40)} {3.checked_pow(39)}")
+    c.println("{2.checked_pow(-1)} {0.checked_pow(0)} {3037000500.checked_pow(2)} {3037000499.checked_pow(2)}")
+}

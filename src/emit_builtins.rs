@@ -201,7 +201,7 @@ impl<'a> Emitter<'a> {
                 let k = self.tmp_val(&Ty::int(), &format!("{}({}, {}, &{}, &{})", f, a[0], a[1], r, m)).code;
                 self.io_result(t, &k, &r, &m)
             }
-            "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" => {
+            "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" => {
                 let m = self.fresh("m");
                 self.line(&format!("tn_Str {} = {{0}};", m));
                 let f = format!("tn_fs_{}", &name[3..]);

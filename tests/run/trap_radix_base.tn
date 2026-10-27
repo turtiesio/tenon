@@ -1,0 +1,5 @@
+// to_str_radix traps on a base outside 2..36.
+fn main(sys: Sys) {
+    sys.console.println("{10.to_str_radix(36)}")
+    sys.console.println("{10.to_str_radix(37)}")
+}
