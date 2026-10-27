@@ -1,0 +1,5 @@
+// error: radix 'x' in format spec ':08x' needs an Int, found Str
+fn main(sys: Sys) {
+    let s = "ff"
+    sys.console.println("{s:08x}")
+}

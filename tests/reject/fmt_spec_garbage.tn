@@ -1,0 +1,4 @@
+// error: malformed format spec '5q': unexpected 'q' (the grammar is
+fn main(sys: Sys) {
+    sys.console.println("{1:5q}")
+}

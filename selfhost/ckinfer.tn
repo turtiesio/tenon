@@ -7,6 +7,7 @@ import ckast
 import cktypes
 import ckenv
 import ckexh
+import parser
 
 pub struct Local { pub name: Str, pub ty: cktypes.Ty, pub mutable: Bool, pub depth: Int }
 pub struct Ctx { pub ret: cktypes.Ty, pub loops: Int }
@@ -799,7 +800,32 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
         }
         XLambda(params, ret, body) => self.lambda(e, params, ret, body, exp),
         XMutArg(_) => ckast.fail(e.sp, "'mut' marks an argument to a 'mut' parameter"),
+        XFmt(x, f) => {
+            let t0 = self.sub.fresh()
+            let t = self.expr(x, t0)?
+            self.fmt_spec(x, t, f)?
+            Ok(cktypes.t_str())
+        }
     }
+}
+
+// `{x:SPEC}`: which types a spec applies to (src/check.rs `fmt_spec`).
+fn Ck.fmt_spec(self, x: ckast.Expr, t0: cktypes.Ty, f: parser.Spec) -> Result[Unit, ckast.Diag] {
+    let t = self.known(t0, x.sp, "a formatted value")?
+    let n = match t {
+        Con(n, a) if a.is_empty() and ["Int", "Float", "Str", "Bool"].contains(n) => n,
+        _ => return ckast.fail(x.sp, "format spec ':" + f.text + "' applies to Int, Float, Str or Bool, not " + self.show(t)),
+    }
+    if f.radix != "" and n != "Int" {
+        return ckast.fail(x.sp, "radix '" + f.radix + "' in format spec ':" + f.text + "' needs an Int, found " + n)
+    }
+    if f.prec >= 0 and n != "Float" {
+        return ckast.fail(x.sp, "precision '.{f.prec}' in format spec ':" + f.text + "' needs a Float, found " + n)
+    }
+    if f.zero and n != "Int" and n != "Float" {
+        return ckast.fail(x.sp, "'0' padding in format spec ':" + f.text + "' needs an Int or Float, found " + n)
+    }
+    Ok(())
 }
 
 fn Ck.name(mut self, e: ckast.Expr, n: Str) -> Result[cktypes.Ty, ckast.Diag] {

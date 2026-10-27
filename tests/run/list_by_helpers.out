@@ -1,0 +1,17 @@
+Some("bob")
+Some("dee")
+Some("cy")
+Some("cy")
+None None
+Some(4) Some(9)
+3: ann
+5: bob cy
+1: dee eve
+[2: ["ab", "de"], 1: ["c", "f"]]
+0
+["a", "b", "c"]
+true false false false false
+true true
+true true false true true false
+Acé
+exit: 0

@@ -389,7 +389,7 @@ impl<'a> Walk<'a> {
             ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Unit | ExprKind::Path(..) => Ok(()),
             ExprKind::Str(segs) => {
                 for s in segs {
-                    if let StrSeg::Expr(x) = s {
+                    if let StrSeg::Expr(x, _) = s {
                         self.expr(x, false)?;
                     }
                 }

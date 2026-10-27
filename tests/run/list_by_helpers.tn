@@ -1,0 +1,34 @@
+// List.max_by / min_by / group_by and Str.all_bytes (prelude helpers).
+struct Player { name: Str, score: Int }
+
+fn main(sys: Sys) {
+    let ps = [
+        Player { name: "ann", score: 3 }, Player { name: "bob", score: 5 }, Player { name: "cy", score: 5 },
+        Player { name: "dee", score: 1 }, Player { name: "eve", score: 1 },
+    ]
+    // ties: the first element with the extreme key wins
+    sys.console.println("{ps.max_by(fn(p) => p.score).map(fn(p) => p.name)}")
+    sys.console.println("{ps.min_by(fn(p) => p.score).map(fn(p) => p.name)}")
+    // tuple keys use the derived ordering
+    sys.console.println("{ps.max_by(fn(p) => (p.score, p.name)).map(fn(p) => p.name)}")
+    sys.console.println("{ps.min_by(fn(p) => p.name.len()).map(fn(p) => p.name)}")
+    let empty: List[Player] = []
+    sys.console.println("{empty.max_by(fn(p) => p.score)} {empty.min_by(fn(p) => p.name)}")
+    sys.console.println("{[4].max_by(fn(x) => -x)} {[2, 9, 4].min_by(fn(x) => -x)}")
+    // group_by: keys in order of first occurrence, groups in list order
+    let g = ps.group_by(fn(p) => p.score)
+    for (k, v) in g {
+        sys.console.println("{k}: {v.map(fn(p) => p.name).join(" ")}")
+    }
+    sys.console.println("{["ab", "c", "de", "f"].group_by(fn(s) => s.len())}")
+    sys.console.println("{empty.group_by(fn(p) => p.name).len()}")
+    let words = ["apple", "avocado", "banana", "blueberry", "cherry"]
+    sys.console.println("{words.group_by(fn(w) => w.slice(0, 1)).keys()}")
+    // all_bytes
+    let ok = fn(s: Str) => s.len() >= 1 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_')
+    sys.console.println("{ok("user_42")} {ok("User")} {ok("")} {ok("a-b")} {ok("ü")}")
+    sys.console.println("{"".all_bytes(fn(b) => false)} {"ü".all_bytes(fn(b) => b >= 128)}")
+    // the code-point helpers that already exist
+    sys.console.println("{'7'.is_digit()} {'x'.is_alpha()} {'_'.is_alnum()} {'Q'.is_upper()} {'q'.is_lower()} {'é'.is_alpha()}")
+    sys.console.println("{'A'.char()}{(('a' + 2)).char()}{233.char()}")
+}

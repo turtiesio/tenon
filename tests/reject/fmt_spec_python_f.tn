@@ -1,0 +1,5 @@
+// error: unexpected 'f' (decimals are written {x:.2}, without 'f')
+fn main(sys: Sys) {
+    let f = 2.5
+    sys.console.println("{f:.2f}")
+}

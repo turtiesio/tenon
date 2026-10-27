@@ -44,7 +44,8 @@ unchanged program is instant (cache in `$TENON_CACHE`, default
   either case; `_` separators allowed in any integer: `0xFF_FF`), and
   character literals `'a'`, `'\n'`, `'\''`, `'é'`, which are the character's
   code point as an `Int` (`'a'` is `97`; compare with `s.byte(i)`).
-  Escapes: `\n \t \r \0 \\ \" \{ \}`. `"{expr}"` interpolates any value (see §8); write `\{` for a literal `{` (a lone `}` is literal).
+  Escapes: `\n \t \r \0 \\ \" \{ \}`. `"{expr}"` interpolates any value and
+  `"{expr:SPEC}"` formats it (see §8); write `\{` for a literal `{` (a lone `}` is literal).
 - Raw strings: `r"..."` has no escapes and no interpolation; every character
   up to the next `"` is taken literally, backslashes and braces included
   (`r"C:\temp"`; `r"(\d{4})"` equals `"(\\d\{4})"`). Like a normal string it
@@ -312,9 +313,54 @@ notation when the exponent is in [-5, 16), otherwise as `1.5e-7`.
 interpolation may contain string literals of its own:
 `"{m.get_or("k", 0)} {names.join(", ")}"`.
 
-There are no format specifiers (`{x:>3}`, `{x:x}`): use
-`"{x}".pad_left(3, " ")`, `x.to_str_radix(16)`, `f.to_fixed(2)` or
-`cents.fmt_fixed(2)`.
+### Format specs
+
+`"{expr:SPEC}"` pads, aligns and converts an `Int`, `Float`, `Str` or `Bool`:
+
+```
+SPEC      = [[fill] align] ["0"] [width] ["." precision] [radix]
+align     = "<" (left) | ">" (right) | "^" (center)
+fill      = any one character except "}" and "\""   (default: space)
+width     = 1 to 3 digits; the minimum length in code points
+precision = 1 to 3 digits, at most 100; Float only
+radix     = "x" | "X" | "b" | "o"; Int only
+```
+
+| Spec | Example | Text |
+|---|---|---|
+| width | `"{7:4}"`, `"{"ab":4}"` | `   7`, `ab  ` (numbers right-aligned, text left) |
+| align | `"{7:<4}"`, `"{"ab":>4}"`, `"{"ab":^6}"` | `7   `, `  ab`, `  ab  ` (extra space goes right) |
+| fill | `"{7:*>4}"`, `"{"ab":.^6}"` | `***7`, `..ab..` |
+| zero | `"{-42:05}"`, `"{-2.5:06.2}"` | `-0042`, `-02.50` (after the sign; Int and Float) |
+| radix | `"{255:x}"`, `"{255:X}"`, `"{5:b}"`, `"{8:o}"`, `"{-255:x}"` | `ff`, `FF`, `101`, `10`, `-ff` |
+| radix + width | `"{255:08x}"`, `"{5:>4b}"` | `000000ff`, ` 101` |
+| precision | `"{2.675:.2}"`, `"{0.5:.0}"`, `"{1.0 / 3.0:8.3}"` | `2.67`, `0`, `   0.333` |
+
+- **The colon rule**: the spec starts at the first `:` that is not inside
+  `( )`, `[ ]`, `{ }` or a nested string or character literal, and runs to
+  the closing `}`. No expression has a `:` at that level, so
+  `"{m["k:v"]:>5}"`, `"{["a": 1].len():3}"` and
+  `"{f(fn(x: Int) => x):4}"` all split where expected. The spec is raw text:
+  no escapes, and it cannot contain `}`, `"` or a newline.
+- A larger value is never cut: `"{12345:3}"` is `12345`. Widths count code
+  points, as `pad_left` does (`"{"Zürich":8}"` is `Zürich  `).
+- `.N` rounds exactly like `f.to_fixed(N)` (the binary value, half to even:
+  `"{2.675:.2}"` is `2.67`). Without a precision a `Float` keeps its usual
+  shortest text (`"{0.1:6}"` is `   0.1`); `nan` and `inf` are padded like
+  any other text.
+- Radix digits are lowercase for `x` (uppercase for `X`), with `-` before
+  negative numbers and no `0x` prefix, as `to_str_radix`; `INT_MIN` works.
+- Specs nest like any interpolation:
+  `"{"{name:<6}={qty:03}":>12}"`.
+- Everything else is a compile-time error: a spec on any other type
+  (`List`, `Option`, a struct, a generic `T`: format the parts, or call
+  `to_str()` first), `.N` on a non-`Float`, a radix on a non-`Int`, `0` on a
+  `Str` or `Bool`, `0` together with an alignment, an alignment without a
+  width, an empty spec, and Python's type letters (`"{f:.2f}"` is written
+  `"{f:.2}"`; `"{n:d}"` is `"{n}"`). The value's type must be known at that
+  point: in `fn(x) => "{x:5}"` annotate `x: Int`.
+
+`cents.fmt_fixed(2)` writes a fixed-point integer (`1234` as `12.34`).
 
 ## 9. Errors: values, `?`, and traps
 
@@ -429,7 +475,8 @@ Highlights:
   find_from is_digits strip_prefix strip_suffix (Option) trim_chars (remove
   given ASCII bytes from both ends, e.g. `s.trim_chars(" \t")`)
   repeat pad_left pad_right is_empty rfind split_once rsplit_once to_int_radix
-  bytes char_count`; `Int.char()` makes a one-character string; `Str.from_utf8(bytes)`
+  bytes char_count all_bytes`; `Int.char()` makes a one-character string from
+  a code point (`'A'.char() == "A"`, `233.char() == "é"`); `Str.from_utf8(bytes)`
   and `Str.from_utf8_lossy(bytes)` make text from bytes (see "Bytes" below).
   - Bytes and characters: `s.len()` is the length in **bytes** (UTF-8), and
     `byte`, `slice`, `find` and the other offsets are byte offsets.
@@ -460,9 +507,20 @@ Highlights:
     `"ff".to_int_radix(16) == Some(255)`. `s.to_float()` also accepts `1.5`,
     `.5`, `5.`, `1e-3`, `inf` and `nan`.
   - `trim` removes ASCII whitespace; `upper`/`lower` change ASCII letters only.
+  - `s.all_bytes(pred)` is true when `pred` holds for every byte (and for
+    `""`), for validation with the `Int` classes below:
+    `name.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_')`.
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
   sort_by_desc sort_with swap first last index_of contains extend sorted reversed map filter any all count
-  is_empty binary_search`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
+  is_empty binary_search max_by min_by group_by`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
+  - `xs.max_by(key)` / `xs.min_by(key)` give the element with the largest /
+    smallest key as an `Option` (`None` for an empty list); of several equal
+    keys, the first one in the list. Keys compare with the derived ordering, so
+    tuples break ties: `ps.max_by(fn(p) => (p.score, p.name))`.
+  - `xs.group_by(key)` gives a `Map[K, List[T]]` of every element by key: keys
+    in the order of their first occurrence, each group in list order
+    (`["ab", "c", "de"].group_by(fn(s) => s.len()) == [2: ["ab", "de"], 1: ["c"]]`).
+    Equal keys need not be adjacent (unlike Python's `itertools.groupby`).
   - `xs.binary_search(x)` (`Result[Int, Int]`) needs `xs` sorted ascending by
     the derived ordering (as `sort()` leaves it; otherwise the result is
     unspecified). `Ok(i)`: `i` is the first index with `xs[i] == x`; `Err(i)`:
@@ -495,8 +553,9 @@ Highlights:
   `div_euclid` (the remainder is never negative); `fmt_fixed(scale)` writes a
   fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents); constants
   `INT_MAX`, `INT_MIN`; and for code points
-  `is_digit is_alpha is_alnum is_space is_upper is_lower`
-  (`s.byte(i).is_digit()`, `'7' - '0'`); `Float`: `to_int floor ceil round
+  `is_digit is_alpha is_alnum is_space is_upper is_lower` (ASCII only:
+  `'é'.is_alpha()` is false; `s.byte(i).is_digit()`, `'7' - '0'`), and `char`
+  (the code point as a one-character `Str`); `Float`: `to_int floor ceil round
   sqrt abs min max`, and `to_fixed(decimals)` (exactly that many digits; rounds the
   binary value half to even, like printf). There are no bitwise operators: use
   `/`, `%` and `pow` (`x / 2.pow(k)` shifts right by `k` for `x >= 0`).

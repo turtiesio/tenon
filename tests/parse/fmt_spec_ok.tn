@@ -1,0 +1,3 @@
+fn f(x: Int, s: Str) -> Str {
+    "{x:5}{x:<5}{x:^5}{x:*>5}{x:05}{x:x}{x:X}{x:b}{x:o}{x:08x}{s:é^3}{x.to_float():8.2}{x.to_float():.0}"
+}

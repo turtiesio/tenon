@@ -1,0 +1,4 @@
+// error: '0' padding in format spec ':05' needs an Int or Float, found Str
+fn main(sys: Sys) {
+    sys.console.println("{"ab":05}")
+}

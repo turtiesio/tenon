@@ -1,0 +1,6 @@
+// error: format spec ':>4' applies to Int, Float, Str or Bool, not T
+fn cell[T](x: T) -> Str { "{x:>4}" }
+
+fn main(sys: Sys) {
+    sys.console.println(cell(3))
+}

@@ -76,6 +76,7 @@ fn seg(s: parser.Seg) -> Str {
     match s {
         SLit(l) => quote(l),
         SExpr(e) => expr(e),
+        SFmt(e, f) => "(fmt " + expr(e) + " " + quote(f.text) + ")",
     }
 }
 

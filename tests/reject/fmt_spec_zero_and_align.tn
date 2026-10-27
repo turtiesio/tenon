@@ -1,0 +1,4 @@
+// error: '0' padding cannot be combined with a fill or alignment
+fn main(sys: Sys) {
+    sys.console.println("{1:<05}")
+}

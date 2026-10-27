@@ -162,6 +162,18 @@ pub fn cmp(a: &V, b: &V) -> Result<i32, &'static str> {
     })
 }
 
+// Float.to_fixed and `{x:.N}`: exact decimal rounding of the binary value
+// (as C's "%.*f"); decimals clamped to 0..100. C: tn_float_fixed_into.
+pub fn float_fixed(x: f64, d: i64) -> String {
+    if x.is_nan() {
+        return "nan".into();
+    }
+    if x.is_infinite() {
+        return if x > 0.0 { "inf" } else { "-inf" }.into();
+    }
+    format!("{:.*}", d.clamp(0, 100) as usize, x)
+}
+
 // Shortest round-trip digits, laid out as the C runtime does (tn_fmt_float).
 pub fn fmt_float(x: f64) -> String {
     if x.is_nan() {

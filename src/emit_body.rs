@@ -789,7 +789,7 @@ impl<'a> Emitter<'a> {
         if let [StrSeg::Lit(s)] = segs {
             return bor(format!("tn_str_lit({}, {})", c_string(s), s.len()));
         }
-        let refs: Vec<&Expr> = segs.iter().filter_map(|s| if let StrSeg::Expr(x) = s { Some(x) } else { None }).collect();
+        let refs: Vec<&Expr> = segs.iter().filter_map(|s| if let StrSeg::Expr(x, _) = s { Some(x) } else { None }).collect();
         let tys: Vec<Ty> = refs.iter().map(|x| self.ety(x)).collect();
         let vs = self.eval_list(&refs);
         let b = self.fresh("b");
@@ -798,10 +798,29 @@ impl<'a> Emitter<'a> {
         for s in segs {
             match s {
                 StrSeg::Lit(l) => self.line(&format!("tn_buf_add(&{}, {}, {});", b, c_string(l), l.len())),
-                StrSeg::Expr(_) => {
+                StrSeg::Expr(_, None) => {
                     let (v, t) = it.next().unwrap();
                     let tn = self.cty(&t);
                     self.line(&format!("{}_show(&{}, {}, true);", tn, b, v.code));
+                }
+                StrSeg::Expr(_, Some(f)) => {
+                    let (v, t) = it.next().unwrap();
+                    let tn = self.cty(&t);
+                    let align = match f.align {
+                        Some(a) => format!("'{}'", a),
+                        None => "0".into(),
+                    };
+                    let radix = match f.radix {
+                        Some(r) => format!("'{}'", r),
+                        None => "0".into(),
+                    };
+                    let mut fill = [0u8; 4];
+                    let fill = f.fill.encode_utf8(&mut fill);
+                    let prec = f.prec.map(|p| p as i64).unwrap_or(-1);
+                    self.line(&format!(
+                        "{{ static const tn_fmt_spec fs = {{{}, {}, {}, {}, {}, {}, {}}}; {}_fmt(&{}, {}, &fs); }}",
+                        c_string(fill), fill.len(), align, f.zero as i32, f.width, prec, radix, tn, b, v.code
+                    ));
                 }
             }
         }

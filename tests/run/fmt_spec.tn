@@ -1,0 +1,58 @@
+// Format specs in interpolation: "{expr:SPEC}" (docs/reference.md §8).
+struct Row { name: Str, qty: Int }
+
+fn show(sys: Sys, s: Str) { sys.console.println("[" + s + "]") }
+
+fn main(sys: Sys) {
+    let n = -42
+    let p = 7
+    // width and alignment: numbers right, text left by default
+    show(sys, "{p:5}|{n:5}|{"ab":5}|{true:6}|{false:<6}")
+    show(sys, "{p:<5}|{p:>5}|{p:^5}|{"ab":^5}|{"abc":^6}")
+    show(sys, "{"ab":>5}|{n:<6}|{n:^7}")
+    // fill characters (any one code point, including ':' and '0')
+    show(sys, "{p:*>5}|{"x":-<4}|{"mid":.^9}|{p:0<4}|{"k"::>3}|{"k":é^5}")
+    // zero padding is sign-aware
+    show(sys, "{p:05}|{n:05}|{n:03}|{n:02}|{0:04}|{-1:02}")
+    // INT_MIN and INT_MAX
+    show(sys, "{INT_MIN:25}|{INT_MIN:025}|{INT_MAX:x}|{INT_MIN:x}|{INT_MIN:b}")
+    show(sys, "{INT_MIN:o}|{INT_MAX:X}")
+    // radix, with width / zero / fill
+    show(sys, "{255:x}|{255:X}|{5:b}|{8:o}|{0:x}|{n:x}|{n:X}")
+    show(sys, "{255:08x}|{n:08x}|{10:8b}|{10:<8b}|{10:_^8o}|{3054:06X}")
+    // Float: precision rounds as to_fixed (binary value, half to even)
+    let f = 2.675
+    show(sys, "{f:.2}|{f.to_fixed(2)}|{0.5:.0}|{1.5:.0}|{2.5:.0}|{0.125:.2}|{0.375:.2}")
+    show(sys, "{1.0 / 3.0:.5}|{-1.0 / 3.0:.3}|{2.0:.0}|{1e20:.1}|{-0.0:.1}|{0.001:.2}")
+    show(sys, "{f:8.2}|{f:<8.2}|{f:^9.1}|{f:08.2}|{-f:08.2}|{-f:*>9.3}")
+    // Float without precision: the usual shortest text, padded
+    show(sys, "{f:8}|{0.1 + 0.2:22}|{1.5e-7:<10}|{-2.0:06}")
+    let inf = 1.0 / 0.0
+    let nan = inf - inf
+    show(sys, "{inf:6}|{-inf:<6}|{nan:.2}|{inf:06.1}")
+    // widths count code points, not bytes
+    show(sys, "{"Zürich":8}|{"Zürich":>8}|{"東京":^6}|{"é":*>3}")
+    show(sys, "{"too long":3}|{12345:3}|{"":3}|{"":0}|{7:0}")
+    // a `:` inside ( ) [ ] { } or a nested string belongs to the expression
+    let m = ["k": 3]
+    show(sys, "{m["k"]:4}|{["a": 1].len():3}|{"a:b":>5}|{m.get_or("x:y", 9):03}")
+    show(sys, "{if p > 3 { "big" } else { "small" }:>6}|{(fn(x: Int) => x * 2)(p):4}")
+    // nested interpolation with specs
+    let rows = [Row { name: "apple", qty: 3 }, Row { name: "kiwi", qty: 12 }]
+    for r in rows {
+        show(sys, "{"{r.name:<6}={r.qty:03}":>12}")
+    }
+    show(sys, "{"{n:+^7}":>10}|{"{255:x}{"{1:02}":>3}":<6}")
+    // specs and `?`
+    let parsed: Option[Str] = parse_pad("17")
+    show(sys, "{parsed.unwrap_or("-")}")
+    // the examples in docs/reference.md §8
+    show(sys, "{7:4}|{"ab":4}|{7:<4}|{"ab":>4}|{"ab":^6}|{7:*>4}|{"ab":.^6}|{-42:05}|{-2.5:06.2}")
+    show(sys, "{255:x}|{255:X}|{5:b}|{8:o}|{-255:x}|{255:08x}|{5:>4b}|{2.675:.2}|{0.5:.0}|{1.0 / 3.0:8.3}|{0.1:6}")
+    // a table
+    for r in rows {
+        sys.console.println("{r.name:<8}{r.qty:>4}{r.qty.to_float() / 4.0:>8.2}")
+    }
+}
+
+fn parse_pad(s: Str) -> Option[Str] { Some("{s.to_int()?:>5}") }

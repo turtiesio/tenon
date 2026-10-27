@@ -195,9 +195,7 @@ impl<'a> Interp<'a> {
             "Float.ceil" => Float(flt(0).ceil()),
             "Float.round" => Float(flt(0).round()),
             "Float.to_fixed" => {
-                let d = int(1).clamp(0, 100) as usize;
-                let x = flt(0);
-                if x.is_nan() { strv("nan") } else if x.is_infinite() { strv(if x > 0.0 { "inf" } else { "-inf" }) } else { strv(&format!("{:.*}", d, x)) }
+                strv(&crate::value::float_fixed(flt(0), int(1)))
             }
             "Str.len" => Int(s(0).len() as i64),
             "Str.char_count" => Int(s(0).chars().count() as i64),

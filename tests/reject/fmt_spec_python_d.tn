@@ -1,0 +1,4 @@
+// error: unexpected 'd' (Int is decimal by default
+fn main(sys: Sys) {
+    sys.console.println("{3:5d}")
+}

@@ -1,0 +1,5 @@
+// error: precision '.2' in format spec ':.2' needs a Float, found Int
+fn main(sys: Sys) {
+    let n = 5
+    sys.console.println("{n:.2}")
+}

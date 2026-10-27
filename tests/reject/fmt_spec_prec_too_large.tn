@@ -1,0 +1,4 @@
+// error: precision 101 is too large (at most 100)
+fn main(sys: Sys) {
+    sys.console.println("{1.0:.101}")
+}
