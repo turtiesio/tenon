@@ -54,7 +54,7 @@ fn main(sys: Sys) {
 }
 ```
 ```
-error: integer literal does not fit in Int (64-bit)
+error: integer literal does not fit in Int (64-bit; the smallest Int is INT_MIN)
 ```
 
 ## 4. Discarding a value needs `let _ =` on every call (friction, not a bug)
