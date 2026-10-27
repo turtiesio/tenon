@@ -1,0 +1,64 @@
+$ ledger open alice
+opened alice
+[exit 0]
+$ ledger open bob
+opened bob
+[exit 0]
+$ ledger open alice
+error: account alice exists
+[exit 1]
+$ ledger transfer t1 mint alice 100
+transferred 100 from mint to alice
+[exit 0]
+$ ledger transfer t2 alice bob 30
+transferred 30 from alice to bob
+[exit 0]
+$ ledger transfer t2 alice bob 30
+transfer t2 already applied
+[exit 0]
+$ ledger transfer t3 bob alice 999
+error: insufficient funds in bob
+[exit 1]
+$ ledger transfer t4 bob carol 1
+error: no account carol
+[exit 1]
+$ ledger transfer t5 alice bob -5
+error: amount must be positive
+[exit 1]
+$ ledger transfer t6 alice bob x
+error: amount must be an integer: x
+[exit 1]
+$ ledger balance alice
+alice 70
+[exit 0]
+$ ledger balance nobody
+error: no account nobody
+[exit 1]
+$ ledger bogus
+error: usage: ledger DIR (open ACCOUNT | transfer ID FROM TO AMOUNT | balance ACCOUNT | report)
+[exit 1]
+# crash: torn final record
+$ ledger report
+recovered: ignored 1 torn record(s)
+alice 70
+bob 30
+transfers 2
+[exit 0]
+$ ledger transfer t8 mint bob 1
+transferred 1 from mint to bob
+[exit 0]
+$ ledger report
+alice 70
+bob 31
+transfers 3
+[exit 0]
+# crash: corrupted record in the middle is skipped, never misapplied
+$ ledger report
+recovered: ignored 1 torn record(s)
+alice 100
+bob 1
+transfers 2
+[exit 0]
+# archived records:
+transfer t7 mint bob 5 #12
+transfer t2 alice bob 99 #948125353

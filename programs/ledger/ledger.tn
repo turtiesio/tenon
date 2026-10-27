@@ -1,0 +1,152 @@
+// ledger: accounts and transfers with exactly-once semantics and crash recovery.
+//
+//   ledger DIR open ACCOUNT
+//   ledger DIR transfer ID FROM TO AMOUNT    (ID makes the transfer idempotent)
+//   ledger DIR balance ACCOUNT
+//   ledger DIR report
+//
+// State is an append-only journal (DIR/journal). Every record is appended and
+// fsynced before the command is acknowledged; each line carries a checksum so a
+// torn or corrupted tail is detected and ignored on recovery (never applied twice,
+// never half-applied).
+
+enum Record {
+    Open(Str),
+    Transfer(Str, Str, Str, Int),
+}
+
+struct Ledger {
+    balances: Map[Str, Int],
+    applied: Map[Str, Record],   // transfer id -> record (dedup)
+    torn: Int,                   // records ignored during recovery
+}
+
+enum Outcome { Done(Str), Duplicate(Str), Rejected(Str) }
+
+fn checksum(s: Str) -> Int {
+    var h = 7
+    for i in 0..s.len() { h = (h * 31 + s.byte(i)) % 1000000007 }
+    h
+}
+
+fn encode(r: Record) -> Str {
+    let body = match r {
+        Open(a) => "open {a}",
+        Transfer(id, from, to, amt) => "transfer {id} {from} {to} {amt}",
+    }
+    "{body} #{checksum(body)}\n"
+}
+
+fn decode(line: Str) -> Option[Record] {
+    let i = line.find(" #")?
+    let body = line.slice(0, i)
+    let sum = line.slice(i + 2, line.len()).to_int()?
+    if sum != checksum(body) { return None }
+    let w = body.words()
+    match w.len() {
+        2 if w[0] == "open" => Some(Open(w[1])),
+        5 if w[0] == "transfer" => Some(Transfer(w[1], w[2], w[3], w[4].to_int()?)),
+        _ => None,
+    }
+}
+
+fn Ledger.apply(mut self, r: Record) -> Outcome {
+    match r {
+        Open(a) => {
+            if self.balances.contains(a) { return Rejected("account {a} exists") }
+            self.balances[a] = 0
+            Done("opened {a}")
+        }
+        Transfer(id, from, to, amt) => {
+            if self.applied.contains(id) { return Duplicate("transfer {id} already applied") }
+            if amt <= 0 { return Rejected("amount must be positive") }
+            if not self.balances.contains(to) { return Rejected("no account {to}") }
+            if from != "mint" {
+                if not self.balances.contains(from) { return Rejected("no account {from}") }
+                if self.balances[from] < amt { return Rejected("insufficient funds in {from}") }
+                self.balances[from] -= amt
+            }
+            self.balances[to] += amt
+            self.applied[id] = r
+            Done("transferred {amt} from {from} to {to}")
+        }
+    }
+}
+
+fn recover(fs: Fs) -> Result[Ledger, IoError] {
+    var l = Ledger { balances: [:], applied: [:], torn: 0 }
+    let text = match fs.read("journal") {
+        Ok(t) => t,
+        Err(NotFound(_)) => "",
+        Err(e) => return Err(e),
+    }
+    var good: List[Str] = []
+    var bad: List[Str] = []
+    for line in text.lines() {
+        match decode(line) {
+            Some(r) => {
+                let _ = l.apply(r)
+                good.push(encode(r))
+            }
+            None => {
+                l.torn += 1
+                bad.push(line + "\n")
+            }
+        }
+    }
+    if l.torn > 0 {
+        // Archive what cannot be applied, then drop it atomically so later
+        // appends start on a clean line.
+        fs.append("journal.rejected", bad.join(""))?
+        fs.write("journal", good.join(""))?
+    }
+    Ok(l)
+}
+
+fn usage() -> Str { "usage: ledger DIR (open ACCOUNT | transfer ID FROM TO AMOUNT | balance ACCOUNT | report)" }
+
+fn parse(args: List[Str]) -> Result[Record, Str] {
+    match args.len() {
+        3 if args[1] == "open" => Ok(Open(args[2])),
+        6 if args[1] == "transfer" => {
+            let amt = args[5].to_int().ok_or("amount must be an integer: {args[5]}")?
+            Ok(Transfer(args[2], args[3], args[4], amt))
+        }
+        _ => Err(usage()),
+    }
+}
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    let args = sys.args
+    if args.len() < 2 { return Err(usage()) }
+    let _ = sys.fs.mkdir(args[0])
+    let fs = sys.fs.within(args[0])
+    var l = recover(fs).map_err(fn(e) => "cannot read journal: {e}")?
+    if l.torn > 0 { con.eprintln("recovered: ignored {l.torn} torn record(s)") }
+    match args[1] {
+        "balance" if args.len() == 3 => {
+            match l.balances.get(args[2]) {
+                Some(b) => con.println("{args[2]} {b}"),
+                None => return Err("no account {args[2]}"),
+            }
+        }
+        "report" => {
+            for a in l.balances.keys().sorted() { con.println("{a} {l.balances[a]}") }
+            con.println("transfers {l.applied.len()}")
+        }
+        _ => {
+            let r = parse(args)?
+            match l.apply(r) {
+                Done(msg) => {
+                    // Durable before acknowledged.
+                    fs.append("journal", encode(r)).map_err(fn(e) => "cannot write journal: {e}")?
+                    con.println(msg)
+                }
+                Duplicate(msg) => con.println(msg),
+                Rejected(msg) => return Err(msg),
+            }
+        }
+    }
+    Ok(())
+}
