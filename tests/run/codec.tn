@@ -1,0 +1,23 @@
+struct Pt { x: Int, y: Float, name: Str }
+enum Ev { Moved(Pt, List[Int]), Note(Str), Quit }
+fn main(sys: Sys) {
+    let c = sys.console
+    let evs = [Moved(Pt { x: -3, y: 1.5, name: "a \"q\"\n" }, [1, 2]), Note("hi"), Quit]
+    for e in evs {
+        let s = encode(e)
+        let back: Result[Ev, Str] = decode(s)
+        c.println("{s} => {back} {back == Ok(e)}")
+    }
+    let bad = ["Quit ", "Note(hi)", "Moved(Pt \{ x: 01, y: 1.5, name: \"\" }, [])", "Note(\"x\")", "Nope", "Note(\"\\u{41}\")"]
+    for b in bad {
+        let r: Result[Ev, Str] = decode(b)
+        c.println("{b} => {r}")
+    }
+    let mm: Map[Str, List[(Int, Bool)]] = ["k": [(1, true)], "": []]
+    let r2: Result[Map[Str, List[(Int, Bool)]], Str] = decode(encode(mm))
+    c.println("{encode(mm)} {r2 == Ok(mm)}")
+    let r3: Result[Map[Str, Int], Str] = decode("[\"a\": 1, \"a\": 2]")
+    let r4: Result[List[Float], Str] = decode("[1.0, 2.5e-7, nan, -inf, 1e300]")
+    let r5: Result[List[Float], Str] = decode("[1, 2.50]")
+    c.println("{r3} {r4} {r5}")
+}

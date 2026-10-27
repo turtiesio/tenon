@@ -1,4 +1,4 @@
-INCR k -0
+INCR k 01
 INCR k +1
 INCR k 00
 INCR k abc

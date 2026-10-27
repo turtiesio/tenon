@@ -39,6 +39,12 @@ def terminate(proc):
         os.killpg(proc.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+    except PermissionError:
+        # macOS may report EPERM for a group containing only an exited,
+        # unreaped child. Still attempt group cleanup even if the parent has
+        # exited, because its descendants may retain the pipes.
+        if proc.poll() is None:
+            raise
 
 
 def short_diff(want, got):
@@ -70,7 +76,6 @@ def execute(directory, cwd, command, kill_after=None):
                 terminate(proc)
                 out, err = proc.communicate()
         else:
-            lines = data.splitlines(keepends=True)
             # Only LF delimits the protocol; splitlines also recognizes CR.
             lines = data.split(b'\n')
             lines = [line + b'\n' for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
@@ -131,7 +136,10 @@ def execute(directory, cwd, command, kill_after=None):
                 proc.wait()
             for stream in (proc.stdin, proc.stdout, proc.stderr):
                 if stream and not stream.closed:
-                    stream.close()
+                    try:
+                        stream.close()
+                    except BrokenPipeError:
+                        pass
     reasons = [failure] if failure else []
     if expected != out:
         reasons.append(short_diff(expected, out))

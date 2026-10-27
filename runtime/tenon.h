@@ -7,6 +7,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ctype.h>
 #include <math.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -149,6 +150,7 @@ TN_NORETURN static TN_UNUSED void tn_exit(int code) {
 /* Capabilities and functions are not comparable (the checker rejects it);
  * these exist only so derived helpers of enclosing types are complete. */
 #define TN_INCOMPARABLE(T)                                                      \
+    static inline TN_UNUSED bool T##_dec(void *d, T *out) { (void)d; (void)out; return false; } \
     static inline TN_UNUSED bool T##_eq(T a, T b) { (void)a; (void)b; return false; } \
     static inline TN_UNUSED int T##_cmp(T a, T b) { (void)a; (void)b; return 0; }     \
     static inline TN_UNUSED uint64_t T##_hash(T a) { (void)a; return 0; }             \
@@ -240,6 +242,10 @@ static TN_UNUSED tn_Str tn_buf_finish(tn_buf *b) {
 
 /* Identity: same view of the same bytes (cheap, conservative equality). */
 static inline bool tn_Str_same(tn_Str a, tn_Str b) { return a.p == b.p && a.len == b.len; }
+static inline bool tn_str_eq_c(tn_Str a, const char *c) {
+    size_t n = strlen(c);
+    return (size_t)a.len == n && memcmp(a.p, c, n) == 0;
+}
 static inline bool tn_Str_eq(tn_Str a, tn_Str b) {
     return a.len == b.len && (a.p == b.p || memcmp(a.p, b.p, (size_t)a.len) == 0);
 }
@@ -271,8 +277,11 @@ static inline uint64_t tn_Str_hash(tn_Str s) {
     memcpy(&w, p, (size_t)n);
     return tn_mix(h ^ w);
 }
-static TN_UNUSED void tn_Str_show(tn_buf *b, tn_Str s, bool top) {
-    if (top) {
+/* mode: TN_TOP (a top-level string prints raw), TN_FULL (encode: show every field) */
+#define TN_TOP 1
+#define TN_FULL 2
+static TN_UNUSED void tn_Str_show(tn_buf *b, tn_Str s, int mode) {
+    if (mode & TN_TOP) {
         tn_buf_str(b, s);
         return;
     }
@@ -317,8 +326,8 @@ static inline bool tn_Bool_same(tn_Bool a, tn_Bool b) { return a == b; }
 static inline bool tn_Unit_same(tn_Unit a, tn_Unit b) { (void)a; (void)b; return true; }
 static inline int tn_Int_cmp(tn_Int a, tn_Int b) { return a < b ? -1 : a > b; }
 static inline uint64_t tn_Int_hash(tn_Int a) { return tn_mix((uint64_t)a); }
-static TN_UNUSED void tn_Int_show(tn_buf *b, tn_Int x, bool top) {
-    (void)top;
+static TN_UNUSED void tn_Int_show(tn_buf *b, tn_Int x, int mode) {
+    (void)mode;
     char t[24];
     int n = snprintf(t, sizeof t, "%lld", (long long)x);
     tn_buf_add(b, t, n);
@@ -332,8 +341,8 @@ static inline uint64_t tn_Float_hash(tn_Float a) {
     return tn_mix(u);
 }
 /* Shortest round-trip digits; layout matches value.rs layout_float. */
-static TN_UNUSED void tn_Float_show(tn_buf *b, tn_Float x, bool top) {
-    (void)top;
+static TN_UNUSED void tn_Float_show(tn_buf *b, tn_Float x, int mode) {
+    (void)mode;
     if (isnan(x)) { tn_buf_cstr(b, "nan"); return; }
     if (isinf(x)) { tn_buf_cstr(b, x > 0 ? "inf" : "-inf"); return; }
     if (signbit(x)) tn_buf_add(b, "-", 1);
@@ -376,18 +385,56 @@ static TN_UNUSED void tn_Float_show(tn_buf *b, tn_Float x, bool top) {
 static inline bool tn_Bool_eq(tn_Bool a, tn_Bool b) { return a == b; }
 static inline int tn_Bool_cmp(tn_Bool a, tn_Bool b) { return (int)a - (int)b; }
 static inline uint64_t tn_Bool_hash(tn_Bool a) { return a; }
-static TN_UNUSED void tn_Bool_show(tn_buf *b, tn_Bool x, bool top) {
-    (void)top;
+static TN_UNUSED void tn_Bool_show(tn_buf *b, tn_Bool x, int mode) {
+    (void)mode;
     tn_buf_cstr(b, x ? "true" : "false");
 }
 static inline bool tn_Unit_eq(tn_Unit a, tn_Unit b) { (void)a; (void)b; return true; }
 static inline int tn_Unit_cmp(tn_Unit a, tn_Unit b) { (void)a; (void)b; return 0; }
 static inline uint64_t tn_Unit_hash(tn_Unit a) { (void)a; return 0; }
-static TN_UNUSED void tn_Unit_show(tn_buf *b, tn_Unit x, bool top) { (void)x; (void)top; tn_buf_cstr(b, "()"); }
-static TN_UNUSED void tn_Console_show(tn_buf *b, tn_Console x, bool top) { (void)x; (void)top; tn_buf_cstr(b, "<Console>"); }
-static TN_UNUSED void tn_Clock_show(tn_buf *b, tn_Clock x, bool top) { (void)x; (void)top; tn_buf_cstr(b, "<Clock>"); }
+static TN_UNUSED void tn_Unit_show(tn_buf *b, tn_Unit x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "()"); }
+static TN_UNUSED void tn_Console_show(tn_buf *b, tn_Console x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Console>"); }
+static TN_UNUSED void tn_Clock_show(tn_buf *b, tn_Clock x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Clock>"); }
 TN_INCOMPARABLE(tn_Console)
 TN_INCOMPARABLE(tn_Clock)
+
+/* ---------- derived codec: strict decoding (see src/codec.rs) ---------- */
+
+typedef struct { const char *p; int64_t n, pos, err; } tn_dec;
+static bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out);
+static bool tn_str_to_int(tn_Str s, tn_Int *out);
+static bool tn_str_to_float(tn_Str s, tn_Float *out);
+static inline bool tn_dec_fail(tn_dec *d, int64_t at) {
+    if (d->err < 0) d->err = at;
+    return false;
+}
+static inline bool tn_dec_lit(tn_dec *d, const char *l) {
+    int64_t n = (int64_t)strlen(l);
+    if (d->pos + n <= d->n && memcmp(d->p + d->pos, l, (size_t)n) == 0) {
+        d->pos += n;
+        return true;
+    }
+    return false;
+}
+static inline bool tn_dec_expect(tn_dec *d, const char *l) { return tn_dec_lit(d, l) || tn_dec_fail(d, d->pos); }
+/* class 0: [-0-9]  1: [-+.A-Za-z0-9]  2: [A-Za-z0-9_] */
+static TN_UNUSED tn_Str tn_dec_run(tn_dec *d, int cls) {
+    int64_t st = d->pos;
+    while (d->pos < d->n) {
+        char c = d->p[d->pos];
+        bool dig = c >= '0' && c <= '9', alpha = (c | 0x20) >= 'a' && (c | 0x20) <= 'z';
+        bool ok = cls == 0 ? (dig || c == '-') : cls == 1 ? (dig || alpha || c == '-' || c == '+' || c == '.') : (dig || alpha || c == '_');
+        if (!ok) break;
+        d->pos++;
+    }
+    return (tn_Str){d->p + st, d->pos - st, NULL};
+}
+/* The consumed text must be exactly the canonical encoding of the value. */
+static TN_UNUSED bool tn_dec_canon(tn_dec *d, tn_buf *b, tn_Str text, int64_t start) {
+    bool ok = b->len == text.len && memcmp(b->p + sizeof(tn_rc), text.p, (size_t)text.len) == 0;
+    free(b->p);
+    return ok || tn_dec_fail(d, start);
+}
 
 TN_NORETURN static TN_UNUSED void tn_trap_str(tn_Str s, const char *loc) { tn_trap_bytes(s.p, s.len, loc); }
 TN_NORETURN static TN_UNUSED void tn_trap_buf(tn_buf *b, const char *loc) {
@@ -407,6 +454,79 @@ static TN_UNUSED void tn_msort_idx(int64_t *idx, int64_t *tmp, int64_t n, int (*
     while (i < h) idx[k++] = tmp[i++];
 }
 
+static TN_UNUSED bool tn_Int_dec(tn_dec *d, tn_Int *out) {
+    int64_t st = d->pos;
+    tn_Str t = tn_dec_run(d, 0);
+    if (!tn_str_to_int(t, out)) return tn_dec_fail(d, st);
+    tn_buf b = tn_buf_new();
+    tn_Int_show(&b, *out, 0);
+    return tn_dec_canon(d, &b, t, st);
+}
+static TN_UNUSED bool tn_Float_dec(tn_dec *d, tn_Float *out) {
+    int64_t st = d->pos;
+    tn_Str t = tn_dec_run(d, 1);
+    if (!tn_str_to_float(t, out)) return tn_dec_fail(d, st);
+    tn_buf b = tn_buf_new();
+    tn_Float_show(&b, *out, 0);
+    return tn_dec_canon(d, &b, t, st);
+}
+static TN_UNUSED bool tn_Bool_dec(tn_dec *d, tn_Bool *out) {
+    if (tn_dec_lit(d, "true")) { *out = true; return true; }
+    if (tn_dec_lit(d, "false")) { *out = false; return true; }
+    return tn_dec_fail(d, d->pos);
+}
+static TN_UNUSED bool tn_Unit_dec(tn_dec *d, tn_Unit *out) { *out = 0; return tn_dec_expect(d, "()"); }
+static TN_UNUSED bool tn_Str_dec(tn_dec *d, tn_Str *out) {
+    int64_t st = d->pos;
+    if (!tn_dec_expect(d, "\"")) return false;
+    tn_buf b = tn_buf_new();
+    for (;;) {
+        if (d->pos >= d->n) { free(b.p); return tn_dec_fail(d, d->pos); }
+        char c = d->p[d->pos++];
+        if (c == '"') break;
+        if (c != '\\') { tn_buf_add(&b, &c, 1); continue; }
+        if (d->pos >= d->n) { free(b.p); return tn_dec_fail(d, d->pos); }
+        char e = d->p[d->pos++], v;
+        switch (e) {
+        case '"': v = '"'; break;
+        case '\\': v = '\\'; break;
+        case 'n': v = '\n'; break;
+        case 't': v = '\t'; break;
+        case 'r': v = '\r'; break;
+        case 'u': {
+            if (!tn_dec_expect(d, "{")) { free(b.p); return false; }
+            int64_t hs = d->pos, x = 0;
+            while (d->pos < d->n && isxdigit((unsigned char)d->p[d->pos])) {
+                char h = d->p[d->pos++];
+                x = x * 16 + (h <= '9' ? h - '0' : (h | 0x20) - 'a' + 10);
+                if (x > 255) x = 256;
+            }
+            if (d->pos == hs || x > 255) { free(b.p); return tn_dec_fail(d, st); }
+            if (!tn_dec_expect(d, "}")) { free(b.p); return false; }
+            v = (char)x;
+            break;
+        }
+        default: free(b.p); return tn_dec_fail(d, st);
+        }
+        tn_buf_add(&b, &v, 1);
+    }
+    tn_Str r = tn_buf_finish(&b);
+    tn_buf chk = tn_buf_new();
+    bool valid = tn_utf8_lossy(r.p, r.len, &chk);
+    free(chk.p);
+    if (!valid) { tn_Str_release(r); return tn_dec_fail(d, st); }
+    tn_buf q = tn_buf_new();
+    tn_Str_show(&q, r, 0);
+    if (!tn_dec_canon(d, &q, (tn_Str){d->p + st, d->pos - st, NULL}, st)) { tn_Str_release(r); return false; }
+    *out = r;
+    return true;
+}
+static TN_UNUSED tn_Str tn_dec_msg(tn_dec *d, const char *type) {
+    char m[256];
+    int n = snprintf(m, sizeof m, "cannot decode %s at byte %lld", type, (long long)(d->err >= 0 ? d->err : d->pos));
+    return tn_str_new(m, n);
+}
+
 /* ---------- closures ---------- */
 
 typedef struct tn_env { int64_t rc; void (*drop)(struct tn_env *); } tn_env;
@@ -418,7 +538,7 @@ static inline tn_fn tn_fn_retain(tn_fn f) {
 static inline void tn_fn_release(tn_fn f) {
     if (f.env && --f.env->rc == 0) f.env->drop(f.env);
 }
-static TN_UNUSED void tn_fn_show(tn_buf *b, tn_fn f, bool top) { (void)f; (void)top; tn_buf_cstr(b, "<fn>"); }
+static TN_UNUSED void tn_fn_show(tn_buf *b, tn_fn f, int mode) { (void)f; (void)mode; tn_buf_cstr(b, "<fn>"); }
 TN_INCOMPARABLE(tn_fn)
 
 /* ---------- lists: NULL is the empty list ---------- */
@@ -552,14 +672,30 @@ TN_INCOMPARABLE(tn_fn)
         for (int64_t i = 0; i < L##_len(l); i++) h = tn_mix(h * 31 + T##_hash(l->data[i])); \
         return h;                                                                        \
     }                                                                                    \
-    static TN_UNUSED void L##_show(tn_buf *b, L l, bool top) {                           \
-        (void)top;                                                                       \
+    static TN_UNUSED void L##_show(tn_buf *b, L l, int mode) {                           \
+        (void)mode;                                                                       \
         tn_buf_add(b, "[", 1);                                                           \
         for (int64_t i = 0; i < L##_len(l); i++) {                                       \
             if (i) tn_buf_add(b, ", ", 2);                                               \
-            T##_show(b, l->data[i], false);                                              \
+            T##_show(b, l->data[i], mode & TN_FULL);                                              \
         }                                                                                \
         tn_buf_add(b, "]", 1);                                                           \
+    }                                                                                    \
+    static TN_UNUSED bool L##_dec(tn_dec *d, L *out) {                                   \
+        if (!tn_dec_expect(d, "[")) return false;                                        \
+        L l = NULL;                                                                      \
+        if (!tn_dec_lit(d, "]")) {                                                       \
+            for (;;) {                                                                   \
+                T x;                                                                     \
+                if (!T##_dec(d, &x)) { L##_release(l); return false; }                   \
+                L##_push(&l, x);                                                         \
+                if (tn_dec_lit(d, ", ")) continue;                                       \
+                if (!tn_dec_expect(d, "]")) { L##_release(l); return false; }            \
+                break;                                                                   \
+            }                                                                            \
+        }                                                                                \
+        *out = l;                                                                        \
+        return true;                                                                     \
     }                                                                                    \
     /* stable merge sort of xs by keys (keys == xs when sorting by value) */             \
     static TN_UNUSED void L##_msort(T *xs, T *tmp, int64_t n) {                          \
@@ -681,7 +817,7 @@ TN_INCOMPARABLE(tn_fn)
         if (TN_UNLIKELY(!v)) {                                                           \
             tn_buf b = tn_buf_new();                                                     \
             tn_buf_cstr(&b, "key not found: ");                                          \
-            K##_show(&b, k, false);                                                      \
+            K##_show(&b, k, 0);                                                      \
             tn_buf_add(&b, "", 1);                                                       \
             tn_trap(b.p + sizeof(tn_rc), loc);                                           \
         }                                                                                \
@@ -758,8 +894,27 @@ TN_INCOMPARABLE(tn_fn)
     }                                                                                    \
     static TN_UNUSED uint64_t M##_hash(M m) { return (uint64_t)M##_len(m); }            \
     static inline bool M##_same(M a, M b) { return a == b; }                             \
-    static TN_UNUSED void M##_show(tn_buf *b, M m, bool top) {                           \
-        (void)top;                                                                       \
+    static TN_UNUSED bool M##_dec(tn_dec *d, M *out) {                                   \
+        M m = NULL;                                                                      \
+        if (tn_dec_lit(d, "[:]")) { *out = NULL; return true; }                          \
+        if (!tn_dec_expect(d, "[")) return false;                                        \
+        for (;;) {                                                                       \
+            int64_t ks = d->pos;                                                         \
+            K k; V v;                                                                    \
+            if (!K##_dec(d, &k)) { M##_release(m); return false; }                       \
+            if (M##_get(m, k)) { K##_release(k); M##_release(m); return tn_dec_fail(d, ks); } \
+            if (!tn_dec_expect(d, ": ")) { K##_release(k); M##_release(m); return false; } \
+            if (!V##_dec(d, &v)) { K##_release(k); M##_release(m); return false; }       \
+            M##_insert(&m, k, v);                                                        \
+            if (tn_dec_lit(d, ", ")) continue;                                           \
+            if (!tn_dec_expect(d, "]")) { M##_release(m); return false; }                \
+            break;                                                                       \
+        }                                                                                \
+        *out = m;                                                                        \
+        return true;                                                                     \
+    }                                                                                    \
+    static TN_UNUSED void M##_show(tn_buf *b, M m, int mode) {                           \
+        (void)mode;                                                                       \
         if (!M##_len(m)) { tn_buf_cstr(b, "[:]"); return; }                              \
         tn_buf_add(b, "[", 1);                                                           \
         bool first = true;                                                               \
@@ -767,9 +922,9 @@ TN_INCOMPARABLE(tn_fn)
             if (!m->e[i].live) continue;                                                 \
             if (!first) tn_buf_add(b, ", ", 2);                                          \
             first = false;                                                               \
-            K##_show(b, m->e[i].k, false);                                               \
+            K##_show(b, m->e[i].k, mode & TN_FULL);                                               \
             tn_buf_add(b, ": ", 2);                                                      \
-            V##_show(b, m->e[i].v, false);                                               \
+            V##_show(b, m->e[i].v, mode & TN_FULL);                                               \
         }                                                                                \
         tn_buf_add(b, "]", 1);                                                           \
     }
@@ -1156,7 +1311,7 @@ static TN_UNUSED tn_Fs tn_Fs_retain(tn_Fs f) { f->rc++; return f; }
 static TN_UNUSED void tn_Fs_release(tn_Fs f) {
     if (--f->rc == 0) { tn_Str_release(f->root); free(f); }
 }
-static TN_UNUSED void tn_Fs_show(tn_buf *b, tn_Fs f, bool top) { (void)f; (void)top; tn_buf_cstr(b, "<Fs>"); }
+static TN_UNUSED void tn_Fs_show(tn_buf *b, tn_Fs f, int mode) { (void)f; (void)mode; tn_buf_cstr(b, "<Fs>"); }
 TN_INCOMPARABLE(tn_Fs)
 static TN_UNUSED tn_Fs tn_fs_make(tn_Str root, bool att, bool wr) {
     tn_Fs f = tn_alloc(sizeof *f);

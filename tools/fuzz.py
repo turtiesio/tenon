@@ -179,6 +179,11 @@ class Gen:
             if ps:
                 v = self.pick(ps)
                 return [f"{v}.xs.push({self.expr('Int', env, 2)})", f"{v}.a += 1"]
+        if c == 5 and r.random() < 0.4:
+            t = self.pick([x for x in TYPES])
+            v = self.fresh("rt")
+            return [f"let {v}: Result[{t}, Str] = decode(encode({self.expr(t, env)}))",
+                    f'con.println("rt {{{v}}}")']
         if c in (5, 6, 7):
             return [f"con.println({self.expr(self.pick(TYPES), env)}.to_str())" if r.random() < 0.3
                     else f'con.println("{self.fresh("L")}: {{{self.expr(self.pick(TYPES), env)}}}")']

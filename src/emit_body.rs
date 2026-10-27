@@ -1184,6 +1184,23 @@ impl<'a> Emitter<'a> {
                 self.line(&format!("{} {} = {{0}};", tn, r));
                 bor(r)
             }
+            "encode" => {
+                let xn = self.cty(&ptys[0]);
+                let b = self.fresh("b");
+                self.line(&format!("tn_buf {} = tn_buf_new(); {}_show(&{}, {}, TN_FULL);", b, xn, b, a[0]));
+                self.tmp_owned(t, &format!("tn_buf_finish(&{})", b))
+            }
+            "decode" => {
+                let vt = t.args()[0].clone();
+                let vn = self.cty(&vt);
+                let (d, v, ok) = (self.fresh("d"), self.fresh("v"), self.fresh("ok"));
+                self.line(&format!("tn_dec {d} = {{ ({0}).p, ({0}).len, 0, -1 }}; {vn} {v}; bool {ok} = {vn}_dec(&{d}, &{v});", a[0]));
+                self.line(&format!("if ({ok} && {d}.pos != {d}.n) {{ {vn}_release({v}); {ok} = false; tn_dec_fail(&{d}, {d}.pos); }}"));
+                let okv = self.ctor_named(t, "Ok", &[v.clone()]);
+                let msg = format!("tn_dec_msg(&{}, {})", d, c_string(&vt.to_string()));
+                let errv = self.ctor_named(t, "Err", &[msg]);
+                self.tmp_owned(t, &format!("{} ? {} : {}", ok, okv, errv))
+            }
             "assert" => {
                 self.line(&format!("if (!({})) tn_trap(\"assertion failed\", {});", a[0], loc));
                 bor("0")
@@ -1274,12 +1291,12 @@ impl<'a> Emitter<'a> {
                         self.line(&format!("    tn_buf {} = tn_buf_new();", b));
                         if name == "Result.unwrap" {
                             let xn = self.cty(&xt);
-                            self.line(&format!("    tn_buf_cstr(&{}, \"unwrap on \"); {}_show(&{}, {}, false);", b, xn, b, a[0]));
+                            self.line(&format!("    tn_buf_cstr(&{}, \"unwrap on \"); {}_show(&{}, {}, 0);", b, xn, b, a[0]));
                         } else {
                             let et = xt.args()[1].clone();
                             let en = self.cty(&et);
                             let p = self.payload(&xt, &a[0], 1, 0);
-                            self.line(&format!("    tn_buf_str(&{b}, {}); tn_buf_cstr(&{b}, \": \"); {en}_show(&{b}, {p}, false);", a[1]));
+                            self.line(&format!("    tn_buf_str(&{b}, {}); tn_buf_cstr(&{b}, \": \"); {en}_show(&{b}, {p}, 0);", a[1]));
                         }
                         self.line(&format!("    tn_trap_buf(&{}, {});", b, loc));
                     }

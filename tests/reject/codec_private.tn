@@ -1,0 +1,3 @@
+// error: shapes.Canvas has private fields
+import shapes
+fn main() { let r: Result[shapes.Canvas, Str] = decode("") }

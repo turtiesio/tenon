@@ -1,0 +1,16 @@
+test_arguments_bytes_stderr_and_eof (__main__.HarnessChecks.test_arguments_bytes_stderr_and_eof) ... ok
+test_cases_are_fresh (__main__.HarnessChecks.test_cases_are_fresh) ... ok
+test_cmd_keeps_empty_argument_and_requires_final_newline (__main__.HarnessChecks.test_cmd_keeps_empty_argument_and_requires_final_newline) ... ok
+test_early_exit_fails_kill (__main__.HarnessChecks.test_early_exit_fails_kill) ... ok
+test_exact_stdout_and_exit_both_required (__main__.HarnessChecks.test_exact_stdout_and_exit_both_required) ... ok
+test_flat_and_cases_layouts (__main__.HarnessChecks.test_flat_and_cases_layouts) ... ok
+test_kill_lockstep_stderr_and_process_group (__main__.HarnessChecks.test_kill_lockstep_stderr_and_process_group) ... ok
+test_kill_requires_newline_and_flush (__main__.HarnessChecks.test_kill_requires_newline_and_flush) ... ok
+test_no_stdin_file_is_immediate_eof (__main__.HarnessChecks.test_no_stdin_file_is_immediate_eof) ... ok
+test_setup_shared_steps_and_continue_after_failure (__main__.HarnessChecks.test_setup_shared_steps_and_continue_after_failure) ... ok
+test_timeout_kills_process_group (__main__.HarnessChecks.test_timeout_kills_process_group) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 2.332s
+
+OK

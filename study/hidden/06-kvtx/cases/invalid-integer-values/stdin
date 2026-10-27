@@ -1,4 +1,4 @@
-SET k -0
+SET k 00
 INCR k
 GET k
 SET k +5
