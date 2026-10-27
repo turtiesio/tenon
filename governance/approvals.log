@@ -1,1 +1,2 @@
 # Append-only. One line per approved weakening: DATE | APPROVER | PATH | reason
+2026-10-28 | user (david) | tools/study.py | Milestone 1 study line count excludes closer-only lines in every language (braces kept by user decision); raw line count still reported

@@ -3,7 +3,10 @@ Milestone 1 (tenon.md §4), item by item:
 - 10 real programs with differential and fuzz testing green: **met**
   (programs/: ledger, jobq, facts, kvhttp, mkplan, csvq, mdhtml, calc, and the
   self-hosted lexer/parser drivers; fuzzing 0 backend disagreements).
-- Blind usability study at or below Python on line count and task time: **not met.**
+- Blind usability study at or below Python on line count and task time: **lines met,
+  time not met.** Wave 3, lines without closer-only lines (user decision, see
+  docs/log.md): Tenon 1289, Python 1293, TypeScript 1241 (raw: 1612 / 1296 /
+  1511). Time: Tenon 7.0 min, Python 4.8, TypeScript 4.4.
   Wave 2 (task set 2, hidden tests written by Codex, 3 authors per language from
   Claude Opus, Claude Sonnet and Codex in a Latin square, compiler frozen at f6b8396;
   medians): hidden tests ~100% in all three languages; Tenon 1610 lines / 14640
