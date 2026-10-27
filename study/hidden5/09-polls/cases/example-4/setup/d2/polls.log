@@ -1,0 +1,3 @@
+CREATE a x y
+VOTE a bob x
+VOTE a bob x

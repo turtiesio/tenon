@@ -1,0 +1,3 @@
+CREATE 0123456789ab a b c d e f g h i
+VOTE 0123456789ab abcdefghijkl i
+RESULT 0123456789ab

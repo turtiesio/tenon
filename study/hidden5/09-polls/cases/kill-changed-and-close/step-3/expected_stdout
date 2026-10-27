@@ -1,0 +1,3 @@
+p closed a=0 b=1
+ERR poll closed
+ERR no such poll

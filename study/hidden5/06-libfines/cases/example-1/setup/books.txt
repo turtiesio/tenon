@@ -1,0 +1,4 @@
+# id|title|rate|cap
+B1|Dune|25|500
+B2|The Hobbit|10|100
+B3|SICP|50|2000

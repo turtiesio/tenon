@@ -1,0 +1,4 @@
+CREATE p yes no
+VOTE p ann yes
+VOTE p bob no
+VOTE p cy no

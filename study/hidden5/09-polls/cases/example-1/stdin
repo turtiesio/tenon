@@ -1,0 +1,17 @@
+CREATE lunch pizza sushi tacos
+VOTE lunch ann sushi
+VOTE lunch bob pizza
+VOTE lunch ann pizza
+VOTE lunch ann pizza
+VOTE lunch cy salad
+VOTE dinner ann pizza
+RESULT lunch
+CLOSE lunch
+VOTE lunch dee tacos
+CLOSE lunch
+RESULT lunch
+CREATE lunch a b
+CREATE x only
+CREATE y a a
+RESULT nope
+vote lunch ann pizza

@@ -1,0 +1,7 @@
+ann 0.00
+bob -0.01
+cy -0.01
+z +0.02
+--
+bob pays z 0.01
+cy pays z 0.01

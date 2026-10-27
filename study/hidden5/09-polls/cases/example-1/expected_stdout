@@ -1,0 +1,17 @@
+OK
+VOTED
+VOTED
+CHANGED
+UNCHANGED
+ERR no such option
+ERR no such poll
+lunch open pizza=2 sushi=0 tacos=0
+OK
+ERR poll closed
+ERR poll closed
+lunch closed pizza=2 sushi=0 tacos=0
+ERR poll exists
+ERR bad command
+ERR bad command
+ERR no such poll
+ERR bad command

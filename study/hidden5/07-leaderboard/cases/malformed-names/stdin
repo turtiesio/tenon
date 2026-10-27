@@ -1,0 +1,6 @@
+SCORE A 1
+SCORE 1a 1
+SCORE _a 1
+SCORE a-b 1
+SCORE abcdefghijklmnopq 1
+COUNT

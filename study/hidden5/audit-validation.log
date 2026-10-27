@@ -1,0 +1,12 @@
+01-seqx: 25 cases; examples 1–5; exit codes [0, 2]
+02-trx: 25 cases; examples 1–4; exit codes [0, 2]
+03-colalign: 25 cases; examples 1–5; exit codes [0, 2]
+04-splitbill: 25 cases; examples 1–5; exit codes [0, 1, 2]
+05-srtfix: 25 cases; examples 1–5; exit codes [0, 1, 2]
+06-libfines: 25 cases; examples 1–4; exit codes [0, 1, 2]
+07-leaderboard: 25 cases; examples 1–4; exit codes [0, 2]
+08-connect4: 25 cases; examples 1–4; exit codes [0, 2]
+09-polls: 25 cases; examples 1–4; exit codes [0, 1, 2]
+10-robots: 25 cases; examples 1–4; exit codes [0, 1, 2]
+Full-board draw: 42 legal alternating drops; 21 discs each; no four-in-a-row
+AUDIT PASS: 250 cases; 499 process runs; 8 kill steps; 1945 fixture files

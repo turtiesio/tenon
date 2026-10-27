@@ -1,0 +1,4 @@
+RESULT p
+RESULT q
+VOTE p u b
+CLOSE q

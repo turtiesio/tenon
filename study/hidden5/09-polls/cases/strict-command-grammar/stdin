@@ -1,0 +1,19 @@
+create p a b
+CREATE p a
+CREATE p a b c d e f g h i j
+CREATE p a a
+CREATE P a b
+CREATE abcdefghijklm a b
+CREATE p a b 
+ CREATE p a b
+CREATE  p a b
+CREATE	p a b
+VOTE p u
+VOTE p U a
+VOTE p u a extra
+CLOSE
+RESULT p extra
+RESULT p
+
+COUNT
+RESULT p

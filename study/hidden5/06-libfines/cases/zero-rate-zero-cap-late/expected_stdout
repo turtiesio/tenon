@@ -1,0 +1,4 @@
+a loans=2 late=2 fine=0.00
+  X Zero rate days=5 fine=0.00
+  Y Zero cap days=5 fine=0.00
+total=0.00 skipped=0

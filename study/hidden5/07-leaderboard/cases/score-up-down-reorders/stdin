@@ -1,0 +1,6 @@
+SCORE a 2
+SCORE b 1
+SCORE b 2
+TOP 2
+SCORE b -4
+TOP 2

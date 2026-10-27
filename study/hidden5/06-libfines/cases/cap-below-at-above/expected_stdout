@@ -1,0 +1,6 @@
+a loans=4 late=4 fine=0.18
+  X T days=1 fine=0.02
+  X T days=2 fine=0.04
+  X T days=3 fine=0.06
+  X T days=4 fine=0.06
+total=0.18 skipped=0

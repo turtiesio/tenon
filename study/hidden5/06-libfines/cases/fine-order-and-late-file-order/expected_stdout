@@ -1,0 +1,8 @@
+a loans=2 late=2 fine=0.30
+  Y Why days=2 fine=0.20
+  X Ex days=1 fine=0.10
+z loans=1 late=1 fine=0.30
+  X Ex days=3 fine=0.30
+b loans=1 late=1 fine=0.10
+  X Ex days=1 fine=0.10
+total=0.70 skipped=0

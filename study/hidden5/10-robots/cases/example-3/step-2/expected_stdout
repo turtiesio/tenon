@@ -1,0 +1,6 @@
+.*.
+.A*
+B.C
+A 1 1 moves=0 bumps=0 coins=0
+B 0 2 moves=0 bumps=0 coins=0
+C 2 2 moves=0 bumps=0 coins=0

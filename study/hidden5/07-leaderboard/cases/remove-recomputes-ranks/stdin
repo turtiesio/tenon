@@ -1,0 +1,7 @@
+SCORE a 5
+SCORE b 5
+SCORE c 1
+REMOVE a
+RANK c
+REMOVE b
+RANK c
