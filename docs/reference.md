@@ -624,7 +624,7 @@ UTF-8; offsets are byte offsets.
 ```tenon
 import regex
 
-let date = regex.compile("(\\d{4})-(\\d{2})-(\\d{2})").unwrap()   // Result[Regex, Str]
+let date = regex.compile("(\\d\{4})-(\\d\{2})-(\\d\{2})").unwrap()   // Result[Regex, Str]
 match date.full("2024-03-15") {                                   // Option[List[Str]]
     Some(g) => con.println("{g[1]} {g[2]} {g[3]}"),                 // g[0] is the whole match
     None => con.println("not a date"),
