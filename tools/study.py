@@ -89,8 +89,15 @@ def kit(lang, author):
     print(d)
 
 
+# A closer-only line holds nothing but closing brackets (`}`, `});`, `]`, ...).
+# Milestone 1 compares lines without them, in every language alike: Python
+# closes a block by dedenting, at no line (user decision, docs/log.md).
+CLOSER = re.compile(r"[})\]]+[,;)]*")
+
+
 def code_lines(path, lang):
-    n, toks = 0, 0
+    """(lines, tokens, closer-only lines) of non-blank, non-comment code."""
+    n, toks, closers = 0, 0, 0
     in_block = False
     for line in open(path, encoding="utf-8", errors="replace"):
         s = line.strip()
@@ -108,8 +115,9 @@ def code_lines(path, lang):
             if not s or s.startswith("//"):
                 continue
         n += 1
+        closers += bool(CLOSER.fullmatch(s))
         toks += len(re.findall(r"[A-Za-z_][A-Za-z_0-9]*|\d+(?:\.\d+)?|\"(?:[^\"\\]|\\.)*\"|'(?:[^'\\]|\\.)*'|\S", s))
-    return n, toks
+    return n, toks, closers
 
 
 def evaluate():
@@ -129,7 +137,8 @@ def evaluate():
             row["errors"] = sum(1 for e in ev if e["event"] == "compile-error" or e.get("crash"))
             row["minutes_to_visible"] = round((done - start) / 60, 1) if start and done else None
             if row["exists"]:
-                row["lines"], row["tokens"] = code_lines(src, lang)
+                row["lines"], row["tokens"], closers = code_lines(src, lang)
+                row["code_lines"] = row["lines"] - closers
                 if lang == "tenon":
                     exe = os.path.join(d, "solutions", t, "main")
                     subprocess.run([TENON, "build", src, "-o", exe], capture_output=True)
@@ -151,10 +160,11 @@ def evaluate():
             continue
         per_author = {}
         for r in rs:
-            a = per_author.setdefault(r["author"], {"pass": 0, "total": 0, "lines": 0, "tokens": 0, "minutes": [], "errors": 0})
+            a = per_author.setdefault(r["author"], {"pass": 0, "total": 0, "lines": 0, "code_lines": 0, "tokens": 0, "minutes": [], "errors": 0})
             a["pass"] += r.get("hidden_pass", 0)
             a["total"] += r.get("hidden_total", 0)
             a["lines"] += r["lines"]
+            a["code_lines"] += r["code_lines"]
             a["tokens"] += r["tokens"]
             a["errors"] += r["errors"]
             if r["minutes_to_visible"] is not None:
@@ -164,15 +174,16 @@ def evaluate():
             "authors": len(per_author),
             "hidden_pass_rate": med([a["pass"] / a["total"] for a in per_author.values() if a["total"]]),
             "lines": med([a["lines"] for a in per_author.values()]),
+            "code_lines": med([a["code_lines"] for a in per_author.values()]),
             "tokens": med([a["tokens"] for a in per_author.values()]),
             "minutes_total": med([sum(a["minutes"]) for a in per_author.values()]),
             "errors": med([a["errors"] for a in per_author.values()]),
         }
     os.makedirs(os.path.join(ROOT, ".evidence"), exist_ok=True)
-    lines = ["| Language | Authors | Hidden-test pass rate | Lines (sum of 10) | Tokens | Minutes to visible | Errors |", "|---|---|---|---|---|---|---|"]
+    lines = ["| Language | Authors | Hidden-test pass rate | Lines without closer-only lines (sum of 10) | All lines | Tokens | Minutes to visible | Errors |", "|---|---|---|---|---|---|---|---|"]
     for lang, s in summary.items():
         rate = f"{s['hidden_pass_rate'] * 100:.0f}%" if s["hidden_pass_rate"] is not None else "-"
-        lines.append(f"| {lang} | {s['authors']} | {rate} | {s['lines']} | {s['tokens']} | {s['minutes_total']} | {s['errors']} |")
+        lines.append(f"| {lang} | {s['authors']} | {rate} | {s['code_lines']} | {s['lines']} | {s['tokens']} | {s['minutes_total']} | {s['errors']} |")
     text = "Medians over authors (protocol: study/README.md; per-solution data: study/results/).\n\n" + "\n".join(lines)
     json.dump({"summary": text, "per_language": summary}, open(os.path.join(ROOT, ".evidence", "study.json"), "w"), indent=1)
     os.makedirs(os.path.join(ROOT, "study", "results"), exist_ok=True)

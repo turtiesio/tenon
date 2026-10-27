@@ -173,6 +173,11 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Study line metric (decided after wave 3):** lines are counted without
+  closer-only lines (`}` alone, `});` ...), the same rule in every language,
+  because Python closes blocks by dedenting at no line cost. The raw count is
+  still reported next to it.
+
 - **Syntax: keep braces.** The line-count gap against Python is accepted as a cost;
   attack the remainder through the library (std/regex) and idioms.
 - **Concurrency: single-threaded event loop** (readiness API over many connections).

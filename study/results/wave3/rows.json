@@ -9,6 +9,7 @@
   "minutes_to_visible": 0.3,
   "lines": 120,
   "tokens": 829,
+  "code_lines": 120,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -22,6 +23,7 @@
   "minutes_to_visible": 0.2,
   "lines": 89,
   "tokens": 679,
+  "code_lines": 89,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -35,6 +37,7 @@
   "minutes_to_visible": 0.7,
   "lines": 159,
   "tokens": 1089,
+  "code_lines": 159,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -48,6 +51,7 @@
   "minutes_to_visible": 0.5,
   "lines": 145,
   "tokens": 1017,
+  "code_lines": 145,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -61,6 +65,7 @@
   "minutes_to_visible": 0.6,
   "lines": 112,
   "tokens": 882,
+  "code_lines": 111,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -74,6 +79,7 @@
   "minutes_to_visible": 0.3,
   "lines": 116,
   "tokens": 805,
+  "code_lines": 116,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -87,6 +93,7 @@
   "minutes_to_visible": 0.5,
   "lines": 103,
   "tokens": 860,
+  "code_lines": 102,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -100,6 +107,7 @@
   "minutes_to_visible": 0.6,
   "lines": 155,
   "tokens": 1137,
+  "code_lines": 155,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -113,6 +121,7 @@
   "minutes_to_visible": 0.4,
   "lines": 154,
   "tokens": 1168,
+  "code_lines": 153,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -126,6 +135,7 @@
   "minutes_to_visible": 0.7,
   "lines": 143,
   "tokens": 1004,
+  "code_lines": 143,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -139,6 +149,7 @@
   "minutes_to_visible": 0.2,
   "lines": 67,
   "tokens": 536,
+  "code_lines": 67,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -152,6 +163,7 @@
   "minutes_to_visible": 0.2,
   "lines": 62,
   "tokens": 433,
+  "code_lines": 62,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -165,6 +177,7 @@
   "minutes_to_visible": 0.3,
   "lines": 105,
   "tokens": 774,
+  "code_lines": 105,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -178,6 +191,7 @@
   "minutes_to_visible": 0.3,
   "lines": 99,
   "tokens": 755,
+  "code_lines": 99,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -191,6 +205,7 @@
   "minutes_to_visible": 0.3,
   "lines": 74,
   "tokens": 674,
+  "code_lines": 74,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -204,6 +219,7 @@
   "minutes_to_visible": 0.2,
   "lines": 76,
   "tokens": 588,
+  "code_lines": 76,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -217,6 +233,7 @@
   "minutes_to_visible": 0.2,
   "lines": 63,
   "tokens": 600,
+  "code_lines": 63,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -230,6 +247,7 @@
   "minutes_to_visible": 0.5,
   "lines": 114,
   "tokens": 955,
+  "code_lines": 114,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -243,6 +261,7 @@
   "minutes_to_visible": 0.5,
   "lines": 102,
   "tokens": 835,
+  "code_lines": 102,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -256,6 +275,7 @@
   "minutes_to_visible": 0.2,
   "lines": 93,
   "tokens": 712,
+  "code_lines": 93,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -269,6 +289,7 @@
   "minutes_to_visible": 0.3,
   "lines": 110,
   "tokens": 782,
+  "code_lines": 110,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -282,6 +303,7 @@
   "minutes_to_visible": 0.5,
   "lines": 95,
   "tokens": 677,
+  "code_lines": 94,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -295,6 +317,7 @@
   "minutes_to_visible": 0.5,
   "lines": 154,
   "tokens": 1080,
+  "code_lines": 154,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -308,6 +331,7 @@
   "minutes_to_visible": 0.5,
   "lines": 148,
   "tokens": 943,
+  "code_lines": 147,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -321,6 +345,7 @@
   "minutes_to_visible": 0.4,
   "lines": 127,
   "tokens": 925,
+  "code_lines": 126,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -334,6 +359,7 @@
   "minutes_to_visible": 0.3,
   "lines": 115,
   "tokens": 821,
+  "code_lines": 115,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -347,6 +373,7 @@
   "minutes_to_visible": 0.4,
   "lines": 110,
   "tokens": 875,
+  "code_lines": 109,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -360,6 +387,7 @@
   "minutes_to_visible": 4.0,
   "lines": 175,
   "tokens": 1332,
+  "code_lines": 174,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -373,6 +401,7 @@
   "minutes_to_visible": 0.5,
   "lines": 144,
   "tokens": 1081,
+  "code_lines": 143,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -386,6 +415,7 @@
   "minutes_to_visible": 0.4,
   "lines": 125,
   "tokens": 994,
+  "code_lines": 125,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -399,6 +429,7 @@
   "minutes_to_visible": 0.7,
   "lines": 134,
   "tokens": 1051,
+  "code_lines": 107,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -412,6 +443,7 @@
   "minutes_to_visible": 0.4,
   "lines": 109,
   "tokens": 963,
+  "code_lines": 90,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -425,6 +457,7 @@
   "minutes_to_visible": 0.6,
   "lines": 178,
   "tokens": 1335,
+  "code_lines": 145,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -438,6 +471,7 @@
   "minutes_to_visible": 1.1,
   "lines": 184,
   "tokens": 1543,
+  "code_lines": 144,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -451,6 +485,7 @@
   "minutes_to_visible": 0.5,
   "lines": 128,
   "tokens": 1487,
+  "code_lines": 105,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -464,6 +499,7 @@
   "minutes_to_visible": 0.5,
   "lines": 136,
   "tokens": 1201,
+  "code_lines": 108,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -477,6 +513,7 @@
   "minutes_to_visible": 0.7,
   "lines": 163,
   "tokens": 1331,
+  "code_lines": 124,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -490,6 +527,7 @@
   "minutes_to_visible": 2.0,
   "lines": 214,
   "tokens": 2003,
+  "code_lines": 169,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -503,6 +541,7 @@
   "minutes_to_visible": 0.8,
   "lines": 231,
   "tokens": 1987,
+  "code_lines": 183,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -516,6 +555,7 @@
   "minutes_to_visible": 0.7,
   "lines": 153,
   "tokens": 1525,
+  "code_lines": 124,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -529,6 +569,7 @@
   "minutes_to_visible": 0.4,
   "lines": 130,
   "tokens": 962,
+  "code_lines": 105,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -542,6 +583,7 @@
   "minutes_to_visible": 0.4,
   "lines": 101,
   "tokens": 891,
+  "code_lines": 84,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -555,6 +597,7 @@
   "minutes_to_visible": 0.7,
   "lines": 166,
   "tokens": 1305,
+  "code_lines": 136,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -568,6 +611,7 @@
   "minutes_to_visible": 0.8,
   "lines": 180,
   "tokens": 1396,
+  "code_lines": 144,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -581,6 +625,7 @@
   "minutes_to_visible": 0.5,
   "lines": 136,
   "tokens": 1393,
+  "code_lines": 114,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -594,6 +639,7 @@
   "minutes_to_visible": 0.5,
   "lines": 140,
   "tokens": 1128,
+  "code_lines": 111,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -607,6 +653,7 @@
   "minutes_to_visible": 0.9,
   "lines": 160,
   "tokens": 1321,
+  "code_lines": 124,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -620,6 +667,7 @@
   "minutes_to_visible": 1.0,
   "lines": 224,
   "tokens": 2005,
+  "code_lines": 175,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -633,6 +681,7 @@
   "minutes_to_visible": 1.1,
   "lines": 198,
   "tokens": 1728,
+  "code_lines": 156,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -646,6 +695,7 @@
   "minutes_to_visible": 0.7,
   "lines": 177,
   "tokens": 1481,
+  "code_lines": 140,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -659,6 +709,7 @@
   "minutes_to_visible": 0.4,
   "lines": 67,
   "tokens": 702,
+  "code_lines": 56,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -672,6 +723,7 @@
   "minutes_to_visible": 0.4,
   "lines": 62,
   "tokens": 642,
+  "code_lines": 53,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -685,6 +737,7 @@
   "minutes_to_visible": 0.5,
   "lines": 112,
   "tokens": 1069,
+  "code_lines": 90,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -698,6 +751,7 @@
   "minutes_to_visible": 0.5,
   "lines": 93,
   "tokens": 1180,
+  "code_lines": 79,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -711,6 +765,7 @@
   "minutes_to_visible": 0.6,
   "lines": 60,
   "tokens": 1087,
+  "code_lines": 53,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -724,6 +779,7 @@
   "minutes_to_visible": 0.5,
   "lines": 89,
   "tokens": 1003,
+  "code_lines": 75,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -737,6 +793,7 @@
   "minutes_to_visible": 0.4,
   "lines": 87,
   "tokens": 1078,
+  "code_lines": 70,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -750,6 +807,7 @@
   "minutes_to_visible": 0.6,
   "lines": 128,
   "tokens": 1483,
+  "code_lines": 103,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -763,6 +821,7 @@
   "minutes_to_visible": 0.8,
   "lines": 116,
   "tokens": 1595,
+  "code_lines": 98,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -776,6 +835,7 @@
   "minutes_to_visible": 0.5,
   "lines": 103,
   "tokens": 1109,
+  "code_lines": 83,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -789,6 +849,7 @@
   "minutes_to_visible": 0.3,
   "lines": 45,
   "tokens": 693,
+  "code_lines": 39,
   "hidden_pass": 24,
   "hidden_total": 25
  },
@@ -802,6 +863,7 @@
   "minutes_to_visible": 0.2,
   "lines": 36,
   "tokens": 542,
+  "code_lines": 32,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -815,6 +877,7 @@
   "minutes_to_visible": 0.4,
   "lines": 74,
   "tokens": 1030,
+  "code_lines": 67,
   "hidden_pass": 24,
   "hidden_total": 25
  },
@@ -828,6 +891,7 @@
   "minutes_to_visible": 0.3,
   "lines": 68,
   "tokens": 1007,
+  "code_lines": 59,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -841,6 +905,7 @@
   "minutes_to_visible": 0.3,
   "lines": 37,
   "tokens": 1074,
+  "code_lines": 33,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -854,6 +919,7 @@
   "minutes_to_visible": 0.3,
   "lines": 58,
   "tokens": 1173,
+  "code_lines": 51,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -867,6 +933,7 @@
   "minutes_to_visible": 0.2,
   "lines": 44,
   "tokens": 783,
+  "code_lines": 37,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -880,6 +947,7 @@
   "minutes_to_visible": 0.4,
   "lines": 78,
   "tokens": 1194,
+  "code_lines": 67,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -893,6 +961,7 @@
   "minutes_to_visible": 0.6,
   "lines": 69,
   "tokens": 1333,
+  "code_lines": 60,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -906,6 +975,7 @@
   "minutes_to_visible": 0.4,
   "lines": 67,
   "tokens": 1041,
+  "code_lines": 58,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -919,6 +989,7 @@
   "minutes_to_visible": 0.3,
   "lines": 128,
   "tokens": 1265,
+  "code_lines": 106,
   "hidden_pass": 24,
   "hidden_total": 25
  },
@@ -932,6 +1003,7 @@
   "minutes_to_visible": 0.4,
   "lines": 103,
   "tokens": 1028,
+  "code_lines": 86,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -945,6 +1017,7 @@
   "minutes_to_visible": 0.4,
   "lines": 160,
   "tokens": 1473,
+  "code_lines": 136,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -958,6 +1031,7 @@
   "minutes_to_visible": 0.5,
   "lines": 174,
   "tokens": 1634,
+  "code_lines": 141,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -971,6 +1045,7 @@
   "minutes_to_visible": 0.4,
   "lines": 153,
   "tokens": 1634,
+  "code_lines": 129,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -984,6 +1059,7 @@
   "minutes_to_visible": 0.5,
   "lines": 175,
   "tokens": 1754,
+  "code_lines": 142,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -997,6 +1073,7 @@
   "minutes_to_visible": 0.4,
   "lines": 112,
   "tokens": 1127,
+  "code_lines": 89,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1010,6 +1087,7 @@
   "minutes_to_visible": 0.5,
   "lines": 174,
   "tokens": 1700,
+  "code_lines": 144,
   "hidden_pass": 24,
   "hidden_total": 25
  },
@@ -1023,6 +1101,7 @@
   "minutes_to_visible": 0.5,
   "lines": 169,
   "tokens": 1791,
+  "code_lines": 135,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1036,6 +1115,7 @@
   "minutes_to_visible": 0.5,
   "lines": 163,
   "tokens": 1617,
+  "code_lines": 133,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1049,6 +1129,7 @@
   "minutes_to_visible": 0.3,
   "lines": 141,
   "tokens": 1207,
+  "code_lines": 113,
   "hidden_pass": 24,
   "hidden_total": 25
  },
@@ -1062,6 +1143,7 @@
   "minutes_to_visible": 0.2,
   "lines": 115,
   "tokens": 936,
+  "code_lines": 96,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1075,6 +1157,7 @@
   "minutes_to_visible": 0.5,
   "lines": 195,
   "tokens": 1654,
+  "code_lines": 164,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1088,6 +1171,7 @@
   "minutes_to_visible": 0.8,
   "lines": 173,
   "tokens": 1440,
+  "code_lines": 139,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1101,6 +1185,7 @@
   "minutes_to_visible": 0.4,
   "lines": 143,
   "tokens": 1597,
+  "code_lines": 121,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1114,6 +1199,7 @@
   "minutes_to_visible": 0.4,
   "lines": 151,
   "tokens": 1529,
+  "code_lines": 122,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1127,6 +1213,7 @@
   "minutes_to_visible": 0.5,
   "lines": 105,
   "tokens": 1117,
+  "code_lines": 82,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1140,6 +1227,7 @@
   "minutes_to_visible": 0.7,
   "lines": 194,
   "tokens": 1858,
+  "code_lines": 158,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1153,6 +1241,7 @@
   "minutes_to_visible": 0.7,
   "lines": 182,
   "tokens": 1702,
+  "code_lines": 148,
   "hidden_pass": 25,
   "hidden_total": 25
  },
@@ -1166,6 +1255,7 @@
   "minutes_to_visible": 0.4,
   "lines": 171,
   "tokens": 1574,
+  "code_lines": 139,
   "hidden_pass": 24,
   "hidden_total": 25
  }
