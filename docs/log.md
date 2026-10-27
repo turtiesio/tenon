@@ -70,3 +70,21 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   only in the defining module. Extracted `std/journal.tn`; both programs shrank
   and their transcripts are unchanged. A test found derived formatting leaking
   private fields; foreign types now show private fields as `..`.
+
+## 2026-10-28 — codecs, incident, landing path
+
+- **Derived strict codec** (`encode`/`decode`), triggered by hand-written record
+  encoders in three programs. Format = the literal syntax formatting already
+  prints, so encoding is free in both backends; decoding is type-directed and
+  canonical-only (re-encoding must reproduce the input). Forgery is prevented
+  statically: no codec for capabilities, functions, linear/unique types, or types
+  with fields the caller cannot see. The three programs lost ~60 lines.
+- **Incident: red main.** The codec commit added a prelude `encode` that collided
+  with the programs' own `encode`; the commit command piped `./check` through
+  `tail`, which hid the failure. Fixed forward within minutes. Smallest fix for
+  the class: `tools/land.sh` (the landing path that was missing): rebase on
+  origin/main, `./check --fast`, push only on success. Cost: one 30-line script,
+  no time added to landing beyond the check itself.
+- **Papercut measured three times today**: `{` in string literals starts
+  interpolation, so JSON/struct text in tests needs `\{`. Candidate fixes for the
+  study to decide: raw strings, or interpolation only with a prefix. Kept for now.
