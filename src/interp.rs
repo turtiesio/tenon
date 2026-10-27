@@ -390,8 +390,8 @@ impl<'a> Interp<'a> {
     fn apply(&mut self, f: &V, args: Vec<V>, sp: Span) -> R {
         let V::Fn(cl) = f else { panic!("interp: calling a non-function") };
         match &**cl {
-            Closure::Named(fi, _) => self.call_fn(*fi, args, sp),
-            Closure::Variant(ei, vi, _) => Ok(V::Enum(*ei, *vi, Rc::new(args))),
+            Closure::Named(fi) => self.call_fn(*fi, args, sp),
+            Closure::Variant(ei, vi) => Ok(V::Enum(*ei, *vi, Rc::new(args))),
             Closure::Lambda(id, caps) => {
                 let lam = self.lambdas[id];
                 let ExprKind::Lambda(params, _, body) = &lam.kind else { unreachable!() };
@@ -596,13 +596,13 @@ impl<'a> Interp<'a> {
             }
             ExprKind::Name(_) | ExprKind::Path(..) => match &self.c.res[&e.id] {
                 Res::Local(n) => Ok(self.lookup(n)),
-                Res::Fn(fi, ts) => Ok(V::Fn(Rc::new(Closure::Named(*fi, ts.clone())))),
+                Res::Fn(fi, _) => Ok(V::Fn(Rc::new(Closure::Named(*fi)))),
                 Res::Variant(ei, vi, _) => {
                     let n = self.c.enums[*ei].variants[*vi].1.len();
                     if n == 0 {
                         Ok(V::Enum(*ei as u32, *vi as u32, Rc::new(vec![])))
                     } else {
-                        Ok(V::Fn(Rc::new(Closure::Variant(*ei as u32, *vi as u32, n))))
+                        Ok(V::Fn(Rc::new(Closure::Variant(*ei as u32, *vi as u32))))
                     }
                 }
                 _ => unreachable!(),
@@ -1054,6 +1054,16 @@ impl<'a> Interp<'a> {
                     return trap("split with an empty separator", sp);
                 }
                 list(s(0).split(s(1)).map(strv).collect())
+            }
+            "Str.words" => list(s(0).split([' ', '\t', '\n', '\r']).filter(|w| !w.is_empty()).map(strv).collect()),
+            "Str.lines" => {
+                let mut parts: Vec<V> = s(0).split('\n').map(strv).collect();
+                if let Some(V::Str(l)) = parts.last() {
+                    if l.is_empty() {
+                        parts.pop();
+                    }
+                }
+                list(parts)
             }
             "Str.trim" => strv(s(0).trim_matches(|c: char| c.is_ascii_whitespace())),
             "Str.trim_start" => strv(s(0).trim_start_matches(|c: char| c.is_ascii_whitespace())),

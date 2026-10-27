@@ -1,0 +1,26 @@
+// Allocation-heavy: build and walk many binary trees (benchmarks-game style).
+enum Tree { Leaf, Node(Tree, Tree) }
+
+fn make(d: Int) -> Tree { if d == 0 { Node(Leaf, Leaf) } else { Node(make(d - 1), make(d - 1)) } }
+
+fn check(t: Tree) -> Int {
+    match t {
+        Leaf => 0,
+        Node(l, r) => 1 + check(l) + check(r),
+    }
+}
+
+fn main(sys: Sys) {
+    let max_depth = 18
+    let long_lived = make(max_depth)
+    var d = 4
+    while d <= max_depth {
+        var iters = 1
+        for _ in 0..(max_depth - d + 4) { iters *= 2 }
+        var total = 0
+        for _ in 0..iters { total += check(make(d)) }
+        sys.console.println("{iters} trees of depth {d} check: {total}")
+        d += 2
+    }
+    sys.console.println("long lived tree of depth {max_depth} check: {check(long_lived)}")
+}

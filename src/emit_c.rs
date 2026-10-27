@@ -35,6 +35,7 @@ pub struct FnState {
     pub ret: Option<Ty>,
     pub self_ptr: bool,
     pub indent: usize,
+    pub muts: HashSet<String>, // `var` locals: values bound from them must be retained
 }
 
 pub struct Emitter<'a> {
@@ -401,7 +402,8 @@ impl<'a> Emitter<'a> {
             protos,
             "static TN_UNUSED {n} {n}_retain({n} x); static TN_UNUSED void {n}_release({n} x); \
              static TN_UNUSED bool {n}_eq({n} a, {n} b); static TN_UNUSED int {n}_cmp({n} a, {n} b); \
-             static TN_UNUSED uint64_t {n}_hash({n} x); static TN_UNUSED void {n}_show(tn_buf *b, {n} x, bool top);"
+             static TN_UNUSED uint64_t {n}_hash({n} x); static TN_UNUSED void {n}_show(tn_buf *b, {n} x, bool top); \
+             static inline TN_UNUSED bool {n}_same({n} a, {n} b) {{ (void)a; (void)b; return false; }}"
         );
         if let Some(vs) = self.c.enum_variants(t) {
             let boxed = self.is_boxed(t);
@@ -410,6 +412,12 @@ impl<'a> Emitter<'a> {
             for (i, (_, fs)) in vs.iter().enumerate() {
                 let params: Vec<String> = fs.iter().enumerate().map(|(j, f)| format!("{} a{}", self.cty(f), j)).collect();
                 let _ = writeln!(protos, "static TN_UNUSED {} {}_mk{}({});", n, n, i, params.join(", "));
+                if boxed && fs.is_empty() {
+                    // Nullary variants of boxed enums are shared immortal objects.
+                    let _ = writeln!(b, "static struct {n}_s {n}_null{i} = {{ .rc = INT64_MAX / 2, .tag = {i} }};");
+                    let _ = writeln!(b, "static TN_UNUSED {n} {n}_mk{i}(void) {{ return &{n}_null{i}; }}");
+                    continue;
+                }
                 let _ = write!(b, "static TN_UNUSED {} {}_mk{}({}) {{ ", n, n, i, params.join(", "));
                 if boxed {
                     let _ = write!(b, "{n} x = tn_alloc(sizeof(struct {n}_s)); x->rc = 1; ");

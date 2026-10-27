@@ -151,7 +151,8 @@ TN_NORETURN static TN_UNUSED void tn_exit(int code) {
 #define TN_INCOMPARABLE(T)                                                      \
     static inline TN_UNUSED bool T##_eq(T a, T b) { (void)a; (void)b; return false; } \
     static inline TN_UNUSED int T##_cmp(T a, T b) { (void)a; (void)b; return 0; }     \
-    static inline TN_UNUSED uint64_t T##_hash(T a) { (void)a; return 0; }
+    static inline TN_UNUSED uint64_t T##_hash(T a) { (void)a; return 0; }             \
+    static inline TN_UNUSED bool T##_same(T a, T b) { (void)a; (void)b; return false; }
 
 /* ---------- checked arithmetic ---------- */
 
@@ -237,6 +238,8 @@ static TN_UNUSED tn_Str tn_buf_finish(tn_buf *b) {
     return (tn_Str){b->p + sizeof(tn_rc), b->len, o};
 }
 
+/* Identity: same view of the same bytes (cheap, conservative equality). */
+static inline bool tn_Str_same(tn_Str a, tn_Str b) { return a.p == b.p && a.len == b.len; }
 static inline bool tn_Str_eq(tn_Str a, tn_Str b) {
     return a.len == b.len && (a.p == b.p || memcmp(a.p, b.p, (size_t)a.len) == 0);
 }
@@ -255,9 +258,18 @@ static inline uint64_t tn_mix(uint64_t h) {
     return h;
 }
 static inline uint64_t tn_Str_hash(tn_Str s) {
-    uint64_t h = 1469598103934665603ULL;
-    for (int64_t i = 0; i < s.len; i++) h = (h ^ (uint8_t)s.p[i]) * 1099511628211ULL;
-    return tn_mix(h);
+    uint64_t h = 0x9E3779B97F4A7C15ULL ^ (uint64_t)s.len;
+    const char *p = s.p;
+    int64_t n = s.len;
+    for (; n >= 8; p += 8, n -= 8) {
+        uint64_t w;
+        memcpy(&w, p, 8);
+        h = (h ^ w) * 0xbf58476d1ce4e5b9ULL;
+        h ^= h >> 31;
+    }
+    uint64_t w = 0;
+    memcpy(&w, p, (size_t)n);
+    return tn_mix(h ^ w);
 }
 static TN_UNUSED void tn_Str_show(tn_buf *b, tn_Str s, bool top) {
     if (top) {
@@ -299,6 +311,10 @@ TN_TRIVIAL(tn_Console)
 TN_TRIVIAL(tn_Clock)
 
 static inline bool tn_Int_eq(tn_Int a, tn_Int b) { return a == b; }
+static inline bool tn_Int_same(tn_Int a, tn_Int b) { return a == b; }
+static inline bool tn_Float_same(tn_Float a, tn_Float b) { (void)a; (void)b; return false; }
+static inline bool tn_Bool_same(tn_Bool a, tn_Bool b) { return a == b; }
+static inline bool tn_Unit_same(tn_Unit a, tn_Unit b) { (void)a; (void)b; return true; }
 static inline int tn_Int_cmp(tn_Int a, tn_Int b) { return a < b ? -1 : a > b; }
 static inline uint64_t tn_Int_hash(tn_Int a) { return tn_mix((uint64_t)a); }
 static TN_UNUSED void tn_Int_show(tn_buf *b, tn_Int x, bool top) {
@@ -423,6 +439,7 @@ TN_INCOMPARABLE(tn_fn)
         return l;                                                                        \
     }                                                                                    \
     static inline int64_t L##_len(L l) { return l ? l->len : 0; }                        \
+    static inline bool L##_same(L a, L b) { return a == b; }                             \
     static TN_UNUSED void L##_unique(L *p) {                                             \
         L l = *p;                                                                        \
         if (l && l->rc > 1) {                                                            \
@@ -577,7 +594,7 @@ TN_INCOMPARABLE(tn_fn)
 
 #define TN_MAP_TYPE(M, K, V)                                                             \
     struct M##_e { K k; V v; uint64_t h; bool live; };                                   \
-    struct M##_s { int64_t rc, len, n, cap, icap; struct M##_e *e; int64_t *idx; };
+    struct M##_s { int64_t rc, len, n, cap, icap, last, last_slot; struct M##_e *e; int32_t *idx; };
 #define TN_MAP_FUNCS(M, K, V)                                                            \
     static TN_UNUSED M M##_retain(M m) { if (m) m->rc++; return m; }                     \
     static TN_UNUSED void M##_release(M m) {                                             \
@@ -591,7 +608,7 @@ TN_INCOMPARABLE(tn_fn)
     static TN_UNUSED void M##_reindex(M m, int64_t icap) {                               \
         free(m->idx);                                                                    \
         m->icap = icap;                                                                  \
-        m->idx = tn_alloc(sizeof(int64_t) * (size_t)icap);                               \
+        m->idx = tn_alloc(sizeof(int32_t) * (size_t)icap);                               \
         for (int64_t i = 0; i < icap; i++) m->idx[i] = -1;                               \
         int64_t w = 0;                                                                   \
         for (int64_t r = 0; r < m->n; r++) {                                             \
@@ -599,9 +616,10 @@ TN_INCOMPARABLE(tn_fn)
             m->e[w] = m->e[r];                                                           \
             uint64_t s = m->e[w].h & (uint64_t)(icap - 1);                               \
             while (m->idx[s] != -1) s = (s + 1) & (uint64_t)(icap - 1);                  \
-            m->idx[s] = w++;                                                             \
+            m->idx[s] = (int32_t)w++;                                                    \
         }                                                                                \
         m->n = w;                                                                        \
+        m->last = -1;                                                                    \
     }                                                                                    \
     static TN_UNUSED M M##_alloc(int64_t cap) {                                          \
         M m = tn_alloc(sizeof(struct M##_s));                                            \
@@ -631,19 +649,31 @@ TN_INCOMPARABLE(tn_fn)
     }                                                                                    \
     /* index of the entry holding k, or -1; *slot gets the probe position */             \
     static TN_UNUSED int64_t M##_find(M m, K k, uint64_t h, int64_t *slot) {             \
+        if (m->last >= 0 && m->e[m->last].h == h && K##_eq(m->e[m->last].k, k)) {        \
+            if (slot) *slot = m->last_slot;                                              \
+            return m->last;                                                              \
+        }                                                                                \
         uint64_t s = h & (uint64_t)(m->icap - 1);                                        \
         int64_t tomb = -1;                                                               \
         for (;;) {                                                                       \
             int64_t j = m->idx[s];                                                       \
             if (j == -1) { if (slot) *slot = tomb >= 0 ? tomb : (int64_t)s; return -1; }  \
             if (j == -2) { if (tomb < 0) tomb = (int64_t)s; }                            \
-            else if (m->e[j].h == h && K##_eq(m->e[j].k, k)) { if (slot) *slot = (int64_t)s; return j; } \
+            else if (m->e[j].h == h && K##_eq(m->e[j].k, k)) {                           \
+                m->last = j; m->last_slot = (int64_t)s;                                  \
+                if (slot) *slot = (int64_t)s;                                            \
+                return j;                                                                \
+            }                                                                            \
             s = (s + 1) & (uint64_t)(m->icap - 1);                                       \
         }                                                                                \
     }                                                                                    \
+    static inline uint64_t M##_khash(M m, K k) {                                          \
+        if (m->last >= 0 && K##_same(m->e[m->last].k, k)) return m->e[m->last].h;       \
+        return K##_hash(k);                                                              \
+    }                                                                                    \
     static TN_UNUSED V *M##_get(M m, K k) {                                              \
         if (!m || !m->len) return NULL;                                                  \
-        int64_t j = M##_find(m, k, K##_hash(k), NULL);                                   \
+        int64_t j = M##_find(m, k, M##_khash(m, k), NULL);                                \
         return j < 0 ? NULL : &m->e[j].v;                                                \
     }                                                                                    \
     static TN_UNUSED V *M##_at(M m, K k, const char *loc) {                              \
@@ -661,7 +691,7 @@ TN_INCOMPARABLE(tn_fn)
     static TN_UNUSED V *M##_slot(M *p, K k, bool *fresh) {                               \
         M##_unique(p);                                                                   \
         M m = *p;                                                                        \
-        uint64_t h = K##_hash(k);                                                        \
+        uint64_t h = M##_khash(m, k);                                                     \
         int64_t s;                                                                       \
         int64_t j = M##_find(m, k, h, &s);                                               \
         if (j >= 0) { K##_release(k); *fresh = false; return &m->e[j].v; }              \
@@ -678,7 +708,9 @@ TN_INCOMPARABLE(tn_fn)
         j = m->n++;                                                                      \
         m->e[j].k = k; m->e[j].h = h; m->e[j].live = true;                               \
         memset(&m->e[j].v, 0, sizeof(V));                                                \
-        m->idx[s] = j;                                                                   \
+        if (TN_UNLIKELY(j >= INT32_MAX)) tn_oom();                                     \
+        m->idx[s] = (int32_t)j;                                                          \
+        m->last = j; m->last_slot = s;                                                   \
         m->len++;                                                                        \
         *fresh = true;                                                                   \
         return &m->e[j].v;                                                               \
@@ -699,10 +731,11 @@ TN_INCOMPARABLE(tn_fn)
         M##_unique(p);                                                                   \
         M m = *p;                                                                        \
         int64_t s;                                                                       \
-        int64_t j = M##_find(m, k, K##_hash(k), &s);                                     \
+        int64_t j = M##_find(m, k, M##_khash(m, k), &s);                                  \
         if (j < 0) return false;                                                         \
         m->idx[s] = -2;                                                                  \
         m->e[j].live = false;                                                            \
+        m->last = -1;                                                                    \
         K##_release(m->e[j].k);                                                          \
         *out = m->e[j].v;                                                                \
         m->len--;                                                                        \
@@ -724,6 +757,7 @@ TN_INCOMPARABLE(tn_fn)
         tn_trap("maps are not ordered", tn_cur_loc);                                     \
     }                                                                                    \
     static TN_UNUSED uint64_t M##_hash(M m) { return (uint64_t)M##_len(m); }            \
+    static inline bool M##_same(M a, M b) { return a == b; }                             \
     static TN_UNUSED void M##_show(tn_buf *b, M m, bool top) {                           \
         (void)top;                                                                       \
         if (!M##_len(m)) { tn_buf_cstr(b, "[:]"); return; }                              \
@@ -779,6 +813,48 @@ static TN_UNUSED tn_List_Str tn_str_split(tn_Str s, tn_Str sep, const char *loc)
         start = i + sep.len;
     }
     tn_List_Str_push(&out, tn_str_view(s, start, s.len));
+    return out;
+}
+/* Borrowed views for fused `for w in s.words()` / `s.lines()` loops. */
+static inline bool tn_next_word(tn_Str s, int64_t *pos, tn_Str *out) {
+    int64_t i = *pos;
+    while (i < s.len && (s.p[i] == ' ' || s.p[i] == '\t' || s.p[i] == '\n' || s.p[i] == '\r')) i++;
+    if (i >= s.len) return false;
+    int64_t st = i;
+    while (i < s.len && !(s.p[i] == ' ' || s.p[i] == '\t' || s.p[i] == '\n' || s.p[i] == '\r')) i++;
+    *out = (tn_Str){s.p + st, i - st, s.o};
+    *pos = i;
+    return true;
+}
+static inline bool tn_next_line(tn_Str s, int64_t *pos, tn_Str *out) {
+    int64_t st = *pos;
+    if (st >= s.len) return false;
+    const char *nl = memchr(s.p + st, '\n', (size_t)(s.len - st));
+    int64_t e = nl ? nl - s.p : s.len;
+    *out = (tn_Str){s.p + st, e - st, s.o};
+    *pos = nl ? e + 1 : s.len;
+    return true;
+}
+static TN_UNUSED tn_List_Str tn_str_words(tn_Str s) {
+    tn_List_Str out = NULL;
+    int64_t i = 0;
+    while (i < s.len) {
+        while (i < s.len && (s.p[i] == ' ' || s.p[i] == '\t' || s.p[i] == '\n' || s.p[i] == '\r')) i++;
+        int64_t st = i;
+        while (i < s.len && !(s.p[i] == ' ' || s.p[i] == '\t' || s.p[i] == '\n' || s.p[i] == '\r')) i++;
+        if (i > st) tn_List_Str_push(&out, tn_str_view(s, st, i));
+    }
+    return out;
+}
+static TN_UNUSED tn_List_Str tn_str_lines(tn_Str s) {
+    tn_List_Str out = NULL;
+    int64_t st = 0;
+    for (int64_t i = 0; i < s.len; i++)
+        if (s.p[i] == '\n') {
+            tn_List_Str_push(&out, tn_str_view(s, st, i));
+            st = i + 1;
+        }
+    if (st < s.len) tn_List_Str_push(&out, tn_str_view(s, st, s.len));
     return out;
 }
 static inline bool tn_is_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; }
@@ -851,6 +927,21 @@ static TN_UNUSED bool tn_str_to_float(tn_Str s, tn_Float *out) {
     *out = strtod(z, NULL);
     if (z != tmp) free(z);
     return true;
+}
+/* Consumes s: converts in place when s is the only reference to its buffer. */
+static TN_UNUSED tn_Str tn_str_case_move(tn_Str s, bool up) {
+    tn_Str r = s;
+    if (!(s.o && s.o->rc == 1)) {
+        r = tn_str_new(s.p, s.len);
+        tn_Str_release(s);
+    }
+    char *q = (char *)r.p;
+    for (int64_t i = 0; i < r.len; i++) {
+        char c = q[i];
+        if (up && c >= 'a' && c <= 'z') q[i] = (char)(c - 32);
+        if (!up && c >= 'A' && c <= 'Z') q[i] = (char)(c + 32);
+    }
+    return r;
 }
 static TN_UNUSED tn_Str tn_str_case(tn_Str s, bool up) {
     tn_Str r = tn_str_new(s.p, s.len);
@@ -931,13 +1022,14 @@ static TN_UNUSED tn_Int tn_float_to_int(tn_Float x, const char *loc) {
  * String::from_utf8_lossy does). Returns false if the input was invalid. */
 static TN_UNUSED bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out) {
     bool ok = true;
-    int64_t i = 0;
+    int64_t i = 0, run = 0; /* bytes [run, i) are valid and not yet copied */
     const unsigned char *s = (const unsigned char *)p;
+    tn_buf_grow(out, n);
     while (i < n) {
         unsigned c = s[i];
         int need;
         unsigned lo = 0x80, hi = 0xBF;
-        if (c < 0x80) { tn_buf_add(out, (const char *)s + i, 1); i++; continue; }
+        if (c < 0x80) { i++; continue; }
         else if (c >= 0xC2 && c <= 0xDF) need = 1;
         else if (c == 0xE0) { need = 2; lo = 0xA0; }
         else if (c >= 0xE1 && c <= 0xEC) need = 2;
@@ -946,7 +1038,13 @@ static TN_UNUSED bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out) {
         else if (c == 0xF0) { need = 3; lo = 0x90; }
         else if (c >= 0xF1 && c <= 0xF3) need = 3;
         else if (c == 0xF4) { need = 3; hi = 0x8F; }
-        else { tn_buf_add(out, "\xEF\xBF\xBD", 3); ok = false; i++; continue; }
+        else {
+            tn_buf_add(out, (const char *)s + run, i - run);
+            tn_buf_add(out, "\xEF\xBF\xBD", 3);
+            ok = false;
+            run = ++i;
+            continue;
+        }
         int64_t j = i + 1;
         int got = 0;
         while (got < need && j < n) {
@@ -954,34 +1052,45 @@ static TN_UNUSED bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out) {
             if (got == 0 ? (d < lo || d > hi) : (d < 0x80 || d > 0xBF)) break;
             j++, got++;
         }
-        if (got == need) tn_buf_add(out, (const char *)s + i, j - i);
-        else { tn_buf_add(out, "\xEF\xBF\xBD", 3); ok = false; }
+        if (got != need) {
+            tn_buf_add(out, (const char *)s + run, i - run);
+            tn_buf_add(out, "\xEF\xBF\xBD", 3);
+            ok = false;
+            run = j;
+        }
         i = j;
     }
+    tn_buf_add(out, (const char *)s + run, n - run);
     return ok;
 }
 
 /* ---------- console ---------- */
 
-static char *tn_in_buf;
-static int64_t tn_in_len, tn_in_pos;
+/* Input buffer; allocated with room for a tn_rc header so read_all can hand
+ * the bytes over as a string without copying. */
+static char *tn_in_mem, *tn_in_buf;
+static int64_t tn_in_len, tn_in_pos, tn_in_cap;
 static bool tn_in_eof;
 
 static bool tn_in_fill(void) {
     if (tn_in_eof) return false;
-    if (!tn_in_buf) tn_in_buf = tn_alloc(1 << 16);
+    if (!tn_in_mem) {
+        tn_in_cap = 1 << 16;
+        tn_in_mem = tn_alloc(sizeof(tn_rc) + (size_t)tn_in_cap);
+        tn_in_buf = tn_in_mem + sizeof(tn_rc);
+    }
     if (tn_in_pos > 0) {
         memmove(tn_in_buf, tn_in_buf + tn_in_pos, (size_t)(tn_in_len - tn_in_pos));
         tn_in_len -= tn_in_pos;
         tn_in_pos = 0;
     }
-    static int64_t cap = 1 << 16;
-    if (tn_in_len == cap) {
-        cap *= 2;
-        tn_in_buf = tn_realloc(tn_in_buf, (size_t)cap);
+    if (tn_in_len == tn_in_cap) {
+        tn_in_cap *= 2;
+        tn_in_mem = tn_realloc(tn_in_mem, sizeof(tn_rc) + (size_t)tn_in_cap);
+        tn_in_buf = tn_in_mem + sizeof(tn_rc);
     }
     ssize_t r;
-    do r = read(0, tn_in_buf + tn_in_len, (size_t)(cap - tn_in_len));
+    do r = read(0, tn_in_buf + tn_in_len, (size_t)(tn_in_cap - tn_in_len));
     while (r < 0 && errno == EINTR);
     if (r <= 0) { tn_in_eof = true; return false; }
     tn_in_len += r;
@@ -1008,10 +1117,29 @@ found:;
     *out = tn_buf_finish(&b);
     return true;
 }
+static bool tn_utf8_valid(const char *p, int64_t n) {
+    tn_buf scratch = {0};
+    for (int64_t i = 0; i < n; i++)
+        if ((unsigned char)p[i] >= 0x80) {
+            scratch = tn_buf_new();
+            bool ok = tn_utf8_lossy(p + i, n - i, &scratch);
+            free(scratch.p);
+            return ok;
+        }
+    return true;
+}
 static TN_UNUSED tn_Str tn_read_all(void) {
     while (tn_in_fill()) {}
+    if (tn_in_mem && tn_in_pos == 0 && tn_utf8_valid(tn_in_buf, tn_in_len)) {
+        tn_rc *o = (tn_rc *)tn_in_mem;
+        o->rc = 1;
+        tn_Str r = {tn_in_buf, tn_in_len, o};
+        tn_in_mem = tn_in_buf = NULL;
+        tn_in_len = tn_in_pos = 0;
+        return r;
+    }
     tn_buf b = tn_buf_new();
-    if (tn_in_buf) tn_utf8_lossy(tn_in_buf + tn_in_pos, tn_in_len - tn_in_pos, &b);
+    if (tn_in_mem) tn_utf8_lossy(tn_in_buf + tn_in_pos, tn_in_len - tn_in_pos, &b);
     tn_in_pos = tn_in_len;
     return tn_buf_finish(&b);
 }
