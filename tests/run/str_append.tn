@@ -13,4 +13,13 @@ fn main(sys: Sys) {
     var big = ""
     for i in 0..1000 { big += "{i % 10}" }
     sys.console.println("{s} {t} {u} {w} {parts} {m} {big.len()} {big.slice(995, 1000)}")
+    more(sys.console)
+}
+
+fn more(c: Console) {
+    var s = "x"
+    s += "<" + s + ">" + s
+    var parts = ["a"]
+    parts[0] += parts[0] + "!"
+    c.println("{s} {parts}")
 }

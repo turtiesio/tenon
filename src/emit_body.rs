@@ -549,6 +549,33 @@ impl<'a> Emitter<'a> {
             return;
         }
         let t = self.ety(target);
+        if op == Some(BinOp::Add) && t.is("Str") && matches!(value.kind, ExprKind::Binary(BinOp::Add, ..)) {
+            // s += a + b + c: append each piece in place instead of building a + b + c
+            // (operands are evaluated left to right first, as before).
+            fn pieces<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
+                match &e.kind {
+                    ExprKind::Binary(BinOp::Add, l, r) => {
+                        pieces(l, out);
+                        pieces(r, out);
+                    }
+                    _ => out.push(e),
+                }
+            }
+            let mut ps = Vec::new();
+            pieces(value, &mut ps);
+            let p = self.place(target);
+            let vs = self.eval_list(&ps);
+            let mut codes = Vec::new();
+            for v in vs {
+                let code = self.own(v, &t);
+                codes.push(self.tmp_owned(&t, &code).code);
+            }
+            let ptr = self.place_ptr(&p, p.steps.len(), target.span);
+            for c in codes {
+                self.line(&format!("tn_str_append({}, {});", ptr, c));
+            }
+            return;
+        }
         let p = self.place(target);
         let cv = self.expr(value);
         let code = self.own(cv, &t);
