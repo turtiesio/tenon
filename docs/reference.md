@@ -363,6 +363,10 @@ path too.
   name first), fsyncs it and renames it over `path`; on failure the temp file
   is removed. So `fs.write("todo.db", ..)` uses `todo.db.tmp`: do not keep
   your own file under that name. `Fs.append` is durable (fsync).
+- `Fs.read(path)` returns the file as text; a file that is not valid UTF-8 is
+  `Err(Failed("path: invalid UTF-8"))`. For binary files use the byte
+  variants `read_bytes`, `write_bytes`, `append_bytes` (§11, "Bytes"), which
+  follow the same path, jail and read-only rules as `read`, `write`, `append`.
 - `Fs.list(dir)` gives the entry *names* (not paths) of the files and
   directories in `dir`, without `.` and `..`, sorted by bytes (`"B" < "a"`).
 - `Fs.mkdir(path)` creates the directory and any missing parents, and succeeds
@@ -395,8 +399,9 @@ Highlights:
   starts_with ends_with contains to_int to_float upper lower replace chars
   find_from is_digits strip_prefix strip_suffix (Option) trim_chars (remove
   given ASCII bytes from both ends, e.g. `s.trim_chars(" \t")`)
-  repeat pad_left pad_right is_empty rfind split_once rsplit_once to_int_radix`;
-  `Int.char()` makes a one-character string.
+  repeat pad_left pad_right is_empty rfind split_once rsplit_once to_int_radix
+  bytes`; `Int.char()` makes a one-character string; `Str.from_utf8(bytes)`
+  and `Str.from_utf8_lossy(bytes)` make text from bytes (see "Bytes" below).
   - `s.rfind(sub)` is the byte offset of the last match. `s.split_once(sep)` /
     `s.rsplit_once(sep)` split around the first / last `sep`:
     `"k=v=w".split_once("=") == Some(("k", "v=w"))`, `None` if `sep` is absent.
@@ -448,16 +453,56 @@ Highlights:
   sqrt abs min max`, and `to_fixed(decimals)` (exactly that many digits; rounds the
   binary value half to even, like printf). There are no bitwise operators: use
   `/`, `%` and `pow` (`x / 2.pow(k)` shifts right by `k` for `x >= 0`).
-- `Console`: `print println eprintln read_line read_all flush`. `read_line`
-  returns `None` at end of input and removes the line's `"\n"` (and a `"\r"`
-  before it); invalid UTF-8 input becomes U+FFFD. Standard output is buffered:
-  it is flushed before any blocking read and at exit; a program that answers
-  requests line by line while another process waits calls `flush()` after each
-  answer.
+- `Console`: `print println eprintln read_line read_all flush read_all_bytes
+  write_bytes`. `read_line` returns `None` at end of input and removes the
+  line's `"\n"` and one `"\r"` directly before it (a last line without
+  `"\n"` is returned as is, `"\r"` included); `read_all` keeps every `"\r"`.
+  Standard output is buffered: it is flushed before any blocking read and at
+  exit; a program that answers requests line by line while another process
+  waits calls `flush()` after each answer.
 - `Fs`: `read write append exists is_dir remove rename list mkdir mkdir_one
-  within read_only` (details in §10). `mkdir` creates missing parents,
-  `mkdir_one` exactly one directory; `rename` is atomic and replaces the
-  target; `remove` deletes a file or an empty directory.
+  within read_only read_bytes write_bytes append_bytes` (details in §10).
+  `mkdir` creates missing parents, `mkdir_one` exactly one directory; `rename`
+  is atomic and replaces the target; `remove` deletes a file or an empty
+  directory.
+- Bytes are a `List[Int]` whose elements are 0..255.
+  - `fs.read_bytes(path)` (`Result[List[Int], IoError]`) reads any file;
+    `fs.write_bytes(path, data)` replaces a file atomically like `write`,
+    `fs.append_bytes(path, data)` appends like `append`.
+    `con.read_all_bytes()` returns the rest of standard input unchanged
+    (after any lines `read_line` took); `con.write_bytes(data)` writes to
+    standard output. Writing an element outside 0..255 traps, before any file
+    is touched.
+  - `s.bytes()` is the UTF-8 encoding of `s`. `Str.from_utf8(bytes)` is
+    `None` if the bytes are not valid UTF-8 (overlong forms, surrogates, code
+    points above U+10FFFF and truncated sequences are invalid) or an element
+    is outside 0..255. `Str.from_utf8_lossy(bytes)` replaces each maximal
+    invalid sequence with U+FFFD (the rule below) and traps on an element
+    outside 0..255.
+  - In a C build a byte list costs 8 bytes per byte; `read_bytes` of a 10 MB
+    file takes about 5 ms (one allocation, sized from the file).
+
+  ```tenon
+  let data = sys.fs.read_bytes("blob.bin")?                // e.g. [0, 255, 104, 105]
+  let hex = data.map(fn(b) => b.to_str_radix(16).pad_left(2, "0")).join(" ")
+  let text = Str.from_utf8(data).unwrap_or("<binary>")
+  sys.fs.write_bytes("copy.bin", data)?
+  ```
+- Invalid UTF-8 on input. A `Str` is always valid UTF-8, so every API that
+  turns outside bytes into text decides what to do with invalid bytes:
+  - `Fs.read`: `Err(Failed("path: invalid UTF-8"))`; nothing is replaced.
+  - Replaced with U+FFFD (bytes EF BF BD, one per maximal invalid sequence, as
+    `Str.from_utf8_lossy` does): `Console.read_line`, `Console.read_all`,
+    `sys.args`, the names from `Fs.list`, `Conn.read_line`, `Conn.read`, and
+    `Data` from `Poller.wait` (a multi-byte character split between two reads
+    becomes U+FFFD; §15).
+  - `decode` (§14) rejects a string literal whose escapes do not make valid
+    UTF-8.
+  - The byte APIs above never change a byte.
+- Line endings: `s.lines()` splits on `"\n"` only and keeps `"\r"`
+  (`"a\r\nb".lines() == ["a\r", "b"]`; use `l.trim_end()` or
+  `l.strip_suffix("\r")`); `s.words()` treats `"\r"` as a separator;
+  `Console.read_line` and `Conn.read_line` remove one `"\r"` before the `"\n"`.
 - Paths: `path_join(a, b)`, `path_parent(p)`, `path_base(p)` (§10).
 - `Clock`: `now_ms mono_ns sleep_ms`.
 
@@ -547,9 +592,20 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
       }
   }
   ```
-- Methods of a type can only be defined in the module that defines the type.
-  Together with privacy this makes a module the only place that can create a
-  value of its type or finish a linear one: privacy is unforgeability.
+- Methods of a declared type (a `struct` or `enum`, including the prelude's
+  `Option`, `Result`, `IoError`, `Sys`, `Set`, `Heap`, `NetEvent`) can only be
+  defined in the module that declares the type. Together with privacy this
+  makes a module the only place that can create a value of its type or finish
+  a linear one: privacy is unforgeability.
+- The builtin types (`Int`, `Float`, `Bool`, `Str`, `Unit`, `List`, `Map`, and
+  the capabilities `Console`, `Fs`, `Clock`, `Net`, `Listener`, `Conn`,
+  `Poller`) have no declaring module, so any file may add methods to them:
+  `fn Str.shout(self) -> Str { self.upper() + "!" }` in a main file makes
+  `"hi".shout()` work. Such a method is private to its file unless declared
+  `pub` (then importers can call it too). There is one method of a given name
+  per type in the whole program: defining one the prelude already has
+  (`fn Str.trim`), or one that another module of the program also defines, is
+  an error (`function 'Str.shout' is already defined`).
 - Standard library modules: `journal` (append-only, checksummed, crash-safe
   record log) and `regex` (below). Their source is `std/journal.tn` and
   `std/regex.tn` in the repository, `docs/std-journal.tn` and

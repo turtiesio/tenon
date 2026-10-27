@@ -5,8 +5,8 @@
 //   DIR/reject/NAME.tn   must fail to compile; first line `// error: TEXT`
 //                        names a substring of the expected diagnostic
 //
-// Optional first-line directives in run tests: `// stdin: TEXT` (\n escapes)
-// and `// args: A B C`.
+// Optional first-line directives in run tests: `// stdin: TEXT` (\n escapes,
+// and \xHH for any byte, so stdin can be invalid UTF-8) and `// args: A B C`.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -23,7 +23,7 @@ struct Outcome {
 const TIMEOUT_SECS: u64 = 20;
 
 // Run with stdin, capturing output; the whole process is killed on timeout.
-fn run_cmd(cmd: &mut Command, stdin: &str) -> Outcome {
+fn run_cmd(cmd: &mut Command, stdin: &[u8]) -> Outcome {
     let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -31,10 +31,10 @@ fn run_cmd(cmd: &mut Command, stdin: &str) -> Outcome {
         .spawn()
         .expect("spawn");
     let mut si = child.stdin.take().unwrap();
-    let input = stdin.to_string();
+    let input = stdin.to_vec();
     let w = std::thread::spawn(move || {
         use std::io::Write;
-        let _ = si.write_all(input.as_bytes());
+        let _ = si.write_all(&input);
     });
     let mut so = child.stdout.take().unwrap();
     let mut se = child.stderr.take().unwrap();
@@ -95,6 +95,25 @@ fn directive(src: &str, key: &str) -> Option<String> {
     None
 }
 
+// "\xHH" (two hex digits) is that byte; everything else is kept as is.
+fn hex_escapes(s: &str) -> Vec<u8> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'\\' && i + 4 <= b.len() && b[i + 1] == b'x' {
+            if let Some(v) = std::str::from_utf8(&b[i + 2..i + 4]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(v);
+                i += 4;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    out
+}
+
 // Test programs; files whose first line is `// module` are imported by tests, not run.
 fn files(dir: &Path) -> Vec<PathBuf> {
     let is_module = |p: &Path| std::fs::read_to_string(p).map(|s| s.starts_with("// module")).unwrap_or(false);
@@ -109,7 +128,7 @@ fn files(dir: &Path) -> Vec<PathBuf> {
 
 fn check_run(exe: &Path, tn: &Path, tmp: &Path, bless: bool) -> Result<(), String> {
     let src = std::fs::read_to_string(tn).map_err(|e| e.to_string())?;
-    let stdin = directive(&src, "stdin").unwrap_or_default();
+    let stdin = hex_escapes(&directive(&src, "stdin").unwrap_or_default());
     let args: Vec<String> = directive(&src, "args").map(|a| a.split_whitespace().map(String::from).collect()).unwrap_or_default();
     // Run from the test's directory with a bare file name, so that trap
     // locations in golden files do not depend on where the suite runs.
@@ -117,7 +136,7 @@ fn check_run(exe: &Path, tn: &Path, tmp: &Path, bless: bool) -> Result<(), Strin
     let name = tn.file_name().unwrap();
     let interp = run_cmd(Command::new(exe).arg("run").arg(name).args(&args).current_dir(dir), &stdin);
     let bin = tmp.join(tn.file_stem().unwrap());
-    let build = run_cmd(Command::new(exe).arg("build").arg(name).arg("-o").arg(&bin).arg("-O0").current_dir(dir), "");
+    let build = run_cmd(Command::new(exe).arg("build").arg(name).arg("-o").arg(&bin).arg("-O0").current_dir(dir), b"");
     if build.code != 0 {
         return Err(format!("C build failed:\n{}{}", build.stdout, build.stderr));
     }
@@ -139,7 +158,7 @@ fn check_run(exe: &Path, tn: &Path, tmp: &Path, bless: bool) -> Result<(), Strin
 fn check_reject(exe: &Path, tn: &Path) -> Result<(), String> {
     let src = std::fs::read_to_string(tn).map_err(|e| e.to_string())?;
     let want = directive(&src, "error").ok_or("reject test needs a first line `// error: TEXT`")?;
-    let o = run_cmd(Command::new(exe).arg("check").arg(tn.file_name().unwrap()).current_dir(tn.parent().unwrap()), "");
+    let o = run_cmd(Command::new(exe).arg("check").arg(tn.file_name().unwrap()).current_dir(tn.parent().unwrap()), b"");
     if o.code == 0 {
         return Err("compiled, but must be rejected".into());
     }

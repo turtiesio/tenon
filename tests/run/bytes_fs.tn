@@ -1,0 +1,44 @@
+// Byte-level file I/O: read_bytes/write_bytes/append_bytes, on files that are not UTF-8.
+fn hex(bs: List[Int]) -> Str {
+    bs.map(fn(b) => b.to_str_radix(16).pad_left(2, "0")).join(" ")
+}
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    let _ = sys.fs.mkdir("bytes_fs_tmp")
+    let d = sys.fs.within("bytes_fs_tmp")
+    // NUL, 0xFF, a lone continuation byte and a truncated 2-byte sequence
+    let raw = [0, 255, 'a', 0x80, 0xC3, '\n', 0, 0]
+    d.write_bytes("bin", raw)?
+    let back = d.read_bytes("bin")?
+    c.println("{back.len()} {back == raw} {hex(back)}")
+    c.println("{d.read("bin")}")
+    c.println("{Str.from_utf8(back)} {Str.from_utf8_lossy(back).bytes().len()}")
+    d.append_bytes("bin", [0xE2, 0x82])?
+    d.append_bytes("bin", [0xAC])?          // completes a euro sign
+    d.append("bin", "!")?
+    c.println(hex(d.read_bytes("bin")?))
+    // the valid prefix of a torn record
+    let all = d.read_bytes("bin")?
+    var cut = 0
+    while cut < all.len() and all[cut] != 0xFF { cut += 1 }
+    c.println("prefix {Str.from_utf8(all.slice(0, cut))}")
+    // text written as text reads back as the same bytes
+    d.write("txt", "héllo\r\n")?
+    c.println("{d.read_bytes("txt")? == "héllo\r\n".bytes()} {hex(d.read_bytes("txt")?)}")
+    // empty files, empty lists
+    d.write_bytes("empty", [])?
+    c.println("{d.read_bytes("empty")} {d.read("empty")}")
+    d.append_bytes("new", [])?
+    c.println("{d.exists("new")} {d.read_bytes("new")}")
+    // the same rules as read/write: missing, read-only, escapes, NUL, directories
+    c.println("{d.read_bytes("missing")}")
+    c.println("{d.read_only().write_bytes("ro", [1])} {d.read_only().append_bytes("ro", [1])} {d.exists("ro")}")
+    c.println("{d.read_only().read_bytes("bin").is_ok()}")
+    c.println("{d.read_bytes("../bytes_fs.tn")} {d.write_bytes("/tmp/x", [1])} {d.read_bytes("bin\0x")}")
+    c.println("{sys.fs.within("fs_jail").read_bytes("up/bytes_fs.tn")} {sys.fs.within("fs_jail").read_bytes("in.txt").map(hex)}")
+    c.println("{sys.fs.read_bytes("bytes_fs_tmp").is_err()}")
+    c.println("{d.exists("bin.tmp")}")
+    for f in d.list(".")? { d.remove(f)? }
+    sys.fs.remove("bytes_fs_tmp")?
+    Ok(())
+}

@@ -1,0 +1,28 @@
+// Str.bytes, Str.from_utf8 (strict) and Str.from_utf8_lossy (U+FFFD per maximal invalid subpart).
+fn show(c: Console, name: Str, bs: List[Int]) {
+    let lossy = Str.from_utf8_lossy(bs)
+    c.println("{name}: {Str.from_utf8(bs)} lossy={encode(lossy)} ({lossy.bytes().len()} bytes, {lossy.chars().len()} chars)")
+}
+fn main(sys: Sys) {
+    let c = sys.console
+    c.println("{"".bytes()} {"aé€😀".bytes()} {"a\0b".bytes()}")
+    let s = "naïve ☃ text"
+    c.println("{Str.from_utf8(s.bytes()) == Some(s)} {Str.from_utf8_lossy(s.bytes()) == s}")
+    show(c, "empty", [])
+    show(c, "ascii", ['h', 'i'])
+    show(c, "nul", [0])
+    show(c, "truncated 2", [0xC3])
+    show(c, "truncated 3", ['a', 0xE2, 0x82])
+    show(c, "truncated 4", [0xF0, 0x9F, 0x98, 'x'])
+    show(c, "lone continuation", [0x80, 0xBF])
+    show(c, "overlong slash", [0xC0, 0xAF])
+    show(c, "overlong 3", [0xE0, 0x80, 0xAF])
+    show(c, "overlong 4", [0xF0, 0x80, 0x80, 0xAF])
+    show(c, "surrogate", [0xED, 0xA0, 0x80])
+    show(c, "above U+10FFFF", [0xF4, 0x90, 0x80, 0x80])
+    show(c, "ff fe", [0xFF, 0xFE])
+    show(c, "max", [0xF4, 0x8F, 0xBF, 0xBF])
+    // out-of-range elements: from_utf8 says None, the lossy form traps
+    c.println("{Str.from_utf8([256])} {Str.from_utf8([-1])} {Str.from_utf8(['a', 300, 'b'])}")
+    c.println(Str.from_utf8_lossy(['o', 'k', 256]))
+}

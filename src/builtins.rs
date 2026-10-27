@@ -130,7 +130,10 @@ impl<'a> Interp<'a> {
         }
     }
     fn write_out(&mut self, s: &str) -> Result<(), Ctrl> {
-        if self.out.write_all(s.as_bytes()).is_err() {
+        self.write_raw(s.as_bytes())
+    }
+    fn write_raw(&mut self, s: &[u8]) -> Result<(), Ctrl> {
+        if self.out.write_all(s).is_err() {
             return Err(Ctrl::Exit(EXIT_OUTPUT));
         }
         Ok(())
@@ -256,6 +259,15 @@ impl<'a> Interp<'a> {
                 strv(&s(0).replace(s(1), s(2)))
             }
             "Str.chars" => list(s(0).chars().map(|c| strv(&c.to_string())).collect()),
+            "Str.bytes" => byte_list(s(0).as_bytes()),
+            "Str.from_utf8" => {
+                let b = match &a[0] {
+                    List(xs) => xs.iter().map(|x| match x { Int(v) => u8::try_from(*v).ok(), _ => None }).collect::<Option<Vec<u8>>>(),
+                    _ => unreachable!(),
+                };
+                self.opt(b.and_then(|b| String::from_utf8(b).ok()).map(|t| strv(&t)))
+            }
+            "Str.from_utf8_lossy" => strv(&String::from_utf8_lossy(&list_bytes(&a[0], sp)?)),
             "List.len" => match &a[0] {
                 List(xs) => Int(xs.len() as i64),
                 _ => unreachable!(),
@@ -339,10 +351,16 @@ impl<'a> Interp<'a> {
                     }
                 }
             }
-            "Console.read_all" => {
+            "Console.read_all" | "Console.read_all_bytes" => {
+                let _ = self.out.flush();
                 let mut buf = Vec::new();
                 let _ = std::io::stdin().lock().read_to_end(&mut buf);
-                strv(&String::from_utf8_lossy(&buf))
+                if name == "Console.read_all" { strv(&String::from_utf8_lossy(&buf)) } else { byte_list(&buf) }
+            }
+            "Console.write_bytes" => {
+                let b = list_bytes(&a[1], sp)?;
+                self.write_raw(&b)?;
+                Unit
             }
             n if n.starts_with("Fs.") => return self.fs_op(n, &args, sp),
             n if n.starts_with("Poller.") || n == "Net.poller" => return Ok(self.poller_op(n, &args)),
@@ -576,7 +594,7 @@ impl<'a> Interp<'a> {
             _ => unreachable!("poller op {}", name),
         }
     }
-    fn fs_op(&mut self, name: &str, a: &[V], _sp: Span) -> R {
+    fn fs_op(&mut self, name: &str, a: &[V], sp: Span) -> R {
         let V::Cap(cap) = &a[0] else { unreachable!() };
         let Cap::Fs { root, attenuated, writable } = &**cap else { unreachable!() };
         let arg = |i: usize| -> String {
@@ -584,6 +602,12 @@ impl<'a> Interp<'a> {
                 V::Str(s) => s.to_string(),
                 _ => unreachable!(),
             }
+        };
+        // the data to write, as bytes (an out-of-range byte traps before any check)
+        let data: Vec<u8> = match name {
+            "Fs.write" | "Fs.append" => arg(2).into_bytes(),
+            "Fs.write_bytes" | "Fs.append_bytes" => list_bytes(&a[2], sp)?,
+            _ => Vec::new(),
         };
         if name == "Fs.read_only" {
             return Ok(V::Cap(Rc::new(Cap::Fs { root: root.clone(), attenuated: *attenuated, writable: false })));
@@ -599,7 +623,7 @@ impl<'a> Interp<'a> {
                 });
             }
         };
-        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" | "Fs.rename");
+        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.write_bytes" | "Fs.append_bytes" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" | "Fs.rename");
         if writes && !writable {
             return Ok(self.io_err("Denied", format!("read-only Fs: {}", p)));
         }
@@ -610,14 +634,17 @@ impl<'a> Interp<'a> {
                 });
                 self.io_result(&p, r, |s| V::Str(s.into()))
             }
-            "Fs.write" => {
-                let data = arg(2);
+            "Fs.read_bytes" => {
+                let r = std::fs::read(&full);
+                self.io_result(&p, r, |b| byte_list(&b))
+            }
+            "Fs.write" | "Fs.write_bytes" => {
                 let tmp = format!("{}.tmp", full);
                 let r = (|| {
                     // never write through a pre-existing temp file (it may be a planted symlink)
                     let _ = std::fs::remove_file(&tmp);
                     let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
-                    f.write_all(data.as_bytes())?;
+                    f.write_all(&data)?;
                     f.sync_all()?;
                     std::fs::rename(&tmp, &full)
                 })();
@@ -626,11 +653,10 @@ impl<'a> Interp<'a> {
                 }
                 self.io_result(&p, r, |_| V::Unit)
             }
-            "Fs.append" => {
-                let data = arg(2);
+            "Fs.append" | "Fs.append_bytes" => {
                 let r = (|| {
                     let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&full)?;
-                    f.write_all(data.as_bytes())?;
+                    f.write_all(&data)?;
                     f.sync_all()
                 })();
                 self.io_result(&p, r, |_| V::Unit)
@@ -665,6 +691,23 @@ impl<'a> Interp<'a> {
             _ => panic!("interp: missing builtin {}", name),
         })
     }
+}
+
+// Bytes as a List[Int] of 0..255, and back (an element outside 0..255 traps).
+fn byte_list(b: &[u8]) -> V {
+    V::List(Rc::new(b.iter().map(|&x| V::Int(x as i64)).collect()))
+}
+fn list_bytes(l: &V, sp: Span) -> Result<Vec<u8>, Ctrl> {
+    let V::List(xs) = l else { unreachable!() };
+    let mut out = Vec::with_capacity(xs.len());
+    for (i, x) in xs.iter().enumerate() {
+        let V::Int(v) = x else { unreachable!() };
+        match u8::try_from(*v) {
+            Ok(b) => out.push(b),
+            Err(_) => return trap(format!("byte {} at index {} is not in 0..255", v, i), sp),
+        }
+    }
+    Ok(out)
 }
 
 // Path resolution under an Fs capability; None = escapes the root.

@@ -210,7 +210,7 @@ impl<'a> Emitter<'a> {
             Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn" | "Poller") => {
                 format!("tn_{}", n)
             }
-            Ty::Con(n, a) if n == "List" && a[0].is("Str") => "tn_List_Str".to_string(),
+            Ty::Con(n, a) if n == "List" && (a[0].is("Str") || a[0].is("Int")) => format!("tn_List_{}", a[0]),
             Ty::Fn(..) => "tn_fn".to_string(),
             Ty::Con(n, _) => {
                 self.counter += 1;

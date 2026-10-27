@@ -1,0 +1,16 @@
+// stdin: a\xffb\x0d\nrest\x00\xc3\x0d\nend\xe2\x82
+// read_line strips "\n" and one "\r" before it and replaces invalid UTF-8 with U+FFFD;
+// read_all_bytes then returns the rest of stdin unchanged; write_bytes echoes raw bytes.
+fn main(sys: Sys) {
+    let c = sys.console
+    let line = c.read_line().unwrap()
+    c.println("{line.bytes()} {line.len()}")
+    let rest = c.read_all_bytes()
+    c.println("{rest}")
+    c.println("{c.read_all_bytes()} {c.read_line()} {c.read_all()}")
+    c.write_bytes(['o', 'k', 0x0A])
+    c.write_bytes([])
+    c.write_bytes("é\n".bytes())
+    let lines = Str.from_utf8_lossy(rest).lines()
+    c.println("{lines.len()} {lines[0].ends_with("\r")} {lines[0].len()}")
+}

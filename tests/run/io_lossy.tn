@@ -1,0 +1,9 @@
+// stdin: x\xc0\xafy\x0d\nlast\xf0\x9f
+// Console.read_all replaces each invalid UTF-8 sequence with U+FFFD and keeps "\r";
+// lines() splits on "\n" only, so a "\r" stays at the end of the line.
+fn main(sys: Sys) {
+    let c = sys.console
+    let all = c.read_all()
+    c.println("{all.bytes()}")
+    for l in all.lines() { c.println("{l.len()} {l.ends_with("\r")} {l.trim_end().len()}") }
+}

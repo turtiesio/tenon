@@ -88,7 +88,8 @@ fn main(sys: Sys) -> Int {
 | tagged union / `match` | `enum Cmd { Add(Str, Int), List }` and exhaustive `match` |
 | `lambda x: x + 1` / `x => x + 1` | `fn(x) => x + 1` |
 | `re.fullmatch(...)` | `import regex` then `regex.compile(p).unwrap().full(s)` |
-| `open(p).read()` | `sys.fs.read(p)` gives `Result[Str, IoError]` |
+| `open(p).read()` | `sys.fs.read(p)` gives `Result[Str, IoError]` (`Err` if not UTF-8) |
+| `open(p, "rb").read()`, `sys.stdin.buffer.read()` | `sys.fs.read_bytes(p)` gives `Result[List[Int], IoError]` (each 0..255); `con.read_all_bytes()`; `Str.from_utf8(bs)` |
 
 ## Rules that surprise newcomers
 

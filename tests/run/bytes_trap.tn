@@ -1,0 +1,8 @@
+// Writing a list element outside 0..255 traps (before any file is touched).
+fn main(sys: Sys) {
+    let c = sys.console
+    c.println("{sys.fs.within("fs_jail").read_only().write_bytes("x", [1, 2])}")
+    c.write_bytes([104, 105, 10])
+    let _ = sys.fs.within("fs_jail").write_bytes("never", [255, 256])
+    c.println("unreachable")
+}
