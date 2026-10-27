@@ -153,7 +153,7 @@ impl<'a> Emitter<'a> {
             let _ = write!(drop, "{}_release(E->c_{}); ", tn, n);
         }
         env.push_str(" };\n");
-        drop.push_str("free(E); }\n");
+        drop.push_str("tn_free(E); }\n");
         self.helpers.push_str(&env);
         self.helpers.push_str(&drop);
         let mut ps = vec!["tn_env *env_".to_string()];

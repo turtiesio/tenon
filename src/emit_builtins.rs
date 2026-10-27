@@ -350,7 +350,7 @@ impl<'a> Emitter<'a> {
              {ln}_unique(p);\n    {et} *out = tn_alloc(sizeof({et}) * (size_t)n);\n    \
              for (int64_t i = 0; i < n; i++) out[i] = (*p)->data[idx[i]];\n    \
              memcpy((*p)->data, out, sizeof({et}) * (size_t)n);\n    \
-             for (int64_t i = 0; i < n; i++) {kn}_release(keys[i]);\n    free(keys); free(idx); free(tmp); free(out);\n}}"
+             for (int64_t i = 0; i < n; i++) {kn}_release(keys[i]);\n    tn_free(keys); tn_free(idx); tn_free(tmp); tn_free(out);\n}}"
         );
         h
     }
