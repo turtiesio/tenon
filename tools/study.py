@@ -136,7 +136,8 @@ def evaluate():
                 else:
                     cmd = ["python3", src] if lang == "python" else ["node", src]
                 out = os.path.join(d, f".hidden-{t}.json")
-                subprocess.run([sys.executable, os.path.join(ROOT, "study", "harness.py"), t, "--json", out, "--"] + cmd,
+                runner = os.environ.get("STUDY_RUNNER", os.path.join(ROOT, "study", "harness.py"))
+                subprocess.run([sys.executable, runner, t, "--json", out, "--"] + cmd,
                                capture_output=True, cwd=ROOT)
                 res = json.load(open(out)) if os.path.exists(out) else {}
                 row["hidden_pass"] = res.get("passed", 0)
