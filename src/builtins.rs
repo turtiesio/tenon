@@ -599,7 +599,7 @@ impl<'a> Interp<'a> {
                 });
             }
         };
-        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" | "Fs.rename");
+        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" | "Fs.rename");
         if writes && !writable {
             return Ok(self.io_err("Denied", format!("read-only Fs: {}", p)));
         }
@@ -649,6 +649,7 @@ impl<'a> Interp<'a> {
                 self.io_result(&p, r, |_| V::Unit)
             }
             "Fs.mkdir" => self.io_result(&p, std::fs::create_dir_all(&full), |_| V::Unit),
+            "Fs.mkdir_one" => self.io_result(&p, std::fs::create_dir(&full), |_| V::Unit),
             "Fs.list" => {
                 let r = std::fs::read_dir(&full).and_then(|rd| {
                     let mut names = Vec::new();

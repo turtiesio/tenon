@@ -1,0 +1,5 @@
+// to_int_radix traps on a base outside 2..36 (even for an invalid string).
+fn main(sys: Sys) {
+    sys.console.println("{"10".to_int_radix(2)}")
+    sys.console.println("{"".to_int_radix(1)}")
+}

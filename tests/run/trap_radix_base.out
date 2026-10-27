@@ -1,0 +1,4 @@
+a
+exit: 70
+stderr: trap: to_str_radix: base 37 is not in 2..36
+stderr:   at trap_radix_base.tn:4:29

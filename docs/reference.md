@@ -95,6 +95,16 @@ a.push(3)      // b is still [1, 2]
   lookup. Iteration follows insertion order.
 - `List.push`/`pop` are amortized O(1); `insert`/`remove` at the front are O(n).
   `sort`/`sort_by` are stable O(n log n) merge sorts.
+- For dense integer keys `0..n`, index a `List` (`List.filled(n, x)`, or
+  `List[Option[V]]` for "not computed yet") instead of a `Map[Int, V]`: a map
+  hashes on every access. Measured with the C backend, filling and reading
+  2,500 keys is about 5x faster with a list, 1,000,000 keys about 20x; in the
+  interpreter about 2.5x.
+- A `mut` argument that is a field of a value which is also passed by value
+  (`self.value(i, mut self.memo)`) is legal, but the callee's copy of `self`
+  still references the field, so the first change through the `mut` argument
+  copies it, on every call. Move the field out first and put it back after:
+  `var memo = self.memo; self.memo = []; ... self.value(i, mut memo) ...; self.memo = memo`.
 - Integers are 64-bit machine integers with an overflow check; structs,
   tuples and non-recursive enums are stored inline, without allocation.
 
@@ -145,7 +155,13 @@ let names = people.map(fn(p) => p.name)
 ```
 
 Closures capture variables **by value** at creation; they cannot assign to
-captured variables. A parameter named `_` is ignored (`xs.map(fn(_) => 0)`).
+captured variables. Inside a method a closure may use `self`: it captures a copy
+of `self` as it is when the closure is created (also in a `mut self` method;
+later changes are not seen by the closure). A parameter named `_` is ignored
+(`xs.map(fn(_) => 0)`).
+
+Functions and methods may be used before their definition, and may be
+mutually recursive.
 
 Generic functions are compiled once per type they are used with, so a
 function that calls itself at ever larger types (`f([x])` inside `f`) runs in
@@ -156,7 +172,11 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
 
 - `let x = ...` is immutable; `var x = ...` is mutable. Types are inferred;
   annotate with `let x: List[Int] = []` when needed.
-- Names may not be redeclared inside a function (no shadowing).
+- Names may not be redeclared inside a function (no shadowing). This includes
+  parameters and names bound by patterns: `let v = f()` followed by
+  `match v { Some(v) => ... }` is rejected; use another name (`Some(x)`).
+- The prelude's names (`Option`, `Result`, `Set`, `path_join`, ...) cannot be
+  redefined by a program.
 - Assignment targets: `x = v`, `p.field = v`, `xs[i] = v`, `m[k] = v`
   (inserts or replaces), and compound forms `+= -= *= /= %=`. Evaluation
   order: the target's index expressions, then the right-hand side, then (for
@@ -182,6 +202,7 @@ while cond { ... }
 for i in 0..n { ... }            // half-open range
 for x in xs { ... }              // over a snapshot of the list
 for (k, v) in m { ... }          // over map entries in insertion order
+for x in set.items() { ... }     // a Set is not iterable itself
 break; continue; return value
 ```
 
@@ -221,7 +242,9 @@ let Rect(w, h) = shape else { continue }
 
 Patterns: `_`, a name, literals (`3`, `-1`, `"text"`, `'a'`, `true`), tuples
 `(a, b)`, variants `Some(x)` / `Shape.Rect(w, h)`, and alternatives `p | q`
-(each alternative binds the same names). `let (a, b) = pair` and
+(each alternative binds the same names). There are no struct patterns
+(`Cell { kind: Formula(t), .. }`) and no list patterns: bind the value and read
+its fields or elements. `let (a, b) = pair` and
 `for (k, v) in m` take patterns that always match.
 
 Reserved words: `and break continue else enum extern false fn for if import
@@ -233,7 +256,10 @@ in let linear match mut not or pub ref return self struct true unique var while`
 cannot be silently dropped. Discard explicitly with `let _ = expr`.
 
 There is no separate `loop` keyword: `while true { ... }` with no `break`
-never finishes, so a function may end with it (no value is needed after it).
+never finishes, so a function may end with it, also a function that returns a
+value: the loop can then only be left by `return`, and no value is needed
+after it. If the loop has a `break` of its own (one in a nested loop does not
+count), the function must give a value after the loop.
 `break` and `continue` can appear anywhere inside the loop body, including
 inside `match` arms. Unary minus works on any number expression (`-x`, `-e.1`).
 
@@ -256,6 +282,10 @@ Floats print the shortest text that reads back as the same number, in plain
 notation when the exponent is in [-5, 16), otherwise as `1.5e-7`.
 `x.to_str()` gives the same text. Strings concatenate with `+`.
 
+There are no format specifiers (`{x:>3}`, `{x:x}`): use
+`"{x}".pad_left(3, " ")`, `x.to_str_radix(16)`, `f.to_fixed(2)` or
+`cents.fmt_fixed(2)`.
+
 ## 9. Errors: values, `?`, and traps
 
 Expected failures are values (`Option`, `Result`). `?` returns early from the
@@ -269,25 +299,37 @@ fn parse_pair(s: Str) -> Option[(Int, Int)] {
 }
 ```
 
+`?` may be applied to any expression, anywhere an expression may appear:
+`n = n * 16 + digit(c)?`, in arguments, list literals, conditions and `"{...}"`
+interpolations. Evaluation stops at the first failure.
+
+Formatting an `IoError` shows the variant: `"{e}"` is `NotFound("data/x.txt")`.
+
 Bugs are **traps**: integer overflow, division by zero, index out of bounds,
 missing map key in `m[k]`, `unwrap()` on `None`/`Err`, `panic(msg)`, failed
 `assert(cond)`. A trap prints `trap: <message>` and `at file:line:col` to
 stderr and exits. Traps cannot be caught.
 
 `main` returns `Unit`, `Int` or `Result[Unit, E]`. Returning `Err(e)` prints
-`error: <e>` to stderr and exits with code 1; returning an `Int` exits with that
-status (0-255; the reserved codes below trap instead).
+`error: <e>` to stderr and exits with code 1. Returning an `Int` exits with that
+status: any value 0-255 except 70, 71, 72 and 74, which are kept for the
+runtime's own failures. Returning one of those four, or a value outside 0-255,
+traps (`trap: exit status 70 is out of range or reserved`, exit code 70).
+Returning 0 or 1 is allowed (1 is the same code `Err` produces).
+Standard output is flushed before the program exits, however it ends
+(return, `Err` or trap); standard error is not buffered, and `eprintln`
+flushes standard output first, so the two streams stay in order.
 
-Reserved exit codes:
+Exit codes used by the runtime:
 
-| Code | Meaning |
-|---|---|
-| 0 | success |
-| 1 | `main` returned `Err` |
-| 70 | trap |
-| 71 | out of memory |
-| 72 | stack overflow |
-| 74 | standard output could not be written |
+| Code | Meaning | `main` may return it |
+|---|---|---|
+| 0 | success | yes |
+| 1 | `main` returned `Err` | yes |
+| 70 | trap | no |
+| 71 | out of memory | no |
+| 72 | stack overflow | no |
+| 74 | standard output could not be written | no |
 
 ## 10. Capabilities (authority)
 
@@ -295,12 +337,13 @@ A program can only affect the outside world through capabilities, and the only
 source of capabilities is the `Sys` value passed to `main`:
 
 ```tenon
-struct Sys { console: Console, fs: Fs, clock: Clock, args: List[Str] }
+struct Sys { console: Console, fs: Fs, clock: Clock, net: Net, args: List[Str] }
 ```
 
 `sys.args` holds the command-line arguments *after* the program name. Paths
 given to the unattenuated `sys.fs` are relative to the current directory (or
-absolute). There are no global functions for I/O, no ambient file system access, and no
+absolute; `sys.fs.within("/srv/data")` is fine). `sys.net` is the network
+capability (§15). There are no global functions for I/O, no ambient file system access, and no
 way to construct a capability. Functions that need authority take it as a
 parameter, so a signature shows what a function can touch. Attenuate before
 passing on:
@@ -310,10 +353,37 @@ let data = sys.fs.within("data")      // can only reach paths under data/
 let ro = data.read_only()             // and only read them
 ```
 
-An attenuated `Fs` rejects absolute paths and `..` (`Err(Denied(..))`).
-`Fs.write` replaces a file atomically and durably (temp file, fsync, rename);
-`Fs.append` is durable (fsync). I/O failures are `Err(IoError)`:
-`NotFound(path)`, `Denied(path)`, or `Failed("path: reason")`.
+An attenuated `Fs` rejects absolute paths, `..`, and paths through a symbolic
+link (`Err(Denied(..))`); so `within` on an attenuated `Fs` takes a relative
+path too.
+
+- `Fs.write(path, data)` replaces a file atomically and durably: it writes
+  `path + ".tmp"` in the same directory (removing any existing file of that
+  name first), fsyncs it and renames it over `path`; on failure the temp file
+  is removed. So `fs.write("todo.db", ..)` uses `todo.db.tmp`: do not keep
+  your own file under that name. `Fs.append` is durable (fsync).
+- `Fs.list(dir)` gives the entry *names* (not paths) of the files and
+  directories in `dir`, without `.` and `..`, sorted by bytes (`"B" < "a"`).
+- `Fs.mkdir(path)` creates the directory and any missing parents, and succeeds
+  if it already exists. `Fs.mkdir_one(path)` creates exactly one directory:
+  `Err(NotFound(path))` if the parent is missing, `Err(Failed("path: File exists"))`
+  if `path` exists (so it can claim a name exclusively).
+- I/O failures are `Err(IoError)`: `NotFound(path)`, `Denied(path)`, or
+  `Failed("path: reason")` (the reason is the operating system's text).
+
+Path text is handled by three prelude functions on `/`-separated paths. They
+are lexical: they never touch the disk, and `..` is not resolved.
+
+| Call | Result |
+|---|---|
+| `path_join("a", "b")`, `path_join("a/", "b")` | `"a/b"` |
+| `path_join("a", "/b")` | `"/b"` (an absolute second part wins) |
+| `path_join("", "b")`, `path_join("a", "")` | `"b"`, `"a"` |
+| `path_parent("a/b/c")`, `path_parent("a/b/")` | `"a/b"`, `"a"` (trailing `/` ignored) |
+| `path_parent("a")`, `path_parent("")` | `"."`, `"."` |
+| `path_parent("/a")`, `path_parent("/")` | `"/"`, `"/"` |
+| `path_base("a/b")`, `path_base("a/b/")` | `"b"`, `"b"` |
+| `path_base("/")`, `path_base("")` | `"/"`, `""` |
 
 ## 11. Builtin API
 
@@ -324,13 +394,22 @@ Highlights:
   starts_with ends_with contains to_int to_float upper lower replace chars
   find_from is_digits strip_prefix strip_suffix (Option) trim_chars (remove
   given ASCII bytes from both ends, e.g. `s.trim_chars(" \t")`)
-  repeat pad_left pad_right is_empty`; `Int.char()` makes a one-character string.
+  repeat pad_left pad_right is_empty rfind split_once rsplit_once to_int_radix`;
+  `Int.char()` makes a one-character string.
+  - `s.rfind(sub)` is the byte offset of the last match. `s.split_once(sep)` /
+    `s.rsplit_once(sep)` split around the first / last `sep`:
+    `"k=v=w".split_once("=") == Some(("k", "v=w"))`, `None` if `sep` is absent.
+    The pieces share the original's bytes, like `slice`.
   - `s.split(sep)` keeps empty pieces: `"a,,b,".split(",")` is
     `["a", "", "b", ""]` and `"".split(",")` is `[""]`.
   - `s.lines()` splits on `"\n"` and drops a final empty line; it does not
     remove `"\r"`. `s.words()` splits on runs of spaces, tabs, `"\r"` and `"\n"`.
   - `s.to_int()` accepts an optional `+`/`-` and decimal digits only (no spaces,
-    no `_`), and gives `None` on overflow. `s.to_float()` also accepts `1.5`,
+    no `_`), and gives `None` on overflow. `s.to_int_radix(base)` (base 2-36,
+    otherwise a trap) accepts an optional `-` (no `+`) and one or more digits
+    `0-9a-z`, letters in either case, each below `base`; no prefix such as `0x`,
+    no spaces or `_`; `None` if invalid or out of range (`INT_MIN` parses):
+    `"ff".to_int_radix(16) == Some(255)`. `s.to_float()` also accepts `1.5`,
     `.5`, `5.`, `1e-3`, `inf` and `nan`.
   - `trim` removes ASCII whitespace; `upper`/`lower` change ASCII letters only.
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
@@ -338,7 +417,11 @@ Highlights:
   is_empty`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
 - `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`,
   `update(k, default, f)` (store `f` of the current or default value), `insert`,
-  `remove`, `contains`, `keys`, `values`, `entries`, `len`, `is_empty`.
+  `or_insert`, `remove`, `contains`, `keys`, `values`, `entries`, `len`,
+  `is_empty`. Removing a key keeps the order of the others; inserting a key
+  again puts it last.
+  - `m.or_insert(k, v)` inserts `v` only if `k` is absent, so grouping is
+    `m.or_insert(k, []); m[k].push(x)` (the push changes the entry in place).
 - `Heap[T]`: a priority queue: `Heap.new()`, `push`, `pop` (smallest first, as
   `Option`), `peek`, `len`, `is_empty`. For largest first push negated keys.
 - `Set[T]`: `Set.new()`, `Set.of(list)`, `insert` (false if already present),
@@ -347,22 +430,34 @@ Highlights:
 - `List.filled(n, x)` makes a list of n copies of x; `xs.sort_with(fn(a, b) => ...)`
   sorts stably by a comparison (negative: a first).
 - `Option[T]`: `unwrap expect unwrap_or is_some is_none map map_or and_then filter is_some_and ok_or`.
-- `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok map_err`.
-- `Int`: `abs min max to_float to_str char`; `checked_add checked_sub
-  checked_mul checked_div` give `None` instead of trapping; `rem_euclid` and
+- `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok err map map_err
+  map_or and_then is_ok_and is_err_and` (as for `Option`; `err` gives the error
+  as an `Option`; `and_then` keeps the error type).
+- `Int`: `abs min max to_float to_str char pow`; `checked_add checked_sub
+  checked_mul checked_div checked_pow` give `None` instead of trapping (also for a
+  division by zero or a negative exponent); `x.pow(e)` traps on overflow and on
+  `e < 0` (`0.pow(0) == 1`); `x.to_str_radix(base)` writes `x` in base 2-36
+  (lowercase digits, `-` for negatives; another base traps):
+  `255.to_str_radix(16) == "ff"`; `rem_euclid` and
   `div_euclid` (the remainder is never negative); `fmt_fixed(scale)` writes a
   fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents); constants
   `INT_MAX`, `INT_MIN`; and for code points
   `is_digit is_alpha is_alnum is_space is_upper is_lower`
   (`s.byte(i).is_digit()`, `'7' - '0'`); `Float`: `to_int floor ceil round
   sqrt abs min max`, and `to_fixed(decimals)` (exactly that many digits; rounds the
-  binary value half to even, like printf).
+  binary value half to even, like printf). There are no bitwise operators: use
+  `/`, `%` and `pow` (`x / 2.pow(k)` shifts right by `k` for `x >= 0`).
 - `Console`: `print println eprintln read_line read_all flush`. `read_line`
   returns `None` at end of input and removes the line's `"\n"` (and a `"\r"`
-  before it); invalid UTF-8 input becomes U+FFFD.
-- `Fs`: `read write append exists is_dir remove rename list mkdir within
-  read_only`. `mkdir` creates missing parents; `rename` is atomic and replaces
-  the target; `remove` deletes a file or an empty directory.
+  before it); invalid UTF-8 input becomes U+FFFD. Standard output is buffered:
+  it is flushed before any blocking read and at exit; a program that answers
+  requests line by line while another process waits calls `flush()` after each
+  answer.
+- `Fs`: `read write append exists is_dir remove rename list mkdir mkdir_one
+  within read_only` (details in §10). `mkdir` creates missing parents,
+  `mkdir_one` exactly one directory; `rename` is atomic and replaces the
+  target; `remove` deletes a file or an empty directory.
+- Paths: `path_join(a, b)`, `path_parent(p)`, `path_base(p)` (§10).
 - `Clock`: `now_ms mono_ns sleep_ms`.
 
 ## 12. Obligations: linear and unique types
@@ -428,12 +523,15 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   Together with privacy this makes a module the only place that can create a
   value of its type or finish a linear one: privacy is unforgeability.
 - Standard library modules: `journal` (append-only, checksummed, crash-safe
-  record log; see `std/journal.tn`) and `regex` (below).
+  record log) and `regex` (below). Their source is `std/journal.tn` and
+  `std/regex.tn` in the repository, `docs/std-journal.tn` and
+  `docs/std-regex.tn` in a study kit; either way `import journal` and
+  `import regex` find them.
 
 ### `regex`
 
-Regular expressions, written in Tenon (`std/regex.tn`; its header comment is the
-full specification). Matching is by backtracking, character by character over
+Regular expressions, written in Tenon (`std/regex.tn`, or `docs/std-regex.tn`
+in a study kit; its header comment is the full specification). Matching is by backtracking, character by character over
 UTF-8; offsets are byte offsets.
 
 ```tenon

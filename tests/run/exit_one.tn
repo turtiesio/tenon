@@ -1,0 +1,5 @@
+// `main` may return 1 (the same code `Err` produces); only 70, 71, 72, 74 and values outside 0-255 trap.
+fn main(sys: Sys) -> Int {
+    sys.console.println("returning 1")
+    1
+}

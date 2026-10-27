@@ -1,0 +1,12 @@
+// path_join, path_parent, path_base: lexical helpers on '/'-separated paths.
+fn main(sys: Sys) {
+    let c = sys.console
+    for (a, b) in [("a", "b"), ("a/", "b"), ("a//", "b"), ("", "b"), ("a", ""), ("", ""), ("a", "/b"), ("/", "b"), (".", "b"), ("a/b", "c/d")] {
+        c.println("join({encode(a)}, {encode(b)}) = {encode(path_join(a, b))}")
+    }
+    for p in ["a/b/c", "a/b", "a/b/", "a//b", "a", "a/", "", ".", "..", "a/..", "/", "//", "/a", "/a/", "//a", "/a/b", "./a", "é/ü"] {
+        c.println("{encode(p)}: parent {encode(path_parent(p))} base {encode(path_base(p))}")
+    }
+    let p = "data/logs/today.txt"
+    c.println("{path_join(path_parent(p), "archive")} {path_base(path_parent(p))}")
+}

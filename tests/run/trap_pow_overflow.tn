@@ -1,0 +1,5 @@
+// Int.pow traps on overflow, like `*`.
+fn main(sys: Sys) {
+    sys.console.println("{2.pow(62)}")
+    sys.console.println("{2.pow(63)}")
+}

@@ -1,0 +1,9 @@
+Ok(9) Err("boom") Ok("#8")
+Ok(4) Err("odd 1") Err("boom")
+80 0
+true false false
+false true
+Some(8) None None Some("boom")
+8 0 Err(4)
+Ok(24) Err("nan")
+exit: 0

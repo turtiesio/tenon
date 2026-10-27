@@ -1,0 +1,59 @@
+// Reference claims clarified after study wave 3: `?` in any expression position,
+// closures capturing `self` in a `mut self` method, `while true` ending a
+// value-returning function (a `break` in a nested loop does not count), Map order
+// after remove/re-insert, IoError formatting, Fs.list entries, Fs.write's temp file.
+struct Acc { n: Int }
+fn Acc.bump_and_adder(mut self) -> fn(Int) -> Int {
+    self.n += 1
+    fn(d: Int) -> Int { self.n + d }
+}
+fn digit(c: Int) -> Option[Int] { if c.is_digit() { Some(c - '0') } else { None } }
+fn calc(s: Str) -> Option[Int] {
+    var n = 0
+    for i in 0..s.len() { n = n * 10 + digit(s.byte(i))? }
+    let t = [digit('1')?, digit('2')?]
+    if digit('3')? > 2 { n += 100 }
+    Some(n + t[1] + "{digit('4')?}".len())
+}
+fn first_negative(xs: List[Int]) -> Int {
+    var i = 0
+    while true {
+        for x in xs {
+            if x == 99 { break }
+        }
+        if xs[i] < 0 { return i }
+        i += 1
+    }
+}
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    var a = Acc { n: 1 }
+    let f = a.bump_and_adder()
+    a.n = 100
+    c.println("{f(1)} {a.n}")
+    c.println("{calc("12")} {calc("1x")} {first_negative([3, 99, -1])}")
+    var m: Map[Str, Int] = [:]
+    m["a"] = 1
+    m["b"] = 2
+    m["c"] = 3
+    let _ = m.remove("a")
+    m["a"] = 4
+    m["b"] = 5
+    c.println("{m.keys()}")
+    let _ = sys.fs.mkdir("doc_claims_tmp")
+    let d = sys.fs.within("doc_claims_tmp")
+    match d.read("missing.txt") {
+        Ok(_) => {}
+        Err(e) => c.println("{e}"),
+    }
+    d.write("db.tmp", "mine")?
+    d.write("db", "data")?
+    d.write("B", "")?
+    d.mkdir_one("a")?
+    c.println("{d.list(".")?} {d.read("db")?}")
+    d.remove("a")?
+    d.remove("B")?
+    d.remove("db")?
+    sys.fs.remove("doc_claims_tmp")?
+    Ok(())
+}

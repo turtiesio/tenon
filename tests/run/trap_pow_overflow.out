@@ -1,0 +1,4 @@
+4611686018427387904
+exit: 70
+stderr: trap: integer overflow
+stderr:   at trap_pow_overflow.tn:4:28
