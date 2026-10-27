@@ -400,7 +400,40 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   Together with privacy this makes a module the only place that can create a
   value of its type or finish a linear one: privacy is unforgeability.
 - Standard library modules: `journal` (append-only, checksummed, crash-safe
-  record log; see `std/journal.tn`).
+  record log; see `std/journal.tn`) and `regex` (below).
+
+### `regex`
+
+Regular expressions, written in Tenon (`std/regex.tn`; its header comment is the
+full specification). Matching is by backtracking, character by character over
+UTF-8; offsets are byte offsets.
+
+```tenon
+import regex
+
+let date = regex.compile("(\\d{4})-(\\d{2})-(\\d{2})").unwrap()   // Result[Regex, Str]
+match date.full("2024-03-15") {                                   // Option[List[Str]]
+    Some(g) => con.println("{g[1]} {g[2]} {g[3]}"),                 // g[0] is the whole match
+    None => con.println("not a date"),
+}
+```
+
+- `regex.compile(pattern) -> Result[Regex, Str]`; the error text is
+  `"<problem> at byte <offset>"` (offset into the pattern).
+- `re.full(s) -> Option[List[Str]]`: the whole string must match; the list holds
+  the whole match, then one entry per capture group (`""` if it did not take part).
+  `re.is_full(s) -> Bool`.
+- `re.find(s) -> Option[(Int, List[Str])]`: the leftmost match, its start byte
+  offset and its groups. `re.find_all(s) -> List[Str]`: non-overlapping matches
+  (an empty match advances by one character).
+  `re.replace_all(s, with) -> Str`: `with` is literal text.
+- Syntax: literals, `.` (not `"\n"`), `[abc]` `[a-z0-9_]` `[^...]`, `\d \w \s \D \W \S`
+  (ASCII), `\b \B`, escaped punctuation (`\.` `\\` `\[`), `^ $` (start / end of the
+  string), `( )` and `(?: )`, `|`, greedy `* + ? {m} {m,} {m,n}` and lazy `*? +? ?? {m,n}?`.
+  In a Tenon string literal write each regex backslash twice and `{` as `\{`.
+  Not supported: backreferences, lookaround, named groups, flags.
+- A pattern that would take more than about a million backtracking steps (for
+  example `(a+)+b` on a long run of `a`) stops the program with `panic`, naming the pattern.
 
 ## 14. Data codec
 

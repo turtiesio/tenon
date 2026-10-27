@@ -1,0 +1,9 @@
+// A pathological pattern is stopped by the step limit instead of hanging.
+import regex
+
+fn main(sys: Sys) {
+    let c = sys.console
+    let re = regex.compile("(a+)+b").unwrap()
+    c.println("{re.is_full("aaaaaaaab")} {re.is_full("aaaaaaaac")}")
+    c.println("{re.is_full("a".repeat(40) + "c")}")
+}

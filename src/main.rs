@@ -37,7 +37,7 @@ fn usage() -> ! {
 }
 
 // Standard library modules, embedded so the compiler is a single file.
-const STD: &[(&str, &str)] = &[("journal", include_str!("../std/journal.tn"))];
+const STD: &[(&str, &str)] = &[("journal", include_str!("../std/journal.tn")), ("regex", include_str!("../std/regex.tn"))];
 
 // Load the program: prelude, the main file, then every imported module
 // (from the importing file's directory, else the standard library).
