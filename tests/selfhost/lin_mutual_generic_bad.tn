@@ -1,0 +1,11 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn ping[T](x: T, n: Int) -> T { if n == 0 { x } else { pong(x, n - 1) } }
+fn pong[T](x: T, n: Int) -> T {
+    let y = x
+    if n == 0 { y } else { ping(x, n - 1) }
+}
+fn main() {
+    let c = ping(Claim { id: 1 }, 4)
+    c.done()
+}

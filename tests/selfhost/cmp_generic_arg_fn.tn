@@ -1,0 +1,5 @@
+struct Cell[T] { v: Int }
+fn main() {
+    let a: Cell[fn() -> Int] = Cell { v: 1 }
+    let b = a < a
+}

@@ -1,0 +1,4 @@
+struct Pt { x: Float, y: Float }
+fn main() {
+    let xs: List[Map[Str, Map[Pt, Int]]] = []
+}

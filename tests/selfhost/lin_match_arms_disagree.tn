@@ -1,0 +1,10 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn main() {
+    let c = Claim { id: 1 }
+    match 3 {
+        0 => c.done(),
+        1 => {}
+        _ => c.done(),
+    }
+}

@@ -1,0 +1,6 @@
+unique struct Handle { fd: Int }
+fn main() {
+    let h = Handle { fd: 1 }
+    let g = Handle { fd: 2 }
+    let k = g
+}

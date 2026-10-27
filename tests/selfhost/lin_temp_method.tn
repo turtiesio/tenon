@@ -1,0 +1,6 @@
+linear struct Claim { id: Int }
+fn Claim.peek(self) -> Int { self.id }
+fn make() -> Claim { Claim { id: 1 } }
+fn main() {
+    let s = "{make().id}"
+}

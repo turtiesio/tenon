@@ -1,0 +1,10 @@
+// A method called through its path: `muts` (no self) is indexed against the
+// parameter list that includes self, so the receiver is taken as the `mut` one.
+struct Acc { total: Int }
+fn Acc.add(self, n: mut Int) { n += self.total }
+fn main() {
+    let a = Acc { total: 1 }
+    var n = 0
+    a.add(mut n)
+    Acc.add(a, mut n)
+}

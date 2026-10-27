@@ -1,0 +1,4 @@
+linear struct Claim { id: Int }
+fn main() {
+    let r: Result[Option[Claim], Str] = decode("None")
+}

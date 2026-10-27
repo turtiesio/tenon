@@ -47,6 +47,35 @@ expressions, declarations, variants, parameters and imports.
 - An `if` without `else` appends "('if' without 'else' must produce Unit)" to
   any "type mismatch" raised anywhere inside its block.
 
+- `module.Type.Variant` used as a value (not called) is not rewritten by
+  `fix_paths`, so it reports `unknown name 'module'`
+  (tests/selfhost/mod_variant_member.tn); `module.Variant(..)` becomes a path
+  call and reports `'module' has no member 'Variant'`
+  (tests/selfhost/mod_module_variant_call.tn).
+- `muts` (which parameters are `mut`) excludes `self`, but a method used as a
+  function value (`Type.method(recv, ..)`) indexes it against the full
+  parameter list including `self`; the self-hosted checker indexes the same way.
+- A `ref`/`mut` parameter flag is looked up by parameter name in the linear
+  pass, so `mut` parameters count as borrowed: consuming one reports the
+  `'ref' parameter` message (tests/selfhost/lin_mut_param.tn).
+
+- Rules added to the bootstrap from QA findings (commit 7609370: comparability
+  through fields and payloads, Float/function map keys, linear temporaries,
+  guards that consume, `..` dropping a replaced linear field) are implemented;
+  `tests/pending-reject/` is cross-checked like the rest of the corpus, so its
+  cases can move to `tests/reject/`.
+
+## Testing
+
+- `tools/selfhost.sh` (part of `./check --fast`): every corpus file, including
+  the extra cases in `tests/selfhost/` (one diagnostic per file, plus accepted
+  programs with tricky constructs; `ckmod*.tn`, `ckbad*.tn`, `ckcycle.tn` and
+  `ckmissingdep.tn` are modules imported by the `mod_*` cases).
+- `selfhost/checkfuzz.py COUNT SEED [-v]`: differential mutation testing.
+  Corpus programs (mostly ones the bootstrap accepts) get token-level
+  mutations; both checkers must print the same first line. Disagreements are
+  saved under `.evidence/checkfuzz/`.
+
 ## Known disagreements
 
 None on the corpus. Files skipped by `tools/selfhost.sh` would be listed here

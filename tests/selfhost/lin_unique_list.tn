@@ -1,0 +1,4 @@
+unique struct Handle { fd: Int }
+fn main() {
+    let hs = [Handle { fd: 1 }]
+}

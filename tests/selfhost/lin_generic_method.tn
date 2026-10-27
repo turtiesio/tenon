@@ -1,0 +1,7 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+struct Holder[T] { item: T }
+fn Holder[T].get(self) -> T { self.item }
+fn main() {
+    let h = Holder { item: Claim { id: 1 } }
+}

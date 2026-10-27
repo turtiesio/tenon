@@ -1,0 +1,11 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn touch(c: mut Claim) {}
+fn eat(c: mut Claim) { c.done() }
+fn main() {
+    var c = Claim { id: 1 }
+    touch(mut c)
+    c.done()
+    var d = Claim { id: 2 }
+    eat(mut d)
+}
