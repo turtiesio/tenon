@@ -538,7 +538,13 @@ fn Parser.pattern1(mut self) -> Result[Pattern, ParseError] {
 
 // ---- expressions ----
 
-fn Parser.expr(mut self) -> Result[Expr, ParseError] { self.binary(0) }
+fn Parser.expr(mut self) -> Result[Expr, ParseError] {
+    let e = self.binary(0)?
+    if self.is_sym("..") and not self.no_struct {
+        return Err(err_at(self.here(), "ranges `a..b` are only allowed in `for` loops; use a list or a loop"))
+    }
+    Ok(e)
+}
 
 fn binop(t: lexer.Tok) -> Option[(Str, Int)] {
     match t {
