@@ -12,6 +12,8 @@ Milestone 1 (tenon.md §4), item by item:
   over waves: 1.7x, 1.46x, 1.69x, 1.47x Python. The remaining gap is mostly
   writing more tokens (1.36x Python; explicit types and braces) plus an
   outlier author whose own test harness hung. study/results/wave5/.
+  User decision: the time target stays as written and is reported unmet; no
+  design change is made to chase it.
   Earlier waves:
   Wave 2 (task set 2, hidden tests written by Codex, 3 authors per language from
   Claude Opus, Claude Sonnet and Codex in a Latin square, compiler frozen at b5bd865;

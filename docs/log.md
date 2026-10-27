@@ -173,6 +173,11 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Study time target (decided after wave 5):** stays "at or below Python" and
+  is reported as unmet (wave 5: Tenon 1.47x Python, TypeScript 1.2x). No design
+  change (braces, explicit types, let/var, explicit console) is made to chase
+  it; the language keeps improving between waves.
+
 - **Study line metric (decided after wave 3):** lines are counted without
   closer-only lines (`}` alone, `});` ...), the same rule in every language,
   because Python closes blocks by dedenting at no line cost. The raw count is
