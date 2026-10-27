@@ -1038,7 +1038,7 @@ TN_LIST_FUNCS(tn_List_Str, tn_Str)
 
 /* ---------- string operations ---------- */
 
-static TN_UNUSED tn_Int tn_str_byte(tn_Str s, tn_Int i, const char *loc) {
+static inline TN_UNUSED tn_Int tn_str_byte(tn_Str s, tn_Int i, const char *loc) {
     if ((uint64_t)i >= (uint64_t)s.len)
         tn_trapf(loc, "index %lld out of bounds for length %lld", (long long)i, (long long)s.len);
     return (uint8_t)s.p[i];
