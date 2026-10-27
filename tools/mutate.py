@@ -44,7 +44,7 @@ def main():
     work = tempfile.mkdtemp(prefix="tenon-mutate-")
     try:
         for d in ["src", "runtime", "std", "tests"]:
-            shutil.copytree(os.path.join(ROOT, d), os.path.join(work, d))
+            shutil.copytree(os.path.join(ROOT, d), os.path.join(work, d), symlinks=True)
         for f in ["Cargo.toml", "Cargo.lock"]:
             shutil.copy(os.path.join(ROOT, f), work)
         if run(["cargo", "build", "--release", "-q"], work, 600) != 0:
