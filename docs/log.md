@@ -225,3 +225,26 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 - **Study wave 3** started: task set 3 (10 specs by a separate agent), hidden
   tests by Codex in study/hidden3, 9 authors in the wave-2 Latin square,
   compiler frozen at 2749ba2 (with std/regex and the wave-2 library additions).
+
+## 2026-10-28 (late night) — wave 3 results, line metric, wave-3 fixes, wave 4
+
+- **Wave 3 scored** (study/results/wave3): hidden tests 100/100/99%; Tenon
+  1612 lines vs Python 1296, but 21% of Tenon's lines are closer-only. **User
+  decision**: the milestone counts lines without closer-only lines in every
+  language (approvals log). Then Tenon 1289 vs Python 1293: lines met. Time
+  (7.0 vs 4.8 min) not met; TypeScript wrote more tokens than Tenon yet was
+  faster, so the gap is unfamiliarity and compile errors, not volume.
+- **From the wave-3 notes** (requests made by 2-3 of the Tenon authors): `if let`/`while let`
+  (desugared to match in both parsers), 0x/0b/0o literals, radix conversion,
+  Int.pow, Result combinators, Map.or_insert, split_once/rfind, Fs.mkdir_one,
+  path helpers, many reference fixes (exit codes made exactly true, Fs.list,
+  Fs.write temp name, Sys.net).
+- **Change safety**: adding path_join to the prelude would have broken any
+  program defining its own. User items now hide prelude items per file (both
+  checkers).
+- **docs/quickstart.md**: a one-page Python/TypeScript translation table,
+  every snippet from a test; in the study kits from wave 4 on.
+- **Study harness**: try.sh keeps the caller's directory (wave-3 authors lost
+  runs to relative paths).
+- **Wave 4** launched: task set 4, hidden tests by Codex (study/hidden4),
+  same Latin square, compiler frozen at 1eea1d9.
