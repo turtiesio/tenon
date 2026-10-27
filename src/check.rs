@@ -23,12 +23,14 @@ pub struct StructInfo {
     pub name: String,
     pub tparams: Vec<String>,
     pub fields: Vec<(String, Ty)>,
+    pub kind: Kind,
 }
 
 pub struct EnumInfo {
     pub name: String,
     pub tparams: Vec<String>,
     pub variants: Vec<(String, Vec<Ty>)>,
+    pub kind: Kind,
 }
 
 pub struct FnInfo {
@@ -62,6 +64,37 @@ impl Checked {
     }
     pub fn enum_idx(&self, name: &str) -> Option<usize> {
         self.enums.iter().position(|s| s.name == name)
+    }
+    // Linear (must be consumed exactly once) or unique (never copied), including
+    // any type that contains such a value.
+    pub fn kind_of(&self, t: &Ty) -> Kind {
+        let mut k = Kind::Plain;
+        let mut seen = Vec::new();
+        self.kind_walk(t, &mut k, &mut seen);
+        k
+    }
+    fn kind_walk(&self, t: &Ty, k: &mut Kind, seen: &mut Vec<Ty>) {
+        if seen.contains(t) || *k == Kind::Linear {
+            return;
+        }
+        seen.push(t.clone());
+        fn note(k: &mut Kind, d: Kind) {
+            if d == Kind::Linear || (d == Kind::Unique && *k == Kind::Plain) {
+                *k = d;
+            }
+        }
+        match t {
+            Ty::Tuple(ts) => ts.iter().for_each(|t| self.kind_walk(t, k, seen)),
+            Ty::Con(n, args) => {
+                args.iter().for_each(|t| self.kind_walk(t, k, seen));
+                if let Some(i) = self.struct_idx(n) {
+                    note(k, self.structs[i].kind);
+                } else if let Some(i) = self.enum_idx(n) {
+                    note(k, self.enums[i].kind);
+                }
+            }
+            _ => {}
+        }
     }
     pub fn struct_fields(&self, t: &Ty) -> Option<Vec<(String, Ty)>> {
         let Ty::Con(n, args) = t else { return None };
@@ -184,6 +217,9 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
         return err(Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'");
     };
     c.check_main(main)?;
+    for (i, f) in prog.fns.iter().enumerate() {
+        crate::linear::check_fn(&c.out, f, i)?;
+    }
     c.out.main = main;
     c.out.prog = prog;
     Ok(c.out)
@@ -240,7 +276,7 @@ impl Checker {
         let mut seen: HashMap<String, Span> = HashMap::new();
         let names = prog.structs.iter().map(|s| (&s.name, s.span, &s.kind))
             .chain(prog.enums.iter().map(|e| (&e.name, e.span, &e.kind)));
-        for (n, sp, kind) in names {
+        for (n, sp, _) in names {
             if !upper(n) {
                 return err(sp, format!("type names start with an uppercase letter: '{}'", n));
             }
@@ -250,9 +286,6 @@ impl Checker {
             if seen.contains_key(n) || BUILTIN_TYPES.iter().any(|(b, _, _)| b == n) {
                 return err(sp, format!("type '{}' is already defined", n));
             }
-            if *kind != Kind::Plain {
-                return err(sp, "linear and unique types are not implemented yet");
-            }
             seen.insert(n.clone(), sp);
         }
         for (n, sp, ps) in prog.structs.iter().map(|s| (&s.name, s.span, &s.tparams)).chain(prog.enums.iter().map(|e| (&e.name, e.span, &e.tparams))) {
@@ -261,10 +294,10 @@ impl Checker {
             }
         }
         for s in &prog.structs {
-            self.out.structs.push(StructInfo { name: s.name.clone(), tparams: s.tparams.clone(), fields: vec![] });
+            self.out.structs.push(StructInfo { name: s.name.clone(), tparams: s.tparams.clone(), fields: vec![], kind: s.kind });
         }
         for e in &prog.enums {
-            self.out.enums.push(EnumInfo { name: e.name.clone(), tparams: e.tparams.clone(), variants: vec![] });
+            self.out.enums.push(EnumInfo { name: e.name.clone(), tparams: e.tparams.clone(), variants: vec![], kind: e.kind });
         }
         for (i, s) in prog.structs.iter().enumerate() {
             let mut fields = Vec::new();
@@ -293,6 +326,7 @@ impl Checker {
             self.out.enums[i].variants = vs;
         }
         self.check_recursion()?;
+        crate::linear::check_decls(&self.out, prog)?;
         // functions
         let mut fseen: HashMap<String, Span> = HashMap::new();
         for f in &prog.fns {

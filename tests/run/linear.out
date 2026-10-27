@@ -1,0 +1,9 @@
+claimed a (attempt 1) Claim { job: "a", attempt: 1 }
+Completed("a")
+claimed bad-b (attempt 1) Claim { job: "bad-b", attempt: 1 }
+Released("bad-b")
+claimed c (attempt 1) Claim { job: "c", attempt: 1 }
+Completed("c")
+nothing at 3
+Completed("a")
+exit: 0

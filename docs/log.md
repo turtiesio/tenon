@@ -31,3 +31,25 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 - **Mistake found by the corpus on day 1**: `tn_read_line` kept a stale index
   after compacting its buffer at EOF → infinite loop on a final line without a
   newline. Fixed; the test runner now kills tests after 20 s.
+
+## 2026-10-27 — fuzzing, first program, linear types
+
+- **Differential fuzzer** (`tools/fuzz.py`): random well-typed programs, interpreter
+  vs C. First 100 programs found 3 bugs: user type names colliding with prelude
+  type parameters, untyped `NULL` for empty map literals, `-2.abs()` parsing as
+  `-(2.abs())`. Fix for the first: **type parameters are one capital letter plus
+  optional digits**, and type names may not have that form. Simple, total, and it
+  removes a class of ambiguity in owner arguments (`fn Map[K, V].x`).
+- **Ledger** (first real program) found: assignments were not allowed as match
+  arm bodies (`None => n += 1`); fixed. And in the program itself: recovery must
+  rewrite the journal without the torn tail, or the next append is glued onto
+  it. Unrecoverable records are archived (`journal.rejected`) before being dropped.
+- **Linear/unique types** as a post-typecheck flow analysis (`src/linear.rs`, ~400
+  lines): no runtime cost, no change to either backend. Base case for disposal:
+  a type's own methods are exempt for `self`. Without modules this is a
+  convention, not a guarantee — recorded as a known gap until modules exist.
+- **Performance**: wordfreq 2.38x → 1.71x of C (string-identity hash memo, map
+  last-hit cache, fused `for w in s.words()`, zero-copy `read_all`, in-place
+  `lower`). Remaining gap is the two-level map layout plus two lookups per
+  update in the idiomatic program. trees 2.55x → 1.35x (shared nullary variants,
+  borrowed match bindings).

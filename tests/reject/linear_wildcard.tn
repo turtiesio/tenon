@@ -1,0 +1,4 @@
+// error: '_' would drop a linear value
+linear struct Claim { job: Str }
+fn f(o: Option[Claim]) { match o { Some(_) => {}, None => {} } }
+fn main() {}

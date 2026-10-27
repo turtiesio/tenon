@@ -1,0 +1,4 @@
+// error: linear value 'c' is never used
+linear struct Claim { job: Str }
+fn ignore(c: Claim) {}
+fn main() {}

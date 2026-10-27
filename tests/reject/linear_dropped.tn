@@ -1,0 +1,3 @@
+// error: linear value 'c' is never used
+linear struct Claim { job: Str }
+fn main() { let c = Claim { job: "x" } }
