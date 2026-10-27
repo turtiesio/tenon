@@ -1,0 +1,8 @@
+// A closure inside a method captures `self` as a value.
+struct Pt { x: Int }
+fn Pt.adder(self) -> fn(Int) -> Int { fn(d: Int) -> Int { self.x + d } }
+fn main(sys: Sys) {
+    let p = Pt { x: 40 }
+    let f = p.adder()
+    sys.console.println("{f(2)}")
+}

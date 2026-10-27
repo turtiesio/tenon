@@ -1,0 +1,6 @@
+// A call through a constant is a call, even when a variant has the same name.
+enum Op { TWICE(Int) }
+const TWICE: fn(Int) -> Int = fn(x: Int) -> Int { x * 2 }
+fn main(sys: Sys) {
+    sys.console.println("{TWICE(3)} {Op.TWICE(3)}")
+}

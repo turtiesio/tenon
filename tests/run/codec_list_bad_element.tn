@@ -1,0 +1,7 @@
+// A list element that fails to decode fails the whole decode, even when it
+// consumed the rest of the input.
+fn main(sys: Sys) {
+    let a: Result[List[Int], Str] = decode("[01")
+    let b: Result[List[List[Int]], Str] = decode("[[1")
+    sys.console.println("{a} {b}")
+}
