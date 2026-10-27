@@ -12,6 +12,15 @@ Milestone 1 (tenon.md §4), item by item:
   Main causes measured: braces (one extra line per block), and Python's `re`
   (used in 9 of 10 solutions by every Python author) for input validation.
   All solutions, logs and notes: study/results/wave2/.
+  Wave 3 (fresh task set 3, hidden tests by Codex 250/250 against references,
+  same Latin square, compiler frozen at 2174ddd): hidden tests 100% / 100% / 99%;
+  Tenon 1612 lines / 13610 tokens / 7.0 min vs Python 1296 / 9470 / 4.8 and
+  TypeScript 1511 / 14614 / 4.4 (medians). Lines: 1.24x Python, but closing-brace
+  lines are 21% of Tenon's lines (0% of Python's); without them Tenon has fewer
+  lines than Python (3303 vs 3445 summed over all authors). The line gap is the
+  braces the user chose to keep. Time remains 1.46x Python: more tokens per
+  solution (1.44x) and compile errors (median 11). Same model, Tenon vs Python
+  lines: Opus 1.25x, Sonnet 1.24x, Codex 1.07x. study/results/wave3/.
 - Performance within 1.5x of C on the program benchmarks: **met** (worst 1.39x,
   table above). The real-program benchmarks (calc 1.39x, mdhtml 1.24x) were
   rewritten to match the structure of their C and Rust counterparts: one output
