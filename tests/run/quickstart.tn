@@ -1,0 +1,59 @@
+// stdin: add apple 3\nadd pear 4\nadd apple 2\nremove kiwi\nadd fig x\nfly\nlist
+// The program behind docs/quickstart.md: every snippet there is taken from here.
+struct Item { name: Str, qty: Int }
+
+enum Cmd { Add(Str, Int), Remove(Str), List }
+
+fn parse(line: Str) -> Result[Cmd, Str] {
+    let w = line.words()
+    if w.is_empty() { return Err("empty command") }
+    match w[0] {
+        "add" => {
+            if w.len() != 3 { return Err("usage: add NAME QTY") }
+            let Some(q) = w[2].to_int() else { return Err("bad quantity '{w[2]}'") }
+            Ok(Add(w[1], q))
+        }
+        "remove" => if w.len() == 2 { Ok(Remove(w[1])) } else { Err("usage: remove NAME") },
+        "list" => Ok(List),
+        other => Err("unknown command '{other}'"),
+    }
+}
+
+fn total(items: List[Item]) -> Int {
+    var sum = 0
+    for it in items { sum += it.qty }
+    sum
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var stock: Map[Str, Int] = [:]
+    var errors = 0
+    while let Some(line) = con.read_line() {
+        match parse(line) {
+            Ok(Add(name, q)) => stock[name] = stock.get_or(name, 0) + q,
+            Ok(Remove(name)) => {
+                if let Some(q) = stock.remove(name) { con.println("removed {q} {name}") } else { con.println("no {name}") }
+            }
+            Ok(List) => {
+                var items = stock.entries().map(fn(e) => Item { name: e.0, qty: e.1 })
+                items.sort_by_desc(fn(it) => it.qty)
+                for (i, it) in items.enumerate() {
+                    con.println("{i + 1}. {it.name.pad_right(6, " ")}{it.qty}")
+                }
+                con.println("total {total(items)}")
+            }
+            Err(msg) => {
+                con.eprintln("error: {msg}")
+                errors += 1
+            }
+        }
+    }
+    var groups: Map[Int, List[Str]] = [:]
+    for w in ["fig", "kiwi", "plum", "date"] {
+        groups.or_insert(w.len(), [])
+        groups[w.len()].push(w)
+    }
+    con.println("{groups}")
+    if errors > 0 { 1 } else { 0 }
+}
