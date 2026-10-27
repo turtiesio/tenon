@@ -13,6 +13,10 @@ fi
 for attempt in 1 2 3; do
   git fetch -q origin main
   git rebase -q origin/main
+  if ! python3 tools/approvals.py origin/main; then
+    echo "land: unapproved weakening of a guarded test; nothing pushed (governance/README.md)"
+    exit 1
+  fi
   if ! ./check --fast > .check.log 2>&1; then
     tail -20 .check.log
     echo "land: check failed; nothing pushed (fix, then rerun)"

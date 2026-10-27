@@ -9,3 +9,4 @@ cargo build --release --quiet
 target/release/tenon test tests examples
 tools/programs.sh
 tools/selfhost.sh
+tools/approvals_test.sh
