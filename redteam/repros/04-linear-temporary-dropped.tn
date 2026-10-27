@@ -1,0 +1,13 @@
+// A linear value that exists only as a temporary is dropped without being consumed:
+// field read, ==, formatting, and a `ref` argument all "inspect" it and then lose it.
+linear struct Tok { id: Int }
+fn Tok.close(self) { }
+fn mk() -> Tok { Tok { id: 1 } }
+fn peek(t: ref Tok) -> Int { t.id }
+fn main(sys: Sys) {
+    let a = mk().id
+    let b = mk() == mk()
+    let c = "{mk()}"
+    let d = peek(mk())
+    sys.console.println("{a} {b} {c} {d}")
+}

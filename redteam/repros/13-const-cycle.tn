@@ -1,0 +1,5 @@
+// A cycle among constants is accepted by `check`; using one dies at run time with a stack-overflow trap
+// (exit 72), in both backends, instead of a compile-time error.
+const A1: Int = B1 + 1
+const B1: Int = A1 + 1
+fn main(sys: Sys) { sys.console.println("{A1}") }

@@ -1,0 +1,3 @@
+// `tenon run 16-run-nonutf8-arg-panics.tn $'\xff'` crashes the interpreter with a Rust panic (exit 101);
+// the native build receives U+FFFD and runs normally.
+fn main(sys: Sys) { sys.console.println("{sys.args}") }

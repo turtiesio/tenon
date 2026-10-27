@@ -1,0 +1,10 @@
+// Ports outside 0..65535 are silently reduced mod 65536 instead of failing.
+// Run from the same machine; 73616 = 65536 + 8080.
+fn main(sys: Sys) {
+    for p in [73616, -1, 65536, 4294967296] {
+        match sys.net.listen(p) {
+            Ok(l) => sys.console.println("listen({p}) -> bound port {l.port()}"),
+            Err(e) => sys.console.println("listen({p}) -> {e}"),
+        }
+    }
+}

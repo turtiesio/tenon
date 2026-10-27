@@ -1,0 +1,4 @@
+// Polymorphic recursion: `tenon check` and `tenon run` are fine; `tenon build` never terminates
+// (infinite monomorphization, no diagnostic, no limit).
+fn f[A](x: A, n: Int) -> Int { if n == 0 { 0 } else { f([x], n - 1) } }
+fn main(sys: Sys) { sys.console.println("{f(1, 5)}") }

@@ -1,10 +1,19 @@
-- **Usability study**: wave 1 (1 author per language) passed 100% of hidden
-  tests in all three languages, but Tenon needed ~1.7x Python's tokens and its
-  task-time measurement was invalid (clocks started late; fixed: specifications
-  are now revealed only by `try.sh --start`). The full study (3 authors per
-  language, two model families, a new task set) has not run yet. Goal not met.
-- **Performance**: wordfreq at ~1.7x C (insertion-ordered two-level map plus two
-  lookups per update); fib and trees within 1.5x. Rust/TypeScript baselines missing.
-- **Self-hosted checker**: in progress (lexer and parser agree on the full corpus).
-- **Loop-time history**: less than a week of measurements exists.
-- Not implemented: concurrency (servers handle one connection at a time).
+Milestone 1 (tenon.md §4), item by item:
+
+- 10 real programs with differential and fuzz testing green: **met**
+  (programs/: ledger, jobq, facts, kvhttp, mkplan, csvq, mdhtml, calc, and the
+  self-hosted lexer/parser drivers; fuzzing 0 backend disagreements).
+- Blind usability study at or below Python on line count and task time: **not met / not yet measured properly.**
+  Wave 1 (1 author per language, task set 1): 100% hidden-test pass rate for
+  all three languages; Tenon ~1.7x Python's tokens; task time invalid (fixed).
+  Language changes since, driven by wave-1 notes: char literals, let-else,
+  constants, mut parameters, Set, char-class helpers, find_from, Fs.rename.
+  The full study (3 authors per language, 2 model families, task set 2) is next.
+- Performance within 1.5x of C on the benchmarks: **met** (fib 1.19x, trees
+  1.36x, wordfreq 1.35x). Benchmarks of the real programs against C are not done.
+- check --fast <= 60 s and landing <= 5 min over a week: met so far (~9 s, ~15 s),
+  but less than a week of history exists.
+- Self-hosted lexer, parser and checker agree with the bootstrap on the full corpus: **met** (tools/selfhost.sh).
+- Approvals log and checker exist and refused a real weakening in a test: **met** (tools/approvals_test.sh).
+
+Not implemented: concurrency (servers handle one connection at a time) — model is a product decision.
