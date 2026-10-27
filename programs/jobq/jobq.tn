@@ -24,31 +24,7 @@ struct Queue { jobs: Map[Int, Job], next_id: Int, torn: Int, requeued: Int }
 
 fn max_attempts() -> Int { 3 }
 
-// ---- journal records (format: std/journal) ----
-
-fn encode(r: Rec) -> Str {
-    match r {
-        Add(id, n, p) => "add {id} {n} {p}",
-        Take(id) => "take {id}",
-        Finish(id, out) => "finish {id} {out}",
-        Fail(id, why) => "fail {id} {why}",
-        Bury(id, why) => "bury {id} {why}",
-    }
-}
-
-fn decode(body: Str) -> Option[Rec] {
-    let w = body.split(" ")
-    let id = w.get(1)?.to_int()?
-    let rest = if w.len() > 2 { w.slice(2, w.len()).join(" ") } else { "" }
-    match w[0] {
-        "add" if w.len() >= 4 => Some(Add(id, w[2], w.slice(3, w.len()).join(" "))),
-        "take" => Some(Take(id)),
-        "finish" => Some(Finish(id, rest)),
-        "fail" => Some(Fail(id, rest)),
-        "bury" => Some(Bury(id, rest)),
-        _ => None,
-    }
-}
+// Journal records are Rec values in the derived codec format (std/journal lines).
 
 fn Queue.apply(mut self, r: Rec) {
     match r {
@@ -71,8 +47,8 @@ fn load(j: journal.Journal) -> Result[Queue, IoError] {
     var q = Queue { jobs: [:], next_id: 1, torn: loaded.rejected, requeued: 0 }
     for body in loaded.records {
         match decode(body) {
-            Some(r) => q.apply(r),
-            None => q.torn += 1,
+            Ok(r) => q.apply(r),
+            Err(_) => q.torn += 1,
         }
     }
     // A job still Running was claimed by a process that crashed: re-queue it.

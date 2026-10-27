@@ -25,22 +25,6 @@ struct Ledger {
 
 enum Outcome { Done(Str), Duplicate(Str), Rejected(Str) }
 
-fn encode(r: Record) -> Str {
-    match r {
-        Open(a) => "open {a}",
-        Transfer(id, from, to, amt) => "transfer {id} {from} {to} {amt}",
-    }
-}
-
-fn decode(body: Str) -> Option[Record] {
-    let w = body.words()
-    match w.len() {
-        2 if w[0] == "open" => Some(Open(w[1])),
-        5 if w[0] == "transfer" => Some(Transfer(w[1], w[2], w[3], w[4].to_int()?)),
-        _ => None,
-    }
-}
-
 fn Ledger.apply(mut self, r: Record) -> Outcome {
     match r {
         Open(a) => {
@@ -69,8 +53,8 @@ fn recover(j: journal.Journal) -> Result[Ledger, IoError] {
     var l = Ledger { balances: [:], applied: [:], torn: loaded.rejected }
     for body in loaded.records {
         match decode(body) {
-            Some(r) => { let _ = l.apply(r) }
-            None => l.torn += 1,
+            Ok(r) => { let _ = l.apply(r) }
+            Err(_) => l.torn += 1,
         }
     }
     Ok(l)

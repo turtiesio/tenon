@@ -23,7 +23,7 @@ step report
 step transfer t8 mint bob 1
 step report
 echo "# crash: corrupted record in the middle is skipped, never misapplied"
-sed -i.bak 's/transfer t2 alice bob 30/transfer t2 alice bob 99/' "$D/journal"
+sed -i.bak 's/"bob", 30)/"bob", 99)/' "$D/journal"
 step report
 echo "# archived records:"
 cat "$D/journal.rejected"
