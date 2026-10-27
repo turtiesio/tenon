@@ -288,6 +288,8 @@ Highlights:
   is_empty`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
 - `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`, `insert`,
   `remove`, `contains`, `keys`, `values`, `entries`, `len`, `is_empty`.
+- `Set[T]`: `Set.new()`, `Set.of(list)`, `insert` (false if already present),
+  `remove` (false if absent), `contains`, `len`, `is_empty`, `items` (insertion order).
 - `Option[T]`: `unwrap expect unwrap_or is_some is_none map ok_or`.
 - `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok map_err`.
 - `Int`: `abs min max to_float to_str char`; `checked_add checked_sub

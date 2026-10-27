@@ -177,6 +177,25 @@ fn Map[K, V].entries(self) -> List[(K, V)] {
     out
 }
 
+// ---- Set (iteration follows insertion order) ----
+pub struct Set[T] { items_: Map[T, Unit] }
+fn Set[T].new() -> Set[T] { Set { items_: [:] } }
+fn Set[T].of(xs: List[T]) -> Set[T] {
+    var m: Map[T, Unit] = [:]
+    for x in xs { m[x] = () }
+    Set { items_: m }
+}
+fn Set[T].insert(mut self, x: T) -> Bool {
+    if self.items_.contains(x) { return false }
+    self.items_[x] = ()
+    true
+}
+fn Set[T].remove(mut self, x: T) -> Bool { self.items_.remove(x).is_some() }
+fn Set[T].contains(self, x: T) -> Bool { self.items_.contains(x) }
+fn Set[T].len(self) -> Int { self.items_.len() }
+fn Set[T].is_empty(self) -> Bool { self.items_.len() == 0 }
+fn Set[T].items(self) -> List[T] { self.items_.keys() }
+
 // ---- Option / Result ----
 extern fn Option[T].unwrap(self) -> T
 extern fn Option[T].expect(self, msg: Str) -> T
