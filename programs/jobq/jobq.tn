@@ -1,0 +1,230 @@
+// jobq: a crash-safe job queue.
+//
+//   jobq DIR add NAME PAYLOAD      enqueue a job, print its id
+//   jobq DIR work [--crash-after K] claim and run queued jobs until none are left
+//   jobq DIR status                one line per job, then totals
+//
+// A job is claimed (journaled, fsynced) before it runs, and its outcome is
+// journaled after. A claim is a linear value: the code that claims a job
+// cannot forget to complete or release it. After a crash, claims without an
+// outcome are re-queued on the next run, so every job finishes exactly once
+// or is declared dead after MAX_ATTEMPTS failed attempts.
+
+linear struct Claim { id: Int, name: Str, payload: Str, attempt: Int }
+
+enum State { Queued, Running, Done(Str), Dead(Str) }
+
+struct Job { id: Int, name: Str, payload: Str, attempts: Int, state: State }
+
+enum Rec { Add(Int, Str, Str), Take(Int), Finish(Int, Str), Fail(Int, Str), Bury(Int, Str) }
+
+struct Queue { jobs: Map[Int, Job], next_id: Int, torn: Int, requeued: Int }
+
+fn max_attempts() -> Int { 3 }
+
+// ---- journal (same format as programs/ledger) ----
+
+fn checksum(s: Str) -> Int {
+    var h = 7
+    for i in 0..s.len() { h = (h * 31 + s.byte(i)) % 1000000007 }
+    h
+}
+
+fn encode(r: Rec) -> Str {
+    let body = match r {
+        Add(id, n, p) => "add {id} {n} {p}",
+        Take(id) => "take {id}",
+        Finish(id, out) => "finish {id} {out}",
+        Fail(id, why) => "fail {id} {why}",
+        Bury(id, why) => "bury {id} {why}",
+    }
+    "{body} #{checksum(body)}\n"
+}
+
+fn decode(line: Str) -> Option[Rec] {
+    let i = line.find(" #")?
+    let body = line.slice(0, i)
+    if line.slice(i + 2, line.len()).to_int()? != checksum(body) { return None }
+    let w = body.split(" ")
+    let id = w.get(1)?.to_int()?
+    let rest = if w.len() > 2 { w.slice(2, w.len()).join(" ") } else { "" }
+    match w[0] {
+        "add" if w.len() >= 4 => Some(Add(id, w[2], w.slice(3, w.len()).join(" "))),
+        "take" => Some(Take(id)),
+        "finish" => Some(Finish(id, rest)),
+        "fail" => Some(Fail(id, rest)),
+        "bury" => Some(Bury(id, rest)),
+        _ => None,
+    }
+}
+
+fn Queue.apply(mut self, r: Rec) {
+    match r {
+        Add(id, n, p) => {
+            self.jobs[id] = Job { id, name: n, payload: p, attempts: 0, state: Queued }
+            self.next_id = self.next_id.max(id + 1)
+        }
+        Take(id) => {
+            self.jobs[id].attempts += 1
+            self.jobs[id].state = Running
+        }
+        Finish(id, out) => self.jobs[id].state = Done(out),
+        Fail(id, _) => self.jobs[id].state = Queued,
+        Bury(id, why) => self.jobs[id].state = Dead(why),
+    }
+}
+
+fn load(fs: Fs) -> Result[Queue, IoError] {
+    var q = Queue { jobs: [:], next_id: 1, torn: 0, requeued: 0 }
+    let text = match fs.read("journal") {
+        Ok(t) => t,
+        Err(NotFound(_)) => "",
+        Err(e) => return Err(e),
+    }
+    var good: List[Str] = []
+    var bad: List[Str] = []
+    for line in text.lines() {
+        match decode(line) {
+            Some(r) => {
+                good.push(encode(r))
+                q.apply(r)
+            }
+            None => {
+                q.torn += 1
+                bad.push(line + "\n")
+            }
+        }
+    }
+    if q.torn > 0 {
+        fs.append("journal.rejected", bad.join(""))?
+        fs.write("journal", good.join(""))?
+    }
+    // A job still Running was claimed by a process that crashed: re-queue it.
+    for id in q.jobs.keys() {
+        if q.jobs[id].state == Running {
+            q.jobs[id].state = Queued
+            q.requeued += 1
+        }
+    }
+    Ok(q)
+}
+
+fn Queue.log(mut self, fs: Fs, r: Rec) -> Result[Unit, IoError] {
+    fs.append("journal", encode(r))?
+    self.apply(r)
+    Ok(())
+}
+
+// ---- claims ----
+
+fn Queue.claim(mut self, fs: Fs) -> Result[Option[Claim], IoError] {
+    for id in self.jobs.keys().sorted() {
+        let j = self.jobs[id]
+        if j.state == Queued {
+            self.log(fs, Take(id))?
+            return Ok(Some(Claim { id, name: j.name, payload: j.payload, attempt: j.attempts + 1 }))
+        }
+    }
+    Ok(None)
+}
+
+fn Claim.finish(self, q: Queue, fs: Fs, out: Str) -> Result[Queue, IoError] {
+    var q2 = q
+    q2.log(fs, Finish(self.id, out))?
+    Ok(q2)
+}
+
+fn Claim.fail(self, q: Queue, fs: Fs, why: Str) -> Result[Queue, IoError] {
+    var q2 = q
+    if self.attempt >= max_attempts() {
+        q2.log(fs, Bury(self.id, why))?
+    } else {
+        q2.log(fs, Fail(self.id, why))?
+    }
+    Ok(q2)
+}
+
+// Simulates the process dying while the job runs: nothing is journaled.
+fn Claim.crash(self) {}
+
+// The "work": payload "fail" always fails, "flaky" fails on its first attempt.
+fn run(c: Claim) -> (Claim, Result[Str, Str]) {
+    let r = match c.payload {
+        "fail" => Err("payload says fail"),
+        "flaky" if c.attempt == 1 => Err("flaky first attempt"),
+        p => Ok(p.upper()),
+    }
+    (c, r)
+}
+
+fn work(con: Console, fs: Fs, q0: Queue, crash_after: Int) -> Result[Unit, Str] {
+    var q = q0
+    var n = 0
+    while true {
+        let claimed = q.claim(fs).map_err(fn(e) => "journal: {e}")?
+        match claimed {
+            None => break,
+            Some(c) => {
+                if n == crash_after {
+                    con.println("crash while running job {c.id}")
+                    c.crash()
+                    return Err("simulated crash")
+                }
+                n += 1
+                let (c2, r) = run(c)
+                match r {
+                    Ok(out) => {
+                        con.println("job {c2.id} {c2.name}: done {out}")
+                        q = c2.finish(q, fs, out).map_err(fn(e) => "journal: {e}")?
+                    }
+                    Err(why) => {
+                        con.println("job {c2.id} {c2.name}: attempt {c2.attempt} failed: {why}")
+                        q = c2.fail(q, fs, why).map_err(fn(e) => "journal: {e}")?
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    let args = sys.args
+    let usage = "usage: jobq DIR (add NAME PAYLOAD | work [--crash-after K] | status)"
+    if args.len() < 2 { return Err(usage) }
+    let _ = sys.fs.mkdir(args[0])
+    let fs = sys.fs.within(args[0])
+    var q = load(fs).map_err(fn(e) => "cannot read journal: {e}")?
+    if q.torn > 0 { con.eprintln("recovered: ignored {q.torn} torn record(s)") }
+    if q.requeued > 0 { con.println("recovered: re-queued {q.requeued} interrupted job(s)") }
+    match args[1] {
+        "add" if args.len() == 4 => {
+            let id = q.next_id
+            q.log(fs, Add(id, args[2], args[3])).map_err(fn(e) => "journal: {e}")?
+            con.println("added job {id}")
+        }
+        "work" if args.len() == 2 => work(con, fs, q, -1)?,
+        "work" if args.len() == 4 and args[2] == "--crash-after" => {
+            let k = args[3].to_int().ok_or("--crash-after needs a number")?
+            work(con, fs, q, k)?
+        }
+        "status" => {
+            var counts: Map[Str, Int] = [:]
+            for id in q.jobs.keys().sorted() {
+                let j = q.jobs[id]
+                let s = match j.state {
+                    Queued => "queued",
+                    Running => "running",
+                    Done(_) => "done",
+                    Dead(_) => "dead",
+                }
+                counts[s] = counts.get_or(s, 0) + 1
+                con.println("{j.id} {j.name} {s} attempts={j.attempts}")
+            }
+            con.println("totals {counts}")
+        }
+        _ => return Err(usage),
+    }
+    Ok(())
+}

@@ -1,4 +1,4 @@
-// error: it cannot be used with the linear type
+// error: may copy or drop values of its type parameter T
 linear struct Claim { job: Str }
 fn Claim.done(self) {}
 fn main() { let o = Some(Claim { job: "x" })

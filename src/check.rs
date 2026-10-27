@@ -217,8 +217,8 @@ pub fn check(mut prog: Program) -> CResult<Checked> {
         return err(Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'");
     };
     c.check_main(main)?;
-    for (i, f) in prog.fns.iter().enumerate() {
-        crate::linear::check_fn(&c.out, f, i)?;
+    for i in 0..prog.fns.len() {
+        crate::linear::check_fn(&c.out, &prog, i)?;
     }
     c.out.main = main;
     c.out.prog = prog;
