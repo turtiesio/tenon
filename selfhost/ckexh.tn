@@ -1,0 +1,171 @@
+// module (imported by the self-hosted checker)
+// Match exhaustiveness and reachability: a port of src/exhaust.rs
+// (usefulness algorithm, Maranget 2007).
+
+import ckast
+import cktypes
+import ckenv
+
+enum Pt { Wd, Ct(Int, List[Pt]), Lt(Str) }
+
+// Constructors of a type: the field types of each, if the set is finite.
+fn ctors(env: ckenv.Env, t: cktypes.Ty) -> Option[List[List[cktypes.Ty]]] {
+    match t {
+        Con(n, _) if n == "Bool" => Some([[], []]),
+        Tup(ts) => Some([ts]),
+        Con(_, _) => match env.enum_variants(t) {
+            Some(vs) => Some(vs.map(fn(v) => v.1)),
+            None => None,
+        },
+        _ => None,
+    }
+}
+
+fn lower(p: ckast.Pat, res: Map[Int, ckenv.Res]) -> List[Pt] {
+    match p.k {
+        QWild | QBind(_) => [Wd],
+        QInt(i) => [Lt("i{i}")],
+        QStr(s) => [Lt("s" + s)],
+        QBool(b) => [Ct(if b { 1 } else { 0 }, [])],
+        QTuple(ps) => product(ps, res).map(fn(a) => Ct(0, a)),
+        QVariant(_, _, ps) => {
+            let vi = match res.get(p.id) {
+                Some(RVariant(_, v, _)) => v,
+                _ => 0,
+            }
+            product(ps, res).map(fn(a) => Ct(vi, a))
+        }
+        QOr(alts) => {
+            var out: List[Pt] = []
+            for a in alts { out.extend(lower(a, res)) }
+            out
+        }
+    }
+}
+
+// Expand or-patterns nested in sub-patterns into alternatives.
+fn product(ps: List[ckast.Pat], res: Map[Int, ckenv.Res]) -> List[List[Pt]] {
+    var acc: List[List[Pt]] = [[]]
+    for p in ps {
+        let alts = lower(p, res)
+        var next: List[List[Pt]] = []
+        for a in acc {
+            for alt in alts { next.push(a + [alt]) }
+        }
+        acc = next
+    }
+    acc
+}
+
+fn wilds(n: Int) -> List[Pt] {
+    var out: List[Pt] = []
+    for _ in 0..n { out.push(Wd) }
+    out
+}
+
+fn tail[T](xs: List[T]) -> List[T] { xs.slice(1, xs.len()) }
+
+fn specialize(rows: List[List[Pt]], c: Int, arity: Int) -> List[List[Pt]] {
+    var out: List[List[Pt]] = []
+    for r in rows {
+        match r[0] {
+            Ct(d, args) if d == c => out.push(args + tail(r)),
+            Wd => out.push(wilds(arity) + tail(r)),
+            _ => {}
+        }
+    }
+    out
+}
+
+fn useful(env: ckenv.Env, rows: List[List[Pt]], v: List[Pt], tys: List[cktypes.Ty]) -> Bool {
+    if v.is_empty() { return rows.is_empty() }
+    let rest_tys = tail(tys)
+    match v[0] {
+        Ct(c, args) => {
+            let fts = match ctors(env, tys[0]) {
+                Some(cs) => cs[c],
+                None => [],
+            }
+            useful(env, specialize(rows, c, args.len()), args + tail(v), fts + rest_tys)
+        }
+        Lt(l) => {
+            var rows2: List[List[Pt]] = []
+            for r in rows {
+                let keep = match r[0] {
+                    Wd => true,
+                    Lt(m) => m == l,
+                    _ => false,
+                }
+                if keep { rows2.push(tail(r)) }
+            }
+            useful(env, rows2, tail(v), rest_tys)
+        }
+        Wd => {
+            var used: List[Int] = []
+            for r in rows {
+                match r[0] {
+                    Ct(c, _) => used.push(c),
+                    _ => {}
+                }
+            }
+            match ctors(env, tys[0]) {
+                Some(cs) => {
+                    var all = not cs.is_empty()
+                    for c in 0..cs.len() {
+                        if not used.contains(c) { all = false }
+                    }
+                    if all {
+                        for c in 0..cs.len() {
+                            if useful(env, specialize(rows, c, cs[c].len()), wilds(cs[c].len()) + tail(v), cs[c] + rest_tys) {
+                                return true
+                            }
+                        }
+                        return false
+                    }
+                }
+                None => {}
+            }
+            var rows2: List[List[Pt]] = []
+            for r in rows {
+                match r[0] {
+                    Wd => rows2.push(tail(r)),
+                    _ => {}
+                }
+            }
+            useful(env, rows2, tail(v), rest_tys)
+        }
+    }
+}
+
+pub fn check(env: ckenv.Env, res: Map[Int, ckenv.Res], sp: ckast.Span, st: cktypes.Ty, arms: List[ckast.Arm]) -> Result[Unit, ckast.Diag] {
+    let tys = [st]
+    var rows: List[List[Pt]] = []
+    for a in arms {
+        let alts = lower(a.pat, res)
+        var reachable = false
+        for p in alts {
+            if not reachable and useful(env, rows, [p], tys) { reachable = true }
+        }
+        if not reachable { return ckast.fail(a.pat.sp, "unreachable pattern: earlier arms already cover it") }
+        if a.guard.is_none() {
+            for p in alts { rows.push([p]) }
+        }
+    }
+    if useful(env, rows, [Wd], tys) {
+        var missing = ""
+        match env.enum_variants(st) {
+            Some(vs) => {
+                for i in 0..vs.len() {
+                    let n = vs[i].1.len()
+                    if missing == "" and useful(env, rows, [Ct(i, wilds(n))], tys) {
+                        let args = if n == 0 { "" } else { "(" + wilds(n).map(fn(w) => "_").join(", ") + ")" }
+                        missing = ": '" + vs[i].0 + args + "' is not covered"
+                    }
+                }
+            }
+            None => {}
+        }
+        return ckast.fail(sp, "match is not exhaustive" + missing + "; add the missing arm or '_ =>'")
+    }
+    Ok(())
+}

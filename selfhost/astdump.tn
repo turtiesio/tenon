@@ -13,9 +13,9 @@ fn list(xs: List[Str]) -> Str { xs.map(fn(x) => " " + x).join("") }
 
 fn ty(t: parser.Ty) -> Str {
     match t {
-        Named(n, a) => if a.is_empty() { n } else { n + "[" + a.map(ty).join(", ") + "]" },
-        FnTy(a, r) => "fn(" + a.map(ty).join(", ") + ") -> " + ty(r),
-        TupleTy(a) => "(" + a.map(ty).join(", ") + ")",
+        Named(n, a, _) => if a.is_empty() { n } else { n + "[" + a.map(ty).join(", ") + "]" },
+        FnTy(a, r, _) => "fn(" + a.map(ty).join(", ") + ") -> " + ty(r),
+        TupleTy(a, _) => "(" + a.map(ty).join(", ") + ")",
     }
 }
 
@@ -124,7 +124,7 @@ fn expr(e: parser.Expr) -> Str {
 
 fn dump(p: parser.Program) -> Str {
     var out: List[Str] = []
-    for i in p.imports { out.push("(import {i})") }
+    for i in p.imports { out.push("(import {i.0})") }
     for s in p.structs {
         let fs = s.fields.map(fn(f) => " (" + (if f.0 { "pub " } else { "" }) + f.1 + " " + ty(f.2) + ")")
         out.push("(struct" + vis(s.public) + kind(s.kind) + " " + s.name + tps(s.tparams) + fs.join("") + ")")

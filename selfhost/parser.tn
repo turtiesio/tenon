@@ -7,9 +7,9 @@ import lexer
 pub struct Pos { pub line: Int, pub col: Int }
 
 pub enum Ty {
-    Named(Str, List[Ty]),
-    FnTy(List[Ty], Ty),
-    TupleTy(List[Ty]),
+    Named(Str, List[Ty], Pos),
+    FnTy(List[Ty], Ty, Pos),
+    TupleTy(List[Ty], Pos),
 }
 
 pub enum Pat {
@@ -75,23 +75,23 @@ pub struct Stmt { pub at: Pos, pub kind: St }
 
 pub struct Block { pub at: Pos, pub stmts: List[Stmt] }
 
-pub struct Param { pub name: Str, pub by_ref: Bool, pub by_mut: Bool, pub ty: Ty }
+pub struct Param { pub name: Str, pub by_ref: Bool, pub by_mut: Bool, pub ty: Ty, pub at: Pos }
 
 pub struct FnDecl {
     pub is_const: Bool, pub public: Bool, pub owner: Option[Ty], pub name: Str, pub tparams: List[Str],
-    pub self_kind: Str, pub params: List[Param], pub ret: Option[Ty], pub body: Option[Block],
+    pub self_kind: Str, pub params: List[Param], pub ret: Option[Ty], pub body: Option[Block], pub at: Pos,
 }
 
 pub struct StructDecl {
-    pub public: Bool, pub kind: Str, pub name: Str, pub tparams: List[Str], pub fields: List[(Bool, Str, Ty)],
+    pub public: Bool, pub kind: Str, pub name: Str, pub tparams: List[Str], pub fields: List[(Bool, Str, Ty)], pub at: Pos,
 }
 
 pub struct EnumDecl {
-    pub public: Bool, pub kind: Str, pub name: Str, pub tparams: List[Str], pub variants: List[(Str, List[Ty])],
+    pub public: Bool, pub kind: Str, pub name: Str, pub tparams: List[Str], pub variants: List[(Str, List[Ty], Pos)], pub at: Pos,
 }
 
 pub struct Program {
-    pub imports: List[Str], pub structs: List[StructDecl], pub enums: List[EnumDecl], pub fns: List[FnDecl],
+    pub imports: List[(Str, Pos)], pub structs: List[StructDecl], pub enums: List[EnumDecl], pub fns: List[FnDecl],
 }
 
 pub struct ParseError { pub line: Int, pub col: Int, pub msg: Str }
@@ -168,8 +168,9 @@ fn upper(s: Str) -> Bool { s.byte(0) >= 65 and s.byte(0) <= 90 }
 fn Parser.item(mut self, prog: Program) -> Result[Program, ParseError] {
     var pr = prog
     if self.is_kw("import") {
+        let at = self.here()
         self.advance()
-        pr.imports.push(self.ident()?)
+        pr.imports.push((self.ident()?, at))
         return Ok(pr)
     }
     let public = self.eat_kw("pub")
@@ -187,6 +188,7 @@ fn Parser.item(mut self, prog: Program) -> Result[Program, ParseError] {
         d.public = public
         pr.fns.push(d)
     } else if self.is_kw("const") and kind == "" {
+        let at = self.here()
         self.advance()
         let name = self.ident()?
         self.expect_sym(":")?
@@ -195,7 +197,7 @@ fn Parser.item(mut self, prog: Program) -> Result[Program, ParseError] {
         let bat = self.here()
         let value = self.expr()?
         let body = Block { at: bat, stmts: [Stmt { at: bat, kind: ExprStmt(value) }] }
-        pr.fns.push(FnDecl { is_const: true, public, owner: None, name, tparams: [], self_kind: "", params: [], ret: Some(ret), body: Some(body) })
+        pr.fns.push(FnDecl { is_const: true, public, owner: None, name, tparams: [], self_kind: "", params: [], ret: Some(ret), body: Some(body), at })
     } else if self.is_kw("extern") and kind == "" {
         self.advance()
         if not self.is_kw("fn") { return Err(self.fail("'fn'")) }
@@ -220,6 +222,7 @@ fn Parser.tparams(mut self) -> Result[List[Str], ParseError] {
 fn Parser.sep_or_close(self) -> Bool { self.is_sym("}") or self.is_sym(",") or self.is_sym(";") }
 
 fn Parser.struct_decl(mut self, kind: Str) -> Result[StructDecl, ParseError] {
+    let at = self.here()
     self.advance()
     let name = self.ident()?
     let tparams = self.tparams()?
@@ -234,17 +237,19 @@ fn Parser.struct_decl(mut self, kind: Str) -> Result[StructDecl, ParseError] {
         if not self.sep_or_close() { return Err(self.fail("',' or '}'")) }
         self.skip_seps()
     }
-    Ok(StructDecl { public: false, kind, name, tparams, fields })
+    Ok(StructDecl { public: false, kind, name, tparams, fields, at })
 }
 
 fn Parser.enum_decl(mut self, kind: Str) -> Result[EnumDecl, ParseError] {
+    let at = self.here()
     self.advance()
     let name = self.ident()?
     let tparams = self.tparams()?
     self.expect_sym("\{")?
-    var variants: List[(Str, List[Ty])] = []
+    var variants: List[(Str, List[Ty], Pos)] = []
     self.skip_seps()
     while not self.eat_sym("}") {
+        let vat = self.here()
         let vname = self.ident()?
         var fields: List[Ty] = []
         if self.eat_sym("(") {
@@ -253,11 +258,11 @@ fn Parser.enum_decl(mut self, kind: Str) -> Result[EnumDecl, ParseError] {
                 if not self.is_sym(")") { self.expect_sym(",")? }
             }
         }
-        variants.push((vname, fields))
+        variants.push((vname, fields, vat))
         if not self.sep_or_close() { return Err(self.fail("',' or '}'")) }
         self.skip_seps()
     }
-    Ok(EnumDecl { public: false, kind, name, tparams, variants })
+    Ok(EnumDecl { public: false, kind, name, tparams, variants, at })
 }
 
 // After `fn Name`, is `[...]` followed by `.`? (owner type args vs fn type params)
@@ -280,6 +285,7 @@ fn Parser.owner_follows(self) -> Bool {
 }
 
 fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
+    let at = self.here()
     self.advance()
     let first_at = self.here()
     let first = self.ident()?
@@ -294,13 +300,13 @@ fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
         }
         self.expect_sym(".")?
         name = self.ident()?
-        owner = Some(Named(first, args))
+        owner = Some(Named(first, args, first_at))
     } else if self.eat_sym(".") {
         name = self.ident()?
         if self.is_sym(".") {
             return Err(err_at(first_at, "methods can only be defined in the module that defines the type"))
         }
-        owner = Some(Named(first, []))
+        owner = Some(Named(first, [], first_at))
     }
     let tparams = self.tparams()?
     self.expect_sym("(")?
@@ -317,16 +323,17 @@ fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
         if self_kind != "" and not self.is_sym(")") { self.expect_sym(",")? }
     }
     while not self.eat_sym(")") {
+        let pat = self.here()
         let pname = self.ident()?
         self.expect_sym(":")?
         let by_ref = self.eat_kw("ref")
         let by_mut = not by_ref and self.eat_kw("mut")
-        params.push(Param { name: pname, by_ref, by_mut, ty: self.type_expr()? })
+        params.push(Param { name: pname, by_ref, by_mut, ty: self.type_expr()?, at: pat })
         if not self.is_sym(")") { self.expect_sym(",")? }
     }
     let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None }
     let body = if is_extern { None } else { Some(self.block()?) }
-    Ok(FnDecl { is_const: false, public: false, owner, name, tparams, self_kind, params, ret, body })
+    Ok(FnDecl { is_const: false, public: false, owner, name, tparams, self_kind, params, ret, body, at })
 }
 
 fn Parser.type_list(mut self, close: Str) -> Result[List[Ty], ParseError] {
@@ -339,18 +346,19 @@ fn Parser.type_list(mut self, close: Str) -> Result[List[Ty], ParseError] {
 }
 
 fn Parser.type_expr(mut self) -> Result[Ty, ParseError] {
+    let at = self.here()
     if self.eat_kw("fn") {
         self.expect_sym("(")?
         let args = self.type_list(")")?
-        let ret = if self.eat_sym("->") { self.type_expr()? } else { Named("Unit", []) }
-        return Ok(FnTy(args, ret))
+        let ret = if self.eat_sym("->") { self.type_expr()? } else { Named("Unit", [], at) }
+        return Ok(FnTy(args, ret, at))
     }
     if self.eat_sym("(") {
         let elems = self.type_list(")")?
         return Ok(match elems.len() {
-            0 => Named("Unit", []),
+            0 => Named("Unit", [], at),
             1 => elems[0],
-            _ => TupleTy(elems),
+            _ => TupleTy(elems, at),
         })
     }
     var name = self.ident()?
@@ -365,7 +373,7 @@ fn Parser.type_expr(mut self) -> Result[Ty, ParseError] {
         }
     }
     let args = if self.eat_sym("[") { self.type_list("]")? } else { [] }
-    Ok(Named(name, args))
+    Ok(Named(name, args, at))
 }
 
 // ---- statements ----
