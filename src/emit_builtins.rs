@@ -61,6 +61,12 @@ impl<'a> Emitter<'a> {
             "Str.len" => self.tmp_val(t, &format!("({}).len", a[0])),
             "Str.byte" => self.tmp_val(t, &format!("tn_str_byte({}, {}, {})", a[0], a[1], loc)),
             "Str.slice" => self.tmp_owned(t, &format!("tn_str_slice({}, {}, {}, {})", a[0], a[1], a[2], loc)),
+            "Str.find_from" => {
+                let n = self.tmp_val(&Ty::int(), &format!("{}", a[2])).code;
+                self.line(&format!("if ({n} < 0 || {n} > ({0}).len) tn_trapf({loc}, \"index %lld out of bounds for length %lld\", (long long){n}, (long long)({0}).len);", a[0]));
+                let i = self.tmp_val(&Ty::int(), &format!("tn_str_find({}, {}, {})", a[0], a[1], n)).code;
+                self.some_none(t, &format!("{} >= 0", i), &i)
+            }
             "Str.find" => {
                 let i = self.tmp_val(&Ty::int(), &format!("tn_str_find({}, {}, 0)", a[0], a[1])).code;
                 self.some_none(t, &format!("{} >= 0", i), &i)
@@ -191,6 +197,13 @@ impl<'a> Emitter<'a> {
                 self.io_result(t, &k, "0", &m)
             }
             "Fs.exists" => self.tmp_val(t, &format!("tn_fs_exists({}, {})", a[0], a[1])),
+            "Fs.is_dir" => self.tmp_val(t, &format!("tn_fs_is_dir({}, {})", a[0], a[1])),
+            "Fs.rename" => {
+                let m = self.fresh("m");
+                self.line(&format!("tn_Str {} = {{0}};", m));
+                let k = self.tmp_val(&Ty::int(), &format!("tn_fs_rename({}, {}, {}, &{})", a[0], a[1], a[2], m)).code;
+                self.io_result(t, &k, "0", &m)
+            }
             "Fs.within" => self.tmp_owned(t, &format!("tn_fs_within({}, {})", a[0], a[1])),
             "Fs.read_only" => {
                 self.tmp_owned(t, &format!("tn_fs_make(tn_Str_retain(({0})->root), ({0})->att, false)", a[0]))

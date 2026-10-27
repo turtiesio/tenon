@@ -60,7 +60,7 @@ pub struct Expr { pub at: Pos, pub kind: Ex }
 pub enum For { Range(Expr, Expr), Each(Expr) }
 
 pub enum St {
-    Let(Pattern, Bool, Option[Ty], Expr),
+    Let(Pattern, Bool, Option[Ty], Expr, Option[Block]),
     ExprStmt(Expr),
     Assign(Expr, Option[Str], Expr),
     While(Expr, Block),
@@ -395,7 +395,9 @@ fn Parser.stmt(mut self) -> Result[Stmt, ParseError] {
         let pat = self.pattern()?
         let ty = if self.eat_sym(":") { Some(self.type_expr()?) } else { None }
         self.expect_sym("=")?
-        Let(pat, mutable, ty, self.expr()?)
+        let value = self.expr()?
+        let els = if self.eat_kw("else") { Some(self.block()?) } else { None }
+        Let(pat, mutable, ty, value, els)
     } else if self.eat_kw("while") {
         let cond = self.head_expr()?
         While(cond, self.block()?)

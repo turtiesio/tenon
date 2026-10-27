@@ -1,0 +1,27 @@
+fn parse_pair(s: Str) -> Option[(Int, Int)] {
+    let Some(i) = s.find(",") else { return None }
+    let Some(a) = s.slice(0, i).trim().to_int() else { return None }
+    let Some(b) = s.slice(i + 1, s.len()).trim().to_int() else { return None }
+    Some((a, b))
+}
+
+enum Shape { Circle(Int), Rect(Int, Int) }
+
+fn width(s: Shape) -> Int {
+    let Rect(w, _) = s else { return 0 }
+    w
+}
+
+fn main(sys: Sys) {
+    for t in ["3, 4", "x,1", "5", "10,-2"] {
+        sys.console.println("{t} -> {parse_pair(t)}")
+    }
+    var total = 0
+    for x in ["1", "two", "3"] {
+        let Some(n) = x.to_int() else { continue }
+        total += n
+    }
+    sys.console.println("{total} {width(Rect(7, 2))} {width(Circle(1))}")
+    let Some(v) = "nope".to_int() else { panic("no number in nope") }
+    sys.console.println("{v}")
+}

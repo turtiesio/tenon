@@ -30,12 +30,16 @@ fn opt_expr(e: Option[parser.Expr], prefix: Str) -> Str {
 
 fn stmt(s: parser.Stmt) -> Str {
     let body = match s.kind {
-        Let(p, mutable, t, v) => {
+        Let(p, mutable, t, v, els) => {
             let ann = match t {
                 Some(x) => " : " + ty(x),
                 None => "",
             }
-            "let" + (if mutable { " var" } else { "" }) + " " + pat(p) + ann + " " + expr(v)
+            let e = match els {
+                Some(b) => " (else " + block(b) + ")",
+                None => "",
+            }
+            "let" + (if mutable { " var" } else { "" }) + " " + pat(p) + ann + " " + expr(v) + e
         }
         ExprStmt(e) => "expr " + expr(e),
         Assign(target, op, v) => "assign" + op.map(fn(o) => " " + o).unwrap_or("") + " " + expr(target) + " " + expr(v),

@@ -125,7 +125,8 @@ pub struct Stmt {
 
 #[derive(Debug, Clone)]
 pub enum StmtKind {
-    Let { pat: Pattern, mutable: bool, ty: Option<TypeExpr>, value: Expr },
+    // `let PAT = value else { must leave }` when `els` is present
+    Let { pat: Pattern, mutable: bool, ty: Option<TypeExpr>, value: Expr, els: Option<Block> },
     Expr(Expr),
     Assign { target: Expr, op: Option<BinOp>, value: Expr },
     While { cond: Expr, body: Block },

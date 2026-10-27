@@ -156,10 +156,21 @@ match shape {
 }
 ```
 
-Patterns: `_`, a name, literals (`3`, `-1`, `"text"`, `true`), tuples
+`let ... else` unwraps or leaves; the `else` block must end with `return`,
+`break`, `continue` or `panic(...)`, and cannot see the pattern's names:
+
+```tenon
+let Some(i) = line.find(",") else { return Err("missing comma") }
+let Rect(w, h) = shape else { continue }
+```
+
+Patterns: `_`, a name, literals (`3`, `-1`, `"text"`, `'a'`, `true`), tuples
 `(a, b)`, variants `Some(x)` / `Shape.Rect(w, h)`, and alternatives `p | q`
 (each alternative binds the same names). `let (a, b) = pair` and
 `for (k, v) in m` take patterns that always match.
+
+Reserved words: `and break continue else enum extern false fn for if import
+in let linear match mut not or pub ref return self struct true unique var while`.
 
 `if` without `else`, and statements in general, must produce `Unit`: a value
 cannot be silently dropped. Discard explicitly with `let _ = expr`.
@@ -254,6 +265,7 @@ Highlights:
 
 - `Str`: `len byte slice find split lines words trim trim_start trim_end
   starts_with ends_with contains to_int to_float upper lower replace chars
+  find_from
   repeat pad_left pad_right is_empty`; `Int.char()` makes a one-character string.
   - `s.split(sep)` keeps empty pieces: `"a,,b,".split(",")` is
     `["a", "", "b", ""]` and `"".split(",")` is `[""]`.
@@ -270,12 +282,16 @@ Highlights:
   `remove`, `contains`, `keys`, `values`, `entries`, `len`, `is_empty`.
 - `Option[T]`: `unwrap expect unwrap_or is_some is_none map ok_or`.
 - `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok map_err`.
-- `Int`: `abs min max to_float to_str char`; `Float`: `to_int floor ceil round
+- `Int`: `abs min max to_float to_str char`, and for code points
+  `is_digit is_alpha is_alnum is_space is_upper is_lower`
+  (`s.byte(i).is_digit()`, `'7' - '0'`); `Float`: `to_int floor ceil round
   sqrt abs min max`.
 - `Console`: `print println eprintln read_line read_all flush`. `read_line`
   returns `None` at end of input and removes the line's `"\n"` (and a `"\r"`
   before it); invalid UTF-8 input becomes U+FFFD.
-- `Fs`: `read write append exists remove list mkdir within read_only`.
+- `Fs`: `read write append exists is_dir remove rename list mkdir within
+  read_only`. `mkdir` creates missing parents; `rename` is atomic and replaces
+  the target; `remove` deletes a file or an empty directory.
 - `Clock`: `now_ms mono_ns sleep_ms`.
 
 ## 12. Obligations: linear and unique types

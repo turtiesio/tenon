@@ -1,0 +1,1 @@
+fn main(sys: Sys) { let xs: List[Clock] = []; let c = xs[0]; let n = c.now_ms() }

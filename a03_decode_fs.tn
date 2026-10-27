@@ -1,0 +1,1 @@
+fn main(sys: Sys) { let f: Result[Fs, Str] = decode("<Fs>") }

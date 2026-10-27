@@ -1,0 +1,2 @@
+fn helper() { main(???) }
+fn main(sys: Sys) { }

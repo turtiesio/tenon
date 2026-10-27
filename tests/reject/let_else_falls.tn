@@ -1,0 +1,4 @@
+// error: must leave
+fn f(o: Option[Int]) -> Int { let Some(x) = o else { 0 }
+ x }
+fn main() {}

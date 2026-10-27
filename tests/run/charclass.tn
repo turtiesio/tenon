@@ -1,0 +1,21 @@
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    let s = "a1 B_\t9"
+    var classes: List[Str] = []
+    for i in 0..s.len() {
+        let b = s.byte(i)
+        classes.push("{b.char()}:{b.is_digit()}{b.is_alpha()}{b.is_space()}{b.is_upper()}")
+    }
+    c.println(classes.join(" "))
+    c.println("{"abcabc".find_from("b", 2)} {"abcabc".find_from("z", 0)} {"abc".find_from("", 3)} {"héllo".find_from("l", 1)}")
+    let _ = sys.fs.mkdir("charclass_tmp/sub")
+    let d = sys.fs.within("charclass_tmp")
+    d.write("a.tmp", "data")?
+    d.rename("a.tmp", "a.txt")?
+    c.println("{d.read("a.txt")?} {d.exists("a.tmp")} {d.is_dir("sub")} {d.is_dir("a.txt")} {d.rename("../x", "y")}")
+    d.remove("a.txt")?
+    d.remove("sub")?
+    sys.fs.remove("charclass_tmp")?
+    c.println("{"abc".find_from("a", 4)}")
+    Ok(())
+}

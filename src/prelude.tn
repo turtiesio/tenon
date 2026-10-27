@@ -26,6 +26,13 @@ fn Int.abs(self) -> Int { if self < 0 { -self } else { self } }
 fn Int.min(self, o: Int) -> Int { if self < o { self } else { o } }
 fn Int.max(self, o: Int) -> Int { if self > o { self } else { o } }
 extern fn Int.char(self) -> Str
+// Character classes for code points (ASCII): '7'.is_digit(), s.byte(i).is_space()
+fn Int.is_digit(self) -> Bool { self >= '0' and self <= '9' }
+fn Int.is_upper(self) -> Bool { self >= 'A' and self <= 'Z' }
+fn Int.is_lower(self) -> Bool { self >= 'a' and self <= 'z' }
+fn Int.is_alpha(self) -> Bool { self.is_upper() or self.is_lower() }
+fn Int.is_alnum(self) -> Bool { self.is_alpha() or self.is_digit() }
+fn Int.is_space(self) -> Bool { self == ' ' or self == '\t' or self == '\n' or self == '\r' }
 extern fn Float.to_int(self) -> Int
 extern fn Float.sqrt(self) -> Float
 extern fn Float.floor(self) -> Float
@@ -40,6 +47,7 @@ extern fn Str.len(self) -> Int
 extern fn Str.byte(self, i: Int) -> Int
 extern fn Str.slice(self, start: Int, end: Int) -> Str
 extern fn Str.find(self, sub: Str) -> Option[Int]
+extern fn Str.find_from(self, sub: Str, start: Int) -> Option[Int] // first match at or after byte `start`
 extern fn Str.split(self, sep: Str) -> List[Str]
 extern fn Str.trim(self) -> Str
 extern fn Str.trim_start(self) -> Str
@@ -199,7 +207,9 @@ extern fn Fs.append(self, path: Str, data: Str) -> Result[Unit, IoError]
 extern fn Fs.exists(self, path: Str) -> Bool
 extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError] // file or empty directory
 extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]
-extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError]
+extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError] // also creates missing parents
+extern fn Fs.rename(self, from: Str, to: Str) -> Result[Unit, IoError] // atomic; replaces `to`
+extern fn Fs.is_dir(self, path: Str) -> Bool
 extern fn Fs.within(self, dir: Str) -> Fs
 extern fn Fs.read_only(self) -> Fs
 

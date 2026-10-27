@@ -291,7 +291,16 @@ impl<'a> Emitter<'a> {
                 }
                 let t = self.c.ty(pat.id).subst(&self.st.tsub);
                 let cv = self.expr(value);
-                if let PatKind::Bind(n) = &pat.kind {
+                if let StmtKind::Let { els: Some(b), .. } = &s.kind {
+                    let v = if cv.owned || is_ident(&cv.code) { cv.code.clone() } else { self.tmp_val(&t, &cv.code).code };
+                    let test = self.pat_test(pat, &v, &t);
+                    self.line(&format!("if (!({})) {{", test));
+                    self.st.indent += 1;
+                    self.block_into(b, None, &Ty::unit());
+                    self.st.indent -= 1;
+                    self.line("}");
+                    self.bind(pat, &v, &t, false);
+                } else if let PatKind::Bind(n) = &pat.kind {
                     let code = self.own(cv, &t);
                     let tn = self.cty(&t);
                     self.line(&format!("{} v_{} = {};", tn, n, code));

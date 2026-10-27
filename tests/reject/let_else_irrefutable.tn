@@ -1,0 +1,4 @@
+// error: always matches, so the 'else' block can never run
+fn f(p: (Int, Int)) -> Int { let (a, b) = p else { return 0 }
+ a }
+fn main() {}
