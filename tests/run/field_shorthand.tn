@@ -1,0 +1,41 @@
+// Struct literal field shorthand: `Opts { skip, width }` is
+// `Opts { skip: skip, width: width }`; mixable with `name: expr` and `..base`.
+struct Opts { skip: Int, width: Int, name: Str }
+struct Pair[A, B] { first: A, second: B }
+struct Outer { opts: Opts, tag: Str }
+
+fn make(skip: Int, width: Int) -> Opts { Opts { skip, width, name: "made" } }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let skip = 2
+    let width = 80
+    let name = "n"
+    let a = Opts { skip, width, name }
+    con.println("{a}")
+    // mixed with `field: expr`, in any order
+    let b = Opts { name: "b", skip, width: width * 2 }
+    con.println("{b}")
+    // nested: the shorthand value is itself a struct
+    let opts = make(1, 40)
+    let tag = "t"
+    let o = Outer { opts, tag }
+    con.println("{o}")
+    let o2 = Outer { tag: "inner", opts: Opts { skip, width: 1, name } }
+    con.println("{o2.opts.skip} {o2.tag}")
+    // generic struct
+    let first = [1, 2]
+    let second = "two"
+    let p = Pair { first, second }
+    con.println("{p.first.len()} {p.second}")
+    // with struct update
+    let c = Opts { width, ..make(9, 9) }
+    con.println("{c}")
+    // multi-line
+    let d = Opts {
+        skip,
+        width,
+        name: "multi",
+    }
+    con.println("{d == Opts { skip: 2, width: 80, name: "multi" }}")
+}

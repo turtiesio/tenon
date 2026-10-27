@@ -45,6 +45,12 @@ unchanged program is instant (cache in `$TENON_CACHE`, default
   character literals `'a'`, `'\n'`, `'\''`, `'é'`, which are the character's
   code point as an `Int` (`'a'` is `97`; compare with `s.byte(i)`).
   Escapes: `\n \t \r \0 \\ \" \{ \}`. `"{expr}"` interpolates any value (see §8); write `\{` for a literal `{` (a lone `}` is literal).
+- Raw strings: `r"..."` has no escapes and no interpolation; every character
+  up to the next `"` is taken literally, backslashes and braces included
+  (`r"C:\temp"`; `r"(\d{4})"` equals `"(\\d\{4})"`). Like a normal string it
+  cannot span lines, and it cannot contain `"`: use a normal string for that
+  (`"say \"hi\""`), or concatenate (`r"\d+" + "\""`). The `r` must touch the
+  quote. A raw string is an ordinary `Str`.
 - `()` is the only value of type `Unit`.
 
 ## 3. Types
@@ -145,6 +151,9 @@ fn List[Int].total(self) -> Int { ... }              // methods for specific ins
   sort by a negated key (`xs.sort_by(fn(p) => (-p.score, p.name))`).
 - Struct update: `Point { x: 3, ..p }` copies the other fields from `p`
   (the `..base` part comes last).
+- Field shorthand: `Point { x, y }` means `Point { x: x, y: y }` (a field set
+  from the variable of the same name). It mixes with the other forms:
+  `Point { x, y: 0 }`, `Point { x, ..p }`.
 
 ## 5. Functions and closures
 
@@ -624,7 +633,7 @@ UTF-8; offsets are byte offsets.
 ```tenon
 import regex
 
-let date = regex.compile("(\\d\{4})-(\\d\{2})-(\\d\{2})").unwrap()   // Result[Regex, Str]
+let date = regex.compile(r"(\d{4})-(\d{2})-(\d{2})").unwrap()     // Result[Regex, Str]
 match date.full("2024-03-15") {                                   // Option[List[Str]]
     Some(g) => con.println("{g[1]} {g[2]} {g[3]}"),                 // g[0] is the whole match
     None => con.println("not a date"),
@@ -643,7 +652,10 @@ match date.full("2024-03-15") {                                   // Option[List
 - Syntax: literals, `.` (not `"\n"`), `[abc]` `[a-z0-9_]` `[^...]`, `\d \w \s \D \W \S`
   (ASCII), `\b \B`, escaped punctuation (`\.` `\\` `\[`), `^ $` (start / end of the
   string), `( )` and `(?: )`, `|`, greedy `* + ? {m} {m,} {m,n}` and lazy `*? +? ?? {m,n}?`.
-  In a Tenon string literal write each regex backslash twice and `{` as `\{`.
+  Write patterns as raw strings (`r"\d{2}:\d{2}"`, §2), so that backslashes and
+  braces are taken as they are. In a normal string each regex backslash must be
+  doubled and `{` written `\{` (`"\\d\{2}"`): `"\d{2}"` is an error and
+  `"\\d{2}"` interpolates `{2}`.
   Not supported: backreferences, lookaround, named groups, flags.
 - A pattern that would take more than about a million backtracking steps (for
   example `(a+)+b` on a long run of `a`) stops the program with `panic`, naming the pattern.

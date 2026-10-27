@@ -1,0 +1,8 @@
+Opts { skip: 2, width: 80, name: "n" }
+Opts { skip: 2, width: 160, name: "b" }
+Outer { opts: Opts { skip: 1, width: 40, name: "made" }, tag: "t" }
+2 inner
+2 two
+Opts { skip: 9, width: 80, name: "made" }
+true
+exit: 0

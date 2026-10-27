@@ -1,0 +1,7 @@
+// error: unknown name 'width'
+// (field shorthand `Opts { width }` means `Opts { width: width }`)
+struct Opts { skip: Int, width: Int }
+fn main() {
+    let skip = 1
+    let o = Opts { skip, width }
+}

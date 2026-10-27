@@ -159,6 +159,13 @@ impl<'a> Lexer<'a> {
                     self.bump();
                 }
                 let s = std::str::from_utf8(&self.src[start..self.pos]).unwrap();
+                // `r"..."` is a raw string; `r` directly followed by `"` is
+                // never valid code otherwise (a name followed by a string).
+                if s == "r" && self.peek(0) == b'"' {
+                    let t = self.raw_string(sp)?;
+                    out.push(Token { tok: t, span: sp });
+                    continue;
+                }
                 match KEYWORDS.iter().find(|k| **k == s) {
                     Some(k) => Tok::Kw(k),
                     None => Tok::Ident(s.to_string()),
@@ -321,6 +328,28 @@ impl<'a> Lexer<'a> {
         }
         self.bump();
         Ok(Tok::Int(code))
+    }
+
+    // r"...": no escapes, no interpolation; ends at the next `"` on the same
+    // line (a raw string cannot contain `"` or a newline).
+    fn raw_string(&mut self, sp: Span) -> Result<Tok, Diag> {
+        self.bump(); // opening quote
+        let start = self.pos;
+        loop {
+            if self.pos >= self.src.len() {
+                return Err(Diag::new(sp, "unterminated raw string"));
+            }
+            match self.peek(0) {
+                b'"' => break,
+                b'\n' => return Err(Diag::new(sp, "unterminated raw string (newline in raw string)")),
+                _ => {
+                    self.bump();
+                }
+            }
+        }
+        let lit = String::from_utf8(self.src[start..self.pos].to_vec()).unwrap();
+        self.bump(); // closing quote
+        Ok(Tok::Str(vec![StrPart::Lit(lit)]))
     }
 
     fn string(&mut self) -> Result<Tok, Diag> {

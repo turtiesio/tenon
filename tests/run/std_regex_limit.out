@@ -1,4 +1,4 @@
 true false
 exit: 70
 stderr: trap: regex /(a+)+b/: exceeded the backtracking limit of 1001312 steps (the pattern is too ambiguous for this input)
-stderr:   at <std>/regex.tn:644:25
+stderr:   at <std>/regex.tn:649:25
