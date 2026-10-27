@@ -1,0 +1,1 @@
+fn main(sys: Sys) { print("x") }

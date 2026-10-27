@@ -1,0 +1,6 @@
+a:falsetruefalsefalse 1:truefalsefalsefalse  :falsefalsetruefalse B:falsetruefalsetrue _:falsefalsefalsefalse 	:falsefalsetruefalse 9:truefalsefalsefalse
+Some(4) None Some(3) Some(3)
+data false true false Err(Denied("path escapes the Fs root: ../x"))
+exit: 70
+stderr: trap: index 4 out of bounds for length 3
+stderr:   at charclass.tn:19:22

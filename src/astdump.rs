@@ -88,12 +88,13 @@ fn block(b: &Block) -> String {
 
 fn stmt(s: &Stmt) -> String {
     let body = match &s.kind {
-        StmtKind::Let { pat: p, mutable, ty: t, value } => format!(
-            "let{} {}{} {}",
+        StmtKind::Let { pat: p, mutable, ty: t, value, els } => format!(
+            "let{} {}{} {}{}",
             if *mutable { " var" } else { "" },
             pat(p),
             t.as_ref().map(|t| format!(" : {}", ty(t))).unwrap_or_default(),
-            expr(value)
+            expr(value),
+            els.as_ref().map(|b| format!(" (else {})", block(b))).unwrap_or_default()
         ),
         StmtKind::Expr(e) => format!("expr {}", expr(e)),
         StmtKind::Assign { target, op, value } => {

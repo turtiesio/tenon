@@ -1,0 +1,1 @@
+fn main(sys: Sys) { let n: Net = sys.net; let m = Net { }; }

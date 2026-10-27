@@ -1,0 +1,2 @@
+struct Console { x: Int }
+fn main(sys: Sys) { }

@@ -477,6 +477,15 @@ impl Checker {
         self.call_args(e.span, &params, args, &format!("method '{}'", m))?;
         Ok(ret)
     }
+    // `let PAT = v else ...` with a pattern that always matches is a mistake.
+    pub(crate) fn exhaustive_or_refutable(&mut self, pat: &Pattern, t: &Ty) -> CResult<()> {
+        let arm = Arm { pat: pat.clone(), guard: None, body: Expr { id: u32::MAX, span: pat.span, kind: ExprKind::Unit } };
+        if self.exhaustive(pat.span, t, &[arm]).is_ok() {
+            return err(pat.span, "this pattern always matches, so the 'else' block can never run; use plain 'let'");
+        }
+        Ok(())
+    }
+
     pub(crate) fn exhaustive(&mut self, span: Span, st: &Ty, arms: &[Arm]) -> CResult<()> {
         // Variant resolutions are still pending; expose them to the analysis.
         let mut res: HashMap<Id, (usize, usize)> = HashMap::new();

@@ -173,7 +173,12 @@ pub fn visit_stmt_mut(s: &mut Stmt, f: &mut dyn FnMut(&mut Expr)) {
         }
     };
     match &mut s.kind {
-        StmtKind::Let { value, .. } => f(value),
+        StmtKind::Let { value, els, .. } => {
+            f(value);
+            if let Some(b) = els {
+                blk(b, f)
+            }
+        }
         StmtKind::Expr(e) => f(e),
         StmtKind::Assign { target, value, .. } => {
             f(target);
@@ -205,7 +210,12 @@ pub fn visit_stmt<'a>(s: &'a Stmt, f: &mut dyn FnMut(&'a Expr)) {
         }
     };
     match &s.kind {
-        StmtKind::Let { value, .. } => f(value),
+        StmtKind::Let { value, els, .. } => {
+            f(value);
+            if let Some(b) = els {
+                blk(b, f)
+            }
+        }
         StmtKind::Expr(e) => f(e),
         StmtKind::Assign { target, value, .. } => {
             f(target);
@@ -478,8 +488,17 @@ impl<'a> Interp<'a> {
     fn stmt(&mut self, s: &Stmt) -> R {
         match &s.kind {
             StmtKind::Expr(e) => self.eval(e),
-            StmtKind::Let { pat, value, .. } => {
+            StmtKind::Let { pat, value, els, .. } => {
                 let v = self.eval(value)?;
+                if let Some(b) = els {
+                    let mut binds = Vec::new();
+                    if !self.matches(pat, &v, &mut binds) {
+                        self.block(b)?;
+                        unreachable!("checker guarantees the else block leaves");
+                    }
+                    self.env.extend(binds);
+                    return Ok(V::Unit);
+                }
                 self.bind_irrefutable(pat, v);
                 Ok(V::Unit)
             }

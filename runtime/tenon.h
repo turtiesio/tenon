@@ -1476,6 +1476,30 @@ static TN_UNUSED bool tn_fs_exists(tn_Fs f, tn_Str p) {
     free(pb.p);
     return r;
 }
+static TN_UNUSED bool tn_fs_is_dir(tn_Fs f, tn_Str p) {
+    tn_buf pb = tn_buf_new();
+    if (!tn_fs_path(f, p, &pb)) { free(pb.p); return false; }
+    struct stat st;
+    bool r = stat(pb.p + sizeof(tn_rc), &st) == 0 && S_ISDIR(st.st_mode);
+    free(pb.p);
+    return r;
+}
+static TN_UNUSED int tn_fs_rename(tn_Fs f, tn_Str p, tn_Str to, tn_Str *msg) {
+    TN_FS_PRE(true)
+    tn_buf tb = tn_buf_new();
+    if (!tn_fs_path(f, to, &tb)) {
+        free(tb.p); free(pb.p);
+        tn_buf b = tn_buf_new();
+        tn_buf_cstr(&b, "path escapes the Fs root: ");
+        tn_buf_str(&b, to);
+        *msg = tn_buf_finish(&b);
+        return TN_IO_DENIED;
+    }
+    if (rename(full, tb.p + sizeof(tn_rc)) != 0) { int e = errno; free(tb.p); TN_FS_FAIL(e); }
+    free(tb.p);
+    free(pb.p);
+    return TN_IO_OK;
+}
 static TN_UNUSED int tn_fs_remove(tn_Fs f, tn_Str p, tn_Str *msg) {
     TN_FS_PRE(true)
     if (remove(full) != 0) TN_FS_FAIL(errno);

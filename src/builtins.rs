@@ -205,6 +205,15 @@ impl<'a> Interp<'a> {
                 strv(&st[x as usize..y as usize])
             }
             "Str.find" => self.opt(s(0).find(s(1)).map(|i| Int(i as i64))),
+            "Str.find_from" => {
+                let (st, sub, from) = (s(0).as_bytes(), s(1).as_bytes(), int(2));
+                if from < 0 || from as usize > st.len() {
+                    return trap(format!("index {} out of bounds for length {}", from, st.len()), sp);
+                }
+                let from = from as usize;
+                let hit = if sub.is_empty() { Some(from) } else { (from..st.len()).find(|&i| st[i..].starts_with(sub)) };
+                self.opt(hit.map(|i| Int(i as i64)))
+            }
             "Str.split" => {
                 if s(1).is_empty() {
                     return trap("split with an empty separator", sp);
@@ -435,13 +444,13 @@ impl<'a> Interp<'a> {
             Some(f) => f,
             None => {
                 return Ok(match name {
-                    "Fs.exists" => V::Bool(false),
+                    "Fs.exists" | "Fs.is_dir" => V::Bool(false),
                     "Fs.within" => V::Cap(Rc::new(Cap::Fs { root: "/nonexistent-denied".into(), attenuated: true, writable: false })),
                     _ => self.io_err("Denied", format!("path escapes the Fs root: {}", p)),
                 });
             }
         };
-        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir");
+        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" | "Fs.rename");
         if writes && !writable {
             return Ok(self.io_err("Denied", format!("read-only Fs: {}", p)));
         }
@@ -476,6 +485,14 @@ impl<'a> Interp<'a> {
                 self.io_result(&p, r, |_| V::Unit)
             }
             "Fs.exists" => V::Bool(std::path::Path::new(&full).exists()),
+            "Fs.is_dir" => V::Bool(std::path::Path::new(&full).is_dir()),
+            "Fs.rename" => {
+                let to = arg(2);
+                match fs_path(root, *attenuated, &to) {
+                    None => self.io_err("Denied", format!("path escapes the Fs root: {}", to)),
+                    Some(full_to) => self.io_result(&p, std::fs::rename(&full, &full_to), |_| V::Unit),
+                }
+            }
             "Fs.remove" => {
                 let r = if std::path::Path::new(&full).is_dir() { std::fs::remove_dir(&full) } else { std::fs::remove_file(&full) };
                 self.io_result(&p, r, |_| V::Unit)

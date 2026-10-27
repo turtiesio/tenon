@@ -8,7 +8,7 @@ use crate::types::Ty;
 use std::fmt::Write;
 
 impl<'a> Emitter<'a> {
-    fn pat_test(&mut self, p: &Pattern, v: &str, t: &Ty) -> String {
+    pub(crate) fn pat_test(&mut self, p: &Pattern, v: &str, t: &Ty) -> String {
         match &p.kind {
             PatKind::Wild | PatKind::Bind(_) => "1".into(),
             PatKind::Int(i) => format!("({} == {})", v, int_lit(*i)),

@@ -379,7 +379,8 @@ impl<'a> Parser<'a> {
             let ty = if self.eat_sym(":") { Some(self.type_expr()?) } else { None };
             self.expect_sym("=")?;
             let value = self.expr()?;
-            StmtKind::Let { pat, mutable, ty, value }
+            let els = if self.eat_kw("else") { Some(self.block()?) } else { None };
+            StmtKind::Let { pat, mutable, ty, value, els }
         } else if self.eat_kw("while") {
             let cond = self.head_expr()?;
             let body = self.block()?;

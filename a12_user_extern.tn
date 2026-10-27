@@ -1,0 +1,2 @@
+extern fn Console.evil(self)
+fn main(sys: Sys) { sys.console.evil() }

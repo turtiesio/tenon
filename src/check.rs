@@ -158,6 +158,16 @@ pub fn is_tparam_name(s: &str) -> bool {
     !b.is_empty() && b[0].is_ascii_uppercase() && b[1..].iter().all(|c| c.is_ascii_digit())
 }
 
+// Does this block always leave (return, break, continue, or panic)?
+fn leaves(b: &Block) -> bool {
+    match b.stmts.last().map(|s| &s.kind) {
+        Some(StmtKind::Return(_) | StmtKind::Break | StmtKind::Continue) => true,
+        Some(StmtKind::Expr(Expr { kind: ExprKind::Call(f, _), .. })) => matches!(&f.kind, ExprKind::Name(n) if n == "panic"),
+        Some(StmtKind::Expr(Expr { kind: ExprKind::Block(inner), .. })) => leaves(inner),
+        _ => false,
+    }
+}
+
 // Does this loop body contain a `break` for its own loop (not a nested one)?
 fn breaks(stmts: &[Stmt]) -> bool {
     fn in_expr(e: &Expr) -> bool {
@@ -749,16 +759,33 @@ impl Checker {
                     self.sub.unify(&t, &Ty::unit());
                 }
             }
-            StmtKind::Let { pat, mutable, ty, value } => {
+            StmtKind::Let { pat, mutable, ty, value, els } => {
                 let t = match ty {
                     Some(t) => self.lower_type(t, &self.tparams.clone())?,
                     None => self.sub.fresh(),
                 };
                 self.expr(value, &t)?;
-                if !self.irrefutable(pat) {
-                    return err(pat.span, "'let' needs a pattern that always matches; use 'match'");
+                match els {
+                    None if !self.irrefutable(pat) => {
+                        return err(pat.span, "'let' needs a pattern that always matches; use 'let ... else' or 'match'");
+                    }
+                    Some(b) => {
+                        if matches!(pat.kind, PatKind::Or(_)) {
+                            return err(pat.span, "'let ... else' cannot use '|' patterns; use 'match'");
+                        }
+                        if !leaves(b) {
+                            return err(b.span, "the 'else' block of 'let ... else' must leave: end it with return, break, continue or panic");
+                        }
+                        // Checked before the pattern binds: the else block cannot see its names.
+                        self.block(b, &Ty::unit(), false)?;
+                    }
+                    None => {}
                 }
                 self.pattern(pat, &t, *mutable)?;
+                if els.is_some() {
+                    let rt = self.sub.resolve(&t);
+                    self.exhaustive_or_refutable(pat, &rt)?;
+                }
             }
             StmtKind::Assign { target, op, value } => {
                 let t = self.sub.fresh();

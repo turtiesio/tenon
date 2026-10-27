@@ -1,0 +1,2 @@
+import journal
+fn main(sys: Sys) { }

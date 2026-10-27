@@ -234,8 +234,15 @@ impl<'a> Walk<'a> {
     fn stmt(&mut self, s: &Stmt) -> LResult {
         match &s.kind {
             StmtKind::Expr(e) => self.expr(e, true),
-            StmtKind::Let { pat, value, .. } => {
+            StmtKind::Let { pat, value, els, .. } => {
+                if els.is_some() && self.kind(value.id) == Kind::Linear {
+                    return err(s.span, "'let ... else' would drop the linear value when the pattern fails; use 'match'".into());
+                }
                 self.expr(value, true)?;
+                if let Some(b) = els {
+                    self.branches(s.span, vec![&mut |w: &mut Self| w.block(b, false), &mut |_| Ok(())])?;
+                    self.diverged = false;
+                }
                 self.bind(pat)
             }
             StmtKind::Assign { target, value, .. } => {

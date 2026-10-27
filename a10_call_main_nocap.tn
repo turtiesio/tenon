@@ -1,0 +1,3 @@
+fn other(n: Int) { }
+fn main(sys: Sys) { }
+fn Sys.leak(self) -> Console { self.console }
