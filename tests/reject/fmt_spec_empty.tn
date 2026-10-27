@@ -1,0 +1,5 @@
+// error: empty format spec after ':'
+fn main(sys: Sys) {
+    let x = 1
+    sys.console.println("{x:}")
+}

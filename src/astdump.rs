@@ -147,7 +147,8 @@ fn expr(e: &Expr) -> String {
             "str{}",
             list(segs.iter().map(|s| match s {
                 StrSeg::Lit(l) => quote(l),
-                StrSeg::Expr(x) => expr(x),
+                StrSeg::Expr(x, None) => expr(x),
+                StrSeg::Expr(x, Some(f)) => format!("(fmt {} {})", expr(x), quote(&f.text)),
             }))
         ),
         ExprKind::Unit => "unit".into(),

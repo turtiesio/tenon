@@ -1,0 +1,5 @@
+// error: format spec ':>5' applies to Int, Float, Str or Bool, not List[Int]
+fn main(sys: Sys) {
+    let xs = [1, 2]
+    sys.console.println("{xs:>5}")
+}

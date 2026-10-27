@@ -170,6 +170,13 @@ fn Str.trim_chars(self, chars: Str) -> Str {
     self.slice(a, b)
 }
 fn Str.contains(self, sub: Str) -> Bool { self.find(sub).is_some() }
+// pred holds for every byte (true for ""): s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_')
+fn Str.all_bytes(self, pred: fn(Int) -> Bool) -> Bool {
+    for i in 0..self.len() {
+        if not pred(self.byte(i)) { return false }
+    }
+    true
+}
 // Byte offset of the last match; "".rfind("") == Some(0), s.rfind("") == Some(s.len()).
 fn Str.rfind(self, sub: Str) -> Option[Int] {
     if sub.is_empty() { return Some(self.len()) }
@@ -335,6 +342,45 @@ fn List[T].count(self, pred: fn(T) -> Bool) -> Int {
         if pred(x) { n += 1 }
     }
     n
+}
+// The element with the largest (max_by) or smallest (min_by) key; the first
+// of several equal keys; None for an empty list. Keys use the derived ordering.
+fn List[T].max_by[K](self, key: fn(T) -> K) -> Option[T] {
+    if self.is_empty() { return None }
+    var best = self[0]
+    var bk = key(best)
+    for i in 1..self.len() {
+        let k = key(self[i])
+        if k > bk {
+            best = self[i]
+            bk = k
+        }
+    }
+    Some(best)
+}
+fn List[T].min_by[K](self, key: fn(T) -> K) -> Option[T] {
+    if self.is_empty() { return None }
+    var best = self[0]
+    var bk = key(best)
+    for i in 1..self.len() {
+        let k = key(self[i])
+        if k < bk {
+            best = self[i]
+            bk = k
+        }
+    }
+    Some(best)
+}
+// Elements by key, keys in order of first occurrence, each group in list order:
+// ["ab", "c", "de"].group_by(fn(s) => s.len()) == [2: ["ab", "de"], 1: ["c"]]
+fn List[T].group_by[K](self, key: fn(T) -> K) -> Map[K, List[T]] {
+    var out: Map[K, List[T]] = [:]
+    for x in self {
+        let k = key(x)
+        out.or_insert(k, [])
+        out[k].push(x)
+    }
+    out
 }
 fn List[Int].sum(self) -> Int {
     var s = 0

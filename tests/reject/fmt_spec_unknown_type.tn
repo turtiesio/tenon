@@ -1,0 +1,5 @@
+// error: the type of a formatted value must be known here
+fn main(sys: Sys) {
+    let f = fn(x) => "{x:5}"
+    sys.console.println(f(3))
+}

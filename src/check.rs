@@ -750,6 +750,35 @@ impl Checker {
         Ok(t)
     }
 
+    // `{x:SPEC}`: which types a spec applies to (selfhost/ckinfer.tn `fmt_spec`).
+    pub(crate) fn fmt_spec(&self, x: &Expr, t: &Ty, f: &FmtSpec) -> CResult<()> {
+        let t = self.known(t, x.span, "a formatted value")?;
+        let n = match &t {
+            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Str" | "Bool") => n.as_str(),
+            _ => {
+                return err(x.span, format!(
+                    "format spec ':{}' applies to Int, Float, Str or Bool, not {}",
+                    f.text,
+                    self.sub.resolve(&t)
+                ))
+            }
+        };
+        if let Some(r) = f.radix {
+            if n != "Int" {
+                return err(x.span, format!("radix '{}' in format spec ':{}' needs an Int, found {}", r, f.text, n));
+            }
+        }
+        if let Some(p) = f.prec {
+            if n != "Float" {
+                return err(x.span, format!("precision '.{}' in format spec ':{}' needs a Float, found {}", p, f.text, n));
+            }
+        }
+        if f.zero && n != "Int" && n != "Float" {
+            return err(x.span, format!("'0' padding in format spec ':{}' needs an Int or Float, found {}", f.text, n));
+        }
+        Ok(())
+    }
+
     // ---- scopes ----
 
     pub(crate) fn lookup(&self, n: &str) -> Option<(usize, &Local)> {

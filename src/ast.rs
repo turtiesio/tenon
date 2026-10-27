@@ -177,7 +177,130 @@ pub struct Expr {
 #[derive(Debug, Clone)]
 pub enum StrSeg {
     Lit(String),
-    Expr(Expr),
+    Expr(Expr, Option<FmtSpec>), // `{e}` or `{e:SPEC}`
+}
+
+// A format spec `{e:SPEC}` (docs/reference.md §8):
+//   [[fill]align]['0']width['.'precision][x|X|b|o]   (every part optional)
+#[derive(Debug, Clone, PartialEq)]
+pub struct FmtSpec {
+    pub text: String,
+    pub fill: char,
+    pub align: Option<char>, // '<', '>' or '^'; None: numbers right, text left
+    pub zero: bool,          // sign-aware zero padding (Int, Float)
+    pub width: usize,
+    pub prec: Option<usize>, // Float decimals, as Float.to_fixed
+    pub radix: Option<char>, // 'x', 'X', 'b', 'o' (Int)
+}
+
+impl FmtSpec {
+    // The grammar check; the type rules are in the checker. Messages are
+    // mirrored by selfhost/parser.tn `parse_spec`.
+    pub fn parse(text: &str) -> Result<FmtSpec, String> {
+        let bad = |why: String| Err(format!("malformed format spec '{}': {}", text, why));
+        let cs: Vec<char> = text.chars().collect();
+        if cs.is_empty() {
+            return Err("empty format spec after ':' (remove the ':' or write a spec such as {x:>5})".into());
+        }
+        let is_align = |c: char| c == '<' || c == '>' || c == '^';
+        let (mut i, mut fill, mut align) = (0, ' ', None);
+        if cs.len() >= 2 && is_align(cs[1]) {
+            fill = cs[0];
+            align = Some(cs[1]);
+            i = 2;
+        } else if is_align(cs[0]) {
+            align = Some(cs[0]);
+            i = 1;
+        }
+        let mut zero = false;
+        if i + 1 < cs.len() && cs[i] == '0' && cs[i + 1].is_ascii_digit() {
+            zero = true;
+            i += 1;
+        }
+        let digits = |i: &mut usize| {
+            let start = *i;
+            while *i < cs.len() && cs[*i].is_ascii_digit() {
+                *i += 1;
+            }
+            cs[start..*i].iter().collect::<String>()
+        };
+        let w = digits(&mut i);
+        if w.len() > 3 {
+            return bad(format!("width {} is too large (at most 999)", w));
+        }
+        if align.is_some() && w.is_empty() {
+            return bad("an alignment needs a width, as in {x:>5}".into());
+        }
+        if zero && align.is_some() {
+            return bad("'0' padding cannot be combined with a fill or alignment".into());
+        }
+        let width = w.parse::<usize>().unwrap_or(0);
+        let mut prec = None;
+        if i < cs.len() && cs[i] == '.' {
+            i += 1;
+            let p = digits(&mut i);
+            if p.is_empty() {
+                return bad("'.' must be followed by the number of decimals, as in {x:.2}".into());
+            }
+            if p.len() > 3 || p.parse::<usize>().unwrap() > 100 {
+                return bad(format!("precision {} is too large (at most 100)", p));
+            }
+            prec = Some(p.parse::<usize>().unwrap());
+        }
+        let mut radix = None;
+        if i < cs.len() && matches!(cs[i], 'x' | 'X' | 'b' | 'o') {
+            radix = Some(cs[i]);
+            i += 1;
+        }
+        if i < cs.len() {
+            let c = cs[i];
+            let hint = match c {
+                'f' => " (decimals are written {x:.2}, without 'f')".to_string(),
+                'd' => " (Int is decimal by default; drop the 'd')".to_string(),
+                _ => " (the grammar is [[fill]align][0][width][.precision][x|X|b|o])".to_string(),
+            };
+            return bad(format!("unexpected '{}'{}", c, hint));
+        }
+        Ok(FmtSpec { text: text.to_string(), fill, align, zero, width, prec, radix })
+    }
+
+    // Pad `body` (already converted: digits, decimals or text) to the width.
+    // `numeric`: right-aligned by default, and '0' pads after the sign.
+    pub fn pad(&self, body: &str, numeric: bool, out: &mut String) {
+        let n = body.chars().count();
+        if n >= self.width {
+            out.push_str(body);
+            return;
+        }
+        let pad = self.width - n;
+        if self.zero {
+            let (sign, digits) = if body.starts_with('-') { body.split_at(1) } else { ("", body) };
+            out.push_str(sign);
+            out.extend(std::iter::repeat('0').take(pad));
+            out.push_str(digits);
+            return;
+        }
+        let left = match self.align.unwrap_or(if numeric { '>' } else { '<' }) {
+            '<' => 0,
+            '^' => pad / 2,
+            _ => pad,
+        };
+        out.extend(std::iter::repeat(self.fill).take(left));
+        out.push_str(body);
+        out.extend(std::iter::repeat(self.fill).take(pad - left));
+    }
+}
+
+// The digits of an Int in a format-spec radix, '-' for negatives.
+pub fn radix_digits(v: i64, r: char) -> String {
+    let m = v.unsigned_abs();
+    let d = match r {
+        'x' => format!("{:x}", m),
+        'X' => format!("{:X}", m),
+        'b' => format!("{:b}", m),
+        _ => format!("{:o}", m),
+    };
+    if v < 0 { format!("-{}", d) } else { d }
 }
 
 #[derive(Debug, Clone)]

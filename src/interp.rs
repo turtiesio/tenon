@@ -64,7 +64,7 @@ pub fn visit_children<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a Expr)) {
     match &e.kind {
         ExprKind::Str(segs) => {
             for s in segs {
-                if let StrSeg::Expr(x) = s {
+                if let StrSeg::Expr(x, _) = s {
                     f(x)
                 }
             }
@@ -120,7 +120,7 @@ pub fn visit_children_mut(e: &mut Expr, f: &mut dyn FnMut(&mut Expr)) {
     match &mut e.kind {
         ExprKind::Str(segs) => {
             for s in segs {
-                if let StrSeg::Expr(x) = s {
+                if let StrSeg::Expr(x, _) = s {
                     f(x)
                 }
             }
@@ -678,9 +678,13 @@ impl<'a> Interp<'a> {
                 for seg in segs {
                     match seg {
                         StrSeg::Lit(l) => s.push_str(l),
-                        StrSeg::Expr(x) => {
+                        StrSeg::Expr(x, None) => {
                             let v = self.eval(x)?;
                             show(&v, true, &self.names(), &mut s);
+                        }
+                        StrSeg::Expr(x, Some(f)) => {
+                            let v = self.eval(x)?;
+                            fmt_spec(&v, f, &mut s);
                         }
                     }
                 }
@@ -1016,6 +1020,23 @@ pub(crate) fn navigate<'v>(mut v: &'v mut V, steps: &[Step], create: bool, sp: S
         };
     }
     Ok(v)
+}
+
+// `{v:SPEC}`: the checker allows only Int, Float, Str and Bool.
+fn fmt_spec(v: &V, f: &FmtSpec, out: &mut String) {
+    match v {
+        V::Int(i) => match f.radix {
+            Some(r) => f.pad(&radix_digits(*i, r), true, out),
+            None => f.pad(&i.to_string(), true, out),
+        },
+        V::Float(x) => match f.prec {
+            Some(p) => f.pad(&float_fixed(*x, p as i64), true, out),
+            None => f.pad(&fmt_float(*x), true, out),
+        },
+        V::Str(s) => f.pad(s, false, out),
+        V::Bool(b) => f.pad(if *b { "true" } else { "false" }, false, out),
+        _ => unreachable!(),
+    }
 }
 
 // Formatting without type names (keys in messages are scalars in practice).

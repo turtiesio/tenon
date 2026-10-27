@@ -1,0 +1,5 @@
+// error: format spec ':5' applies to Int, Float, Str or Bool, not fn(
+fn main(sys: Sys) {
+    let f = fn(x: Int) => x
+    sys.console.println("{f:5}")
+}

@@ -25,7 +25,81 @@ pub enum Pat {
 
 pub struct Pattern { pub at: Pos, pub kind: Pat }
 
-pub enum Seg { SLit(Str), SExpr(Expr) }
+pub enum Seg { SLit(Str), SExpr(Expr), SFmt(Expr, Spec) }
+
+// A format spec `{e:SPEC}`, as src/ast.rs FmtSpec:
+//   [[fill]align]['0']width['.'precision][x|X|b|o]   (every part optional)
+// align and radix are "" when absent, prec is -1.
+pub struct Spec {
+    pub text: Str, pub fill: Str, pub align: Str, pub zero: Bool, pub width: Int, pub prec: Int, pub radix: Str,
+}
+
+fn is_align(c: Str) -> Bool { c == "<" or c == ">" or c == "^" }
+
+fn spec_digits(cs: List[Str], i0: Int) -> Int {
+    var i = i0
+    while i < cs.len() and cs[i].is_digits() { i += 1 }
+    i
+}
+
+// The grammar check (messages as src/ast.rs FmtSpec::parse); type rules are
+// in the checker (ckinfer.tn `fmt_spec`).
+pub fn parse_spec(text: Str) -> Result[Spec, Str] {
+    let bad = "malformed format spec '" + text + "': "
+    let cs = text.chars()
+    if cs.is_empty() {
+        return Err("empty format spec after ':' (remove the ':' or write a spec such as \{x:>5})")
+    }
+    var i = 0
+    var fill = " "
+    var align = ""
+    if cs.len() >= 2 and is_align(cs[1]) {
+        fill = cs[0]
+        align = cs[1]
+        i = 2
+    } else if is_align(cs[0]) {
+        align = cs[0]
+        i = 1
+    }
+    var zero = false
+    if i + 1 < cs.len() and cs[i] == "0" and cs[i + 1].is_digits() {
+        zero = true
+        i += 1
+    }
+    let wend = spec_digits(cs, i)
+    let w = cs.slice(i, wend).join("")
+    i = wend
+    if w.len() > 3 { return Err(bad + "width " + w + " is too large (at most 999)") }
+    if align != "" and w == "" { return Err(bad + "an alignment needs a width, as in \{x:>5}") }
+    if zero and align != "" { return Err(bad + "'0' padding cannot be combined with a fill or alignment") }
+    let width = w.to_int().unwrap_or(0)
+    var prec = -1
+    if i < cs.len() and cs[i] == "." {
+        let pend = spec_digits(cs, i + 1)
+        let p = cs.slice(i + 1, pend).join("")
+        i = pend
+        if p == "" { return Err(bad + "'.' must be followed by the number of decimals, as in \{x:.2}") }
+        if p.len() > 3 or p.to_int().unwrap() > 100 { return Err(bad + "precision " + p + " is too large (at most 100)") }
+        prec = p.to_int().unwrap()
+    }
+    var radix = ""
+    if i < cs.len() and ["x", "X", "b", "o"].contains(cs[i]) {
+        radix = cs[i]
+        i += 1
+    }
+    if i < cs.len() {
+        let c = cs[i]
+        let hint = if c == "f" {
+            " (decimals are written \{x:.2}, without 'f')"
+        } else if c == "d" {
+            " (Int is decimal by default; drop the 'd')"
+        } else {
+            " (the grammar is [[fill]align][0][width][.precision][x|X|b|o])"
+        }
+        return Err(bad + "unexpected '" + c + "'" + hint)
+    }
+    Ok(Spec { text, fill, align, zero, width, prec, radix })
+}
 
 // `fallback`: the `_` arm added for `if let` / `while let` (see Parser.if_let).
 pub struct Arm { pub pat: Pattern, pub guard: Option[Expr], pub body: Expr, pub fallback: Bool }
@@ -507,7 +581,7 @@ fn Parser.pattern1(mut self) -> Result[Pattern, ParseError] {
             match parts.len() == 1 {
                 true => match parts[0] {
                     Lit(s) => PStr(s),
-                    Interp(_) => return Err(err_at(at, "string patterns cannot interpolate")),
+                    Interp(_, _) => return Err(err_at(at, "string patterns cannot interpolate")),
                 },
                 false => return Err(err_at(at, "string patterns cannot interpolate")),
             }
@@ -705,11 +779,17 @@ fn Parser.primary(mut self) -> Result[Expr, ParseError] {
             for p in parts {
                 match p {
                     Lit(s) => segs.push(SLit(s)),
-                    Interp(toks) => {
+                    Interp(toks, spec) => {
                         var sub = Parser { toks, pos: 0, no_struct: false }
                         let e = sub.expr()?
                         if not sub.at_eof() { return Err(sub.fail("'}' to close interpolation")) }
-                        segs.push(SExpr(e))
+                        match spec {
+                            Some(st) => match parse_spec(st.text) {
+                                Ok(f) => segs.push(SFmt(e, f)),
+                                Err(m) => return Err(err_at(Pos { line: st.line, col: st.col }, m)),
+                            },
+                            None => segs.push(SExpr(e)),
+                        }
                     }
                 }
             }

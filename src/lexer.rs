@@ -17,7 +17,8 @@ pub enum Tok {
 #[derive(Clone, Debug, PartialEq)]
 pub enum StrPart {
     Lit(String),
-    Expr(Vec<Token>),
+    // `{tokens}` or `{tokens:SPEC}`: the spec's raw text and position
+    Expr(Vec<Token>, Option<(String, Span)>),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -114,10 +115,12 @@ impl<'a> Lexer<'a> {
         c
     }
 
-    // Lex until EOF, or (inside string interpolation) until the unmatched `}`.
+    // Lex until EOF, or (inside string interpolation) until the unmatched `}`
+    // or a `:` outside any ( ) [ ] { }, which starts a format spec.
     fn tokens(&mut self, in_interp: bool) -> Result<Vec<Token>, Diag> {
         let mut out = Vec::new();
         let mut depth = 0usize;
+        let mut nest = 0usize; // open ( [ {
         loop {
             // whitespace and comments
             loop {
@@ -146,6 +149,10 @@ impl<'a> Lexer<'a> {
             }
             let c = self.peek(0);
             if in_interp && c == b'}' && depth == 0 {
+                self.bump();
+                return Ok(out);
+            }
+            if in_interp && c == b':' && nest == 0 {
                 self.bump();
                 return Ok(out);
             }
@@ -189,6 +196,11 @@ impl<'a> Lexer<'a> {
                             depth += 1;
                         } else if *s == "}" {
                             depth = depth.saturating_sub(1);
+                        }
+                        if *s == "(" || *s == "[" || *s == "{" {
+                            nest += 1;
+                        } else if *s == ")" || *s == "]" || *s == "}" {
+                            nest = nest.saturating_sub(1);
                         }
                         Tok::Sym(s)
                     }
@@ -394,8 +406,22 @@ impl<'a> Lexer<'a> {
                     if toks.is_empty() {
                         return Err(Diag::new(isp, "empty interpolation '{}' (write \\{ for a brace)"));
                     }
+                    let mut spec = None;
+                    if self.src[self.pos - 1] == b':' {
+                        // the format spec: raw text up to the next `}`
+                        let ssp = self.span();
+                        let start = self.pos;
+                        while self.peek(0) != b'}' {
+                            if self.pos >= self.src.len() || self.peek(0) == b'\n' || self.peek(0) == b'"' {
+                                return Err(Diag::new(ssp, "unterminated format spec in interpolation (expected '}')"));
+                            }
+                            self.bump();
+                        }
+                        spec = Some((String::from_utf8(self.src[start..self.pos].to_vec()).unwrap(), ssp));
+                        self.bump();
+                    }
                     toks.push(Token { tok: Tok::Eof, span: self.span() });
-                    parts.push(StrPart::Expr(toks));
+                    parts.push(StrPart::Expr(toks, spec));
                 }
                 _ => lit.push(c),
             }
@@ -443,9 +469,14 @@ fn dump_into(toks: &[Token], depth: usize, out: &mut String) {
                         crate::value::quote(l, &mut q);
                         out.push_str(&format!("{}  lit {}\n", pad, q));
                     }
-                    StrPart::Expr(ts) => {
+                    StrPart::Expr(ts, spec) => {
                         out.push_str(&format!("{}  expr\n", pad));
                         dump_into(ts, depth + 2, out);
+                        if let Some((t, sp)) = spec {
+                            let mut q = String::new();
+                            crate::value::quote(t, &mut q);
+                            out.push_str(&format!("{}  spec {}:{} {}\n", pad, sp.line, sp.col, q));
+                        }
                     }
                 }
             }

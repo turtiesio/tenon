@@ -722,13 +722,17 @@ impl<'a> Parser<'a> {
                 for p in parts {
                     match p {
                         StrPart::Lit(s) => segs.push(StrSeg::Lit(s)),
-                        StrPart::Expr(toks) => {
+                        StrPart::Expr(toks, spec) => {
                             let mut sub = Parser { toks: &toks, pos: 0, next_id: &mut *self.next_id, no_struct: false };
                             let e = sub.expr()?;
                             if !sub.at_eof() {
                                 return sub.err("'}' to close interpolation");
                             }
-                            segs.push(StrSeg::Expr(e));
+                            let spec = match spec {
+                                Some((text, sp)) => Some(FmtSpec::parse(&text).map_err(|m| Diag::new(sp, &m))?),
+                                None => None,
+                            };
+                            segs.push(StrSeg::Expr(e, spec));
                         }
                     }
                 }

@@ -55,6 +55,7 @@ pub enum EK {
     XTry(Expr),
     XLambda(List[(Str, Option[TExpr])], Option[TExpr], Expr),
     XMutArg(Expr), // `mut place` as an argument to a `mut` parameter
+    XFmt(Expr, parser.Spec), // `{e:SPEC}` inside an XStr (src/ast.rs StrSeg::Expr with a spec)
 }
 pub struct Expr { pub id: Int, pub sp: Span, pub k: EK }
 // `fallback`: the `_` arm added for `if let` / `while let` (parser.tn `if_let`).
@@ -221,6 +222,10 @@ fn Conv.expr(mut self, e: parser.Expr) -> Expr {
             for s in segs {
                 match s {
                     SExpr(x) => xs.push(self.expr(x)),
+                    SFmt(x, f) => {
+                        let inner = self.expr(x)
+                        xs.push(Expr { id: self.id(), sp: inner.sp, k: XFmt(inner, f) })
+                    }
                     SLit(_) => {}
                 }
             }
@@ -459,6 +464,7 @@ fn Fixer.children(self, k: EK) -> EK {
         XNew(n, fs, b) => XNew(n, fs.map(fn(f) => (f.0, self.expr(f.1))), self.opt(b)),
         XLambda(ps, r, b) => XLambda(ps, r, self.expr(b)),
         XMutArg(b) => XMutArg(self.expr(b)),
+        XFmt(b, f) => XFmt(self.expr(b), f),
         other => other,
     }
 }
@@ -550,7 +556,7 @@ fn block_exprs(b: Block) -> List[Expr] {
 pub fn children(e: Expr) -> List[Expr] {
     match e.k {
         XStr(xs) | XList(xs) | XTuple(xs) => xs,
-        XField(b, _) | XTField(b, _) | XUnary(_, b) | XTry(b) | XMutArg(b) => [b],
+        XField(b, _) | XTField(b, _) | XUnary(_, b) | XTry(b) | XMutArg(b) | XFmt(b, _) => [b],
         XIndex(a, b) | XBinary(_, a, b) => [a, b],
         XCall(c, args) | XMethod(c, _, args) => [c] + args,
         XIf(c, t, els) => {

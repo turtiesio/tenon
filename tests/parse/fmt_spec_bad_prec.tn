@@ -1,0 +1,1 @@
+fn f(x: Float) -> Str { "{x:8.}" }

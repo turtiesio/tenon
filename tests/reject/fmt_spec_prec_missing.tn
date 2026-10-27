@@ -1,0 +1,4 @@
+// error: '.' must be followed by the number of decimals
+fn main(sys: Sys) {
+    sys.console.println("{1.0:5.}")
+}

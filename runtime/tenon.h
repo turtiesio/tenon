@@ -503,6 +503,81 @@ static inline bool tn_Unit_eq(tn_Unit a, tn_Unit b) { (void)a; (void)b; return t
 static inline int tn_Unit_cmp(tn_Unit a, tn_Unit b) { (void)a; (void)b; return 0; }
 static inline uint64_t tn_Unit_hash(tn_Unit a) { (void)a; return 0; }
 static TN_UNUSED void tn_Unit_show(tn_buf *b, tn_Unit x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "()"); }
+
+/* Float.to_fixed text into t (512 bytes: "-", 309 digits, ".", 100 decimals
+   fit); decimals clamped to 0..100. Matches value.rs float_fixed. */
+static TN_UNUSED int tn_float_fixed_into(char *t, tn_Float x, tn_Int d) {
+    if (isnan(x)) { memcpy(t, "nan", 3); return 3; }
+    if (isinf(x)) { memcpy(t, x > 0 ? "inf" : "-inf", x > 0 ? 3 : 4); return x > 0 ? 3 : 4; }
+    if (d < 0) d = 0;
+    if (d > 100) d = 100;
+    return snprintf(t, 512, "%.*f", (int)d, x);
+}
+
+/* Format specs "{x:SPEC}" (ast.rs FmtSpec): the value is written straight
+   into the output buffer, then padded in place. prec -1: none; align and
+   radix 0: none. */
+typedef struct { const char *fill; int fill_len; char align, zero; int width, prec; char radix; } tn_fmt_spec;
+static TN_UNUSED void tn_fmt_pad(tn_buf *b, int64_t start, int numeric, const tn_fmt_spec *f) {
+    char *body = b->p + sizeof(tn_rc) + start;
+    int64_t n = b->len - start, cps = 0;
+    for (int64_t i = 0; i < n; i++) cps += ((unsigned char)body[i] & 0xC0) != 0x80;
+    if (cps >= f->width) return;
+    int64_t pad = f->width - cps;
+    if (f->zero) {
+        int64_t sign = n > 0 && body[0] == '-';
+        tn_buf_grow(b, pad);
+        body = b->p + sizeof(tn_rc) + start;
+        memmove(body + sign + pad, body + sign, (size_t)(n - sign));
+        memset(body + sign, '0', (size_t)pad);
+        b->len += pad;
+        return;
+    }
+    char a = f->align ? f->align : (numeric ? '>' : '<');
+    int64_t left = a == '<' ? 0 : a == '^' ? pad / 2 : pad;
+    tn_buf_grow(b, pad * f->fill_len);
+    body = b->p + sizeof(tn_rc) + start;
+    memmove(body + left * f->fill_len, body, (size_t)n);
+    for (int64_t i = 0; i < left; i++) memcpy(body + i * f->fill_len, f->fill, (size_t)f->fill_len);
+    b->len += left * f->fill_len;
+    for (int64_t i = left; i < pad; i++) tn_buf_add(b, f->fill, f->fill_len);
+}
+static TN_UNUSED void tn_Int_fmt(tn_buf *b, tn_Int x, const tn_fmt_spec *f) {
+    int64_t start = b->len;
+    if (!f->radix) {
+        tn_Int_show(b, x, 0);
+    } else {
+        int base = f->radix == 'b' ? 2 : f->radix == 'o' ? 8 : 16;
+        const char *dg = f->radix == 'X' ? "0123456789ABCDEF" : "0123456789abcdef";
+        uint64_t m = x < 0 ? (uint64_t)0 - (uint64_t)x : (uint64_t)x;
+        char r[72];
+        int k = 72;
+        do { r[--k] = dg[m % (uint64_t)base]; m /= (uint64_t)base; } while (m);
+        if (x < 0) r[--k] = '-';
+        tn_buf_add(b, r + k, 72 - k);
+    }
+    tn_fmt_pad(b, start, 1, f);
+}
+static TN_UNUSED void tn_Float_fmt(tn_buf *b, tn_Float x, const tn_fmt_spec *f) {
+    int64_t start = b->len;
+    if (f->prec >= 0) {
+        char t[512];
+        tn_buf_add(b, t, tn_float_fixed_into(t, x, f->prec));
+    } else {
+        tn_Float_show(b, x, 0);
+    }
+    tn_fmt_pad(b, start, 1, f);
+}
+static TN_UNUSED void tn_Str_fmt(tn_buf *b, tn_Str s, const tn_fmt_spec *f) {
+    int64_t start = b->len;
+    tn_buf_str(b, s);
+    tn_fmt_pad(b, start, 0, f);
+}
+static TN_UNUSED void tn_Bool_fmt(tn_buf *b, tn_Bool x, const tn_fmt_spec *f) {
+    int64_t start = b->len;
+    tn_Bool_show(b, x, 0);
+    tn_fmt_pad(b, start, 0, f);
+}
 static TN_UNUSED void tn_Console_show(tn_buf *b, tn_Console x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Console>"); }
 static TN_UNUSED void tn_Clock_show(tn_buf *b, tn_Clock x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Clock>"); }
 TN_INCOMPARABLE(tn_Console)
@@ -1390,16 +1465,9 @@ static TN_UNUSED tn_Str tn_int_char(tn_Int c, const char *loc) {
     return tn_str_new(t, n);
 }
 static TN_UNUSED tn_Str tn_float_fixed(tn_Float x, tn_Int d) {
-    if (isnan(x)) return tn_str_lit("nan", 3);
-    if (isinf(x)) return x > 0 ? tn_str_lit("inf", 3) : tn_str_lit("-inf", 4);
-    if (d < 0) d = 0;
-    if (d > 100) d = 100;
-    int n = snprintf(NULL, 0, "%.*f", (int)d, x);
-    char *buf = tn_alloc((size_t)n + 1);
-    snprintf(buf, (size_t)n + 1, "%.*f", (int)d, x);
-    tn_Str r = tn_str_new(buf, n);
-    tn_free(buf);
-    return r;
+    char t[512];
+    int n = tn_float_fixed_into(t, x, d);
+    return tn_str_new(t, n);
 }
 static TN_UNUSED tn_Int tn_float_to_int(tn_Float x, const char *loc) {
     if (!(x >= -9223372036854775808.0 && x < 9223372036854775808.0))

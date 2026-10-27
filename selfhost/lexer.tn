@@ -5,7 +5,10 @@
 
 pub enum Tok { Ident(Str), Kw(Str), Sym(Str), IntTok(Int), FloatTok(Float), StrTok(List[Part]), Eof }
 
-pub enum Part { Lit(Str), Interp(List[Token]) }
+// `{tokens}` or `{tokens:SPEC}` (the spec's raw text and position)
+pub enum Part { Lit(Str), Interp(List[Token], Option[SpecText]) }
+
+pub struct SpecText { pub text: Str, pub line: Int, pub col: Int }
 
 pub struct Token { pub tok: Tok, pub line: Int, pub col: Int }
 
@@ -47,9 +50,12 @@ fn Lx.bump(mut self) -> Int {
 
 fn Lx.fail(self, line: Int, col: Int, msg: Str) -> LexError { LexError { line, col, msg } }
 
+// Lex until EOF, or (inside string interpolation) until the unmatched `}`
+// or a `:` outside any ( ) [ ] { }, which starts a format spec.
 fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
     var out: List[Token] = []
     var depth = 0
+    var nest = 0 // open ( [ {
     while true {
         // whitespace and comments
         while true {
@@ -73,6 +79,10 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
         }
         let c = self.peek(0)
         if in_interp and c == 125 and depth == 0 {
+            let _ = self.bump()
+            return Ok(out)
+        }
+        if in_interp and c == 58 and nest == 0 {
             let _ = self.bump()
             return Ok(out)
         }
@@ -103,6 +113,7 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
                 Some(s) => {
                     for _ in 0..s.len() { let _ = self.bump() }
                     if s == "\{" { depth += 1 } else if s == "}" { depth = (depth - 1).max(0) }
+                    if s == "(" or s == "[" or s == "\{" { nest += 1 } else if s == ")" or s == "]" or s == "}" { nest = (nest - 1).max(0) }
                     Sym(s)
                 }
                 None => {
@@ -301,9 +312,23 @@ fn Lx.string(mut self) -> Result[Tok, LexError] {
             if toks.is_empty() {
                 return Err(self.fail(iline, icol, "empty interpolation '\{\}' (write \\\{ for a brace)"))
             }
+            var spec: Option[SpecText] = None
+            if self.src.byte(self.pos - 1) == 58 {
+                // the format spec: raw text up to the next `}`
+                let (sline, scol) = (self.line, self.col)
+                let start = self.pos
+                while self.peek(0) != 125 {
+                    if self.pos >= self.src.len() or self.peek(0) == 10 or self.peek(0) == 34 {
+                        return Err(self.fail(sline, scol, "unterminated format spec in interpolation (expected '}')"))
+                    }
+                    let _ = self.bump()
+                }
+                spec = Some(SpecText { text: self.src.slice(start, self.pos), line: sline, col: scol })
+                let _ = self.bump()
+            }
             var all = toks
             all.push(Token { tok: Eof, line: self.line, col: self.col })
-            parts.push(Interp(all))
+            parts.push(Interp(all, spec))
             run = self.pos
         }
     }
@@ -390,9 +415,13 @@ fn dump_into(toks: List[Token], depth: Int, out: List[Str]) -> List[Str] {
                 for p in parts {
                     match p {
                         Lit(l) => o.push("{pad}  lit {quoted(l)}"),
-                        Interp(ts) => {
+                        Interp(ts, spec) => {
                             o.push("{pad}  expr")
                             o = dump_into(ts, depth + 2, o)
+                            match spec {
+                                Some(sp) => o.push("{pad}  spec {sp.line}:{sp.col} {quoted(sp.text)}"),
+                                None => {}
+                            }
                         }
                     }
                 }

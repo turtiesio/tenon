@@ -123,10 +123,12 @@ impl Checker {
             ExprKind::Unit => Ok(Ty::unit()),
             ExprKind::Str(segs) => {
                 for s in segs {
-                    if let StrSeg::Expr(x) = s {
+                    if let StrSeg::Expr(x, spec) = s {
                         let t = self.sub.fresh();
                         let t = self.expr(x, &t)?;
-                        if let Ty::Fn(..) = self.sub.shallow(&t) {
+                        if let Some(f) = spec {
+                            self.fmt_spec(x, &t, f)?;
+                        } else if let Ty::Fn(..) = self.sub.shallow(&t) {
                             return err(x.span, "functions cannot be converted to strings");
                         }
                     }

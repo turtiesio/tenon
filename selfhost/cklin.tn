@@ -563,6 +563,7 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
             self.live_check(0, e.sp, "the early return of '?'")
         }
         XMutArg(x) => self.expr(x, false),
+        XFmt(x, _) => self.expr(x, false),
         XLambda(params, _, body) => {
             for c in self.caps.get(e.id).unwrap_or([]) {
                 let k = self.kind_ty(c.1)
