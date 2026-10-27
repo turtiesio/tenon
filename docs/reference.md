@@ -119,7 +119,11 @@ let names = people.map(fn(p) => p.name)
 ```
 
 Closures capture variables **by value** at creation; they cannot assign to
-captured variables. A parameter named `_` is ignored (`xs.map(fn(_) => 0)`). Named functions and variants can be used as values:
+captured variables. A parameter named `_` is ignored (`xs.map(fn(_) => 0)`).
+
+Generic functions are compiled once per type they are used with, so a
+function that calls itself at ever larger types (`f([x])` inside `f`) runs in
+the interpreter but is rejected by `tenon build`. Named functions and variants can be used as values:
 `xs.map(Some)`, `words.map(Str.len)`.
 
 ## 6. Variables and mutation
@@ -128,7 +132,9 @@ captured variables. A parameter named `_` is ignored (`xs.map(fn(_) => 0)`). Nam
   annotate with `let x: List[Int] = []` when needed.
 - Names may not be redeclared inside a function (no shadowing).
 - Assignment targets: `x = v`, `p.field = v`, `xs[i] = v`, `m[k] = v`
-  (inserts or replaces), and compound forms `+= -= *= /= %=`.
+  (inserts or replaces), and compound forms `+= -= *= /= %=`. Evaluation
+  order: the target's index expressions, then the right-hand side, then (for
+  compound forms) the target's current value is read.
 - Mutating methods (`push`, `insert`, `sort`, user methods with `mut self`)
   need a mutable place: a `var`, or a field/element of one, including map
   entries: `m[k].push(x)` and `m[k] += 1` update the entry in place (the key

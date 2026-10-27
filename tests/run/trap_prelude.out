@@ -1,0 +1,3 @@
+exit: 70
+stderr: trap: integer overflow
+stderr:   at trap_prelude.tn:4:28

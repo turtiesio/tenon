@@ -1,0 +1,7 @@
+// error: cannot infer the type of
+// A binding whose element type is never determined is accepted (docs: "annotate when needed").
+fn main(sys: Sys) {
+    let xs = []
+    let o = None
+    sys.console.println("ok")
+}

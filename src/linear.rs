@@ -94,10 +94,19 @@ fn walk_fn(c: &Checked, prog: &Program, fi: usize, assume: Vec<String>) -> LResu
     let Some(body) = &f.body else { return Ok(()) };
     let info = &c.fns[fi];
     let mut w = Walk { c, prog, assume, vars: vec![], loops: vec![], diverged: false };
+    // Only a type declared linear/unique decides how its own values end; a plain
+    // generic type (`struct Wrap[A]`) holding a linear A gets no exemption.
+    let self_exempt = match &info.owner {
+        Some(Ty::Con(n, _)) => {
+            c.struct_idx(n).map(|i| c.structs[i].kind).or_else(|| c.enum_idx(n).map(|i| c.enums[i].kind)) .unwrap_or(Kind::Plain)
+                != Kind::Plain
+        }
+        _ => false,
+    };
     for (n, t) in &info.params {
         let k = w.kind_ty(t);
         let by_ref = f.params.iter().any(|p| p.name == *n && (p.by_ref || p.by_mut));
-        if k != Kind::Plain && n != "self" {
+        if k != Kind::Plain && !(n == "self" && self_exempt) {
             w.vars.push(Var { name: n.clone(), kind: k, moved: None, borrowed: by_ref });
         }
     }

@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 cargo build --release --quiet
-target/release/tenon test tests examples
+target/release/tenon test tests tests/pending examples
 tools/programs.sh
 tools/selfhost.sh
 tools/approvals_test.sh
