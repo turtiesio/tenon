@@ -20,9 +20,15 @@ use crate::types::Ty;
 
 type LResult = Result<(), Diag>;
 
-// Generic functions that may take linear or unique type arguments (they consume
-// their argument exactly once).
-const GENERIC_OK: &[&str] = &["Option.unwrap", "Option.expect", "Result.unwrap", "Result.expect", "panic"];
+// Builtins (no body to analyze) that consume a generic argument exactly once.
+const EXTERN_OK: &[&str] = &["Option.unwrap", "Option.expect", "Result.unwrap", "Result.expect", "panic"];
+
+// A generic function accepts a linear type argument for parameter P when its
+// body passes this analysis with P assumed linear. Results are cached; a
+// recursive query assumes success (the cycle is checked by the outer query).
+thread_local! {
+    static SAFE: std::cell::RefCell<std::collections::HashMap<(usize, String), bool>> = Default::default();
+}
 
 #[derive(Clone)]
 struct Var {
@@ -33,6 +39,8 @@ struct Var {
 
 struct Walk<'a> {
     c: &'a Checked,
+    prog: &'a Program,
+    assume: Vec<String>, // type parameters treated as linear
     vars: Vec<Var>,
     loops: Vec<usize>, // vars.len() at the start of each enclosing loop
     diverged: bool,
@@ -76,12 +84,17 @@ pub fn check_decls(c: &Checked, prog: &Program) -> LResult {
     Ok(())
 }
 
-pub fn check_fn(c: &Checked, f: &FnDecl, fi: usize) -> LResult {
+pub fn check_fn(c: &Checked, prog: &Program, fi: usize) -> LResult {
+    walk_fn(c, prog, fi, vec![])
+}
+
+fn walk_fn(c: &Checked, prog: &Program, fi: usize, assume: Vec<String>) -> LResult {
+    let f = &prog.fns[fi];
     let Some(body) = &f.body else { return Ok(()) };
     let info = &c.fns[fi];
-    let mut w = Walk { c, vars: vec![], loops: vec![], diverged: false };
+    let mut w = Walk { c, prog, assume, vars: vec![], loops: vec![], diverged: false };
     for (n, t) in &info.params {
-        let k = c.kind_of(t);
+        let k = w.kind_ty(t);
         if k != Kind::Plain && n != "self" {
             w.vars.push(Var { name: n.clone(), kind: k, moved: None });
         }
@@ -94,8 +107,14 @@ impl<'a> Walk<'a> {
     fn ty(&self, id: Id) -> Option<&Ty> {
         self.c.types.get(&id)
     }
+    fn kind_ty(&self, t: &Ty) -> Kind {
+        if t.any(&|x| matches!(x, Ty::Param(p) if self.assume.contains(p))) {
+            return Kind::Linear;
+        }
+        self.c.kind_of(t)
+    }
     fn kind(&self, id: Id) -> Kind {
-        self.ty(id).map(|t| self.c.kind_of(t)).unwrap_or(Kind::Plain)
+        self.ty(id).map(|t| self.kind_ty(t)).unwrap_or(Kind::Plain)
     }
 
     fn consume(&mut self, name: &str, sp: Span) -> LResult {
@@ -281,15 +300,30 @@ impl<'a> Walk<'a> {
     }
 
     fn generic_args_ok(&self, fi: usize, targs: &[Ty], sp: Span) -> LResult {
-        let name = &self.c.fns[fi].name;
-        if GENERIC_OK.contains(&name.as_str()) {
-            return Ok(());
-        }
-        for t in targs {
-            let k = self.c.kind_of(t);
-            if k != Kind::Plain {
+        let info = &self.c.fns[fi];
+        for (p, t) in info.tparams.iter().zip(targs) {
+            let k = self.kind_ty(t);
+            if k == Kind::Plain {
+                continue;
+            }
+            let ok = if info.is_extern {
+                EXTERN_OK.contains(&info.name.as_str())
+            } else {
+                let key = (fi, p.clone());
+                match SAFE.with(|m| m.borrow().get(&key).copied()) {
+                    Some(v) => v,
+                    None => {
+                        SAFE.with(|m| m.borrow_mut().insert(key.clone(), true));
+                        let v = walk_fn(self.c, self.prog, fi, vec![p.clone()]).is_ok();
+                        SAFE.with(|m| m.borrow_mut().insert(key, v));
+                        v
+                    }
+                }
+            };
+            if !ok {
                 return err(sp, format!(
-                    "'{}' is generic and may copy or drop its arguments; it cannot be used with the {} type {}", name, word(k), t
+                    "'{}' may copy or drop values of its type parameter {}, so it cannot be used with the {} type {}",
+                    info.name, p, word(k), t
                 ));
             }
         }
@@ -299,7 +333,7 @@ impl<'a> Walk<'a> {
     fn expr(&mut self, e: &Expr, consume: bool) -> LResult {
         if let Some(t) = self.ty(e.id) {
             if let Ty::Con(n, a) = t {
-                if (n == "List" || n == "Map") && a.iter().any(|x| self.c.kind_of(x) != Kind::Plain) {
+                if (n == "List" || n == "Map") && a.iter().any(|x| self.kind_ty(x) != Kind::Plain) {
                     return err(e.span, format!("{} cannot hold linear or unique values", n));
                 }
             }
@@ -434,15 +468,15 @@ impl<'a> Walk<'a> {
             }
             ExprKind::Lambda(params, _, body) => {
                 for (n, t) in &self.c.captures[&e.id] {
-                    let k = self.c.kind_of(t);
+                    let k = self.kind_ty(t);
                     if k != Kind::Plain {
                         return err(e.span, format!("closures cannot capture the {} value '{}'", word(k), n));
                     }
                 }
                 let Some(Ty::Fn(pts, _)) = self.ty(e.id).cloned() else { return Ok(()) };
-                let mut inner = Walk { c: self.c, vars: vec![], loops: vec![], diverged: false };
+                let mut inner = Walk { c: self.c, prog: self.prog, assume: self.assume.clone(), vars: vec![], loops: vec![], diverged: false };
                 for ((n, _), t) in params.iter().zip(&pts) {
-                    let k = self.c.kind_of(t);
+                    let k = self.kind_ty(t);
                     if k != Kind::Plain {
                         inner.vars.push(Var { name: n.clone(), kind: k, moved: None });
                     }
