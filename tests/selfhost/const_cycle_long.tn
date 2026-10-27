@@ -1,0 +1,5 @@
+const AA: Int = BB + CC
+const BB: Int = 2
+const CC: Int = DD * 2
+const DD: Int = if BB > 1 { AA } else { 0 }
+fn main() { let n = AA }

@@ -27,5 +27,54 @@ pub fn check(prog: ckast.Program) -> Result[Unit, ckast.Diag] {
     }
     if main < 0 { return ckast.fail(ckast.Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'") }
     ck.env.check_main(main)?
+    const_cycles(prog, ck.res)?
     cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures)
+}
+
+// The constants referenced anywhere in an expression, in traversal order.
+fn const_refs(e: ckast.Expr, res: Map[Int, ckenv.Res]) -> List[Int] {
+    var out: List[Int] = []
+    match res.get(e.id) {
+        Some(RConst(j)) => out.push(j),
+        _ => {}
+    }
+    for c in ckast.children(e) { out.extend(const_refs(c, res)) }
+    out
+}
+
+fn deps(prog: ckast.Program, res: Map[Int, ckenv.Res], fi: Int) -> List[Int] {
+    var out: List[Int] = []
+    match prog.fns[fi].body {
+        Some(b) => {
+            for s in b.stmts {
+                for e in ckast.stmt_exprs(s) { out.extend(const_refs(e, res)) }
+            }
+        }
+        None => {}
+    }
+    out
+}
+
+// A constant may not depend on itself through other constants.
+fn const_cycles(prog: ckast.Program, res: Map[Int, ckenv.Res]) -> Result[Unit, ckast.Diag] {
+    for start in 0..prog.fns.len() {
+        if prog.fns[start].is_const {
+            var stack: List[(Int, List[Int])] = [(start, [start])]
+            var seen: List[Bool] = prog.fns.map(fn(f) => false)
+            while not stack.is_empty() {
+                let (fi, path) = stack.pop().unwrap()
+                for d in deps(prog, res, fi) {
+                    if d == start {
+                        let names = (path + [start]).map(fn(i) => prog.fns[i].name)
+                        return ckast.fail(prog.fns[start].sp, "constant '" + prog.fns[start].name + "' depends on itself (" + names.join(" -> ") + ")")
+                    }
+                    if not seen[d] {
+                        seen[d] = true
+                        stack.push((d, path + [d]))
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }

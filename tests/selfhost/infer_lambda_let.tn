@@ -1,0 +1,6 @@
+fn main() {
+    let f = fn(n: Int) => {
+        let o = None
+        n
+    }
+}

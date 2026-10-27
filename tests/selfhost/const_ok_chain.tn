@@ -1,0 +1,3 @@
+const AA: Int = BB + 1
+const BB: Int = 2
+fn main() { let n = AA + BB }
