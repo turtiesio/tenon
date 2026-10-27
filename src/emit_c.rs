@@ -493,7 +493,7 @@ impl<'a> Emitter<'a> {
                 let _ = writeln!(
                     b,
                     "static void {n}_free(void *p) {{ {n} x = p; tn_rel_depth++; switch (x->tag) {{ {rl}}} \
-                     if ({n}_pool_n < TN_POOL_MAX) {{ *(void **)x = {n}_pool; {n}_pool = x; {n}_pool_n++; }} else free(x); tn_rel_depth--; }}"
+                     if ({n}_pool_n < TN_POOL_MAX) {{ *(void **)x = {n}_pool; {n}_pool = x; {n}_pool_n++; }} else tn_free(x); tn_rel_depth--; }}"
                 );
                 let _ = writeln!(
                     b,

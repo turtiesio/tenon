@@ -108,15 +108,60 @@ TN_NORETURN static void tn_oom(void) {
     tn_ewrite("trap: out of memory\n");
     _exit(TN_EXIT_OOM);
 }
-static TN_UNUSED void *tn_alloc(size_t n) {
-    void *p = malloc(n ? n : 1);
-    if (!p) tn_oom();
-    return p;
+/* Allocation: blocks of up to 512 bytes come from per-size free lists (16-byte
+ * classes); every block carries a 16-byte header with its class. Larger blocks
+ * use malloc. Sanitizer builds (TN_POOL_MAX=0) bypass the lists. */
+#define TN_SMALL_MAX 512
+static void *tn_freelist[TN_SMALL_MAX / 16 + 1];
+static inline void *tn_alloc(size_t n) {
+    size_t c = (n + 15) >> 4;
+    if (c == 0) c = 1;
+    if (c <= TN_SMALL_MAX / 16) {
+#if !defined(TN_POOL_MAX) || TN_POOL_MAX > 0
+        void *h = tn_freelist[c];
+        if (h) {
+            tn_freelist[c] = *(void **)((char *)h + 16);
+            return (char *)h + 16;
+        }
+#endif
+        uint64_t *h2 = malloc(16 + c * 16);
+        if (!h2) tn_oom();
+        h2[0] = c;
+        return (char *)h2 + 16;
+    }
+    uint64_t *h = malloc(16 + n);
+    if (!h) tn_oom();
+    h[0] = 0;
+    h[1] = n;
+    return (char *)h + 16;
+}
+static inline void tn_free(void *p) {
+    if (!p) return;
+    uint64_t *h = (uint64_t *)((char *)p - 16);
+#if !defined(TN_POOL_MAX) || TN_POOL_MAX > 0
+    if (h[0]) {
+        *(void **)p = tn_freelist[h[0]];
+        tn_freelist[h[0]] = h;
+        return;
+    }
+#endif
+    free(h);
 }
 static TN_UNUSED void *tn_realloc(void *p, size_t n) {
-    p = realloc(p, n ? n : 1);
-    if (!p) tn_oom();
-    return p;
+    if (!p) return tn_alloc(n);
+    uint64_t *h = (uint64_t *)((char *)p - 16);
+    size_t have = h[0] ? h[0] * 16 : h[1];
+    if (n <= have) return p;
+    if (!h[0] && n > TN_SMALL_MAX) {
+        h = realloc(h, 16 + n);
+        if (!h) tn_oom();
+        h[1] = n;
+        return (char *)h + 16;
+    }
+    void *q = tn_alloc(n);
+    memcpy(q, p, have);
+    tn_free(p);
+    return q;
 }
 
 static void tn_on_segv(int sig) {
@@ -253,7 +298,7 @@ static inline tn_Str tn_Str_retain(tn_Str s) {
     return s;
 }
 static inline void tn_Str_release(tn_Str s) {
-    if (s.o && --s.o->rc == 0) free(s.o);
+    if (s.o && --s.o->rc == 0) tn_free(s.o);
 }
 static inline tn_Str tn_str_lit(const char *p, int64_t n) { return (tn_Str){p, n, NULL}; }
 static TN_UNUSED tn_Str tn_str_new(const char *p, int64_t n) {
@@ -496,7 +541,7 @@ static TN_UNUSED tn_Str tn_dec_run(tn_dec *d, int cls) {
 /* The consumed text must be exactly the canonical encoding of the value. */
 static TN_UNUSED bool tn_dec_canon(tn_dec *d, tn_buf *b, tn_Str text, int64_t start) {
     bool ok = b->len == text.len && memcmp(b->p + sizeof(tn_rc), text.p, (size_t)text.len) == 0;
-    free(b->p);
+    tn_free(b->p);
     return ok || tn_dec_fail(d, start);
 }
 
@@ -545,11 +590,11 @@ static TN_UNUSED bool tn_Str_dec(tn_dec *d, tn_Str *out) {
     if (!tn_dec_expect(d, "\"")) return false;
     tn_buf b = tn_buf_new();
     for (;;) {
-        if (d->pos >= d->n) { free(b.p); return tn_dec_fail(d, d->pos); }
+        if (d->pos >= d->n) { tn_free(b.p); return tn_dec_fail(d, d->pos); }
         char c = d->p[d->pos++];
         if (c == '"') break;
         if (c != '\\') { tn_buf_add(&b, &c, 1); continue; }
-        if (d->pos >= d->n) { free(b.p); return tn_dec_fail(d, d->pos); }
+        if (d->pos >= d->n) { tn_free(b.p); return tn_dec_fail(d, d->pos); }
         char e = d->p[d->pos++], v;
         switch (e) {
         case '"': v = '"'; break;
@@ -558,26 +603,26 @@ static TN_UNUSED bool tn_Str_dec(tn_dec *d, tn_Str *out) {
         case 't': v = '\t'; break;
         case 'r': v = '\r'; break;
         case 'u': {
-            if (!tn_dec_expect(d, "{")) { free(b.p); return false; }
+            if (!tn_dec_expect(d, "{")) { tn_free(b.p); return false; }
             int64_t hs = d->pos, x = 0;
             while (d->pos < d->n && isxdigit((unsigned char)d->p[d->pos])) {
                 char h = d->p[d->pos++];
                 x = x * 16 + (h <= '9' ? h - '0' : (h | 0x20) - 'a' + 10);
                 if (x > 255) x = 256;
             }
-            if (d->pos == hs || x > 255) { free(b.p); return tn_dec_fail(d, st); }
-            if (!tn_dec_expect(d, "}")) { free(b.p); return false; }
+            if (d->pos == hs || x > 255) { tn_free(b.p); return tn_dec_fail(d, st); }
+            if (!tn_dec_expect(d, "}")) { tn_free(b.p); return false; }
             v = (char)x;
             break;
         }
-        default: free(b.p); return tn_dec_fail(d, st);
+        default: tn_free(b.p); return tn_dec_fail(d, st);
         }
         tn_buf_add(&b, &v, 1);
     }
     tn_Str r = tn_buf_finish(&b);
     tn_buf chk = tn_buf_new();
     bool valid = tn_utf8_lossy(r.p, r.len, &chk);
-    free(chk.p);
+    tn_free(chk.p);
     if (!valid) { tn_Str_release(r); return tn_dec_fail(d, st); }
     tn_buf q = tn_buf_new();
     tn_Str_show(&q, r, 0);
@@ -613,7 +658,7 @@ TN_INCOMPARABLE(tn_fn)
     static TN_UNUSED void L##_release(L l) {                                             \
         if (l && --l->rc == 0) {                                                         \
             for (int64_t i = 0; i < l->len; i++) T##_release(l->data[i]);               \
-            free(l);                                                                     \
+            tn_free(l);                                                                     \
         }                                                                                \
     }                                                                                    \
     static TN_UNUSED L L##_alloc(int64_t cap) {                                          \
@@ -787,7 +832,7 @@ TN_INCOMPARABLE(tn_fn)
         L##_unique(p);                                                                   \
         T *tmp = tn_alloc(sizeof(T) * (size_t)((*p)->len / 2 + 1));                      \
         L##_msort((*p)->data, tmp, (*p)->len);                                           \
-        free(tmp);                                                                       \
+        tn_free(tmp);                                                                       \
     }
 
 /* ---------- maps: insertion-ordered hash maps; NULL is the empty map ---------- */
@@ -801,12 +846,12 @@ TN_INCOMPARABLE(tn_fn)
         if (m && --m->rc == 0) {                                                         \
             for (int64_t i = 0; i < m->n; i++)                                           \
                 if (m->e[i].live) { K##_release(m->e[i].k); V##_release(m->e[i].v); }    \
-            free(m->e); free(m->idx); free(m);                                           \
+            tn_free(m->e); tn_free(m->idx); tn_free(m);                                           \
         }                                                                                \
     }                                                                                    \
     static inline int64_t M##_len(M m) { return m ? m->len : 0; }                        \
     static TN_UNUSED void M##_reindex(M m, int64_t icap) {                               \
-        free(m->idx);                                                                    \
+        tn_free(m->idx);                                                                    \
         m->icap = icap;                                                                  \
         m->idx = tn_alloc(sizeof(int32_t) * (size_t)icap);                               \
         for (int64_t i = 0; i < icap; i++) m->idx[i] = -1;                               \
@@ -1182,7 +1227,7 @@ static TN_UNUSED bool tn_str_to_float(tn_Str s, tn_Float *out) {
     memcpy(z, p, (size_t)n);
     z[n] = 0;
     *out = strtod(z, NULL);
-    if (z != tmp) free(z);
+    if (z != tmp) tn_free(z);
     return true;
 }
 /* Consumes s: converts in place when s is the only reference to its buffer. */
@@ -1404,7 +1449,7 @@ static bool tn_utf8_valid(const char *p, int64_t n) {
         if ((unsigned char)p[i] >= 0x80) {
             scratch = tn_buf_new();
             bool ok = tn_utf8_lossy(p + i, n - i, &scratch);
-            free(scratch.p);
+            tn_free(scratch.p);
             return ok;
         }
     return true;
@@ -1436,7 +1481,7 @@ static TN_UNUSED void tn_eprintln(tn_Str s) {
 typedef struct tn_Fs_s { int64_t rc; tn_Str root; bool att, wr; } *tn_Fs;
 static TN_UNUSED tn_Fs tn_Fs_retain(tn_Fs f) { f->rc++; return f; }
 static TN_UNUSED void tn_Fs_release(tn_Fs f) {
-    if (--f->rc == 0) { tn_Str_release(f->root); free(f); }
+    if (--f->rc == 0) { tn_Str_release(f->root); tn_free(f); }
 }
 static TN_UNUSED void tn_Fs_show(tn_buf *b, tn_Fs f, int mode) { (void)f; (void)mode; tn_buf_cstr(b, "<Fs>"); }
 TN_INCOMPARABLE(tn_Fs)
@@ -1517,7 +1562,7 @@ static TN_UNUSED tn_Str tn_io_msg(int kind, tn_Str path, const char *why) {
 #define TN_FS_PRE(writes)                                                                 \
     tn_buf pb = tn_buf_new();                                                             \
     if (!tn_fs_path(f, p, &pb)) {                                                         \
-        free(pb.p);                                                                       \
+        tn_free(pb.p);                                                                       \
         tn_buf b = tn_buf_new();                                                          \
         tn_buf_cstr(&b, "path escapes the Fs root: ");                                    \
         tn_buf_str(&b, p);                                                                \
@@ -1526,7 +1571,7 @@ static TN_UNUSED tn_Str tn_io_msg(int kind, tn_Str path, const char *why) {
     }                                                                                     \
     const char *full = pb.p + sizeof(tn_rc);                                              \
     if ((writes) && !f->wr) {                                                             \
-        free(pb.p);                                                                       \
+        tn_free(pb.p);                                                                       \
         tn_buf b = tn_buf_new();                                                          \
         tn_buf_cstr(&b, "read-only Fs: ");                                                \
         tn_buf_str(&b, p);                                                                \
@@ -1537,7 +1582,7 @@ static TN_UNUSED tn_Str tn_io_msg(int kind, tn_Str path, const char *why) {
     do {                                                                                  \
         int k_ = tn_io_kind(e);                                                           \
         *msg = tn_io_msg(k_, p, strerror(e));                                             \
-        free(pb.p);                                                                       \
+        tn_free(pb.p);                                                                       \
         return k_;                                                                        \
     } while (0)
 
@@ -1552,21 +1597,21 @@ static TN_UNUSED int tn_fs_read(tn_Fs f, tn_Str p, tn_Str *res, tn_Str *msg) {
     for (;;) {
         ssize_t r = read(fd, chunk, sizeof chunk);
         if (r < 0 && errno == EINTR) continue;
-        if (r < 0) { int e = errno; close(fd); free(b.p); TN_FS_FAIL(e); }
+        if (r < 0) { int e = errno; close(fd); tn_free(b.p); TN_FS_FAIL(e); }
         if (r == 0) break;
         tn_buf_add(&b, chunk, r);
     }
     close(fd);
     tn_buf chk = tn_buf_new();
     bool valid = tn_utf8_lossy(b.p + sizeof(tn_rc), b.len, &chk);
-    free(chk.p);
+    tn_free(chk.p);
     if (!valid) {
-        free(b.p);
+        tn_free(b.p);
         *msg = tn_io_msg(TN_IO_FAILED, p, "invalid UTF-8");
-        free(pb.p);
+        tn_free(pb.p);
         return TN_IO_FAILED;
     }
-    free(pb.p);
+    tn_free(pb.p);
     *res = tn_buf_finish(&b);
     return TN_IO_OK;
 }
@@ -1592,14 +1637,14 @@ static TN_UNUSED int tn_fs_write(tn_Fs f, tn_Str p, tn_Str d, tn_Str *msg) {
     const char *tmp = tb.p + sizeof(tn_rc);
     unlink(tmp); /* never write through a pre-existing temp file (it may be a planted symlink) */
     int fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
-    if (fd < 0) { int e = errno; free(tb.p); TN_FS_FAIL(e); }
+    if (fd < 0) { int e = errno; tn_free(tb.p); TN_FS_FAIL(e); }
     if (!tn_write_all(fd, d) || fsync(fd) != 0) {
-        int e = errno; close(fd); unlink(tmp); free(tb.p); TN_FS_FAIL(e);
+        int e = errno; close(fd); unlink(tmp); tn_free(tb.p); TN_FS_FAIL(e);
     }
     close(fd);
-    if (rename(tmp, full) != 0) { int e = errno; unlink(tmp); free(tb.p); TN_FS_FAIL(e); }
-    free(tb.p);
-    free(pb.p);
+    if (rename(tmp, full) != 0) { int e = errno; unlink(tmp); tn_free(tb.p); TN_FS_FAIL(e); }
+    tn_free(tb.p);
+    tn_free(pb.p);
     return TN_IO_OK;
 }
 static TN_UNUSED int tn_fs_append(tn_Fs f, tn_Str p, tn_Str d, tn_Str *msg) {
@@ -1608,45 +1653,45 @@ static TN_UNUSED int tn_fs_append(tn_Fs f, tn_Str p, tn_Str d, tn_Str *msg) {
     if (fd < 0) TN_FS_FAIL(errno);
     if (!tn_write_all(fd, d) || fsync(fd) != 0) { int e = errno; close(fd); TN_FS_FAIL(e); }
     close(fd);
-    free(pb.p);
+    tn_free(pb.p);
     return TN_IO_OK;
 }
 static TN_UNUSED bool tn_fs_exists(tn_Fs f, tn_Str p) {
     tn_buf pb = tn_buf_new();
-    if (!tn_fs_path(f, p, &pb)) { free(pb.p); return false; }
+    if (!tn_fs_path(f, p, &pb)) { tn_free(pb.p); return false; }
     struct stat st;
     bool r = stat(pb.p + sizeof(tn_rc), &st) == 0;
-    free(pb.p);
+    tn_free(pb.p);
     return r;
 }
 static TN_UNUSED bool tn_fs_is_dir(tn_Fs f, tn_Str p) {
     tn_buf pb = tn_buf_new();
-    if (!tn_fs_path(f, p, &pb)) { free(pb.p); return false; }
+    if (!tn_fs_path(f, p, &pb)) { tn_free(pb.p); return false; }
     struct stat st;
     bool r = stat(pb.p + sizeof(tn_rc), &st) == 0 && S_ISDIR(st.st_mode);
-    free(pb.p);
+    tn_free(pb.p);
     return r;
 }
 static TN_UNUSED int tn_fs_rename(tn_Fs f, tn_Str p, tn_Str to, tn_Str *msg) {
     TN_FS_PRE(true)
     tn_buf tb = tn_buf_new();
     if (!tn_fs_path(f, to, &tb)) {
-        free(tb.p); free(pb.p);
+        tn_free(tb.p); tn_free(pb.p);
         tn_buf b = tn_buf_new();
         tn_buf_cstr(&b, "path escapes the Fs root: ");
         tn_buf_str(&b, to);
         *msg = tn_buf_finish(&b);
         return TN_IO_DENIED;
     }
-    if (rename(full, tb.p + sizeof(tn_rc)) != 0) { int e = errno; free(tb.p); TN_FS_FAIL(e); }
-    free(tb.p);
-    free(pb.p);
+    if (rename(full, tb.p + sizeof(tn_rc)) != 0) { int e = errno; tn_free(tb.p); TN_FS_FAIL(e); }
+    tn_free(tb.p);
+    tn_free(pb.p);
     return TN_IO_OK;
 }
 static TN_UNUSED int tn_fs_remove(tn_Fs f, tn_Str p, tn_Str *msg) {
     TN_FS_PRE(true)
     if (remove(full) != 0) TN_FS_FAIL(errno);
-    free(pb.p);
+    tn_free(pb.p);
     return TN_IO_OK;
 }
 static TN_UNUSED int tn_fs_mkdir(tn_Fs f, tn_Str p, tn_Str *msg) {
@@ -1663,7 +1708,7 @@ static TN_UNUSED int tn_fs_mkdir(tn_Fs f, tn_Str p, tn_Str *msg) {
     }
     struct stat st;
     if (stat(full, &st) != 0 || !S_ISDIR(st.st_mode)) TN_FS_FAIL(EEXIST);
-    free(pb.p);
+    tn_free(pb.p);
     return TN_IO_OK;
 }
 static int tn_cmp_cstr(const void *a, const void *b) {
@@ -1681,18 +1726,18 @@ static TN_UNUSED int tn_fs_list(tn_Fs f, tn_Str p, tn_List_Str *res, tn_Str *msg
     }
     closedir(d);
     if (out) qsort(out->data, (size_t)out->len, sizeof(tn_Str), tn_cmp_cstr);
-    free(pb.p);
+    tn_free(pb.p);
     *res = out;
     return TN_IO_OK;
 }
 static TN_UNUSED tn_Fs tn_fs_within(tn_Fs f, tn_Str p) {
     tn_buf pb = tn_buf_new();
     if (!tn_fs_path(f, p, &pb)) {
-        free(pb.p);
+        tn_free(pb.p);
         return tn_fs_make(tn_str_lit("/nonexistent-denied", 19), true, false);
     }
     tn_Str root = tn_str_new(pb.p + sizeof(tn_rc), pb.len - 1);
-    free(pb.p);
+    tn_free(pb.p);
     return tn_fs_make(root, true, f->wr);
 }
 
@@ -1713,7 +1758,7 @@ static TN_UNUSED struct tn_sock_s *tn_sock_new(int fd) {
 #define TN_SOCK(T, NAME)                                                                     \
     static TN_UNUSED T T##_retain(T s) { s->rc++; return s; }                                \
     static TN_UNUSED void T##_release(T s) {                                                 \
-        if (s && --s->rc == 0) { close(s->fd); free(s->buf); free(s); }                      \
+        if (s && --s->rc == 0) { close(s->fd); tn_free(s->buf); tn_free(s); }                      \
     }                                                                                        \
     static TN_UNUSED void T##_show(tn_buf *b, T s, int mode) { (void)s; (void)mode; tn_buf_cstr(b, NAME); } \
     TN_INCOMPARABLE(T)
