@@ -80,6 +80,7 @@ def kit(lang, author):
             shutil.copy(os.path.join(ROOT, "target", "release", "tenon"), TENON)
         os.makedirs(os.path.join(d, "docs"))
         shutil.copy(os.path.join(ROOT, "docs", "reference.md"), os.path.join(d, "docs", "reference.md"))
+        shutil.copy(os.path.join(ROOT, "docs", "quickstart.md"), os.path.join(d, "docs", "quickstart.md"))
         shutil.copy(os.path.join(ROOT, "src", "prelude.tn"), os.path.join(d, "docs", "prelude.tn"))
         for m in glob.glob(os.path.join(ROOT, "std", "*.tn")):
             shutil.copy(m, os.path.join(d, "docs", "std-" + os.path.basename(m)))

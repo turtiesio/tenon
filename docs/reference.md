@@ -1,8 +1,9 @@
 # Tenon language reference
 
-This is the single source document for the language. It is also the only
-documentation given to authors in the usability study, so it must be enough to
-write real programs. Builtin APIs are listed in the prelude (`src/prelude.tn` in the repository; `docs/prelude.tn` in a study kit),
+This is the single source document for the language. Together with the one-page
+docs/quickstart.md (a translation table from Python and TypeScript) it is the
+only documentation given to authors in the usability study, so it must be
+enough to write real programs. Builtin APIs are listed in the prelude (`src/prelude.tn` in the repository; `docs/prelude.tn` in a study kit),
 which is ordinary Tenon source and the single source of the builtin API.
 
 Every claim here is checked by a test in `tests/` (run `./check`).

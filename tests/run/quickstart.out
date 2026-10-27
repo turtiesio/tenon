@@ -1,0 +1,8 @@
+no kiwi
+1. apple 5
+2. pear  4
+total 9
+[3: ["fig"], 4: ["kiwi", "plum", "date"]]
+exit: 1
+stderr: error: bad quantity 'x'
+stderr: error: unknown command 'fly'
