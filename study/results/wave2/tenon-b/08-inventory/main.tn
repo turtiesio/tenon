@@ -1,0 +1,242 @@
+// inv: inventory with expiring reservations, driven by a line protocol.
+
+enum HoldState { Active, Committed, Released, Expired }
+
+struct Hold { sku: Str, qty: Int, expires: Int, state: HoldState }
+
+enum Cmd {
+    Add(Str, Int),
+    Remove(Str, Int),
+    Reserve(Str, Int, Int),   // sku, qty, ttl
+    Commit(Int),
+    Release(Int),
+    Avail(Str),
+    Stats,
+}
+
+// All the service state. Per-SKU quantities live in two flat maps and holds hold only
+// scalars, so updating one entry never copies a large structure.
+struct Inv {
+    clock: Int,
+    on_hand: Map[Str, Int],
+    held: Map[Str, Int],
+    holds: Map[Int, Hold],
+    expiry: List[(Int, Int)],   // min-heap of (expires, id); may contain finished holds
+    next_id: Int,
+    active: Int,
+    committed: Int,
+    expired: Int,
+    released: Int,
+}
+
+// ---- min-heap on List[(Int, Int)] ----
+
+fn heap_push(h: mut List[(Int, Int)], x: (Int, Int)) {
+    h.push(x)
+    var i = h.len() - 1
+    while i > 0 {
+        let parent = (i - 1) / 2
+        if h[parent] <= h[i] { break }
+        let tmp = h[parent]
+        h[parent] = h[i]
+        h[i] = tmp
+        i = parent
+    }
+}
+
+fn heap_pop(h: mut List[(Int, Int)]) {
+    let last = h.pop().unwrap()
+    if h.is_empty() { return }
+    h[0] = last
+    var i = 0
+    while true {
+        let l = 2 * i + 1
+        let r = l + 1
+        var smallest = i
+        if l < h.len() and h[l] < h[smallest] { smallest = l }
+        if r < h.len() and h[r] < h[smallest] { smallest = r }
+        if smallest == i { break }
+        let tmp = h[smallest]
+        h[smallest] = h[i]
+        h[i] = tmp
+        i = smallest
+    }
+}
+
+// ---- parsing ----
+
+fn all_digits(s: Str) -> Bool {
+    for i in 0..s.len() {
+        if not s.byte(i).is_digit() { return false }
+    }
+    true
+}
+
+// A decimal number of 1..=max_digits digits.
+fn parse_num(s: Str, max_digits: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > max_digits or not all_digits(s) { return None }
+    s.to_int()
+}
+
+fn parse_positive(s: Str) -> Option[Int] {
+    let n = parse_num(s, 9)?
+    if n < 1 { None } else { Some(n) }
+}
+
+// [A-Z0-9-]{1,20}
+fn parse_sku(s: Str) -> Option[Str] {
+    if s.len() < 1 or s.len() > 20 { return None }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_upper() or c.is_digit() or c == '-') { return None }
+    }
+    Some(s)
+}
+
+fn parse_line(line: Str) -> Option[(Int, Cmd)] {
+    let t = line.split(" ")
+    if t.len() < 2 { return None }
+    let time = parse_num(t[0], 12)?
+    let cmd = match t[1] {
+        "ADD" => {
+            if t.len() != 4 { return None }
+            Add(parse_sku(t[2])?, parse_positive(t[3])?)
+        },
+        "REMOVE" => {
+            if t.len() != 4 { return None }
+            Remove(parse_sku(t[2])?, parse_positive(t[3])?)
+        },
+        "RESERVE" => {
+            if t.len() != 5 { return None }
+            Reserve(parse_sku(t[2])?, parse_positive(t[3])?, parse_positive(t[4])?)
+        },
+        "COMMIT" => {
+            if t.len() != 3 { return None }
+            Commit(parse_num(t[2], 9)?)
+        },
+        "RELEASE" => {
+            if t.len() != 3 { return None }
+            Release(parse_num(t[2], 9)?)
+        },
+        "AVAIL" => {
+            if t.len() != 3 { return None }
+            Avail(parse_sku(t[2])?)
+        },
+        "STATS" => {
+            if t.len() != 2 { return None }
+            Stats
+        },
+        _ => return None,
+    }
+    Some((time, cmd))
+}
+
+// ---- service ----
+
+fn available(inv: Inv, sku: Str) -> Int {
+    inv.on_hand.get_or(sku, 0) - inv.held.get_or(sku, 0)
+}
+
+// Moves the clock to t and expires every active hold whose expiry is <= t.
+fn advance(inv: mut Inv, t: Int) {
+    inv.clock = t
+    while not inv.expiry.is_empty() and inv.expiry[0].0 <= t {
+        let id = inv.expiry[0].1
+        heap_pop(mut inv.expiry)
+        match inv.holds[id].state {
+            Active => {
+                let sku = inv.holds[id].sku
+                inv.held[sku] -= inv.holds[id].qty
+                inv.holds[id].state = Expired
+                inv.active -= 1
+                inv.expired += 1
+            },
+            _ => {},
+        }
+    }
+}
+
+// Finishes an active hold as committed or released.
+fn finish(inv: mut Inv, id: Int, commit: Bool) -> Str {
+    let Some(h) = inv.holds.get(id) else { return "ERR no such hold" }
+    match h.state {
+        Expired => return "ERR expired",
+        Committed | Released => return "ERR no such hold",
+        Active => {},
+    }
+    inv.held[h.sku] -= h.qty
+    inv.active -= 1
+    if commit {
+        inv.on_hand[h.sku] -= h.qty
+        inv.holds[id].state = Committed
+        inv.committed += 1
+    } else {
+        inv.holds[id].state = Released
+        inv.released += 1
+    }
+    "OK"
+}
+
+fn execute(inv: mut Inv, cmd: Cmd) -> Str {
+    match cmd {
+        Add(sku, qty) => {
+            inv.on_hand[sku] = inv.on_hand.get_or(sku, 0) + qty
+            "OK {inv.on_hand[sku]}"
+        },
+        Remove(sku, qty) => {
+            let avail = available(inv, sku)
+            if qty > avail { return "ERR insufficient {avail}" }
+            inv.on_hand[sku] = inv.on_hand.get_or(sku, 0) - qty
+            "OK {inv.on_hand[sku]}"
+        },
+        Reserve(sku, qty, ttl) => {
+            let avail = available(inv, sku)
+            if qty > avail { return "ERR insufficient {avail}" }
+            let id = inv.next_id
+            inv.next_id += 1
+            let expires = inv.clock + ttl
+            inv.holds[id] = Hold { sku, qty, expires, state: Active }
+            inv.held[sku] = inv.held.get_or(sku, 0) + qty
+            heap_push(mut inv.expiry, (expires, id))
+            inv.active += 1
+            "HOLD {id}"
+        },
+        Commit(id) => finish(mut inv, id, true),
+        Release(id) => finish(mut inv, id, false),
+        Avail(sku) => {
+            let h = inv.on_hand.get_or(sku, 0)
+            let r = inv.held.get_or(sku, 0)
+            "{sku} on_hand={h} held={r} available={h - r}"
+        },
+        Stats => "holds={inv.active} committed={inv.committed} expired={inv.expired} released={inv.released}",
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: inv (takes no arguments)")
+        return 2
+    }
+    var inv = Inv {
+        clock: 0, on_hand: [:], held: [:], holds: [:], expiry: [], next_id: 1,
+        active: 0, committed: 0, expired: 0, released: 0,
+    }
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let reply = match parse_line(line) {
+            None => "ERR bad command",
+            Some((time, cmd)) => {
+                if time < inv.clock {
+                    "ERR time went backwards"
+                } else {
+                    advance(mut inv, time)
+                    execute(mut inv, cmd)
+                }
+            },
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

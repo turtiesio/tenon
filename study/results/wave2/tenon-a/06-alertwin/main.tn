@@ -1,0 +1,129 @@
+// alertwin: sliding-window error alerting per service.
+
+struct Config { window: Int, threshold: Int, cooldown: Int }
+
+struct Service {
+    // Timestamps of accepted ERROR events; those before `head` have left the window.
+    errors_at: List[Int],
+    head: Int,
+    errors: Int,
+    warns: Int,
+    alerts: Int,
+    peak: Int,
+    last_alert: Option[Int],
+}
+
+enum Level { Info, Warn, Error }
+
+fn all_match(s: Str, ok: fn(Int) -> Bool) -> Bool {
+    for i in 0..s.len() {
+        if not ok(s.byte(i)) { return false }
+    }
+    true
+}
+
+fn parse_value(s: Str, min: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > 9 or not all_match(s, Int.is_digit) { return None }
+    let v = s.to_int()?
+    if v < min { None } else { Some(v) }
+}
+
+fn parse_args(args: List[Str]) -> Result[Config, Str] {
+    var cfg = Config { window: 60, threshold: 3, cooldown: 300 }
+    var i = 0
+    while i < args.len() {
+        let opt = args[i]
+        if opt != "-w" and opt != "-t" and opt != "-c" { return Err("unexpected argument {opt}") }
+        let Some(raw) = args.get(i + 1) else { return Err("{opt} needs a value") }
+        let min = if opt == "-c" { 0 } else { 1 }
+        let Some(v) = parse_value(raw, min) else { return Err("bad value for {opt}: {raw}") }
+        match opt {
+            "-w" => cfg.window = v,
+            "-t" => cfg.threshold = v,
+            _ => cfg.cooldown = v,
+        }
+        i += 2
+    }
+    Ok(cfg)
+}
+
+fn is_service(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 32 and s.byte(0).is_lower()
+        and all_match(s, fn(c) => c.is_lower() or c.is_digit() or c == '-')
+}
+
+fn parse_event(line: Str) -> Option[(Int, Str, Level)] {
+    let parts = line.split(" ")
+    if parts.len() != 3 { return None }
+    let ts_s = parts[0]
+    if ts_s.is_empty() or ts_s.len() > 12 or not all_match(ts_s, Int.is_digit) { return None }
+    if not is_service(parts[1]) { return None }
+    let level = match parts[2] {
+        "INFO" => Info,
+        "WARN" => Warn,
+        "ERROR" => Error,
+        _ => return None,
+    }
+    Some((ts_s.to_int()?, parts[1], level))
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let cfg = match parse_args(sys.args) {
+        Ok(c) => c,
+        Err(msg) => {
+            con.eprintln("alertwin: {msg}")
+            return 2
+        },
+    }
+    var services: Map[Str, Service] = [:]
+    var skipped = 0
+    var last_ts = -1
+    for raw in con.read_all().lines() {
+        let line = if raw.ends_with("\r") { raw.slice(0, raw.len() - 1) } else { raw }
+        if all_match(line, fn(c) => c == ' ') { continue }
+        let Some((t, name, level)) = parse_event(line) else {
+            skipped += 1
+            continue
+        }
+        if t < last_ts {
+            skipped += 1
+            continue
+        }
+        last_ts = t
+        if not services.contains(name) {
+            services[name] = Service { errors_at: [], head: 0, errors: 0, warns: 0, alerts: 0, peak: 0, last_alert: None }
+        }
+        match level {
+            Info => {},
+            Warn => services[name].warns += 1,
+            Error => {
+                services[name].errors += 1
+                services[name].errors_at.push(t)
+                // Drop errors at or before t - window; timestamps never decrease.
+                while services[name].errors_at[services[name].head] <= t - cfg.window {
+                    services[name].head += 1
+                }
+                let count = services[name].errors_at.len() - services[name].head
+                services[name].peak = services[name].peak.max(count)
+                let cooling = match services[name].last_alert {
+                    Some(a) => t - a < cfg.cooldown,
+                    None => false,
+                }
+                if count >= cfg.threshold and not cooling {
+                    con.println("ALERT {t} {name} {count}")
+                    services[name].alerts += 1
+                    services[name].last_alert = Some(t)
+                }
+            },
+        }
+    }
+    var names = services.keys()
+    names.sort()
+    for name in names {
+        let s = services[name]
+        con.println("{name} errors={s.errors} warns={s.warns} alerts={s.alerts} peak={s.peak}")
+    }
+    con.println("skipped={skipped}")
+    0
+}

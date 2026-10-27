@@ -1,0 +1,260 @@
+// cfgcheck: validate an INI-style config against a small schema.
+
+enum Kind {
+    IntK(Bool, Int, Int),   // has range, min, max
+    StrK(Bool, Int),        // has maxlen, maxlen
+    BoolK,
+    EnumK(List[Str]),
+}
+
+struct Entry { name: Str, required: Bool, kind: Kind, arg: Str }
+
+fn is_blank_char(c: Int) -> Bool { c == ' ' or c == '\t' }
+
+// Trim spaces and tabs only.
+fn trim_st(s: Str) -> Str {
+    var a = 0
+    var b = s.len()
+    while a < b and is_blank_char(s.byte(a)) { a += 1 }
+    while b > a and is_blank_char(s.byte(b - 1)) { b -= 1 }
+    s.slice(a, b)
+}
+
+// Split on runs of spaces and tabs.
+fn tokens(s: Str) -> List[Str] {
+    var out: List[Str] = []
+    var start = -1
+    for i in 0..s.len() {
+        if is_blank_char(s.byte(i)) {
+            if start >= 0 {
+                out.push(s.slice(start, i))
+                start = -1
+            }
+        } else if start < 0 {
+            start = i
+        }
+    }
+    if start >= 0 { out.push(s.slice(start, s.len())) }
+    out
+}
+
+fn is_ident(s: Str) -> Bool {
+    if s.is_empty() { return false }
+    if not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_') { return false }
+    }
+    true
+}
+
+fn all_digits(s: Str) -> Bool {
+    for i in 0..s.len() {
+        if not s.byte(i).is_digit() { return false }
+    }
+    true
+}
+
+// -?[0-9]{1,18}
+fn is_int_text(s: Str) -> Bool {
+    let digits = if s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    digits.len() >= 1 and digits.len() <= 18 and all_digits(digits)
+}
+
+fn parse_kind(typ: Str, arg: Option[Str]) -> Option[Kind] {
+    match typ {
+        "int" => {
+            match arg {
+                None => Some(IntK(false, 0, 0)),
+                Some(a) => {
+                    let i = a.find("..")?
+                    let lo_s = a.slice(0, i)
+                    let hi_s = a.slice(i + 2, a.len())
+                    if not (is_int_text(lo_s) and is_int_text(hi_s)) { return None }
+                    let lo = lo_s.to_int()?
+                    let hi = hi_s.to_int()?
+                    if lo > hi { return None }
+                    Some(IntK(true, lo, hi))
+                }
+            }
+        },
+        "string" => {
+            match arg {
+                None => Some(StrK(false, 0)),
+                Some(a) => {
+                    if not a.starts_with("maxlen=") { return None }
+                    let n = a.slice(7, a.len())
+                    if n.len() < 1 or n.len() > 7 or not all_digits(n) { return None }
+                    Some(StrK(true, n.to_int()?))
+                }
+            }
+        },
+        "bool" => {
+            match arg {
+                None => Some(BoolK),
+                Some(_) => None,
+            }
+        },
+        "enum" => {
+            let a = arg?
+            let vals = a.split(",")
+            if vals.any(fn(v) => v.is_empty()) { return None }
+            Some(EnumK(vals))
+        },
+        _ => None,
+    }
+}
+
+fn parse_entry(line: Str) -> Option[Entry] {
+    let toks = tokens(line)
+    if toks.len() < 3 or toks.len() > 4 { return None }
+    let parts = toks[0].split(".")
+    if parts.len() != 2 or not is_ident(parts[0]) or not is_ident(parts[1]) { return None }
+    let required = match toks[2] {
+        "required" => true,
+        "optional" => false,
+        _ => return None,
+    }
+    let arg = toks.get(3)
+    let kind = parse_kind(toks[1], arg)?
+    Some(Entry { name: toks[0], required, kind, arg: arg.unwrap_or("") })
+}
+
+// Message (without the "L: KEY: " prefix) if the value is invalid.
+fn check_value(e: Entry, v: Str) -> Option[Str] {
+    match e.kind {
+        IntK(has, lo, hi) => {
+            if not is_int_text(v) { return Some("not an integer") }
+            let n = v.to_int().unwrap()
+            if has and (n < lo or n > hi) { Some("out of range " + e.arg) } else { None }
+        },
+        StrK(has, maxlen) => {
+            if has and v.len() > maxlen { Some("longer than " + e.arg.slice(7, e.arg.len())) } else { None }
+        },
+        BoolK => {
+            if v == "true" or v == "false" { None } else { Some("not a boolean") }
+        },
+        EnumK(vals) => {
+            if vals.contains(v) { None } else { Some("not one of " + e.arg) }
+        },
+    }
+}
+
+fn split_lines(text: Str) -> List[Str] {
+    text.lines().map(fn(l) => if l.ends_with("\r") { l.slice(0, l.len() - 1) } else { l })
+}
+
+fn main(sys: Sys) -> Int {
+    var strict = false
+    var quiet = false
+    var files: List[Str] = []
+    for a in sys.args {
+        if a.starts_with("-") {
+            match a {
+                "--strict" => strict = true,
+                "-q" => quiet = true,
+                _ => {
+                    sys.console.eprintln("cfgcheck: unknown option {a}")
+                    return 2
+                },
+            }
+        } else {
+            files.push(a)
+        }
+    }
+    if files.len() != 2 {
+        sys.console.eprintln("usage: cfgcheck [--strict] [-q] SCHEMA CONFIG")
+        return 2
+    }
+
+    let schema_text = match sys.fs.read(files[0]) {
+        Ok(t) => t,
+        Err(_) => {
+            sys.console.eprintln("cfgcheck: cannot read {files[0]}")
+            return 2
+        },
+    }
+    var entries: List[Entry] = []
+    var by_name: Map[Str, Entry] = [:]
+    for l in split_lines(schema_text) {
+        let t = trim_st(l)
+        if t.is_empty() or t.starts_with("#") { continue }
+        let Some(e) = parse_entry(t) else {
+            sys.console.eprintln("cfgcheck: invalid schema line: {l}")
+            return 3
+        }
+        if by_name.contains(e.name) {
+            sys.console.eprintln("cfgcheck: duplicate schema entry {e.name}")
+            return 3
+        }
+        by_name[e.name] = e
+        entries.push(e)
+    }
+
+    let config_text = match sys.fs.read(files[1]) {
+        Ok(t) => t,
+        Err(_) => {
+            sys.console.eprintln("cfgcheck: cannot read {files[1]}")
+            return 2
+        },
+    }
+
+    var diags: List[Str] = []
+    var seen: Set[Str] = Set.new()
+    var section = ""
+    let lines = split_lines(config_text)
+    for i in 0..lines.len() {
+        let n = i + 1
+        let t = trim_st(lines[i])
+        if t.is_empty() or t.starts_with("#") or t.starts_with(";") { continue }
+        if t.starts_with("[") and t.ends_with("]") and is_ident(t.slice(1, t.len() - 1)) {
+            section = t.slice(1, t.len() - 1)
+            continue
+        }
+        let Some(eq) = t.find("=") else {
+            diags.push("{n}: syntax error")
+            continue
+        }
+        let key = trim_st(t.slice(0, eq))
+        let value = trim_st(t.slice(eq + 1, t.len()))
+        if not is_ident(key) {
+            diags.push("{n}: syntax error")
+            continue
+        }
+        if section.is_empty() {
+            diags.push("{n}: key outside section")
+            continue
+        }
+        let full = section + "." + key
+        if not seen.insert(full) {
+            diags.push("{n}: duplicate key {full}")
+            continue
+        }
+        match by_name.get(full) {
+            None => {
+                if strict { diags.push("{n}: unknown key {full}") }
+            },
+            Some(e) => {
+                match check_value(e, value) {
+                    Some(msg) => diags.push("{n}: {full}: {msg}"),
+                    None => {},
+                }
+            },
+        }
+    }
+    for e in entries {
+        if e.required and not seen.contains(e.name) {
+            diags.push("missing: {e.name}")
+        }
+    }
+
+    if not quiet {
+        for d in diags { sys.console.println(d) }
+        if diags.is_empty() {
+            sys.console.println("OK")
+        } else {
+            sys.console.println("errors: {diags.len()}")
+        }
+    }
+    if diags.is_empty() { 0 } else { 1 }
+}

@@ -1,0 +1,182 @@
+// gradebook: join a student roster with assignment scores.
+
+struct Student { id: Str, name: Str, section: Str }
+
+struct Row { student: Student, points: Int, max: Int }
+
+fn file_lines(text: Str) -> List[Str] {
+    text.lines().map(fn(l) => if l.ends_with("\r") { l.slice(0, l.len() - 1) } else { l })
+}
+
+fn matches_class(s: Str, min: Int, max: Int, ok: fn(Int) -> Bool) -> Bool {
+    if s.len() < min or s.len() > max { return false }
+    for i in 0..s.len() {
+        if not ok(s.byte(i)) { return false }
+    }
+    true
+}
+
+fn is_id(s: Str) -> Bool { matches_class(s, 1, 16, Int.is_alnum) }
+
+fn is_assignment(s: Str) -> Bool {
+    matches_class(s, 1, 32, fn(c) => c.is_alnum() or c == '_' or c == '-')
+}
+
+fn parse_points(s: Str) -> Option[Int] {
+    if not matches_class(s, 1, 6, Int.is_digit) { return None }
+    s.to_int()
+}
+
+fn parse_student(line: Str) -> Option[Student] {
+    let f = line.split(",")
+    if f.len() != 3 { return None }
+    if not is_id(f[0]) or f[1].is_empty() or f[1].len() > 40 { return None }
+    if f[2].len() != 1 or not f[2].byte(0).is_upper() { return None }
+    Some(Student { id: f[0], name: f[1], section: f[2] })
+}
+
+fn parse_score(line: Str) -> Option[(Str, Str, Int, Int)] {
+    let f = line.split(",")
+    if f.len() != 4 or not is_id(f[0]) or not is_assignment(f[1]) { return None }
+    let points = parse_points(f[2])?
+    let max = parse_points(f[3])?
+    if max < 1 or points > max { return None }
+    Some((f[0], f[1], points, max))
+}
+
+// The data lines of a file whose first line must be `header`.
+fn read_table(fs: Fs, path: Str, header: Str) -> Result[List[Str], Str] {
+    let text = fs.read(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    let lines = file_lines(text)
+    if lines.is_empty() or lines[0] != header { return Err("{path}: bad header") }
+    Ok(lines.slice(1, lines.len()).filter(fn(l) => not l.is_empty()))
+}
+
+// Does a come before b in the report?
+fn before(a: Row, b: Row) -> Bool {
+    if a.student.section != b.student.section { return a.student.section < b.student.section }
+    if (a.max == 0) != (b.max == 0) { return b.max == 0 }
+    if a.max > 0 {
+        let lhs = a.points * b.max
+        let rhs = b.points * a.max
+        if lhs != rhs { return lhs > rhs }
+    }
+    a.student.id < b.student.id
+}
+
+// Stable merge sort with a "comes before" predicate.
+fn sort_rows(rows: List[Row]) -> List[Row] {
+    if rows.len() <= 1 { return rows }
+    let mid = rows.len() / 2
+    let left = sort_rows(rows.slice(0, mid))
+    let right = sort_rows(rows.slice(mid, rows.len()))
+    var out: List[Row] = []
+    var i = 0
+    var j = 0
+    while i < left.len() or j < right.len() {
+        if j == right.len() or (i < left.len() and not before(right[j], left[i])) {
+            out.push(left[i])
+            i += 1
+        } else {
+            out.push(right[j])
+            j += 1
+        }
+    }
+    out
+}
+
+fn letter(p: Int, m: Int) -> Str {
+    if 100 * p >= 90 * m { "A" } else if 100 * p >= 80 * m { "B" } else if 100 * p >= 70 * m { "C" } else if 100 * p >= 60 * m { "D" } else { "F" }
+}
+
+// 100 * p / m rounded half up to one decimal.
+fn percent(p: Int, m: Int) -> Str {
+    let tenths = (2000 * p + m) / (2 * m)
+    "{tenths / 10}.{tenths % 10}"
+}
+
+fn run(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    let student_lines = read_table(sys.fs, sys.args[0], "id,name,section")?
+    let score_lines = read_table(sys.fs, sys.args[1], "id,assignment,points,max")?
+
+    var students: Map[Str, Student] = [:]
+    var bad_students = 0
+    for line in student_lines {
+        let Some(s) = parse_student(line) else {
+            bad_students += 1
+            continue
+        }
+        if students.contains(s.id) {
+            bad_students += 1
+            continue
+        }
+        students[s.id] = s
+    }
+
+    // Per student: assignment -> (points, max); later lines replace earlier ones.
+    var graded: Map[Str, Map[Str, (Int, Int)]] = [:]
+    var bad_scores = 0
+    var orphans = 0
+    for line in score_lines {
+        let Some((id, assignment, points, max)) = parse_score(line) else {
+            bad_scores += 1
+            continue
+        }
+        if not students.contains(id) {
+            orphans += 1
+            continue
+        }
+        if not graded.contains(id) { graded[id] = [:] }
+        graded[id][assignment] = (points, max)
+    }
+
+    var rows: List[Row] = []
+    for (id, s) in students {
+        var p = 0
+        var m = 0
+        for (_, score) in graded.get_or(id, [:]) {
+            p += score.0
+            m += score.1
+        }
+        rows.push(Row { student: s, points: p, max: m })
+    }
+    let sorted = sort_rows(rows)
+
+    var out: List[Str] = []
+    // section -> counts of A, B, C, D, F, none
+    var counts: Map[Str, List[Int]] = [:]
+    let letters = ["A", "B", "C", "D", "F"]
+    for r in sorted {
+        let s = r.student
+        if not counts.contains(s.section) { counts[s.section] = [0, 0, 0, 0, 0, 0] }
+        if r.max == 0 {
+            out.push("{s.section} {s.id} {s.name} 0/0 - -")
+            counts[s.section][5] += 1
+        } else {
+            let l = letter(r.points, r.max)
+            out.push("{s.section} {s.id} {s.name} {r.points}/{r.max} {percent(r.points, r.max)}% {l}")
+            counts[s.section][letters.index_of(l).unwrap()] += 1
+        }
+    }
+    for (section, c) in counts {
+        out.push("section {section}: students={c.sum()} A={c[0]} B={c[1]} C={c[2]} D={c[3]} F={c[4]} none={c[5]}")
+    }
+    out.push("bad_students={bad_students} bad_scores={bad_scores} orphans={orphans}")
+    for l in out { con.println(l) }
+    Ok(())
+}
+
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 2 {
+        sys.console.eprintln("usage: gradebook STUDENTS SCORES")
+        return 2
+    }
+    match run(sys) {
+        Ok(_) => 0,
+        Err(msg) => {
+            sys.console.eprintln("gradebook: {msg}")
+            1
+        },
+    }
+}

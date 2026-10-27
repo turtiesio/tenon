@@ -1,0 +1,126 @@
+struct Student { id: Str, name: Str, section: Str, points: Int, maximum: Int }
+fn clean(s: Str) -> Str { if s.ends_with("\r") { s.slice(0, s.len() - 1) } else { s } }
+fn identifier(s: Str, limit: Int, assignment: Bool) -> Bool {
+    if s.len() < 1 or s.len() > limit { return false }
+    for i in 0..s.len() { let c = s.byte(i); if not c.is_alnum() and not (assignment and (c == 95 or c == 45)) { return false } }
+    true
+}
+fn numeric(s: Str) -> Option[Int] {
+    if s.len() < 1 or s.len() > 6 { return None }
+    for i in 0..s.len() { if not s.byte(i).is_digit() { return None } }
+    s.to_int()
+}
+// Compare nonnegative fractions without overflowing a cross product.
+fn ratio_compare(p: Int, m: Int, q: Int, n: Int) -> Int {
+    var a = p
+    var b = m
+    var c = q
+    var d = n
+    var sign = 1
+    while true {
+        let x = a / b
+        let y = c / d
+        if x != y { return if x < y { -sign } else { sign } }
+        let r = a % b
+        let s = c % d
+        if r == 0 or s == 0 {
+            if r == s { return 0 }
+            return if r == 0 { -sign } else { sign }
+        }
+        a = b
+        b = r
+        c = d
+        d = s
+        sign = -sign
+    }
+}
+fn before(a: Student, b: Student) -> Bool {
+    if a.section != b.section { return a.section < b.section }
+    if a.maximum == 0 or b.maximum == 0 {
+        if a.maximum != b.maximum { return a.maximum != 0 }
+    } else {
+        let cmp = ratio_compare(a.points, a.maximum, b.points, b.maximum)
+        if cmp != 0 { return cmp > 0 }
+    }
+    a.id < b.id
+}
+fn order(xs: List[Student]) -> List[Student] {
+    if xs.len() < 2 { return xs }
+    let mid = xs.len() / 2
+    let left = order(xs.slice(0, mid))
+    let right = order(xs.slice(mid, xs.len()))
+    var out: List[Student] = []
+    var i = 0
+    var j = 0
+    while i < left.len() or j < right.len() {
+        if j == right.len() or (i < left.len() and before(left[i], right[j])) { out.push(left[i]); i += 1 } else { out.push(right[j]); j += 1 }
+    }
+    out
+}
+fn letter(s: Student) -> Str {
+    if s.maximum == 0 { return "none" }
+    if 100 * s.points >= 90 * s.maximum { "A" } else if 100 * s.points >= 80 * s.maximum { "B" } else if 100 * s.points >= 70 * s.maximum { "C" } else if 100 * s.points >= 60 * s.maximum { "D" } else { "F" }
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 2 { return 2 }
+    let Ok(student_text) = sys.fs.read(sys.args[0]) else { return 1 }
+    let Ok(score_text) = sys.fs.read(sys.args[1]) else { return 1 }
+    let student_lines = student_text.lines().map(clean)
+    let score_lines = score_text.lines().map(clean)
+    if student_lines.first() != Some("id,name,section") or score_lines.first() != Some("id,assignment,points,max") { return 1 }
+    var students: Map[Str, Student] = [:]
+    var bad_students = 0
+    var bad_scores = 0
+    var orphans = 0
+    for i in 1..student_lines.len() {
+        let line = student_lines[i]
+        if line.is_empty() { continue }
+        let fields = line.split(",")
+        if fields.len() != 3 { bad_students += 1; continue }
+        if not identifier(fields[0], 16, false) or fields[1].len() < 1 or fields[1].len() > 40 or fields[2].len() != 1 { bad_students += 1; continue }
+        if not fields[2].byte(0).is_upper() or students.contains(fields[0]) { bad_students += 1; continue }
+        students[fields[0]] = Student { id: fields[0], name: fields[1], section: fields[2], points: 0, maximum: 0 }
+    }
+    var assignments: Map[(Str, Str), (Int, Int)] = [:]
+    for i in 1..score_lines.len() {
+        let line = score_lines[i]
+        if line.is_empty() { continue }
+        let fields = line.split(",")
+        if fields.len() != 4 { bad_scores += 1; continue }
+        if not identifier(fields[0], 16, false) or not identifier(fields[1], 32, true) { bad_scores += 1; continue }
+        let Some(points) = numeric(fields[2]) else { bad_scores += 1; continue }
+        let Some(maximum) = numeric(fields[3]) else { bad_scores += 1; continue }
+        if maximum < 1 or points > maximum { bad_scores += 1; continue }
+        if not students.contains(fields[0]) { orphans += 1; continue }
+        assignments[(fields[0], fields[1])] = (points, maximum)
+    }
+    for (key, value) in assignments {
+        students[key.0].points += value.0
+        students[key.0].maximum += value.1
+    }
+    let sorted = order(students.values())
+    var sections: Map[Str, Map[Str, Int]] = [:]
+    for student in sorted {
+        let grade = letter(student)
+        if not sections.contains(student.section) { sections[student.section] = ["students": 0, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0, "none": 0] }
+        sections[student.section]["students"] += 1
+        sections[student.section][grade] += 1
+        if student.maximum == 0 { sys.console.println("{student.section} {student.id} {student.name} 0/0 - -") } else {
+            let scaled = student.points * 1000
+            let tenths = scaled / student.maximum + (if (scaled % student.maximum) * 2 >= student.maximum { 1 } else { 0 })
+            sys.console.println("{student.section} {student.id} {student.name} {student.points}/{student.maximum} {tenths / 10}.{tenths % 10}% {grade}")
+        }
+    }
+    for (section, counts) in sections {
+        let total = counts["students"]
+        let a = counts["A"]
+        let b = counts["B"]
+        let c = counts["C"]
+        let d = counts["D"]
+        let f = counts["F"]
+        let none = counts["none"]
+        sys.console.println("section {section}: students={total} A={a} B={b} C={c} D={d} F={f} none={none}")
+    }
+    sys.console.println("bad_students={bad_students} bad_scores={bad_scores} orphans={orphans}")
+    0
+}

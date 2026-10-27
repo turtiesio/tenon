@@ -1,0 +1,133 @@
+// rl: deterministic token-bucket rate limiter driven by a line protocol.
+
+enum Command {
+    NewPolicy(Str, Int, Int),          // policy, capacity, interval
+    Hit(Int, Str, Str, Int),           // time, policy, client, cost
+    Peek(Int, Str, Str),               // time, policy, client
+    Reset(Str, Str),                   // policy, client
+    Stats(Str),                        // policy
+}
+
+struct Bucket { tokens: Int, anchor: Int }
+
+struct Policy { capacity: Int, interval: Int, allowed: Int, denied: Int, buckets: Map[Str, Bucket] }
+
+struct Limiter { clock: Int, policies: Map[Str, Policy] }
+
+fn all_match(s: Str, ok: fn(Int) -> Bool) -> Bool {
+    for i in 0..s.len() {
+        if not ok(s.byte(i)) { return false }
+    }
+    true
+}
+
+fn name(s: Str) -> Option[Str] {
+    let ok = s.len() >= 1 and s.len() <= 32
+        and all_match(s, fn(c) => c.is_lower() or c.is_digit() or c == '_' or c == '.' or c == '-')
+    if ok { Some(s) } else { None }
+}
+
+fn number(s: Str, max_digits: Int, min: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > max_digits or not all_match(s, Int.is_digit) { return None }
+    let v = s.to_int()?
+    if v < min { None } else { Some(v) }
+}
+
+fn time(s: Str) -> Option[Int] { number(s, 15, 0) }
+fn positive(s: Str) -> Option[Int] { number(s, 9, 1) }
+
+fn parse(line: Str) -> Option[Command] {
+    let t = line.split(" ")
+    match (t[0], t.len()) {
+        ("POLICY", 4) => Some(NewPolicy(name(t[1])?, positive(t[2])?, positive(t[3])?)),
+        ("HIT", 4) => Some(Hit(time(t[1])?, name(t[2])?, name(t[3])?, 1)),
+        ("HIT", 5) => Some(Hit(time(t[1])?, name(t[2])?, name(t[3])?, positive(t[4])?)),
+        ("PEEK", 4) => Some(Peek(time(t[1])?, name(t[2])?, name(t[3])?)),
+        ("RESET", 3) => Some(Reset(name(t[1])?, name(t[2])?)),
+        ("STATS", 2) => Some(Stats(name(t[1])?)),
+        _ => None,
+    }
+}
+
+// The client's bucket at time `now` (created full if missing), after refill.
+fn refilled(capacity: Int, interval: Int, existing: Option[Bucket], now: Int) -> Bucket {
+    let Some(b) = existing else { return Bucket { tokens: capacity, anchor: now } }
+    if b.tokens == capacity { return Bucket { tokens: b.tokens, anchor: now } }
+    let k = (now - b.anchor) / interval
+    let tokens = capacity.min(b.tokens + k)
+    if tokens == capacity {
+        Bucket { tokens, anchor: now }
+    } else {
+        Bucket { tokens, anchor: b.anchor + k * interval }
+    }
+}
+
+// Capacity and interval of a policy, without copying its buckets.
+fn Limiter.shape(self, pname: Str) -> Option[(Int, Int)] {
+    if not self.policies.contains(pname) { return None }
+    Some((self.policies[pname].capacity, self.policies[pname].interval))
+}
+
+fn Limiter.execute(mut self, cmd: Command) -> Str {
+    match cmd {
+        NewPolicy(pname, capacity, interval) => {
+            if self.policies.contains(pname) { return "ERR policy exists" }
+            self.policies[pname] = Policy { capacity, interval, allowed: 0, denied: 0, buckets: [:] }
+            "OK"
+        },
+        Hit(now, pname, client, cost) => {
+            if now < self.clock { return "ERR time went backwards" }
+            self.clock = now
+            let Some((capacity, interval)) = self.shape(pname) else { return "ERR no such policy" }
+            if cost > capacity { return "ERR cost exceeds capacity" }
+            var b = refilled(capacity, interval, self.policies[pname].buckets.get(client), now)
+            let reply = if b.tokens >= cost {
+                b.tokens -= cost
+                self.policies[pname].allowed += 1
+                "ALLOW {b.tokens}"
+            } else {
+                self.policies[pname].denied += 1
+                "DENY {b.anchor + (cost - b.tokens) * interval - now}"
+            }
+            self.policies[pname].buckets[client] = b
+            reply
+        },
+        Peek(now, pname, client) => {
+            if now < self.clock { return "ERR time went backwards" }
+            self.clock = now
+            let Some((capacity, interval)) = self.shape(pname) else { return "ERR no such policy" }
+            let b = refilled(capacity, interval, self.policies[pname].buckets.get(client), now)
+            self.policies[pname].buckets[client] = b
+            "TOKENS {b.tokens}"
+        },
+        Reset(pname, client) => {
+            if not self.policies.contains(pname) { return "ERR no such policy" }
+            if not self.policies[pname].buckets.contains(client) { return "ERR no such client" }
+            let _ = self.policies[pname].buckets.remove(client)
+            "OK"
+        },
+        Stats(pname) => {
+            let Some(p) = self.policies.get(pname) else { return "ERR no such policy" }
+            "allowed={p.allowed} denied={p.denied} clients={p.buckets.len()}"
+        },
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: rl (no arguments)")
+        return 2
+    }
+    var limiter = Limiter { clock: 0, policies: [:] }
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let reply = match parse(line) {
+            Some(cmd) => limiter.execute(cmd),
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

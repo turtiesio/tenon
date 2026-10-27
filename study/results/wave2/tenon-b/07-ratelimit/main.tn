@@ -1,0 +1,166 @@
+// rl: token-bucket rate limiter driven by a line protocol.
+
+struct Bucket { tokens: Int, anchor: Int }
+
+struct Policy {
+    capacity: Int,
+    interval: Int,
+    allowed: Int,
+    denied: Int,
+    buckets: Map[Str, Bucket],
+}
+
+enum Cmd {
+    NewPolicy(Str, Int, Int),
+    Hit(Int, Str, Str, Int),   // time, policy, client, cost
+    Peek(Int, Str, Str),
+    Reset(Str, Str),
+    Stats(Str),
+}
+
+fn valid_name(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 32 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_' or c == '.' or c == '-') { return false }
+    }
+    true
+}
+
+// A decimal number of 1..=max_digits digits.
+fn parse_num(s: Str, max_digits: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > max_digits { return None }
+    for i in 0..s.len() {
+        if not s.byte(i).is_digit() { return None }
+    }
+    s.to_int()
+}
+
+// A number of up to 9 digits that is at least 1.
+fn parse_positive(s: Str) -> Option[Int] {
+    let n = parse_num(s, 9)?
+    if n < 1 { None } else { Some(n) }
+}
+
+fn parse_name(s: Str) -> Option[Str] { if valid_name(s) { Some(s) } else { None } }
+
+fn parse_cmd(line: Str) -> Option[Cmd] {
+    let t = line.split(" ")
+    match t[0] {
+        "POLICY" => {
+            if t.len() != 4 { return None }
+            Some(NewPolicy(parse_name(t[1])?, parse_positive(t[2])?, parse_positive(t[3])?))
+        },
+        "HIT" => {
+            if t.len() != 4 and t.len() != 5 { return None }
+            let cost = if t.len() == 5 { parse_positive(t[4])? } else { 1 }
+            Some(Hit(parse_num(t[1], 15)?, parse_name(t[2])?, parse_name(t[3])?, cost))
+        },
+        "PEEK" => {
+            if t.len() != 4 { return None }
+            Some(Peek(parse_num(t[1], 15)?, parse_name(t[2])?, parse_name(t[3])?))
+        },
+        "RESET" => {
+            if t.len() != 3 { return None }
+            Some(Reset(parse_name(t[1])?, parse_name(t[2])?))
+        },
+        "STATS" => {
+            if t.len() != 2 { return None }
+            Some(Stats(parse_name(t[1])?))
+        },
+        _ => None,
+    }
+}
+
+// Applies the refill rule at time `now`.
+fn refill(b: Bucket, capacity: Int, interval: Int, now: Int) -> Bucket {
+    if b.tokens == capacity { return Bucket { tokens: b.tokens, anchor: now } }
+    let k = (now - b.anchor) / interval
+    let tokens = (b.tokens + k).min(capacity)
+    if tokens == capacity {
+        Bucket { tokens, anchor: now }
+    } else {
+        Bucket { tokens, anchor: b.anchor + k * interval }
+    }
+}
+
+// The client's bucket at `now`, created full if it does not exist yet, after refilling.
+fn bucket_at(existing: Option[Bucket], capacity: Int, interval: Int, now: Int) -> Bucket {
+    let b = match existing {
+        Some(b) => b,
+        None => Bucket { tokens: capacity, anchor: now },
+    }
+    refill(b, capacity, interval, now)
+}
+
+// Note: policies are read through `policies[name].field` rather than by binding the whole
+// Policy to a local; a live copy of it would share the bucket map and make every write copy it.
+fn handle(cmd: Cmd, policies: mut Map[Str, Policy], clock: mut Int) -> Str {
+    match cmd {
+        NewPolicy(name, capacity, interval) => {
+            if policies.contains(name) { return "ERR policy exists" }
+            policies[name] = Policy { capacity, interval, allowed: 0, denied: 0, buckets: [:] }
+            "OK"
+        },
+        Hit(time, name, client, cost) => {
+            if time < clock { return "ERR time went backwards" }
+            clock = time
+            if not policies.contains(name) { return "ERR no such policy" }
+            let capacity = policies[name].capacity
+            let interval = policies[name].interval
+            if cost > capacity { return "ERR cost exceeds capacity" }
+            var b = bucket_at(policies[name].buckets.get(client), capacity, interval, time)
+            if b.tokens >= cost {
+                b.tokens -= cost
+                policies[name].buckets[client] = b
+                policies[name].allowed += 1
+                "ALLOW {b.tokens}"
+            } else {
+                let retry = b.anchor + (cost - b.tokens) * interval - time
+                policies[name].buckets[client] = b
+                policies[name].denied += 1
+                "DENY {retry}"
+            }
+        },
+        Peek(time, name, client) => {
+            if time < clock { return "ERR time went backwards" }
+            clock = time
+            if not policies.contains(name) { return "ERR no such policy" }
+            let capacity = policies[name].capacity
+            let interval = policies[name].interval
+            let b = bucket_at(policies[name].buckets.get(client), capacity, interval, time)
+            policies[name].buckets[client] = b
+            "TOKENS {b.tokens}"
+        },
+        Reset(name, client) => {
+            if not policies.contains(name) { return "ERR no such policy" }
+            if not policies[name].buckets.contains(client) { return "ERR no such client" }
+            let _ = policies[name].buckets.remove(client)
+            "OK"
+        },
+        Stats(name) => {
+            if not policies.contains(name) { return "ERR no such policy" }
+            "allowed={policies[name].allowed} denied={policies[name].denied} clients={policies[name].buckets.len()}"
+        },
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: rl (takes no arguments)")
+        return 2
+    }
+    var policies: Map[Str, Policy] = [:]
+    var clock = 0
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let reply = match parse_cmd(line) {
+            None => "ERR bad command",
+            Some(cmd) => handle(cmd, mut policies, mut clock),
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

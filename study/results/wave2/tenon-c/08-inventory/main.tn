@@ -1,0 +1,128 @@
+enum Status { Active, Committed, Expired, Released }
+struct Stock { on_hand: Int, held: Int }
+struct Hold { sku: Str, qty: Int, status: Status }
+struct Command { time: Int, kind: Str, sku: Str, qty: Int, ttl: Int, id: Int }
+struct State { clock: Int, next_id: Int, stocks: Map[Str, Stock], holds: Map[Int, Hold], expiry: List[(Int, Int)], active: Int, committed: Int, expired: Int, released: Int }
+fn number(s: Str, limit: Int, positive: Bool) -> Option[Int] {
+    if s.len() < 1 or s.len() > limit { return None }
+    for i in 0..s.len() { if not s.byte(i).is_digit() { return None } }
+    let value = s.to_int()?
+    if positive and value == 0 { return None }
+    Some(value)
+}
+fn sku(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 20 { return false }
+    for i in 0..s.len() { let c = s.byte(i); if not (c.is_upper() or c.is_digit() or c == 45) { return false } }
+    true
+}
+fn parse(line: Str) -> Option[Command] {
+    let parts = line.split(" ")
+    if parts.len() < 2 or parts.any(fn(s) => s.is_empty()) { return None }
+    let time = number(parts[0], 12, false)?
+    let kind = parts[1]
+    var command = Command { time, kind, sku: "", qty: 0, ttl: 0, id: 0 }
+    match kind {
+        "ADD" | "REMOVE" | "RESERVE" => {
+            let count = if kind == "RESERVE" { 5 } else { 4 }
+            if parts.len() != count or not sku(parts[2]) { return None }
+            command.sku = parts[2]
+            command.qty = number(parts[3], 9, true)?
+            if kind == "RESERVE" { command.ttl = number(parts[4], 9, true)? }
+        },
+        "COMMIT" | "RELEASE" => { if parts.len() != 3 { return None }; command.id = number(parts[2], 9, false)? },
+        "AVAIL" => { if parts.len() != 3 or not sku(parts[2]) { return None }; command.sku = parts[2] },
+        "STATS" => { if parts.len() != 2 { return None } },
+        _ => return None,
+    }
+    Some(command)
+}
+fn heap_push(heap: mut List[(Int, Int)], entry: (Int, Int)) {
+    heap.push(entry)
+    var i = heap.len() - 1
+    while i > 0 {
+        let parent = (i - 1) / 2
+        if heap[parent] <= heap[i] { break }
+        let temp = heap[parent]
+        heap[parent] = heap[i]
+        heap[i] = temp
+        i = parent
+    }
+}
+fn heap_pop(heap: mut List[(Int, Int)]) -> (Int, Int) {
+    let first = heap[0]
+    let last = heap.pop().unwrap()
+    if not heap.is_empty() {
+        heap[0] = last
+        var i = 0
+        while i * 2 + 1 < heap.len() {
+            var child = i * 2 + 1
+            if child + 1 < heap.len() and heap[child + 1] < heap[child] { child += 1 }
+            if heap[i] <= heap[child] { break }
+            let temp = heap[i]
+            heap[i] = heap[child]
+            heap[child] = temp
+            i = child
+        }
+    }
+    first
+}
+fn expire(state: mut State, time: Int) {
+    while not state.expiry.is_empty() and state.expiry[0].0 <= time {
+        let entry = heap_pop(mut state.expiry)
+        let hold = state.holds[entry.1]
+        if hold.status == Active {
+            state.holds[entry.1].status = Expired
+            state.stocks[hold.sku].held -= hold.qty
+            state.active -= 1
+            state.expired += 1
+        }
+    }
+}
+fn execute(command: Command, state: mut State) -> Str {
+    if command.time < state.clock { return "ERR time went backwards" }
+    state.clock = command.time
+    expire(mut state, command.time)
+    let kind = command.kind
+    let name = command.sku
+    if ["ADD", "REMOVE", "RESERVE", "AVAIL"].contains(kind) {
+        if not state.stocks.contains(name) { state.stocks[name] = Stock { on_hand: 0, held: 0 } }
+        let available = state.stocks[name].on_hand - state.stocks[name].held
+        if kind == "AVAIL" { let stock = state.stocks[name]; return "{name} on_hand={stock.on_hand} held={stock.held} available={available}" }
+        if kind == "ADD" { state.stocks[name].on_hand += command.qty; let amount = state.stocks[name].on_hand; return "OK {amount}" }
+        if command.qty > available { return "ERR insufficient {available}" }
+        if kind == "REMOVE" { state.stocks[name].on_hand -= command.qty; let amount = state.stocks[name].on_hand; return "OK {amount}" }
+        let id = state.next_id
+        state.next_id += 1
+        state.holds[id] = Hold { sku: name, qty: command.qty, status: Active }
+        state.stocks[name].held += command.qty
+        state.active += 1
+        heap_push(mut state.expiry, (command.time + command.ttl, id))
+        return "HOLD {id}"
+    }
+    if kind == "STATS" { return "holds={state.active} committed={state.committed} expired={state.expired} released={state.released}" }
+    let Some(hold) = state.holds.get(command.id) else { return "ERR no such hold" }
+    if hold.status == Expired { return "ERR expired" }
+    if hold.status != Active { return "ERR no such hold" }
+    state.stocks[hold.sku].held -= hold.qty
+    state.active -= 1
+    if kind == "COMMIT" {
+        state.stocks[hold.sku].on_hand -= hold.qty
+        state.holds[command.id].status = Committed
+        state.committed += 1
+    } else {
+        state.holds[command.id].status = Released
+        state.released += 1
+    }
+    "OK"
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("expected no arguments"); return 2 }
+    var state = State { clock: 0, next_id: 1, stocks: [:], holds: [:], expiry: [], active: 0, committed: 0, expired: 0, released: 0 }
+    while true {
+        let Some(line) = sys.console.read_line() else { break }
+        let response = match parse(line) { None => "ERR bad command", Some(command) => execute(command, mut state) }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

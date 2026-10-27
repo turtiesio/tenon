@@ -1,0 +1,133 @@
+// ldiff: line diff following a fixed LCS walk.
+
+enum Step { Common(Str), Delete(Str), Insert(Str) }
+
+fn strip_trailing_blanks(s: Str) -> Str {
+    var b = s.len()
+    while b > 0 and (s.byte(b - 1) == ' ' or s.byte(b - 1) == '\t') { b -= 1 }
+    s.slice(0, b)
+}
+
+fn key(line: Str, ignore_case: Bool, ignore_blanks: Bool) -> Str {
+    let k = if ignore_blanks { strip_trailing_blanks(line) } else { line }
+    if ignore_case { k.lower() } else { k }
+}
+
+fn diff(a: List[Str], b: List[Str], ka: List[Str], kb: List[Str]) -> List[Step] {
+    let n = a.len()
+    let m = b.len()
+    let w = m + 1
+    // L[i][j] stored at i * w + j.
+    var l: List[Int] = []
+    for _ in 0..(n + 1) * w { l.push(0) }
+    var i = n - 1
+    while i >= 0 {
+        var j = m - 1
+        while j >= 0 {
+            l[i * w + j] = if ka[i] == kb[j] {
+                l[(i + 1) * w + j + 1] + 1
+            } else {
+                l[(i + 1) * w + j].max(l[i * w + j + 1])
+            }
+            j -= 1
+        }
+        i -= 1
+    }
+    var steps: List[Step] = []
+    var x = 0
+    var y = 0
+    while x < n or y < m {
+        if x == n {
+            steps.push(Insert(b[y]))
+            y += 1
+        } else if y == m {
+            steps.push(Delete(a[x]))
+            x += 1
+        } else if ka[x] == kb[y] {
+            steps.push(Common(a[x]))
+            x += 1
+            y += 1
+        } else if l[(x + 1) * w + y] >= l[x * w + y + 1] {
+            steps.push(Delete(a[x]))
+            x += 1
+        } else {
+            steps.push(Insert(b[y]))
+            y += 1
+        }
+    }
+    steps
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var ignore_case = false
+    var ignore_blanks = false
+    var quiet = false
+    var summary = false
+    var files: List[Str] = []
+    for arg in sys.args {
+        if arg.starts_with("-") {
+            match arg {
+                "-i" => ignore_case = true,
+                "-b" => ignore_blanks = true,
+                "-q" => quiet = true,
+                "-s" => summary = true,
+                _ => {
+                    con.eprintln("ldiff: unknown option {arg}")
+                    return 2
+                },
+            }
+        } else {
+            files.push(arg)
+        }
+    }
+    if quiet and summary {
+        con.eprintln("ldiff: -q and -s cannot be combined")
+        return 2
+    }
+    if files.len() != 2 {
+        con.eprintln("usage: ldiff [-i] [-b] [-q | -s] FILE1 FILE2")
+        return 2
+    }
+    var contents: List[List[Str]] = []
+    for f in files {
+        match sys.fs.read(f) {
+            Ok(text) => contents.push(text.lines()),
+            Err(e) => {
+                con.eprintln("ldiff: cannot read {f}: {e}")
+                return 2
+            },
+        }
+    }
+    let a = contents[0]
+    let b = contents[1]
+    let ka = a.map(fn(s) => key(s, ignore_case, ignore_blanks))
+    let kb = b.map(fn(s) => key(s, ignore_case, ignore_blanks))
+    let steps = diff(a, b, ka, kb)
+    var ins = 0
+    var del = 0
+    var common = 0
+    var out: List[Str] = []
+    for s in steps {
+        match s {
+            Common(t) => {
+                common += 1
+                out.push("  {t}\n")
+            },
+            Delete(t) => {
+                del += 1
+                out.push("- {t}\n")
+            },
+            Insert(t) => {
+                ins += 1
+                out.push("+ {t}\n")
+            },
+        }
+    }
+    if summary {
+        con.println("+{ins} -{del} ={common}")
+    } else if not quiet {
+        con.print(out.join(""))
+    }
+    if ins + del > 0 { 1 } else { 0 }
+}

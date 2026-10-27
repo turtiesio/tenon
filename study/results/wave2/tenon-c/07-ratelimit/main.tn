@@ -1,0 +1,103 @@
+struct Bucket { tokens: Int, anchor: Int }
+struct Policy { capacity: Int, interval: Int, allowed: Int, denied: Int, buckets: Map[Str, Bucket] }
+enum Command { Create(Str, Int, Int), Hit(Int, Str, Str, Int), Peek(Int, Str, Str), Reset(Str, Str), Stats(Str) }
+fn name(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 32 { return false }
+    for i in 0..s.len() { let c = s.byte(i); if not (c.is_lower() or c.is_digit() or c == 95 or c == 46 or c == 45) { return false } }
+    true
+}
+fn number(s: Str, limit: Int, positive: Bool) -> Option[Int] {
+    if s.len() < 1 or s.len() > limit { return None }
+    for i in 0..s.len() { if not s.byte(i).is_digit() { return None } }
+    let n = s.to_int()?
+    if positive and n == 0 { return None }
+    Some(n)
+}
+fn parse(line: Str) -> Option[Command] {
+    let t = line.split(" ")
+    if t.any(fn(s) => s.is_empty()) { return None }
+    match t[0] {
+        "POLICY" => {
+            if t.len() != 4 or not name(t[1]) { return None }
+            Some(Create(t[1], number(t[2], 9, true)?, number(t[3], 9, true)?))
+        },
+        "HIT" => {
+            if t.len() != 4 and t.len() != 5 { return None }
+            if not name(t[2]) or not name(t[3]) { return None }
+            let cost = if t.len() == 5 { number(t[4], 9, true)? } else { 1 }
+            Some(Hit(number(t[1], 15, false)?, t[2], t[3], cost))
+        },
+        "PEEK" => {
+            if t.len() != 4 or not name(t[2]) or not name(t[3]) { return None }
+            Some(Peek(number(t[1], 15, false)?, t[2], t[3]))
+        },
+        "RESET" => { if t.len() != 3 or not name(t[1]) or not name(t[2]) { return None }; Some(Reset(t[1], t[2])) },
+        "STATS" => { if t.len() != 2 or not name(t[1]) { return None }; Some(Stats(t[1])) },
+        _ => None,
+    }
+}
+fn access(now: Int, policy: Str, client: Str, cost: Option[Int], policies: mut Map[Str, Policy], clock: mut Int) -> Str {
+    if now < clock { return "ERR time went backwards" }
+    clock = now
+    if not policies.contains(policy) { return "ERR no such policy" }
+    let capacity = policies[policy].capacity
+    let interval = policies[policy].interval
+    if cost.unwrap_or(0) > capacity { return "ERR cost exceeds capacity" }
+    var bucket = policies[policy].buckets.get_or(client, Bucket { tokens: capacity, anchor: now })
+    if bucket.tokens == capacity { bucket.anchor = now } else {
+        let k = (now - bucket.anchor) / interval
+        bucket.tokens = capacity.min(bucket.tokens + k)
+        if bucket.tokens == capacity { bucket.anchor = now } else { bucket.anchor += k * interval }
+    }
+    var response = ""
+    match cost {
+        None => response = "TOKENS {bucket.tokens}",
+        Some(amount) => {
+            if bucket.tokens >= amount {
+                bucket.tokens -= amount
+                policies[policy].allowed += 1
+                response = "ALLOW {bucket.tokens}"
+            } else {
+                policies[policy].denied += 1
+                let retry = bucket.anchor + (amount - bucket.tokens) * interval - now
+                response = "DENY {retry}"
+            }
+        },
+    }
+    policies[policy].buckets[client] = bucket
+    response
+}
+fn execute(command: Command, policies: mut Map[Str, Policy], clock: mut Int) -> Str {
+    match command {
+        Create(policy, capacity, interval) => {
+            if policies.contains(policy) { return "ERR policy exists" }
+            policies[policy] = Policy { capacity, interval, allowed: 0, denied: 0, buckets: [:] }
+            "OK"
+        },
+        Hit(time, policy, client, cost) => access(time, policy, client, Some(cost), mut policies, mut clock),
+        Peek(time, policy, client) => access(time, policy, client, None, mut policies, mut clock),
+        Reset(policy, client) => {
+            if not policies.contains(policy) { return "ERR no such policy" }
+            if policies[policy].buckets.remove(client).is_none() { "ERR no such client" } else { "OK" }
+        },
+        Stats(policy) => {
+            if not policies.contains(policy) { return "ERR no such policy" }
+            let allowed = policies[policy].allowed
+            let denied = policies[policy].denied
+            let clients = policies[policy].buckets.len()
+            "allowed={allowed} denied={denied} clients={clients}"
+        },
+    }
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("expected no arguments"); return 2 }
+    var policies: Map[Str, Policy] = [:]
+    var clock = 0
+    while true {
+        let Some(line) = sys.console.read_line() else { break }
+        let response = match parse(line) { None => "ERR bad command", Some(command) => execute(command, mut policies, mut clock) }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

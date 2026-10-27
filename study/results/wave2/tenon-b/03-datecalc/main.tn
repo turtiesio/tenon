@@ -1,0 +1,203 @@
+// datecalc: calendar date calculator on the proleptic Gregorian calendar.
+
+struct Date { y: Int, m: Int, d: Int }
+
+const MAX_DAY: Int = 3652058   // day number of 9999-12-31 (0001-01-01 is day 0)
+
+fn is_leap(y: Int) -> Bool { (y % 4 == 0 and y % 100 != 0) or y % 400 == 0 }
+
+fn days_in_month(y: Int, m: Int) -> Int {
+    match m {
+        2 => if is_leap(y) { 29 } else { 28 },
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+// Days from the start of year y to the start of month m.
+fn days_before_month(y: Int, m: Int) -> Int {
+    var total = 0
+    for k in 1..m { total += days_in_month(y, k) }
+    total
+}
+
+// Days from 0001-01-01 to the start of year y.
+fn days_before_year(y: Int) -> Int {
+    let p = y - 1
+    365 * p + p / 4 - p / 100 + p / 400
+}
+
+fn to_day_number(dt: Date) -> Int {
+    days_before_year(dt.y) + days_before_month(dt.y, dt.m) + dt.d - 1
+}
+
+fn from_day_number(n: Int) -> Date {
+    var y = n / 366 + 1
+    while days_before_year(y + 1) <= n { y += 1 }
+    var r = n - days_before_year(y)
+    var m = 1
+    while r >= days_in_month(y, m) {
+        r -= days_in_month(y, m)
+        m += 1
+    }
+    Date { y, m, d: r + 1 }
+}
+
+fn all_digits(s: Str) -> Bool {
+    for i in 0..s.len() {
+        if not s.byte(i).is_digit() { return false }
+    }
+    true
+}
+
+fn parse_date(s: Str) -> Option[Date] {
+    if s.len() != 10 or s.byte(4) != '-' or s.byte(7) != '-' { return None }
+    let ys = s.slice(0, 4)
+    let ms = s.slice(5, 7)
+    let ds = s.slice(8, 10)
+    if not (all_digits(ys) and all_digits(ms) and all_digits(ds)) { return None }
+    let y = ys.to_int()?
+    let m = ms.to_int()?
+    let d = ds.to_int()?
+    if y < 1 or m < 1 or m > 12 or d < 1 or d > days_in_month(y, m) { return None }
+    Some(Date { y, m, d })
+}
+
+// -?[0-9]{1,7}
+fn parse_count(s: Str) -> Option[Int] {
+    let digits = if s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    if digits.len() < 1 or digits.len() > 7 or not all_digits(digits) { return None }
+    s.to_int()
+}
+
+fn num(n: Int, width: Int) -> Str { n.to_str().pad_left(width, "0") }
+
+// Expands the directives of fmt; None if fmt has an invalid directive.
+fn format(fmt: Str, dt: Date) -> Option[Str] {
+    let weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    let cs = fmt.chars()
+    var out = ""
+    var i = 0
+    while i < cs.len() {
+        if cs[i] != "%" {
+            out += cs[i]
+            i += 1
+            continue
+        }
+        if i + 1 >= cs.len() { return None }
+        match cs[i + 1] {
+            "Y" => out += num(dt.y, 4),
+            "m" => out += num(dt.m, 2),
+            "d" => out += num(dt.d, 2),
+            "j" => out += num(days_before_month(dt.y, dt.m) + dt.d, 3),
+            "a" => out += weekdays[to_day_number(dt) % 7],
+            "b" => out += months[dt.m - 1],
+            "%" => out += "%",
+            _ => return None,
+        }
+        i += 2
+    }
+    Some(out)
+}
+
+fn day_in_range(n: Int) -> Bool { n >= 0 and n <= MAX_DAY }
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    var fmt = "%Y-%m-%d"
+    var i = 0
+    // Options come before the command.
+    while i < args.len() and args[i].starts_with("-") {
+        if args[i] == "-F" {
+            if i + 1 >= args.len() {
+                con.eprintln("datecalc: -F needs an argument")
+                return 2
+            }
+            fmt = args[i + 1]
+            i += 2
+        } else {
+            con.eprintln("datecalc: unknown option {args[i]}")
+            return 2
+        }
+    }
+    if i >= args.len() {
+        con.eprintln("usage: datecalc [-F FMT] COMMAND ARG...")
+        return 2
+    }
+    let command = args[i]
+    let rest = args.slice(i + 1, args.len())
+
+    if format(fmt, Date { y: 2000, m: 1, d: 1 }).is_none() {
+        con.eprintln("datecalc: invalid format")
+        return 2
+    }
+
+    let arity = match command {
+        "weekday" => 1,
+        "add" | "diff" | "addmonths" => 2,
+        _ => {
+            con.eprintln("datecalc: unknown command {command}")
+            return 2
+        },
+    }
+    if rest.len() != arity {
+        con.eprintln("datecalc: wrong number of arguments for {command}")
+        return 2
+    }
+    var count = 0
+    if command == "add" or command == "addmonths" {
+        let Some(c) = parse_count(rest[1]) else {
+            con.eprintln("datecalc: bad number {rest[1]}")
+            return 2
+        }
+        count = c
+    }
+
+    // Usage is fine; now the dates.
+    let Some(first) = parse_date(rest[0]) else {
+        con.eprintln("datecalc: invalid date {rest[0]}")
+        return 1
+    }
+    let first_day = to_day_number(first)
+
+    match command {
+        "weekday" => {
+            let names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            con.println(names[first_day % 7])
+        },
+        "diff" => {
+            let Some(second) = parse_date(rest[1]) else {
+                con.eprintln("datecalc: invalid date {rest[1]}")
+                return 1
+            }
+            con.println((to_day_number(second) - first_day).to_str())
+        },
+        "add" => {
+            let target = first_day + count
+            if not day_in_range(target) {
+                con.eprintln("datecalc: result out of range")
+                return 1
+            }
+            con.println(format(fmt, from_day_number(target)).unwrap())
+        },
+        _ => {
+            // addmonths
+            let total = first.y * 12 + (first.m - 1) + count
+            if total < 12 {
+                con.eprintln("datecalc: result out of range")
+                return 1
+            }
+            let ny = total / 12
+            let nm = total % 12 + 1
+            if ny > 9999 {
+                con.eprintln("datecalc: result out of range")
+                return 1
+            }
+            let nd = first.d.min(days_in_month(ny, nm))
+            con.println(format(fmt, Date { y: ny, m: nm, d: nd }).unwrap())
+        },
+    }
+    0
+}

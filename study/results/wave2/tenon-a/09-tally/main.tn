@@ -1,0 +1,207 @@
+// tally: persistent named counters backed by a write-ahead log.
+
+const LOG: Str = "tally.log"
+const TMP: Str = "tally.log.tmp"
+
+enum Command { Set(Str, Int), Add(Str, Int), Get(Str), Del(Str), ListAll, Info, Compact }
+
+enum Record { SetRec(Str, Int), AddRec(Str, Int), DelRec(Str) }
+
+struct Store { fs: Fs, counters: Map[Str, Int], records: Int }
+
+fn is_name(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 32 or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_') { return false }
+    }
+    true
+}
+
+fn name(s: Str) -> Option[Str] { if is_name(s) { Some(s) } else { None } }
+
+// -?[0-9]{1,max_digits}
+fn int(s: Str, max_digits: Int) -> Option[Int] {
+    let neg = s.starts_with("-")
+    let body = if neg { s.slice(1, s.len()) } else { s }
+    if body.is_empty() or body.len() > max_digits { return None }
+    for i in 0..body.len() {
+        if not body.byte(i).is_digit() { return None }
+    }
+    let v = body.to_int()?
+    Some(if neg { -v } else { v })
+}
+
+fn parse_command(line: Str) -> Option[Command] {
+    let t = line.split(" ")
+    match (t[0], t.len()) {
+        ("SET", 3) => Some(Set(name(t[1])?, int(t[2], 15)?)),
+        ("ADD", 3) => Some(Add(name(t[1])?, int(t[2], 15)?)),
+        ("GET", 2) => Some(Get(name(t[1])?)),
+        ("DEL", 2) => Some(Del(name(t[1])?)),
+        ("LIST", 1) => Some(ListAll),
+        ("INFO", 1) => Some(Info),
+        ("COMPACT", 1) => Some(Compact),
+        _ => None,
+    }
+}
+
+// Log records hold values up to 18 digits: COMPACT writes current values,
+// which may have grown beyond the 15 digits a command can carry.
+fn parse_record(line: Str) -> Option[Record] {
+    let t = line.split(" ")
+    match (t[0], t.len()) {
+        ("S", 3) => Some(SetRec(name(t[1])?, int(t[2], 18)?)),
+        ("A", 3) => Some(AddRec(name(t[1])?, int(t[2], 18)?)),
+        ("D", 2) => Some(DelRec(name(t[1])?)),
+        _ => None,
+    }
+}
+
+fn record_text(r: Record) -> Str {
+    match r {
+        SetRec(n, v) => "S {n} {v}\n",
+        AddRec(n, v) => "A {n} {v}\n",
+        DelRec(n) => "D {n}\n",
+    }
+}
+
+fn Store.apply(mut self, r: Record) {
+    match r {
+        SetRec(n, v) => self.counters[n] = v,
+        AddRec(n, v) => self.counters[n] = self.counters.get_or(n, 0) + v,
+        DelRec(n) => {
+            let _ = self.counters.remove(n)
+        },
+    }
+}
+
+// Removes a stale temporary file, replays the valid prefix of the log and
+// cuts the log back to that prefix.
+fn Store.open(fs: Fs) -> Result[Store, IoError] {
+    if fs.exists(TMP) { fs.remove(TMP)? }
+    var store = Store { fs, counters: [:], records: 0 }
+    let text = match fs.read(LOG) {
+        Ok(t) => t,
+        Err(NotFound(_)) => return Ok(store),
+        Err(e) => return Err(e),
+    }
+    let pieces = text.split("\n")
+    var valid: List[Str] = []
+    // The last piece follows the final "\n", so it is never a complete line.
+    for line in pieces.slice(0, pieces.len() - 1) {
+        let Some(r) = parse_record(line) else { break }
+        store.apply(r)
+        valid.push(line + "\n")
+    }
+    store.records = valid.len()
+    let prefix = valid.join("")
+    if prefix.len() != text.len() {
+        fs.write(TMP, prefix)?
+        fs.rename(TMP, LOG)?
+    }
+    Ok(store)
+}
+
+fn Store.log(mut self, r: Record) -> Result[Unit, IoError] {
+    self.fs.append(LOG, record_text(r))?
+    self.records += 1
+    self.apply(r)
+    Ok(())
+}
+
+fn Store.sorted_names(self) -> List[Str] { self.counters.keys().sorted() }
+
+fn Store.execute(mut self, cmd: Command) -> Result[Str, IoError] {
+    match cmd {
+        Set(n, v) => {
+            self.log(SetRec(n, v))?
+            Ok("OK")
+        },
+        Add(n, v) => {
+            self.log(AddRec(n, v))?
+            Ok(self.counters[n].to_str())
+        },
+        Get(n) => Ok(match self.counters.get(n) {
+            Some(v) => v.to_str(),
+            None => "NONE",
+        }),
+        Del(n) => {
+            if not self.counters.contains(n) { return Ok("NONE") }
+            self.log(DelRec(n))?
+            Ok("OK")
+        },
+        ListAll => {
+            var parts = [self.counters.len().to_str()]
+            for n in self.sorted_names() { parts.push("{n}={self.counters[n]}") }
+            Ok(parts.join(" "))
+        },
+        Info => Ok("counters={self.counters.len()} log_records={self.records}"),
+        Compact => {
+            let names = self.sorted_names()
+            let snapshot = names.map(fn(n) => record_text(SetRec(n, self.counters[n]))).join("")
+            // Fs.write is durable; the rename then replaces the log atomically.
+            self.fs.write(TMP, snapshot)?
+            self.fs.rename(TMP, LOG)?
+            self.records = names.len()
+            Ok("OK {names.len()}")
+        },
+    }
+}
+
+// Makes sure `dir` is a usable directory, creating only its last component.
+fn prepare_dir(fs: Fs, dir: Str) -> Result[Unit, Str] {
+    if fs.exists(dir) {
+        if fs.is_dir(dir) { return Ok(()) }
+        return Err("{dir} is not a directory")
+    }
+    var parent = dir
+    while parent.ends_with("/") and parent.len() > 1 { parent = parent.slice(0, parent.len() - 1) }
+    var i = parent.len() - 1
+    while i >= 0 and parent.byte(i) != '/' { i -= 1 }
+    if i > 0 {
+        let p = parent.slice(0, i)
+        if not fs.is_dir(p) { return Err("parent of {dir} does not exist") }
+    }
+    fs.mkdir(dir).map_err(fn(e) => "cannot create {dir}: {e}")
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: tally DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    match prepare_dir(sys.fs, dir) {
+        Ok(_) => {},
+        Err(msg) => {
+            con.eprintln("tally: {msg}")
+            return 1
+        },
+    }
+    var store = match Store.open(sys.fs.within(dir)) {
+        Ok(s) => s,
+        Err(e) => {
+            con.eprintln("tally: cannot open log: {e}")
+            return 1
+        },
+    }
+    while true {
+        let Some(line) = con.read_line() else { break }
+        let reply = match parse_command(line) {
+            None => "ERR bad command",
+            Some(cmd) => match store.execute(cmd) {
+                Ok(r) => r,
+                Err(e) => {
+                    con.eprintln("tally: log write failed: {e}")
+                    return 1
+                },
+            },
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}
+

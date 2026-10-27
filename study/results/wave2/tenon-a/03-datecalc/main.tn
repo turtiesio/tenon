@@ -1,0 +1,198 @@
+// datecalc: proleptic Gregorian date calculator.
+
+enum Failure { Usage(Str), Invalid(Str) }
+
+struct Date { year: Int, month: Int, day: Int }
+
+const WEEKDAYS: List[Str] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+const MONTH_ABBR: List[Str] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+const MIN_DAY: Int = 0          // 0001-01-01
+const MAX_DAY: Int = 3652058    // 9999-12-31
+
+fn is_leap(y: Int) -> Bool { (y % 4 == 0 and y % 100 != 0) or y % 400 == 0 }
+
+fn days_in_month(y: Int, m: Int) -> Int {
+    match m {
+        2 => if is_leap(y) { 29 } else { 28 },
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn days_before_year(y: Int) -> Int {
+    let p = y - 1
+    365 * p + p / 4 - p / 100 + p / 400
+}
+
+fn day_of_year(d: Date) -> Int {
+    var n = d.day
+    for m in 1..d.month { n += days_in_month(d.year, m) }
+    n
+}
+
+// Days since 0001-01-01 (which is day 0, a Monday).
+fn to_days(d: Date) -> Int { days_before_year(d.year) + day_of_year(d) - 1 }
+
+fn from_days(n: Int) -> Date {
+    var y = n / 366 + 1
+    while days_before_year(y + 1) <= n { y += 1 }
+    var rest = n - days_before_year(y)
+    var m = 1
+    while rest >= days_in_month(y, m) {
+        rest -= days_in_month(y, m)
+        m += 1
+    }
+    Date { year: y, month: m, day: rest + 1 }
+}
+
+fn weekday_index(d: Date) -> Int { to_days(d) % 7 }
+
+fn digits(s: Str) -> Option[Int] {
+    if s.is_empty() { return None }
+    for i in 0..s.len() {
+        if not s.byte(i).is_digit() { return None }
+    }
+    s.to_int()
+}
+
+fn parse_date(s: Str) -> Result[Date, Failure] {
+    let bad = Invalid("invalid date: {s}")
+    if s.len() != 10 or s.byte(4) != '-' or s.byte(7) != '-' { return Err(bad) }
+    let Some(y) = digits(s.slice(0, 4)) else { return Err(bad) }
+    let Some(m) = digits(s.slice(5, 7)) else { return Err(bad) }
+    let Some(d) = digits(s.slice(8, 10)) else { return Err(bad) }
+    if y < 1 or m < 1 or m > 12 or d < 1 or d > days_in_month(y, m) { return Err(bad) }
+    Ok(Date { year: y, month: m, day: d })
+}
+
+// -?[0-9]{1,7}
+fn parse_n(s: Str) -> Result[Int, Failure] {
+    let neg = s.starts_with("-")
+    let body = if neg { s.slice(1, s.len()) } else { s }
+    if body.len() > 7 { return Err(Usage("bad number: {s}")) }
+    let Some(v) = digits(body) else { return Err(Usage("bad number: {s}")) }
+    Ok(if neg { -v } else { v })
+}
+
+fn check_format(fmt: Str) -> Result[Unit, Failure] {
+    var i = 0
+    while i < fmt.len() {
+        if fmt.byte(i) == '%' {
+            if i + 1 >= fmt.len() { return Err(Usage("format ends with %")) }
+            let c = fmt.byte(i + 1)
+            if not (c == 'Y' or c == 'm' or c == 'd' or c == 'j' or c == 'a' or c == 'b' or c == '%') {
+                return Err(Usage("bad directive %{c.char()}"))
+            }
+            i += 2
+        } else {
+            i += 1
+        }
+    }
+    Ok(())
+}
+
+fn pad(n: Int, width: Int) -> Str { n.to_str().pad_left(width, "0") }
+
+// Assumes check_format accepted fmt.
+fn format(d: Date, fmt: Str) -> Str {
+    var out = ""
+    var i = 0
+    while i < fmt.len() {
+        let c = fmt.byte(i)
+        if c != '%' {
+            // FMT is ASCII, so one byte is one character.
+            out = out + c.char()
+            i += 1
+            continue
+        }
+        out = out + match fmt.byte(i + 1) {
+            'Y' => pad(d.year, 4),
+            'm' => pad(d.month, 2),
+            'd' => pad(d.day, 2),
+            'j' => pad(day_of_year(d), 3),
+            'a' => WEEKDAYS[weekday_index(d)].slice(0, 3),
+            'b' => MONTH_ABBR[d.month - 1],
+            _ => "%",
+        }
+        i += 2
+    }
+    out
+}
+
+fn in_range(n: Int) -> Result[Date, Failure] {
+    if n < MIN_DAY or n > MAX_DAY { return Err(Invalid("result out of range")) }
+    Ok(from_days(n))
+}
+
+fn add_months(d: Date, n: Int) -> Result[Date, Failure] {
+    let total = d.year * 12 + (d.month - 1) + n
+    // Floor division so negative totals land in the right year.
+    var y = total / 12
+    var m = total % 12
+    if m < 0 {
+        m += 12
+        y -= 1
+    }
+    if y < 1 or y > 9999 { return Err(Invalid("result out of range")) }
+    let month = m + 1
+    Ok(Date { year: y, month, day: d.day.min(days_in_month(y, month)) })
+}
+
+fn run(args: List[Str]) -> Result[Str, Failure] {
+    var fmt = "%Y-%m-%d"
+    var i = 0
+    while i < args.len() and args[i].starts_with("-") {
+        if args[i] != "-F" { return Err(Usage("unknown option {args[i]}")) }
+        if i + 1 >= args.len() { return Err(Usage("-F needs an argument")) }
+        fmt = args[i + 1]
+        i += 2
+    }
+    if i >= args.len() { return Err(Usage("no command")) }
+    let command = args[i]
+    let rest = args.slice(i + 1, args.len())
+    let arity = match command {
+        "weekday" => 1,
+        "add" | "diff" | "addmonths" => 2,
+        _ => return Err(Usage("unknown command {command}")),
+    }
+    if rest.len() != arity { return Err(Usage("{command}: expected {arity} arguments")) }
+    check_format(fmt)?
+    match command {
+        "weekday" => {
+            let d = parse_date(rest[0])?
+            Ok(WEEKDAYS[weekday_index(d)])
+        },
+        "add" => {
+            let n = parse_n(rest[1])?
+            let d = parse_date(rest[0])?
+            Ok(format(in_range(to_days(d) + n)?, fmt))
+        },
+        "addmonths" => {
+            let n = parse_n(rest[1])?
+            let d = parse_date(rest[0])?
+            Ok(format(add_months(d, n)?, fmt))
+        },
+        _ => {
+            let a = parse_date(rest[0])?
+            let b = parse_date(rest[1])?
+            Ok((to_days(b) - to_days(a)).to_str())
+        },
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    match run(sys.args) {
+        Ok(line) => {
+            sys.console.println(line)
+            0
+        },
+        Err(Usage(msg)) => {
+            sys.console.eprintln("usage error: {msg}")
+            2
+        },
+        Err(Invalid(msg)) => {
+            sys.console.eprintln("error: {msg}")
+            1
+        },
+    }
+}

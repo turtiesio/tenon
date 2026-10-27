@@ -1,0 +1,151 @@
+// lfagg: logfmt group-by aggregator.
+
+struct Stats { count: Int, n: Int, sum: Int, min: Int, max: Int }
+
+fn is_key_start(c: Int) -> Bool { c.is_alpha() or c == '_' }
+fn is_key_char(c: Int) -> Bool { c.is_alnum() or c == '_' or c == '.' }
+
+fn is_key(s: Str) -> Bool {
+    if s.is_empty() or not is_key_start(s.byte(0)) { return false }
+    for i in 1..s.len() {
+        if not is_key_char(s.byte(i)) { return false }
+    }
+    true
+}
+
+// A quoted value whose content starts at byte `start` (just after the opening
+// quote). Gives the decoded value and the offset just past the closing quote.
+fn parse_quoted(line: Str, start: Int) -> Option[(Str, Int)] {
+    var parts: List[Str] = []
+    var seg = start
+    var i = start
+    while i < line.len() {
+        let c = line.byte(i)
+        if c == '"' {
+            parts.push(line.slice(seg, i))
+            return Some((parts.join(""), i + 1))
+        }
+        if c == '\\' {
+            if i + 1 >= line.len() { return None }
+            let e = line.byte(i + 1)
+            if e != '"' and e != '\\' { return None }
+            parts.push(line.slice(seg, i))
+            parts.push(e.char())
+            i += 2
+            seg = i
+        } else {
+            i += 1
+        }
+    }
+    None
+}
+
+// The pairs of a non-blank line, or None if the line is malformed.
+fn parse_line(line: Str) -> Option[Map[Str, Str]] {
+    var pairs: Map[Str, Str] = [:]
+    let n = line.len()
+    var i = 0
+    while true {
+        while i < n and line.byte(i) == ' ' { i += 1 }
+        if i == n { return Some(pairs) }
+        if not is_key_start(line.byte(i)) { return None }
+        let start = i
+        while i < n and is_key_char(line.byte(i)) { i += 1 }
+        let key = line.slice(start, i)
+        if pairs.contains(key) { return None }
+        if i == n or line.byte(i) == ' ' {
+            pairs[key] = "true"
+            continue
+        }
+        if line.byte(i) != '=' { return None }
+        i += 1
+        if i < n and line.byte(i) == '"' {
+            let (value, next) = parse_quoted(line, i + 1)?
+            i = next
+            if i < n and line.byte(i) != ' ' { return None }
+            pairs[key] = value
+        } else {
+            let vstart = i
+            while i < n and line.byte(i) != ' ' {
+                let c = line.byte(i)
+                if c == '"' or c == '=' { return None }
+                i += 1
+            }
+            pairs[key] = line.slice(vstart, i)
+        }
+    }
+}
+
+// -?[0-9]{1,15}
+fn numeric(s: Str) -> Option[Int] {
+    let neg = s.starts_with("-")
+    let body = if neg { s.slice(1, s.len()) } else { s }
+    if body.is_empty() or body.len() > 15 { return None }
+    for i in 0..body.len() {
+        if not body.byte(i).is_digit() { return None }
+    }
+    let v = body.to_int()?
+    Some(if neg { -v } else { v })
+}
+
+// sum / n rounded to 2 decimals, half away from zero, without overflow.
+fn average(sum: Int, n: Int) -> Str {
+    let mag = sum.abs()
+    let whole = mag / n
+    let rem = mag % n
+    var cents = whole * 100 + rem * 100 / n
+    if (rem * 100 % n) * 2 >= n { cents += 1 }
+    let sign = if sum < 0 and cents > 0 { "-" } else { "" }
+    "{sign}{cents / 100}.{(cents % 100).to_str().pad_left(2, "0")}"
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    if args.len() < 1 or args.len() > 2 or not args.all(is_key) {
+        con.eprintln("usage: lfagg BY [FIELD]")
+        return 2
+    }
+    let by = args[0]
+    let field = args.get(1)
+    var groups: Map[Str, Stats] = [:]
+    var valid = 0
+    var malformed = 0
+    var nokey = 0
+    for raw in con.read_all().lines() {
+        let line = if raw.ends_with("\r") { raw.slice(0, raw.len() - 1) } else { raw }
+        if line.trim().is_empty() { continue }
+        let Some(pairs) = parse_line(line) else {
+            malformed += 1
+            continue
+        }
+        valid += 1
+        let Some(group) = pairs.get(by) else {
+            nokey += 1
+            continue
+        }
+        if not groups.contains(group) {
+            groups[group] = Stats { count: 0, n: 0, sum: 0, min: INT_MAX, max: INT_MIN }
+        }
+        groups[group].count += 1
+        let Some(f) = field else { continue }
+        let Some(v) = pairs.get(f).map(numeric).unwrap_or(None) else { continue }
+        groups[group].n += 1
+        groups[group].sum += v
+        groups[group].min = groups[group].min.min(v)
+        groups[group].max = groups[group].max.max(v)
+    }
+    var entries = groups.entries()
+    entries.sort_by(fn(e) => (-e.1.count, e.0))
+    for (name, s) in entries {
+        let label = if name.is_empty() { "\"\"" } else { name }
+        let stats = match field {
+            None => "",
+            Some(_) if s.n == 0 => " n=0 sum=0 min=- max=- avg=-",
+            Some(_) => " n={s.n} sum={s.sum} min={s.min} max={s.max} avg={average(s.sum, s.n)}",
+        }
+        con.println("{label} count={s.count}{stats}")
+    }
+    con.println("lines={valid} malformed={malformed} nokey={nokey}")
+    0
+}

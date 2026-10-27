@@ -1,0 +1,169 @@
+// lfagg: logfmt parser and group-by aggregator.
+
+struct Group { count: Int, n: Int, sum: Int, lo: Int, hi: Int }
+
+fn is_key_start(c: Int) -> Bool { c.is_alpha() or c == '_' }
+fn is_key_char(c: Int) -> Bool { c.is_alnum() or c == '_' or c == '.' }
+
+fn valid_key(s: Str) -> Bool {
+    if s.is_empty() or not is_key_start(s.byte(0)) { return false }
+    for i in 1..s.len() {
+        if not is_key_char(s.byte(i)) { return false }
+    }
+    true
+}
+
+// Parses one line into pairs; None if the line is malformed.
+fn parse_line(line: Str) -> Option[Map[Str, Str]] {
+    var pairs: Map[Str, Str] = [:]
+    let n = line.len()
+    var i = 0
+    while true {
+        while i < n and line.byte(i) == ' ' { i += 1 }
+        if i >= n { break }
+        if not is_key_start(line.byte(i)) { return None }
+        let key_start = i
+        while i < n and is_key_char(line.byte(i)) { i += 1 }
+        let key = line.slice(key_start, i)
+        if pairs.contains(key) { return None }
+        if i >= n or line.byte(i) == ' ' {
+            pairs[key] = "true"
+            continue
+        }
+        if line.byte(i) != '=' { return None }
+        i += 1
+        if i < n and line.byte(i) == '"' {
+            i += 1
+            var value = ""
+            var closed = false
+            while i < n {
+                let c = line.byte(i)
+                if c == '"' {
+                    closed = true
+                    i += 1
+                    break
+                }
+                if c == '\\' {
+                    if i + 1 >= n { return None }
+                    let e = line.byte(i + 1)
+                    if e != '"' and e != '\\' { return None }
+                    value += line.slice(i + 1, i + 2)
+                    i += 2
+                } else {
+                    value += line.slice(i, i + 1)
+                    i += 1
+                }
+            }
+            if not closed { return None }
+            if i < n and line.byte(i) != ' ' { return None }
+            pairs[key] = value
+        } else {
+            let value_start = i
+            while i < n and line.byte(i) != ' ' {
+                let c = line.byte(i)
+                if c == '"' or c == '=' { return None }
+                i += 1
+            }
+            pairs[key] = line.slice(value_start, i)
+        }
+    }
+    Some(pairs)
+}
+
+// -?[0-9]{1,15}
+fn parse_numeric(s: Str) -> Option[Int] {
+    let digits = if s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    if digits.len() < 1 or digits.len() > 15 { return None }
+    for i in 0..digits.len() {
+        if not digits.byte(i).is_digit() { return None }
+    }
+    s.to_int()
+}
+
+fn numeric_field(pairs: Map[Str, Str], field: Str) -> Option[Int] {
+    let text = pairs.get(field)?
+    parse_numeric(text)
+}
+
+// sum / n to two decimals, half away from zero, using integers only (sum * 100 could overflow).
+fn format_avg(sum: Int, n: Int) -> Str {
+    let mag = sum.abs()
+    var whole = mag / n
+    let rem = mag % n
+    var hundredths = (200 * rem + n) / (2 * n)
+    if hundredths >= 100 {
+        whole += 1
+        hundredths -= 100
+    }
+    let sign = if sum < 0 and (whole > 0 or hundredths > 0) { "-" } else { "" }
+    sign + whole.to_str() + "." + hundredths.to_str().pad_left(2, "0")
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    if args.len() < 1 or args.len() > 2 or not args.all(valid_key) {
+        con.eprintln("usage: lfagg BY [FIELD]")
+        return 2
+    }
+    let by = args[0]
+    let field: Option[Str] = args.get(1)
+
+    var groups: Map[Str, Group] = [:]
+    var valid = 0
+    var malformed = 0
+    var nokey = 0
+    for raw in con.read_all().lines() {
+        let line = if raw.ends_with("\r") { raw.slice(0, raw.len() - 1) } else { raw }
+        if line.trim().is_empty() { continue }
+        let Some(pairs) = parse_line(line) else {
+            malformed += 1
+            continue
+        }
+        valid += 1
+        let Some(g) = pairs.get(by) else {
+            nokey += 1
+            continue
+        }
+        var grp = groups.get_or(g, Group { count: 0, n: 0, sum: 0, lo: 0, hi: 0 })
+        grp.count += 1
+        match field {
+            Some(f) => {
+                match numeric_field(pairs, f) {
+                    Some(v) => {
+                        if grp.n == 0 {
+                            grp.lo = v
+                            grp.hi = v
+                        } else {
+                            grp.lo = grp.lo.min(v)
+                            grp.hi = grp.hi.max(v)
+                        }
+                        grp.n += 1
+                        grp.sum += v
+                    },
+                    None => {},
+                }
+            },
+            None => {},
+        }
+        groups[g] = grp
+    }
+
+    var rows = groups.entries()
+    rows.sort_by(fn(e) => (-e.1.count, e.0))
+    for (name, grp) in rows {
+        let label = if name.is_empty() { "\"\"" } else { name }
+        match field {
+            None => con.println("{label} count={grp.count}"),
+            Some(_) => {
+                if grp.n == 0 {
+                    con.println("{label} count={grp.count} n=0 sum=0 min=- max=- avg=-")
+                } else {
+                    con.println("{label} count={grp.count} n={grp.n} sum={grp.sum} min={grp.lo} max={grp.hi} avg={format_avg(grp.sum, grp.n)}")
+                }
+            },
+        }
+    }
+    con.println("lines={valid} malformed={malformed} nokey={nokey}")
+    0
+}
