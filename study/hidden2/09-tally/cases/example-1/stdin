@@ -1,0 +1,11 @@
+SET apples 5
+ADD apples 3
+ADD pears -2
+GET apples
+GET plums
+DEL pears
+DEL pears
+LIST
+INFO
+COMPACT
+INFO

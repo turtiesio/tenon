@@ -1,0 +1,6 @@
+X on_hand=0 held=0 available=0
+ERR insufficient 0
+ERR insufficient 0
+ERR no such hold
+ERR no such hold
+holds=0 committed=0 expired=0 released=0

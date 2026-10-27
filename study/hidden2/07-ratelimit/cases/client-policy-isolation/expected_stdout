@@ -1,0 +1,8 @@
+OK
+OK
+ALLOW 0
+ALLOW 0
+ALLOW 1
+DENY 10
+allowed=2 denied=1 clients=2
+allowed=1 denied=0 clients=1

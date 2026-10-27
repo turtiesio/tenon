@@ -12,9 +12,8 @@ def main(args):
             return 2
         opts[key] = int(v)
     services = {}; last = 0; skipped = 0
-    for line in sys.stdin.buffer.read().decode('ascii').splitlines(keepends=True):
-        # Only LF delimits; fixtures contain no other line delimiters except terminal CR.
-        s = line.removesuffix('\n').removesuffix('\r')
+    for raw in sys.stdin.buffer:
+        s = raw.decode('ascii').removesuffix('\n').removesuffix('\r')
         if not s.strip(' '):
             continue
         m = re.fullmatch(r'([0-9]{1,12}) ([a-z][a-z0-9-]{0,31}) (INFO|WARN|ERROR)', s)

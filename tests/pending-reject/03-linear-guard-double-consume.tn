@@ -1,0 +1,11 @@
+// error: a match guard cannot consume
+// A match guard may consume a linear value; if the guard fails, the next arm consumes it again.
+linear struct Tok { id: Int }
+fn Tok.close(self, con: Console) -> Bool { con.println("closed {self.id}"); false }
+fn main(sys: Sys) {
+    let t = Tok { id: 7 }
+    match 1 {
+        1 if t.close(sys.console) => {}
+        _ => { let b = t.close(sys.console) }
+    }
+}

@@ -1,0 +1,7 @@
+POLICY p 3 10
+PEEK 5 p c
+PEEK 7 p c
+STATS p
+HIT 7 p c 3
+HIT 16 p c
+HIT 17 p c

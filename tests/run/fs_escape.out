@@ -1,0 +1,6 @@
+Ok("inside\n")
+false Err(Denied("path escapes the Fs root: in.txt\u{0}x")) Err(Denied("path escapes the Fs root: ..\u{0}")) false
+Err(Denied("path escapes the Fs root: up/pwned.txt")) false
+Err(Failed("127.0.0.1:70000: port must be 0-65535"))
+released a 300000-deep chain
+exit: 0

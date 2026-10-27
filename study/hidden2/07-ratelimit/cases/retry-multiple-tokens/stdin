@@ -1,0 +1,5 @@
+POLICY p 5 7
+HIT 0 p c 5
+HIT 10 p c 4
+HIT 27 p c 4
+HIT 28 p c 4

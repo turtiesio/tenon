@@ -1,0 +1,11 @@
+OK 5
+HOLD 1
+ERR insufficient 0
+OK
+ERR no such hold
+OK 0
+A-1 on_hand=0 held=0 available=0
+ERR time went backwards
+ERR insufficient 0
+ERR bad command
+ERR no such hold

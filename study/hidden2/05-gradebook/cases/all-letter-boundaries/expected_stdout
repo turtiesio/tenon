@@ -1,0 +1,8 @@
+A a a 100/100 100.0% A
+A b b 90/100 90.0% A
+A c c 80/100 80.0% B
+A d d 70/100 70.0% C
+A e e 60/100 60.0% D
+A f f 59/100 59.0% F
+section A: students=6 A=2 B=1 C=1 D=1 F=1 none=0
+bad_students=0 bad_scores=0 orphans=0

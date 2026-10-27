@@ -1,0 +1,9 @@
+OK 4
+HOLD 1
+HOLD 2
+HOLD 3
+HOLD 4
+OK
+OK
+holds=1 committed=1 expired=1 released=1
+X on_hand=3 held=1 available=2

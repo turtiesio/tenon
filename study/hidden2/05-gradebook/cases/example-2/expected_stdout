@@ -1,0 +1,5 @@
+C a Al 1799/2000 90.0% B
+C b Bo 1799/2000 90.0% B
+C c Cy 0/5 0.0% F
+section C: students=3 A=0 B=2 C=0 D=0 F=1 none=0
+bad_students=2 bad_scores=1 orphans=0

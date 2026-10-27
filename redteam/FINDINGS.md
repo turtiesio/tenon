@@ -1,0 +1,190 @@
+# Tenon red-team findings
+
+Scope: correctness/soundness of the bootstrap compiler (`tenon run` interpreter and `tenon build` via C) at
+commit `1f4f88e` plus working-tree state on 2026-10-28. Everything below was found by writing small Tenon
+programs; nothing outside `redteam/` was modified. Each finding has a minimal reproduction in `repros/`.
+`repros/setup-fs.sh` builds the fixture for the two file-system repros. "run" = `tenon run F.tn`, "native" =
+`tenon build F.tn -o x && ./x`.
+
+## Summary, ranked
+
+| # | Sev | Property violated | Finding | Repro |
+|---|---|---|---|---|
+| 1 | **high** | explicit authority; interpreter = compiler | A NUL byte in a path defeats `Fs.within`: the native build lists/stats the *parent* of the jail (`"..\0"`), and silently truncates paths. Interpreter says something else. | 01 |
+| 2 | **high** | linear/unique types; module privacy as unforgeability | A client-defined generic wrapper (`struct Wrap[A]`) drops or duplicates another module's `linear` value and duplicates `unique` handles (`Listener`/`Conn`). | 19 (+`vaultlib.tn`) |
+| 3 | **high** | linear: used exactly once | A `match` guard can consume a linear value and the following arm consumes it again. | 03 |
+| 4 | **high** | linear: no loss | A linear value that exists only as a temporary is silently dropped by `mk().field`, `mk() == mk()`, `"{mk()}"`, and `f(mk())` with a `ref` parameter. | 04 |
+| 5 | medium | explicit authority | `Fs.within` / `read_only` follow symlinks out of the root (read, write, rename, remove, mkdir, list). Both backends. | 02 |
+| 6 | medium | linear: no loss | `Two { a: x, ..base }` silently drops the replaced linear field of `base`. | 05 |
+| 7 | medium | "functions cannot be compared"; interpreter = compiler | A struct containing a `fn` can be `==`-compared and used where a `fn` key is hashed; `run` and native give different answers/exit codes. | 06 |
+| 8 | medium | interpreter = compiler; no silent failure | NaN as a `Map[Float,_]` key: `run` traps, native inserts unreachable duplicate entries. | 07 |
+| 9 | medium | no silent failure | `Net.listen`/`connect` reduce ports mod 65536: `listen(73616)` binds 8080, `listen(-1)` binds 65535. | 08 |
+| 10 | medium | interpreter = compiler | Dropping (or `==` on) a 1,000,000-long recursive enum overflows the C stack in native (exit 72); the interpreter succeeds. | 09 |
+| 11 | medium | compiler robustness | Polymorphic recursion makes `tenon build` run forever; a polymorphic recursive type crashes it with a Rust stack overflow (exit 134). | 10, 11 |
+| 12 | low | allow-only (reject at check time) | `Map < Map` type-checks and traps at run time. | 12 |
+| 13 | low | check early | A cycle between `const`s is accepted; using one traps `stack overflow` at run time. | 13 |
+| 14 | low | no hidden surprises | `x += e` reads `x` after `e` runs, `x = x + e` before. | 14 |
+| 15 | low | allow-only | `let xs = []` / `let o = None` (type never determined) is accepted. | 15 |
+| 16 | low | interpreter = compiler | `tenon run F.tn $'\xff'` panics the interpreter (Rust, exit 101); native runs. | 16 |
+| 17 | low | located traps | Traps inside prelude-defined methods (`Int.abs`, `List.sum`, ...) report `<prelude>:L:C`, not the user's call site. | 17 |
+| 18 | low | usability | Nested tuple access `t.0.1` does not parse. | 18 |
+
+Areas that held up are listed at the end.
+
+---
+
+## 1. NUL byte in a path escapes `Fs.within` in the native build (high)
+
+**Property:** "An attenuated Fs rejects absolute paths and `..`" (reference §10); interpreter and compiled program behave identically.
+
+**Cause:** `tn_fs_path` (runtime/tenon.h) checks components on the full length-counted string, but the result is handed to
+`open`/`opendir`/`stat` as a C string. `"..\0"` is a 3-byte component, not `..`, so it passes; the OS sees `<root>/..`.
+Any bytes after the NUL are ignored (`"in.txt\0anything"` reads `in.txt`). The interpreter (Rust) refuses all NULs with an
+`Err(Failed(..))`, so the two backends also disagree on every NUL path.
+
+**Repro:** `repros/01-fs-nul-escape.tn` (fixture: `setup-fs.sh`, run from `/tmp/tq`, jail = `/tmp/tq/jail`).
+
+| | `tenon run` (exit 0) | native (exit 0) |
+|---|---|---|
+| `jail.list("..\0")` | `Err(Failed("..\u{0}: file name contained an unexpected NUL byte"))` | `Ok(["jail", "outside"])` (**parent of the jail**) |
+| `jail.is_dir("..\0")` | `false` | `true` |
+| `jail.exists("..\0")` | `false` | `true` |
+| `jail.read("in.txt\0anything")` | `Err(Failed("in.txt\u{0}anything: file name contained an unexpected NUL byte"))` | `Ok("hi\n")` |
+
+**Expected:** every path containing NUL is rejected with the same `Denied`/`Failed` error in both backends.
+**Impact:** an attenuated `Fs` leaks the existence and names of everything next to its root (one level up). Reading outside
+needs more than a single component, so only listing/stat of the parent escapes. Same hole applies to `rename`, `mkdir`, `remove`
+(`mkdir("..\0/zz")` returns `Ok(())` native, an error in `run`).
+
+## 2. Generic wrapper bypasses linear/unique rules (high)
+
+**Property:** §12/§13 "a module is the only place that can create a value of its type or finish a linear one: privacy is
+unforgeability"; "generic functions other than unwrap/expect cannot take it (they might copy or drop)".
+
+**Cause:** the rule "inside a method of the type itself, `self` is exempt" is applied to `struct Wrap[A]` even when `A` is a
+linear type from another module. Any program can declare a one-line generic struct with a method `fn Wrap[A].drop_it(self)`
+or `fn Wrap[A].dup(self) -> (Wrap[A], Wrap[A]) { (self, self) }`; `Wrap[vaultlib.Tok]` is then auto-linear, but its own
+methods may do anything with `self`. (Prelude generics such as `Option.is_some` are rejected correctly because they go through
+the generic-parameter analysis; the user-method path skips it.)
+
+**Repro:** `repros/19-linear-generic-wrapper-bypass.tn` with `repros/vaultlib.tn` (`pub linear struct Tok`, private construction, only disposal `Tok.finish`).
+
+* `tenon check`: accepted. `tenon run`: `1 2`, exit 0. native: `1 2`, exit 0.
+* `Tok` created by `vaultlib.mk_tok()` is dropped by `drop_it()` without `finish`; a second `Tok` is duplicated into two owners.
+* The same works for `unique` handles: `let (a, b) = Wrap { v: sys.net.listen(0).unwrap() }.dup()` is accepted (both backends, exit 0), so a `Listener`/`Conn` ("cannot be copied") is copied.
+
+**Expected:** compile-time error ("may copy or drop values of its type parameter A") whenever a wrapper method's `self` would be copied or dropped with a linear/unique argument, i.e. the exemption must apply only to types declared `linear`/`unique`.
+
+## 3. Match guard consumes a linear value that a later arm consumes again (high)
+
+**Property:** §12 "must be consumed exactly once"; the task list names "match guards".
+
+**Repro:** `repros/03-linear-guard-double-consume.tn`. `tenon check`: accepted.
+`tenon run`: stdout `closed 7` / `closed 7`, exit 0. Native: the same, exit 0 (ASan clean; the object is released twice by the program's own logic).
+**Expected:** error: `t` is consumed in a guard that may fall through. (Variants where the guard merely *inspects* are correctly accepted.)
+
+## 4. Linear temporaries are dropped by "inspecting" operations (high)
+
+**Property:** §12 "reading fields, comparing and formatting do not consume it ... every path must consume it"; no silent loss.
+
+The rules treat field read, `==`, formatting and `ref` arguments as non-consuming, which is right for a *variable* but
+loses a value that has no variable.
+
+**Repro:** `repros/04-linear-temporary-dropped.tn` — four lines, all accepted by `check`:
+`mk().id`, `mk() == mk()`, `"{mk()}"`, `peek(mk())` (`peek(t: ref Tok)`).
+`tenon run`: `1 true Tok { id: 1 } 1`, exit 0. Native: identical, exit 0. Plain `mk()` as a statement and `let _ = mk()` are correctly rejected.
+**Expected:** error "linear value would be dropped" for each.
+
+## 5. `within` / `read_only` follow symlinks (medium)
+
+**Property:** "An attenuated `Fs` can only reach paths under its root".
+
+**Repro:** `repros/02-fs-symlink-escape.tn` (fixture has `jail/link -> ../outside`). Identical in both backends, exit 0:
+```
+read:   Ok("SECRET\n")        write:  Ok(())     rename: Ok(())
+mkdir:  Ok(())                remove: Ok(())     list:   Ok(["newdir"])
+```
+(file `outside/secret.txt` is read, then moved into the jail by `rename`; `outside/pwned.txt` and `outside/newdir` are created/removed).
+`read_only()` does stop writes through the link (it denies by operation, not path), but reads cross.
+**Expected:** resolve and re-check, or open with `O_NOFOLLOW`/`openat` per component; or document that symlinks are out of scope. The
+temp file of `Fs.write` (`<path>.tmp`, `O_CREAT|O_TRUNC`) also follows a pre-planted symlink.
+
+## 6. `..base` drops the replaced linear field (medium)
+
+**Repro:** `repros/05-linear-struct-update-drops-field.tn`: `Two { a: Tok { id: 3 }, ..t }` discards `t.a`.
+`check` accepts; `run` and native exit 0 with no output. `let _ = t.a` is rejected, `t.a = ...` is rejected ("cannot overwrite a linear value in place").
+**Expected:** reject struct update that replaces a linear field of `base` (or require the old field to be consumed first).
+
+## 7. A struct holding a `fn` is comparable / hashable (medium)
+
+**Property:** §4 "Functions and capabilities cannot be compared"; `Option[fn]`, `List[fn]`, `(Console, Int)` are rejected correctly.
+
+**Repro:** `repros/06-fn-field-compare.tn` (`struct Hf { f: fn() -> Int }`, `a == a`; `Map[fn() -> Int, Int]`).
+* `tenon run`: prints `true`, then `trap: key not found: <fn>` / `at 06-fn-field-compare.tn:9:6`, **exit 70**.
+* native: prints `false` then `2` (two entries for the same function key), **exit 0**.
+
+**Expected:** compile-time rejection, as for the other containers. (Same class: `xs.sort()` on `List[fn]` is accepted.)
+
+## 8. NaN as a map key (medium)
+
+**Repro:** `repros/07-nan-map-key.tn` (`m[nan] = 1; m[nan] = 2`).
+`tenon run`: `trap: key not found: nan` at `07-nan-map-key.tn:6:6`, **exit 70**. Native: `[nan: 1, nan: 2] 2 None`, **exit 0** (entries that can never be found or removed; the map grows on every insert).
+**Expected:** one behaviour in both backends; best a check-time rejection of `Float` keys, or a defined NaN-key rule.
+Related, same on both backends: `List[Float].sort()` with NaN returns an unsorted list silently (`[3.0, nan, -0.0, 0.0, 1.0, nan, -1.0]`).
+
+## 9. Network ports are truncated (medium)
+
+**Repro:** `repros/08-net-port-truncation.tn`. Identical in both backends, exit 0:
+`listen(73616)` -> bound port **8080**; `listen(-1)` -> **65535**; `listen(65536)` and `listen(4294967296)` -> a random port (they became port 0).
+`connect(host, p)` truncates the same way, and its error texts differ between backends (`connect("", 80)`: run `failed to lookup address information...`, native `Connection refused`).
+**Expected:** `Err(Failed("port out of range"))` (or a trap) for ports outside 0..65535.
+
+## 10. Native stack overflow on a deep recursive value (medium)
+
+**Property:** native = interpreter; resource limits are the traps in §9, not behavioural differences.
+**Repro:** `repros/09-deep-enum-native-stack-overflow.tn` (1,000,000 `Cons` cells, no user recursion).
+`tenon run`: `built`, `dropped`, exit 0. Native: `built`, `trap: stack overflow`, **exit 72** (recursive release at `c = Nil`).
+`mk() == mk()` on two such values behaves the same way (run: `true`, native: exit 72). A long list/stack/queue implemented as an enum can't be freed.
+**Expected:** iterative release/compare, or interpreter and native sharing one documented depth limit.
+
+## 11. `tenon build` does not terminate / crashes on polymorphic recursion (medium)
+
+* `repros/10-polymorphic-recursion-hangs-build.tn` — `check` and `run` fine (`0`, exit 0). `build`: no output, runs until killed (still running after 15 s; infinite monomorphization).
+* `repros/11-polymorphic-recursive-type-crashes-build.tn` — `check` and `run` fine (`Wrap(Leaf([1]))`). `build`: after ~26 s `thread 'main' has overflowed its stack / fatal runtime error: stack overflow, aborting`, **exit 134**.
+**Expected:** an instantiation-depth limit with a diagnostic.
+
+## 12-18. Low severity
+
+* **12** `repros/12-map-ordering-accepted.tn`: `a < a` on `Map[Int, Int]` passes `check`; both backends then `trap: maps are not ordered` at 4:29, exit 70. §4 says maps are not ordered; this should be a check error like `fn` comparison.
+* **13** `repros/13-const-cycle.tn`: `const A1 = B1 + 1; const B1 = A1 + 1` is accepted; using `A1` gives `trap: stack overflow`, exit 72 in both backends. Unused constants are never evaluated (the program without the use prints and exits 0). A division by zero or overflow in a constant is likewise a run-time trap at first use rather than a compile error.
+* **14** `repros/14-compound-assign-order.tn`: prints `15 6` in both backends. Binary operators capture the left operand first (`b + {b = 10; 5}` = 6), but `a += {a = 10; 5}` reads `a` after the right side (= 15). Same for `xs[0] += {...}`.
+* **15** `repros/15-uninferred-type-accepted.tn`: `let xs = []` and `let o = None` pass check and run (`ok`, exit 0), leaving an unresolved type variable (docs say to annotate).
+* **16** `repros/16-run-nonutf8-arg-panics.tn`: `tenon run F.tn $'\xff'` -> `called Result::unwrap() on an Err value: "\xFF"` (Rust panic, **exit 101**); the compiled program prints `["�"]`, exit 0.
+* **17** `repros/17-trap-location-in-prelude.tn`: `INT_MIN.abs()` -> `trap: integer overflow` / `at <prelude>:32:41` (both backends, exit 70). Same for `List.sum` overflow. The user's call site is not reported.
+* **18** `repros/18-nested-tuple-index.tn`: `t.0.1` -> `error: expected a name, found '0.1'` (exit 1).
+
+## Minor observations (no repro file)
+
+* `Str.pad_left(5, "xy")` of `"ab"` is `"xyxyxyab"` (fill is repeated `width - len` times, so the result is longer than `width` with a multi-byte or multi-char fill). Same in both backends.
+* `encode` prints control characters as `\u{1}` but the language has no `\u` escape (`unknown escape '\u'`), so encoded text is not valid Tenon literal syntax, although `decode` accepts it.
+* A `main` that returns `Err(..)` (and the `tour` / `errors` corpus programs) exits with one more live allocation than a clean exit (the error value is never freed; allocation-counting build, live=2 vs 1). Harmless at exit, but it contradicts "leak-free" if checked mechanically.
+* `"abc".repeat(INT_MAX)` / `pad_left(INT_MAX, ..)` loop pushing into a list for as long as memory lasts (both backends) instead of trapping out of memory; I killed these runs. I did **not** safely test the OOM exit code 71 (the doubling-string/list programs consumed >20 GB before I killed them on the interpreter and on native), so the interpreter's missing OOM handling is untested.
+
+## What held up (no bug found)
+
+Method: ASan+UBSan builds of the generated C (`-fsanitize=address,undefined`), an allocation-counting `malloc` wrapper (macOS ASan has no leak detector), and interpreter-vs-native diffing of stdout, stderr and exit code.
+
+* **Memory safety / COW:** aliasing through `mut self` methods (`b.add_all(b.items)`, `a.add(a)`), `mut` parameters with by-value aliases of the same place, list mutation while iterating, `Str +=` in place with shared/sliced/captured/self-appended strings, `m[k].push`, `m[k] += v` on snapshots, closures capturing lists/maps, nested containers, map insert/remove stress (30k random ops, snapshots, removal during iteration), recursive enums, match bindings that outlive reassignment of the scrutinee. All ASan/UBSan clean, no leaks, interpreter and native identical. The whole `tests/run` corpus is ASan clean.
+* **Differential fuzz:** 277 valid mutants of `tests/run` programs (operators, integer literals, strings) gave identical stdout/stderr/exit code in both backends; 400 syntax-level mutations gave no compiler panic or hang in `tenon check`.
+* **Evaluation order:** call arguments, struct literal fields, operands, assignments, short-circuit, guards, `if`/`match` conditions: identical and left-to-right in both backends.
+* **Type checker:** `let` mutation (fields, elements, nested, parameters, `self`, rvalue receivers), implicit Int/Float/Bool/Str conversions, non-exhaustive/unreachable/guarded/or-pattern/nested matches, ignored `Result` (statements, branches, closure bodies, loop bodies, `fn()` coercions), `?` mismatches, shadowing (closures, match binds, loops), closure capture mutation, `let ... else` non-diverging blocks, `const` mutation, `mut` argument misuse and aliasing.
+* **Authority:** no way to construct `Console`/`Fs`/`Net`/`Clock`/`Sys`, `decode` them, `extern` them, redefine prelude types, or reach I/O without `main`'s `Sys`; `..`, absolute, empty, `sub//..` paths are denied; `read_only` denies write, append, remove, mkdir and rename (including after `within`).
+* **Linear types:** loops, `?`, `return`/`break`/`continue`, closures, `or`-patterns, short-circuit `and`/`or`, `while` conditions, tuples, `Option`/`Result` helpers (`is_some`, `unwrap_or`, `ok`, `map`), `ref` parameters (consume/return/store/forward), `mut` parameters of linear type, `encode`/`decode`, generic analysis (`first[A, B]`, `bad[A](x: ref A)`).
+* **Module privacy:** construction, field read/write, struct update, private functions/methods, `encode`/`decode` of private-field types, foreign method definitions. (Derived `==`/`<` on a foreign type compares private fields, which §4 specifies.)
+* **Traps:** location, message, exit code 70/72, and flushed stdout/stderr ordering are identical in both backends for overflow (all operators incl. `INT_MIN / -1`), division, slices (byte boundaries), indices, map keys, `unwrap`/`expect`/`panic`/`assert`, float-to-int, `char`, and for `main` returning `Int`/`Err`.
+* **Codec:** `decode` is canonical-only and identical in both backends across ~100 malformed/non-canonical inputs.
+
+## Caveats
+
+* The checkout changed under me (`mut` parameters, `let ... else`, constants, `Fs.rename`, etc. landed during the session); all repros were re-verified against the binary built from the final working tree.
+* While fuzzing I briefly wrote a temporary file (`_fz11.tn`) next to a corpus program inside the repo's `tests/run/` for a few seconds; I removed it immediately and `git status` shows no change from me. Everything else was written under `redteam/` and `/tmp/tenon-qa/`.

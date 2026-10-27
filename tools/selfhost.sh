@@ -38,7 +38,7 @@ while IFS= read -r f; do
   if [ "$want" != "$got" ]; then
     echo "FAIL self-hosted check disagrees on $f"; echo "  bootstrap: $want"; echo "  selfhost:  $got"; fail=$((fail+1))
   fi
-done < <(find src std tests programs selfhost bench study -name '*.tn' 2>/dev/null | sort)
+done < <(find src std tests programs selfhost bench study -name '*.tn' 2>/dev/null | grep -v '^tests/pending-reject/' | sort)
 echo "selfhost: lexer and parser agree with the bootstrap on $n files;" \
   "checker on $checked ($accepted accepted, $rejected rejected); $fail disagreements"
 [ "$fail" = 0 ]

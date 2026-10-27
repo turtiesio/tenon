@@ -1,0 +1,10 @@
+OK 10
+HOLD 1
+HOLD 2
+WIDGET on_hand=10 held=9 available=1
+ERR insufficient 1
+OK
+WIDGET on_hand=6 held=0 available=6
+HOLD 3
+ERR expired
+holds=1 committed=1 expired=1 released=0

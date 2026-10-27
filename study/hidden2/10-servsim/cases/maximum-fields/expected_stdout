@@ -1,0 +1,4 @@
+999999999999 start Ab_9-Z0123456789 s1 wait=0
+1000999999998 done Ab_9-Z0123456789 s1
+served=1 rejected=0 max_wait=0 total_wait=0 makespan=1000999999998
+s1 busy=999999999 served=1

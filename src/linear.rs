@@ -348,11 +348,32 @@ impl<'a> Walk<'a> {
     }
 
     fn expr(&mut self, e: &Expr, consume: bool) -> LResult {
+        // A linear value that is only inspected must live in a variable;
+        // otherwise it is created here and dropped right away.
+        if !consume && self.kind(e.id) == Kind::Linear && !is_place(e) {
+            return err(e.span, "this linear value is created here and never consumed; bind it with 'let' and consume it".into());
+        }
         if let Some(t) = self.ty(e.id) {
             if let Ty::Con(n, a) = t {
                 if (n == "List" || n == "Map") && a.iter().any(|x| self.kind_ty(x) != Kind::Plain) {
                     return err(e.span, format!("{} cannot hold linear or unique values", n));
                 }
+            }
+            let bad_key = std::cell::RefCell::new(None);
+            t.any(&|x| {
+                if let Ty::Con(n, a) = x {
+                    if (n == "Map" || n == "Set") && !a.is_empty() {
+                        if let Some(b) = crate::check_expr::incomparable_part(self.c, &a[0], true) {
+                            *bad_key.borrow_mut() = Some((a[0].clone(), b));
+                            return true;
+                        }
+                    }
+                }
+                false
+            });
+            let bad_key = bad_key.into_inner();
+            if let Some((k, b)) = bad_key {
+                return err(e.span, format!("{} cannot be a map or set key: it contains {}", k, b));
             }
         }
         match &e.kind {
@@ -463,7 +484,15 @@ impl<'a> Walk<'a> {
                             w.bind(&a.pat)?;
                         }
                         if let Some(g) = &a.guard {
+                            // A guard may run and fail, after which another arm runs:
+                            // it must not consume anything.
+                            let before: Vec<bool> = w.vars.iter().map(|v| v.moved.is_some()).collect();
                             w.expr(g, false)?;
+                            for (i, v) in w.vars.iter().enumerate().take(before.len()) {
+                                if v.moved.is_some() && !before[i] {
+                                    return err(g.span, format!("a match guard cannot consume '{}': if the guard fails, another arm runs", v.name));
+                                }
+                            }
                         }
                         w.expr(&a.body, consume)?;
                         w.end_scope(mark, a.body.span)
@@ -492,6 +521,10 @@ impl<'a> Walk<'a> {
                     self.expr(v, true)?;
                 }
                 if let Some(b) = base {
+                    if let Some((f, v)) = fs.iter().find(|(_, v)| self.kind(v.id) == Kind::Linear) {
+                        let _ = v;
+                        return err(b.span, format!("'..' would drop the base's linear field '{}', which '{}: ...' replaces", f, f));
+                    }
                     self.expr(b, true)?;
                 }
                 Ok(())
@@ -520,6 +553,15 @@ impl<'a> Walk<'a> {
                 inner.end_scope(0, body.span)
             }
         }
+    }
+}
+
+fn is_place(e: &Expr) -> bool {
+    match &e.kind {
+        ExprKind::Name(_) => true,
+        ExprKind::Field(b, _) | ExprKind::TupleField(b, _) | ExprKind::Index(b, _) => is_place(b),
+        ExprKind::MutArg(b) => is_place(b),
+        _ => false,
     }
 }
 

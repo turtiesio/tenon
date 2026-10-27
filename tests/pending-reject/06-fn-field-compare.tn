@@ -1,0 +1,13 @@
+// error: cannot be compared: they contain the function type
+// "Functions cannot be compared" is enforced for fn, Option[fn], List[fn] but not for a struct
+// that contains a fn.  The interpreter and the native build then disagree.
+struct Hf { f: fn() -> Int }
+fn one() -> Int { 1 }
+fn main(sys: Sys) {
+    let a = Hf { f: one }
+    sys.console.println("{a == a}")
+    var m: Map[fn() -> Int, Int] = [:]
+    m[one] = 1
+    m[one] = 2
+    sys.console.println("{m.len()}")
+}

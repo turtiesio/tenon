@@ -1,0 +1,7 @@
+ALERT 14 web 2
+ALERT 15 web 2
+ALERT 24 web 2
+ALERT 25 web 2
+auth errors=0 warns=0 alerts=0 peak=0
+web errors=5 warns=0 alerts=4 peak=2
+skipped=3

@@ -1,0 +1,7 @@
+user=bob action=login
+user="bob" action=logout
+
+user=alice action=login
+user= action=ping
+action=x user="a b"
+user=bob user=carol

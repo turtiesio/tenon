@@ -1,0 +1,12 @@
+ERR no such policy
+OK
+ERR policy exists
+ERR cost exceeds capacity
+ERR time went backwards
+ERR bad command
+ALLOW 1
+OK
+ERR no such client
+TOKENS 2
+ERR no such policy
+allowed=1 denied=0 clients=1

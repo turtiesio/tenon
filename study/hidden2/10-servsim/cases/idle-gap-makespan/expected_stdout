@@ -1,0 +1,6 @@
+100 start a s1 wait=0
+102 done a s1
+999 start b s1 wait=0
+1000 done b s1
+served=2 rejected=0 max_wait=0 total_wait=0 makespan=1000
+s1 busy=3 served=2

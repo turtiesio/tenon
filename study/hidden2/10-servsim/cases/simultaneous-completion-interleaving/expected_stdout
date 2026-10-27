@@ -1,0 +1,13 @@
+0 start a s1 wait=0
+0 start b s2 wait=0
+3 done a s1
+3 start c s1 wait=2
+3 done b s2
+3 start d s2 wait=2
+5 done c s1
+5 start e s1 wait=2
+5 done d s2
+6 done e s1
+served=5 rejected=0 max_wait=2 total_wait=6 makespan=6
+s1 busy=6 served=3
+s2 busy=5 served=2

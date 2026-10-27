@@ -1,0 +1,11 @@
+// error: would drop the base's linear field
+// `..base` replaces a linear field of base; the replaced value is silently dropped.
+// `let _ = t.a` would be rejected; this is accepted.
+linear struct Tok { pub id: Int }
+linear struct Two { pub a: Tok, pub b: Tok }
+fn Two.finish(self) { }
+fn main(sys: Sys) {
+    let t = Two { a: Tok { id: 1 }, b: Tok { id: 2 } }
+    let u = Two { a: Tok { id: 3 }, ..t }   // Tok { id: 1 } is lost here
+    u.finish()
+}

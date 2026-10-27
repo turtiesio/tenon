@@ -1,0 +1,4 @@
+3: a.b: longer than 0001
+4: a.c: not one of one,Two,one
+5: a.d: not a boolean
+errors: 3

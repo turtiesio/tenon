@@ -1,0 +1,5 @@
+OK 1
+HOLD 1
+HOLD 2
+holds=0 committed=0 expired=2 released=0
+ERR expired

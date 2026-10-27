@@ -1,0 +1,5 @@
+PEEK 100 absent c
+POLICY p 1 10
+HIT 99 p c
+STATS p
+HIT 100 p c

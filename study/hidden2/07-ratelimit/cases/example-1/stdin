@@ -1,0 +1,9 @@
+POLICY api 3 10
+HIT 0 api alice
+HIT 1 api alice
+HIT 2 api alice
+HIT 3 api alice
+HIT 12 api alice
+PEEK 12 api alice
+HIT 25 api alice 2
+STATS api

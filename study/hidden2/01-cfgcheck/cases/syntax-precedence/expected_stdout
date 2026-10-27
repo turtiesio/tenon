@@ -1,0 +1,7 @@
+1: syntax error
+2: syntax error
+3: syntax error
+4: key outside section
+6: a.x: not an integer
+7: duplicate key a.x
+errors: 6

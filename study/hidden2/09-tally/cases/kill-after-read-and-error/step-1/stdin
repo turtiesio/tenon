@@ -1,0 +1,4 @@
+SET a 5
+GET a
+BAD
+SET a 0

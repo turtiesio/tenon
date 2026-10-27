@@ -1,0 +1,4 @@
+a.a string required maxlen=0
+a.b string required maxlen=0001
+a.c enum required one,Two,one
+a.d bool required

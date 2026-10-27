@@ -1,0 +1,4 @@
+1: key outside section
+3: log.level: not one of debug,info,warn
+4: unknown key log.color
+errors: 3

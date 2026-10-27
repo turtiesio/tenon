@@ -1,0 +1,4 @@
+POLICY p 1 10
+HIT 999 p c 0
+HIT 1 p c
+HIT 0 missing c 2

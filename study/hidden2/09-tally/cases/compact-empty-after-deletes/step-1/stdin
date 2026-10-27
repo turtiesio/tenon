@@ -1,0 +1,4 @@
+SET a 1
+DEL a
+COMPACT
+INFO

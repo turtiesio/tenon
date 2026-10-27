@@ -1,0 +1,14 @@
+// An attenuated Fs cannot be escaped through NUL bytes or symlinks (fs_jail/up -> ..).
+enum Chain { Nil, Cons(Int, Chain) }
+fn main(sys: Sys) {
+    let c = sys.console
+    let jail = sys.fs.within("fs_jail")
+    c.println("{jail.read("in.txt")}")
+    c.println("{jail.read("up/fs_escape.tn").is_ok()} {jail.read("in.txt\0x")} {jail.list("..\0")} {jail.exists("up")}")
+    c.println("{jail.write("up/pwned.txt", "x")} {sys.fs.exists("pwned.txt")}")
+    c.println("{sys.net.listen(70000)}")
+    var ch = Nil
+    for i in 0..300000 { ch = Cons(i, ch) }
+    ch = Nil
+    c.println("released a 300000-deep chain")
+}
