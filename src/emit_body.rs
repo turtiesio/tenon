@@ -14,21 +14,21 @@ pub struct CV {
     pub owned: bool,
 }
 
-fn bor(code: impl Into<String>) -> CV {
+pub(crate) fn bor(code: impl Into<String>) -> CV {
     CV { code: code.into(), owned: false }
 }
 
-fn int_lit(i: i64) -> String {
+pub(crate) fn int_lit(i: i64) -> String {
     if i == i64::MIN { "(-9223372036854775807LL - 1)".into() } else { format!("{}LL", i) }
 }
 
-enum Step {
+pub(crate) enum Step {
     Field(String),
     List(Ty, String),
     Map(Ty, String),
 }
 
-struct Place {
+pub(crate) struct Place {
     root: String, // C pointer to the root variable
     steps: Vec<Step>,
 }
@@ -36,7 +36,7 @@ struct Place {
 // Can evaluating e assign to an existing local (so earlier borrowed reads go stale)?
 fn may_mutate(c: &crate::check::Checked, e: &Expr) -> bool {
     let mut found = false;
-    fn walk(c: &crate::check::Checked, e: &Expr, found: &mut bool) {
+    pub(crate) fn walk(c: &crate::check::Checked, e: &Expr, found: &mut bool) {
         if *found {
             return;
         }
@@ -86,7 +86,7 @@ impl<'a> Emitter<'a> {
         name
     }
 
-    fn sig(&mut self, fi: usize, targs: &[Ty]) -> (Vec<Ty>, Ty) {
+    pub(crate) fn sig(&mut self, fi: usize, targs: &[Ty]) -> (Vec<Ty>, Ty) {
         let f = &self.c.fns[fi];
         let m: HashMap<String, Ty> = f.tparams.iter().cloned().zip(targs.iter().cloned()).collect();
         (f.params.iter().map(|(_, t)| t.subst(&m)).collect(), f.ret.subst(&m))
@@ -124,7 +124,7 @@ impl<'a> Emitter<'a> {
 
     // ---- emission helpers ----
 
-    fn line(&mut self, s: &str) {
+    pub(crate) fn line(&mut self, s: &str) {
         for _ in 0..self.st.indent {
             self.st.out.push_str("    ");
         }
@@ -132,11 +132,11 @@ impl<'a> Emitter<'a> {
         self.st.out.push('\n');
     }
 
-    fn ety(&self, e: &Expr) -> Ty {
+    pub(crate) fn ety(&self, e: &Expr) -> Ty {
         self.c.ty(e.id).subst(&self.st.tsub)
     }
 
-    fn sub(&self, t: &Ty) -> Ty {
+    pub(crate) fn sub(&self, t: &Ty) -> Ty {
         t.subst(&self.st.tsub)
     }
 
@@ -158,11 +158,11 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn push(&mut self, kind: ScopeKind) {
+    pub(crate) fn push(&mut self, kind: ScopeKind) {
         self.st.scopes.push(Scope { kind, owned: vec![] });
     }
 
-    fn release_list(&mut self, owned: &[(String, Ty)]) {
+    pub(crate) fn release_list(&mut self, owned: &[(String, Ty)]) {
         for (n, t) in owned.iter().rev() {
             if !self.trivial(t) {
                 let tn = self.cty(t);
@@ -171,13 +171,13 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn pop(&mut self) {
+    pub(crate) fn pop(&mut self) {
         let s = self.st.scopes.pop().unwrap();
         self.release_list(&s.owned);
     }
 
     // Release (without popping) every scope down to and including the innermost `kind`.
-    fn release_to(&mut self, kind: ScopeKind) {
+    pub(crate) fn release_to(&mut self, kind: ScopeKind) {
         let mut all = Vec::new();
         for s in self.st.scopes.iter().rev() {
             all.push(s.owned.clone());
@@ -190,16 +190,16 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn reg(&mut self, name: &str, t: &Ty) {
+    pub(crate) fn reg(&mut self, name: &str, t: &Ty) {
         self.st.scopes.last_mut().unwrap().owned.push((name.to_string(), t.clone()));
     }
 
-    fn reg_local(&mut self, name: &str, t: &Ty) {
+    pub(crate) fn reg_local(&mut self, name: &str, t: &Ty) {
         let s = self.st.scopes.iter_mut().rev().find(|s| s.kind != ScopeKind::Stmt).unwrap();
         s.owned.push((name.to_string(), t.clone()));
     }
 
-    fn unreg(&mut self, name: &str) {
+    pub(crate) fn unreg(&mut self, name: &str) {
         for s in self.st.scopes.iter_mut().rev() {
             if let Some(i) = s.owned.iter().position(|(n, _)| n == name) {
                 s.owned.remove(i);
@@ -209,7 +209,7 @@ impl<'a> Emitter<'a> {
     }
 
     // Take ownership of a value: move an owned temp, or retain a borrowed one.
-    fn own(&mut self, cv: CV, t: &Ty) -> String {
+    pub(crate) fn own(&mut self, cv: CV, t: &Ty) -> String {
         if cv.owned {
             self.unreg(&cv.code);
             return cv.code;
@@ -221,7 +221,7 @@ impl<'a> Emitter<'a> {
         format!("{}_retain({})", tn, cv.code)
     }
 
-    fn tmp_owned(&mut self, t: &Ty, init: &str) -> CV {
+    pub(crate) fn tmp_owned(&mut self, t: &Ty, init: &str) -> CV {
         let tn = self.cty(t);
         let n = self.fresh("t");
         self.line(&format!("{} {} = {};", tn, n, init));
@@ -229,7 +229,7 @@ impl<'a> Emitter<'a> {
         CV { code: n, owned: true }
     }
 
-    fn tmp_val(&mut self, t: &Ty, init: &str) -> CV {
+    pub(crate) fn tmp_val(&mut self, t: &Ty, init: &str) -> CV {
         let tn = self.cty(t);
         let n = self.fresh("t");
         self.line(&format!("{} {} = {};", tn, n, init));
@@ -237,7 +237,7 @@ impl<'a> Emitter<'a> {
     }
 
     // Evaluate left to right; a value that a later operand could invalidate is retained first.
-    fn eval_list(&mut self, es: &[&Expr]) -> Vec<CV> {
+    pub(crate) fn eval_list(&mut self, es: &[&Expr]) -> Vec<CV> {
         let c = self.c;
         let muts: Vec<bool> = es.iter().map(|e| may_mutate(c, e)).collect();
         let mut out = Vec::new();
@@ -257,13 +257,13 @@ impl<'a> Emitter<'a> {
     // ---- blocks and statements ----
 
     // Emit a block's statements; the trailing expression's value (if wanted) goes into `result`.
-    fn block_into(&mut self, b: &Block, result: Option<&str>, rt: &Ty) {
+    pub(crate) fn block_into(&mut self, b: &Block, result: Option<&str>, rt: &Ty) {
         self.push(ScopeKind::Block);
         self.stmts_into(b, result, rt);
         self.pop();
     }
 
-    fn stmts_into(&mut self, b: &Block, result: Option<&str>, rt: &Ty) {
+    pub(crate) fn stmts_into(&mut self, b: &Block, result: Option<&str>, rt: &Ty) {
         let n = b.stmts.len();
         for (i, s) in b.stmts.iter().enumerate() {
             match (&s.kind, result) {
@@ -279,7 +279,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn stmt(&mut self, s: &Stmt) {
+    pub(crate) fn stmt(&mut self, s: &Stmt) {
         self.push(ScopeKind::Stmt);
         match &s.kind {
             StmtKind::Expr(e) => {
@@ -345,7 +345,7 @@ impl<'a> Emitter<'a> {
         self.pop();
     }
 
-    fn for_loop(&mut self, pat: &Pattern, iter: &ForIter, body: &Block) {
+    pub(crate) fn for_loop(&mut self, pat: &Pattern, iter: &ForIter, body: &Block) {
         let et = self.c.ty(pat.id).subst(&self.st.tsub);
         self.line("{");
         self.st.indent += 1;
@@ -423,7 +423,7 @@ impl<'a> Emitter<'a> {
 
     // ---- places ----
 
-    fn place(&mut self, e: &Expr) -> Place {
+    pub(crate) fn place(&mut self, e: &Expr) -> Place {
         match &e.kind {
             ExprKind::Name(n) => {
                 let root = if n == "self" && self.st.self_ptr { "p_self".to_string() } else { format!("&v_{}", n) };
@@ -454,7 +454,7 @@ impl<'a> Emitter<'a> {
     }
 
     // Pointer to the place after the first `n` steps.
-    fn place_ptr(&mut self, p: &Place, n: usize, sp: crate::diag::Span) -> String {
+    pub(crate) fn place_ptr(&mut self, p: &Place, n: usize, sp: crate::diag::Span) -> String {
         let mut cur = p.root.clone();
         for st in &p.steps[..n] {
             cur = match st {
@@ -480,7 +480,7 @@ impl<'a> Emitter<'a> {
         cur
     }
 
-    fn assign(&mut self, target: &Expr, op: Option<BinOp>, value: &Expr, s: &Stmt) {
+    pub(crate) fn assign(&mut self, target: &Expr, op: Option<BinOp>, value: &Expr, s: &Stmt) {
         let t = self.ety(target);
         let p = self.place(target);
         let cv = self.expr(value);
@@ -517,70 +517,8 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    // ---- patterns ----
 
-    fn pat_test(&mut self, p: &Pattern, v: &str, t: &Ty) -> String {
-        match &p.kind {
-            PatKind::Wild | PatKind::Bind(_) => "1".into(),
-            PatKind::Int(i) => format!("({} == {})", v, int_lit(*i)),
-            PatKind::Bool(b) => if *b { format!("({})", v) } else { format!("(!{})", v) },
-            PatKind::Str(s) => format!("tn_Str_eq({}, tn_str_lit({}, {}))", v, c_string(s), s.len()),
-            PatKind::Tuple(ps) => {
-                let Ty::Tuple(ts) = t else { unreachable!() };
-                let parts: Vec<String> =
-                    ps.iter().zip(ts.clone()).enumerate().map(|(i, (p, t))| self.pat_test(p, &format!("({}).f{}", v, i), &t)).collect();
-                parts.join(" && ")
-            }
-            PatKind::Variant(_, _, ps) => {
-                let Some(Res::Variant(_, vi, _)) = self.c.res.get(&p.id) else { unreachable!() };
-                let vi = *vi;
-                let fts = self.c.enum_variants(t).unwrap()[vi].1.clone();
-                let mut parts = vec![format!("{} == {}", self.tag(t, v), vi)];
-                for (j, (sp, ft)) in ps.iter().zip(fts).enumerate() {
-                    let pv = self.payload(t, v, vi, j);
-                    let s = self.pat_test(sp, &pv, &ft);
-                    if s != "1" {
-                        parts.push(s);
-                    }
-                }
-                format!("({})", parts.join(" && "))
-            }
-            PatKind::Or(_) => unreachable!("or-patterns are expanded"),
-        }
-    }
 
-    // Bind pattern variables (retained) from value `v`, which is known to match.
-    // `borrow`: the matched value outlives these bindings and cannot change
-    // meanwhile, so they need no reference of their own.
-    fn bind(&mut self, p: &Pattern, v: &str, t: &Ty, borrow: bool) {
-        match &p.kind {
-            PatKind::Bind(n) => {
-                let tn = self.cty(t);
-                if borrow || self.trivial(t) {
-                    self.line(&format!("{} v_{} = {};", tn, n, v));
-                    return;
-                }
-                self.line(&format!("{} v_{} = {}_retain({});", tn, n, tn, v));
-                self.reg_local(&format!("v_{}", n), t);
-            }
-            PatKind::Tuple(ps) => {
-                let Ty::Tuple(ts) = t else { unreachable!() };
-                for (i, (p, t)) in ps.iter().zip(ts.clone()).enumerate() {
-                    self.bind(p, &format!("({}).f{}", v, i), &t, borrow);
-                }
-            }
-            PatKind::Variant(_, _, ps) => {
-                let Some(Res::Variant(_, vi, _)) = self.c.res.get(&p.id) else { unreachable!() };
-                let vi = *vi;
-                let fts = self.c.enum_variants(t).unwrap()[vi].1.clone();
-                for (j, (sp, ft)) in ps.iter().zip(fts).enumerate() {
-                    let pv = self.payload(t, v, vi, j);
-                    self.bind(sp, &pv, &ft, borrow);
-                }
-            }
-            _ => {}
-        }
-    }
 
     // ---- expressions ----
 
@@ -726,7 +664,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn result_var(&mut self, t: &Ty) -> Option<String> {
+    pub(crate) fn result_var(&mut self, t: &Ty) -> Option<String> {
         if t.is("Unit") {
             return None;
         }
@@ -736,7 +674,7 @@ impl<'a> Emitter<'a> {
         Some(r)
     }
 
-    fn finish_result(&mut self, res: Option<String>, t: &Ty) -> CV {
+    pub(crate) fn finish_result(&mut self, res: Option<String>, t: &Ty) -> CV {
         match res {
             Some(r) => {
                 self.reg(&r, t);
@@ -746,7 +684,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn interp_str(&mut self, segs: &[StrSeg]) -> CV {
+    pub(crate) fn interp_str(&mut self, segs: &[StrSeg]) -> CV {
         if let [StrSeg::Lit(s)] = segs {
             return bor(format!("tn_str_lit({}, {})", c_string(s), s.len()));
         }
@@ -769,11 +707,11 @@ impl<'a> Emitter<'a> {
         self.tmp_owned(&Ty::str(), &format!("tn_buf_finish(&{})", b))
     }
 
-    fn local_code(&self, n: &str) -> String {
+    pub(crate) fn local_code(&self, n: &str) -> String {
         if n == "self" && self.st.self_ptr { "(*p_self)".into() } else { format!("v_{}", n) }
     }
 
-    fn name_value(&mut self, e: &Expr, t: &Ty) -> CV {
+    pub(crate) fn name_value(&mut self, e: &Expr, t: &Ty) -> CV {
         match self.c.res[&e.id].clone() {
             Res::Local(n) => bor(self.local_code(&n)),
             Res::Fn(fi, targs) => {
@@ -793,7 +731,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn call(&mut self, e: &Expr, callee: &Expr, args: &[Expr], t: &Ty) -> CV {
+    pub(crate) fn call(&mut self, e: &Expr, callee: &Expr, args: &[Expr], t: &Ty) -> CV {
         let loc = self.loc(e.span);
         if let Some(Res::CallValue) = self.c.res.get(&e.id) {
             let mut refs: Vec<&Expr> = vec![callee];
@@ -836,7 +774,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn method(&mut self, e: &Expr, recv: &Expr, args: &[Expr], t: &Ty) -> CV {
+    pub(crate) fn method(&mut self, e: &Expr, recv: &Expr, args: &[Expr], t: &Ty) -> CV {
         match self.c.res[&e.id].clone() {
             Res::ToStr => {
                 let rt = self.ety(recv);
@@ -886,7 +824,7 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn binary(&mut self, e: &Expr, op: BinOp, l: &Expr, r: &Expr) -> CV {
+    pub(crate) fn binary(&mut self, e: &Expr, op: BinOp, l: &Expr, r: &Expr) -> CV {
         if op == BinOp::And || op == BinOp::Or {
             let lv = self.expr(l);
             let res = self.fresh("b");
@@ -934,7 +872,7 @@ impl<'a> Emitter<'a> {
         self.tmp_val(&Ty::bool(), &code)
     }
 
-    fn arith(&mut self, op: BinOp, t: &Ty, a: &str, b: &str, sp: crate::diag::Span) -> CV {
+    pub(crate) fn arith(&mut self, op: BinOp, t: &Ty, a: &str, b: &str, sp: crate::diag::Span) -> CV {
         let loc = self.loc(sp);
         if t.is("Int") {
             let f = match op {
@@ -963,525 +901,20 @@ impl<'a> Emitter<'a> {
         self.tmp_owned(t, &format!("{}_concat({}, {})", ln, a, b))
     }
 
-    fn match_expr(&mut self, e: &Expr, s: &Expr, arms: &[Arm], t: &Ty) -> CV {
-        let st = self.ety(s);
-        let res = self.result_var(t);
-        let cv = self.expr(s);
-        let stable = cv.owned || (is_ident(&cv.code) && cv.code.starts_with("v_") && !self.st.muts.contains(&cv.code));
-        let sv = if cv.owned || is_ident(&cv.code) { cv.code } else { self.tmp_val(&st, &cv.code).code };
-        let done = self.fresh("done");
-        for a in arms {
-            for alt in expand_or(&a.pat) {
-                let test = self.pat_test(&alt, &sv, &st);
-                self.line(&format!("if ({}) {{", test));
-                self.st.indent += 1;
-                self.push(ScopeKind::Block);
-                self.bind(&alt, &sv, &st, stable);
-                if let Some(g) = &a.guard {
-                    let gv = self.expr(g);
-                    self.line(&format!("if ({}) {{", gv.code));
-                    self.st.indent += 1;
-                }
-                self.push(ScopeKind::Stmt);
-                let v = self.expr(&a.body);
-                if let Some(r) = &res {
-                    let code = self.own(v, t);
-                    self.line(&format!("{} = {};", r, code));
-                }
-                self.pop();
-                self.release_to(ScopeKind::Block);
-                self.line(&format!("goto {};", done));
-                if a.guard.is_some() {
-                    self.st.indent -= 1;
-                    self.line("}");
-                }
-                self.pop();
-                self.st.indent -= 1;
-                self.line("}");
-            }
-        }
-        let loc = self.loc(e.span);
-        self.line(&format!("tn_trap(\"no match arm (internal error)\", {});", loc));
-        self.line(&format!("{}:;", done));
-        self.finish_result(res, t)
-    }
 
-    fn try_expr(&mut self, e: &Expr, x: &Expr, t: &Ty) -> CV {
-        let xt = self.ety(x);
-        let cv = self.expr(x);
-        let v = if cv.owned || cv.code.starts_with("v_") { cv.code } else { self.tmp_val(&xt, &cv.code).code };
-        let rt = self.st.ret.clone().unwrap();
-        let tag = self.tag(&xt, &v);
-        self.line(&format!("if ({} != 0) {{", tag));
-        self.st.indent += 1;
-        let ret = if xt.is("Option") {
-            self.ctor_named(&rt, "None", &[])
-        } else {
-            let et = xt.args()[1].clone();
-            let p = self.payload(&xt, &v, 1, 0);
-            let code = self.own(bor(p), &et);
-            self.ctor_named(&rt, "Err", &[code])
-        };
-        let rn = self.cty(&rt);
-        let r = self.fresh("r");
-        self.line(&format!("{} {} = {};", rn, r, ret));
-        self.release_to(ScopeKind::Fn);
-        self.line(&format!("return {};", r));
-        self.st.indent -= 1;
-        self.line("}");
-        let _ = e;
-        let p = self.payload(&xt, &v, 0, 0);
-        let _ = t;
-        bor(p)
-    }
 
-    // ---- closures and function values ----
 
-    fn lambda(&mut self, e: &Expr, params: &[(String, Option<TypeExpr>)], body: &Expr, t: &Ty) -> CV {
-        let Ty::Fn(pts, rt) = t else { unreachable!() };
-        let caps: Vec<(String, Ty)> = self.c.captures[&e.id].iter().map(|(n, ct)| (n.clone(), self.sub(ct))).collect();
-        let name = self.fresh("lam");
-        let rn = self.cty(rt);
-        // environment
-        let mut env = format!("struct {}_env {{ tn_env h;", name);
-        let mut drop = format!("static void {}_drop(tn_env *e) {{ struct {}_env *E = (void *)e; ", name, name);
-        for (n, ct) in &caps {
-            let tn = self.cty(ct);
-            let _ = write!(env, " {} c_{};", tn, n);
-            let _ = write!(drop, "{}_release(E->c_{}); ", tn, n);
-        }
-        env.push_str(" };\n");
-        drop.push_str("free(E); }\n");
-        self.helpers.push_str(&env);
-        self.helpers.push_str(&drop);
-        let mut ps = vec!["tn_env *env_".to_string()];
-        for ((pn, _), pt) in params.iter().zip(pts) {
-            let tn = self.cty(pt);
-            ps.push(format!("{} v_{}", tn, pn));
-        }
-        let sig = format!("static {} {}({})", rn, name, ps.join(", "));
-        let _ = writeln!(self.protos, "{};", sig);
-        // body, in a fresh function context
-        let tsub = self.st.tsub.clone();
-        let saved = std::mem::replace(
-            &mut self.st,
-            FnState { tsub, ret: Some((**rt).clone()), self_ptr: false, indent: 1, ..Default::default() },
-        );
-        self.push(ScopeKind::Fn);
-        self.line(&format!("struct {}_env *E = (void *)env_; (void)E;", name));
-        for (n, ct) in &caps {
-            let tn = self.cty(ct);
-            self.line(&format!("{} v_{} = E->c_{};", tn, n, n));
-        }
-        let r = self.fresh("ret");
-        self.line(&format!("{} {};", rn, r));
-        self.push(ScopeKind::Stmt);
-        let v = self.expr(body);
-        let code = self.own(v, rt);
-        self.line(&format!("{} = {};", r, code));
-        self.pop();
-        self.release_to(ScopeKind::Fn);
-        self.line(&format!("return {};", r));
-        let out = std::mem::replace(&mut self.st, saved).out;
-        let _ = write!(self.bodies, "{} {{\n{}}}\n", sig, out);
-        // creation
-        if caps.is_empty() {
-            return bor(format!("((tn_fn){{ (void *){}, NULL }})", name));
-        }
-        let env_v = self.fresh("env");
-        self.line(&format!("struct {n}_env *{env_v} = tn_alloc(sizeof *{env_v}); {env_v}->h.rc = 1; {env_v}->h.drop = {n}_drop;", n = name));
-        for (n, ct) in &caps {
-            let code = self.own(bor(self.local_code(n)), ct);
-            self.line(&format!("{}->c_{} = {};", env_v, n, code));
-        }
-        self.tmp_owned(t, &format!("((tn_fn){{ (void *){}, &{}->h }})", name, env_v))
-    }
 
-    fn fn_wrapper(&mut self, fi: usize, targs: Vec<Ty>) -> String {
-        let key = format!("fn{}:{:?}", fi, targs);
-        if let Some(w) = self.wrappers.get(&key) {
-            return w.clone();
-        }
-        let (ptys, rt) = self.sig(fi, &targs);
-        let w = self.fresh("fnv");
-        self.wrappers.insert(key, w.clone());
-        let rn = self.cty(&rt);
-        let mut ps = vec!["tn_env *e".to_string()];
-        for (i, p) in ptys.iter().enumerate() {
-            let tn = self.cty(p);
-            ps.push(format!("{} a{}", tn, i));
-        }
-        let sig = format!("static {} {}({})", rn, w, ps.join(", "));
-        let _ = writeln!(self.protos, "{};", sig);
-        let args: Vec<CV> = (0..ptys.len()).map(|i| bor(format!("a{}", i))).collect();
-        if self.c.fns[fi].is_extern {
-            let saved = std::mem::replace(&mut self.st, FnState { ret: Some(rt.clone()), indent: 1, ..Default::default() });
-            self.push(ScopeKind::Fn);
-            let name = self.c.fns[fi].name.clone();
-            let v = self.extern_call(&name, args, &ptys, &rt, crate::diag::Span::default());
-            let code = self.own(v, &rt);
-            let r = self.fresh("r");
-            self.line(&format!("{} {} = {};", rn, r, code));
-            self.release_to(ScopeKind::Fn);
-            self.line(&format!("return {};", r));
-            let out = std::mem::replace(&mut self.st, saved).out;
-            let _ = write!(self.bodies, "{} {{ (void)e;\n{}}}\n", sig, out);
-        } else {
-            let f = self.fn_inst(fi, targs);
-            let a: Vec<String> = (0..ptys.len()).map(|i| format!("a{}", i)).collect();
-            let _ = writeln!(self.bodies, "{} {{ (void)e; return {}({}); }}", sig, f, a.join(", "));
-        }
-        w
-    }
 
-    fn ctor_wrapper(&mut self, et: &Ty, vi: usize, ptys: &[Ty]) -> String {
-        let key = format!("ctor{:?}:{}", et, vi);
-        if let Some(w) = self.wrappers.get(&key) {
-            return w.clone();
-        }
-        let w = self.fresh("fnv");
-        self.wrappers.insert(key, w.clone());
-        let en = self.cty(et);
-        let mut ps = vec!["tn_env *e".to_string()];
-        let mut args = Vec::new();
-        for (i, p) in ptys.iter().enumerate() {
-            let tn = self.cty(p);
-            ps.push(format!("{} a{}", tn, i));
-            args.push(format!("{}_retain(a{})", tn, i));
-        }
-        let sig = format!("static {} {}({})", en, w, ps.join(", "));
-        let _ = writeln!(self.protos, "{};", sig);
-        let code = self.ctor(et, vi, &args);
-        let _ = writeln!(self.bodies, "{} {{ (void)e; return {}; }}", sig, code);
-        w
-    }
 
-    // ---- builtins (signatures live in prelude.tn) ----
 
-    fn some_none(&mut self, t: &Ty, cond: &str, val: &str) -> CV {
-        let s = self.ctor_named(t, "Some", &[val.to_string()]);
-        let n = self.ctor_named(t, "None", &[]);
-        self.tmp_owned(t, &format!("{} ? {} : {}", cond, s, n))
-    }
 
-    fn io_result(&mut self, t: &Ty, k: &str, ok: &str, msg: &str) -> CV {
-        let et = t.args()[1].clone();
-        let errs: Vec<String> = (0..3).map(|i| self.ctor(&et, i, &[msg.to_string()])).collect();
-        let err = format!("({k} == 1 ? {} : {k} == 2 ? {} : {})", errs[0], errs[1], errs[2]);
-        let okv = self.ctor_named(t, "Ok", &[ok.to_string()]);
-        let errv = self.ctor_named(t, "Err", &[err]);
-        self.tmp_owned(t, &format!("{} == 0 ? {} : {}", k, okv, errv))
-    }
 
-    fn extern_call(&mut self, name: &str, args: Vec<CV>, ptys: &[Ty], t: &Ty, sp: crate::diag::Span) -> CV {
-        let a: Vec<String> = args.iter().map(|v| v.code.clone()).collect();
-        let loc = self.loc(sp);
-        let tn = self.cty(t);
-        match name {
-            "panic" => {
-                self.line(&format!("tn_trap_str({}, {});", a[0], loc));
-                let r = self.fresh("t");
-                self.line(&format!("{} {} = {{0}};", tn, r));
-                bor(r)
-            }
-            "encode" => {
-                let xn = self.cty(&ptys[0]);
-                let b = self.fresh("b");
-                self.line(&format!("tn_buf {} = tn_buf_new(); {}_show(&{}, {}, TN_FULL);", b, xn, b, a[0]));
-                self.tmp_owned(t, &format!("tn_buf_finish(&{})", b))
-            }
-            "decode" => {
-                let vt = t.args()[0].clone();
-                let vn = self.cty(&vt);
-                let (d, v, ok) = (self.fresh("d"), self.fresh("v"), self.fresh("ok"));
-                self.line(&format!("tn_dec {d} = {{ ({0}).p, ({0}).len, 0, -1 }}; {vn} {v}; bool {ok} = {vn}_dec(&{d}, &{v});", a[0]));
-                self.line(&format!("if ({ok} && {d}.pos != {d}.n) {{ {vn}_release({v}); {ok} = false; tn_dec_fail(&{d}, {d}.pos); }}"));
-                let okv = self.ctor_named(t, "Ok", &[v.clone()]);
-                let msg = format!("tn_dec_msg(&{}, {})", d, c_string(&vt.to_string()));
-                let errv = self.ctor_named(t, "Err", &[msg]);
-                self.tmp_owned(t, &format!("{} ? {} : {}", ok, okv, errv))
-            }
-            "assert" => {
-                self.line(&format!("if (!({})) tn_trap(\"assertion failed\", {});", a[0], loc));
-                bor("0")
-            }
-            "Int.to_float" => self.tmp_val(t, &format!("(double)({})", a[0])),
-            "Int.char" => self.tmp_owned(t, &format!("tn_int_char({}, {})", a[0], loc)),
-            "Float.to_int" => self.tmp_val(t, &format!("tn_float_to_int({}, {})", a[0], loc)),
-            "Float.sqrt" | "Float.floor" | "Float.ceil" | "Float.round" => {
-                self.tmp_val(t, &format!("{}({})", &name[6..], a[0]))
-            }
-            "Str.len" => self.tmp_val(t, &format!("({}).len", a[0])),
-            "Str.byte" => self.tmp_val(t, &format!("tn_str_byte({}, {}, {})", a[0], a[1], loc)),
-            "Str.slice" => self.tmp_owned(t, &format!("tn_str_slice({}, {}, {}, {})", a[0], a[1], a[2], loc)),
-            "Str.find" => {
-                let i = self.tmp_val(&Ty::int(), &format!("tn_str_find({}, {}, 0)", a[0], a[1])).code;
-                self.some_none(t, &format!("{} >= 0", i), &i)
-            }
-            "Str.split" => self.tmp_owned(t, &format!("tn_str_split({}, {}, {})", a[0], a[1], loc)),
-            "Str.words" => self.tmp_owned(t, &format!("tn_str_words({})", a[0])),
-            "Str.lines" => self.tmp_owned(t, &format!("tn_str_lines({})", a[0])),
-            "Str.trim" => self.tmp_owned(t, &format!("tn_str_trim({}, true, true)", a[0])),
-            "Str.trim_start" => self.tmp_owned(t, &format!("tn_str_trim({}, true, false)", a[0])),
-            "Str.trim_end" => self.tmp_owned(t, &format!("tn_str_trim({}, false, true)", a[0])),
-            "Str.starts_with" => self.tmp_val(t, &format!("tn_str_starts({}, {})", a[0], a[1])),
-            "Str.ends_with" => self.tmp_val(t, &format!("tn_str_ends({}, {})", a[0], a[1])),
-            "Str.to_int" | "Str.to_float" => {
-                let (ty, f) = if name == "Str.to_int" { ("tn_Int", "tn_str_to_int") } else { ("tn_Float", "tn_str_to_float") };
-                let o = self.fresh("o");
-                self.line(&format!("{} {} = 0;", ty, o));
-                let ok = self.tmp_val(&Ty::bool(), &format!("{}({}, &{})", f, a[0], o)).code;
-                self.some_none(t, &ok, &o)
-            }
-            "Str.upper" | "Str.lower" if args[0].owned => {
-                // The receiver is a temporary: hand it over so it can be reused in place.
-                self.unreg(&a[0]);
-                self.tmp_owned(t, &format!("tn_str_case_move({}, {})", a[0], name == "Str.upper"))
-            }
-            "Str.upper" | "Str.lower" => {
-                self.tmp_owned(t, &format!("tn_str_case({}, {})", a[0], name == "Str.upper"))
-            }
-            "Str.replace" => self.tmp_owned(t, &format!("tn_str_replace({}, {}, {}, {})", a[0], a[1], a[2], loc)),
-            "Str.chars" => self.tmp_owned(t, &format!("tn_str_chars({})", a[0])),
-            "List.len" => {
-                let ln = self.cty(&ptys[0]);
-                self.tmp_val(t, &format!("{}_len({})", ln, a[0]))
-            }
-            "List.slice" => {
-                let ln = self.cty(&ptys[0]);
-                self.tmp_owned(t, &format!("{}_slice({}, {}, {}, {})", ln, a[0], a[1], a[2], loc))
-            }
-            "List.join" => self.tmp_owned(t, &format!("tn_str_join({}, {})", a[0], a[1])),
-            "Map.len" => {
-                let mn = self.cty(&ptys[0]);
-                self.tmp_val(t, &format!("{}_len({})", mn, a[0]))
-            }
-            "Map.get" => {
-                let mn = self.cty(&ptys[0]);
-                let vt = ptys[0].args()[1].clone();
-                let vn = self.cty(&vt);
-                let p = self.fresh("p");
-                self.line(&format!("{} *{} = {}_get({}, {});", vn, p, mn, a[0], a[1]));
-                let val = if self.trivial(&vt) { format!("*{}", p) } else { format!("{}_retain(*{})", vn, p) };
-                self.some_none(t, &p, &val)
-            }
-            "Map.keys" | "Map.values" => {
-                let ln = tn.clone();
-                let et = t.args()[0].clone();
-                let en = self.cty(&et);
-                let l = self.tmp_owned(t, "NULL");
-                let f = if name == "Map.keys" { "k" } else { "v" };
-                let i = self.fresh("i");
-                self.line(&format!(
-                    "for (int64_t {i} = 0; {m} && {i} < {m}->n; {i}++) if ({m}->e[{i}].live) {ln}_push(&{l}, {en}_retain({m}->e[{i}].{f}));",
-                    m = a[0],
-                    l = l.code
-                ));
-                l
-            }
-            "Option.unwrap" | "Option.expect" | "Result.unwrap" | "Result.expect" => {
-                let xt = ptys[0].clone();
-                let tag = self.tag(&xt, &a[0]);
-                self.line(&format!("if ({} != 0) {{", tag));
-                match name {
-                    "Option.unwrap" => self.line(&format!("    tn_trap(\"unwrap on None\", {});", loc)),
-                    "Option.expect" => self.line(&format!("    tn_trap_str({}, {});", a[1], loc)),
-                    _ => {
-                        let b = self.fresh("b");
-                        self.line(&format!("    tn_buf {} = tn_buf_new();", b));
-                        if name == "Result.unwrap" {
-                            let xn = self.cty(&xt);
-                            self.line(&format!("    tn_buf_cstr(&{}, \"unwrap on \"); {}_show(&{}, {}, 0);", b, xn, b, a[0]));
-                        } else {
-                            let et = xt.args()[1].clone();
-                            let en = self.cty(&et);
-                            let p = self.payload(&xt, &a[0], 1, 0);
-                            self.line(&format!("    tn_buf_str(&{b}, {}); tn_buf_cstr(&{b}, \": \"); {en}_show(&{b}, {p}, 0);", a[1]));
-                        }
-                        self.line(&format!("    tn_trap_buf(&{}, {});", b, loc));
-                    }
-                }
-                self.line("}");
-                bor(self.payload(&xt, &a[0], 0, 0))
-            }
-            "Console.print" | "Console.println" => {
-                self.line(&format!("tn_write(({}).p, (size_t)({}).len);", a[1], a[1]));
-                if name == "Console.println" {
-                    self.line("tn_write(\"\\n\", 1);");
-                }
-                bor("0")
-            }
-            "Console.eprintln" => {
-                self.line(&format!("tn_eprintln({});", a[1]));
-                bor("0")
-            }
-            "Console.read_line" => {
-                let s = self.fresh("s");
-                self.line(&format!("tn_Str {} = {{0}};", s));
-                let ok = self.tmp_val(&Ty::bool(), &format!("tn_read_line(&{})", s)).code;
-                self.some_none(t, &ok, &s)
-            }
-            "Console.read_all" => self.tmp_owned(t, "tn_read_all()"),
-            "Fs.read" | "Fs.list" => {
-                let okt = t.args()[0].clone();
-                let on = self.cty(&okt);
-                let (r, m) = (self.fresh("r"), self.fresh("m"));
-                self.line(&format!("{} {} = {{0}}; tn_Str {} = {{0}};", on, r, m));
-                let f = if name == "Fs.read" { "tn_fs_read" } else { "tn_fs_list" };
-                let k = self.tmp_val(&Ty::int(), &format!("{}({}, {}, &{}, &{})", f, a[0], a[1], r, m)).code;
-                self.io_result(t, &k, &r, &m)
-            }
-            "Fs.write" | "Fs.append" | "Fs.remove" | "Fs.mkdir" => {
-                let m = self.fresh("m");
-                self.line(&format!("tn_Str {} = {{0}};", m));
-                let f = format!("tn_fs_{}", &name[3..]);
-                let extra = if name == "Fs.write" || name == "Fs.append" { format!("{}, ", a[2]) } else { String::new() };
-                let k = self.tmp_val(&Ty::int(), &format!("{}({}, {}, {}&{})", f, a[0], a[1], extra, m)).code;
-                self.io_result(t, &k, "0", &m)
-            }
-            "Fs.exists" => self.tmp_val(t, &format!("tn_fs_exists({}, {})", a[0], a[1])),
-            "Fs.within" => self.tmp_owned(t, &format!("tn_fs_within({}, {})", a[0], a[1])),
-            "Fs.read_only" => {
-                self.tmp_owned(t, &format!("tn_fs_make(tn_Str_retain(({0})->root), ({0})->att, false)", a[0]))
-            }
-            "Net.listen" | "Net.connect" | "Listener.accept" | "Conn.read" | "Conn.write" => {
-                let okt = t.args()[0].clone();
-                let on = self.cty(&okt);
-                let (r, m) = (self.fresh("r"), self.fresh("m"));
-                self.line(&format!("{} {} = {{0}}; tn_Str {} = {{0}};", on, r, m));
-                let call = match name {
-                    "Net.listen" => format!("tn_net_listen({}, &{}, &{})", a[1], r, m),
-                    "Net.connect" => format!("tn_net_connect({}, {}, &{}, &{})", a[1], a[2], r, m),
-                    "Listener.accept" => format!("tn_listener_accept({}, &{}, &{})", a[0], r, m),
-                    "Conn.read" => format!("tn_conn_read({}, {}, &{}, &{})", a[0], a[1], r, m),
-                    _ => format!("tn_conn_write({}, {}, &{})", a[0], a[1], m),
-                };
-                let k = self.tmp_val(&Ty::int(), &call).code;
-                self.io_result(t, &k, &r, &m)
-            }
-            "Conn.read_line" => {
-                let opt = t.args()[0].clone();
-                let (some, l, m) = (self.fresh("some"), self.fresh("l"), self.fresh("m"));
-                self.line(&format!("bool {} = false; tn_Str {} = {{0}}, {} = {{0}};", some, l, m));
-                let k = self.tmp_val(&Ty::int(), &format!("tn_conn_read_line({}, &{}, &{}, &{})", a[0], some, l, m)).code;
-                let sm = self.ctor_named(&opt, "Some", &[l.clone()]);
-                let nn = self.ctor_named(&opt, "None", &[]);
-                let o = self.tmp_val(&opt, &format!("{} ? {} : {}", some, sm, nn)).code;
-                self.io_result(t, &k, &o, &m)
-            }
-            "Listener.port" => self.tmp_val(t, &format!("tn_listener_port({})", a[0])),
-            "Clock.now_ms" => self.tmp_val(t, "tn_now_ms()"),
-            "Clock.mono_ns" => self.tmp_val(t, "tn_mono_ns()"),
-            "Clock.sleep_ms" => {
-                self.line(&format!("tn_sleep_ms({});", a[1]));
-                bor("0")
-            }
-            _ => panic!("emit: missing builtin {}", name),
-        }
-    }
 
-    // Mutating builtins: `p` points at the receiver place; args are owned temps.
-    fn extern_mut(&mut self, name: &str, p: &str, ptys: &[Ty], args: Vec<CV>, t: &Ty, sp: crate::diag::Span) -> CV {
-        let rt = &ptys[0];
-        let loc = self.loc(sp);
-        let ln = self.cty(rt);
-        let mut a = Vec::new();
-        let tys: Vec<Ty> = match name {
-            "List.push" => vec![rt.args()[0].clone()],
-            "List.insert" => vec![Ty::int(), rt.args()[0].clone()],
-            "List.sort_by" => vec![Ty::unit()],
-            "Map.insert" => vec![rt.args()[0].clone(), rt.args()[1].clone()],
-            _ => args.iter().map(|_| Ty::unit()).collect(),
-        };
-        for (v, ty) in args.into_iter().zip(tys) {
-            if name == "List.sort_by" || name == "Map.remove" || name == "List.remove" {
-                a.push(v.code);
-            } else {
-                a.push(self.own(v, &ty));
-            }
-        }
-        match name {
-            "List.push" => {
-                self.line(&format!("{}_push({}, {});", ln, p, a[0]));
-                bor("0")
-            }
-            "List.pop" => {
-                let et = rt.args()[0].clone();
-                let en = self.cty(&et);
-                let o = self.fresh("o");
-                self.line(&format!("{} {} = {{0}};", en, o));
-                let ok = self.tmp_val(&Ty::bool(), &format!("{}_pop({}, &{})", ln, p, o)).code;
-                self.some_none(t, &ok, &o)
-            }
-            "List.insert" => {
-                self.line(&format!("{}_insert({}, {}, {}, {});", ln, p, a[0], a[1], loc));
-                bor("0")
-            }
-            "List.remove" => self.tmp_owned(t, &format!("{}_remove({}, {}, {})", ln, p, a[0], loc)),
-            "List.clear" | "List.reverse" | "List.sort" => {
-                if name == "List.sort" && rt.any(&|x| x.is("Map")) {
-                    self.line(&format!("tn_cur_loc = {};", loc));
-                }
-                self.line(&format!("{}_{}({});", ln, &name[5..], p));
-                bor("0")
-            }
-            "List.sort_by" => {
-                let Ty::Fn(_, kt) = ptys[1].clone() else { unreachable!() };
-                let h = self.sort_by_helper(rt, &kt);
-                if kt.any(&|x| x.is("Map")) {
-                    self.line(&format!("tn_cur_loc = {};", loc));
-                }
-                self.line(&format!("{}({}, {});", h, p, a[0]));
-                bor("0")
-            }
-            "Map.insert" => {
-                self.line(&format!("{}_insert({}, {}, {});", ln, p, a[0], a[1]));
-                bor("0")
-            }
-            "Map.remove" => {
-                let vt = rt.args()[1].clone();
-                let vn = self.cty(&vt);
-                let o = self.fresh("o");
-                self.line(&format!("{} {} = {{0}};", vn, o));
-                let ok = self.tmp_val(&Ty::bool(), &format!("{}_remove({}, {}, &{})", ln, p, a[0], o)).code;
-                self.some_none(t, &ok, &o)
-            }
-            _ => panic!("emit: missing mutating builtin {}", name),
-        }
-    }
 
-    fn sort_by_helper(&mut self, lt: &Ty, kt: &Ty) -> String {
-        let key = format!("sortby{:?}{:?}", lt, kt);
-        if let Some(w) = self.wrappers.get(&key) {
-            return w.clone();
-        }
-        let h = self.fresh("sortby");
-        self.wrappers.insert(key, h.clone());
-        let ln = self.cty(lt);
-        let et = self.cty(&lt.args()[0]);
-        let kn = self.cty(kt);
-        let _ = writeln!(self.protos, "static void {}({} *p, tn_fn f);", h, ln);
-        let _ = writeln!(
-            self.helpers,
-            "static int {h}_cmp(void *ctx, int64_t a, int64_t b) {{ {kn} *k = ctx; return {kn}_cmp(k[a], k[b]); }}"
-        );
-        let _ = writeln!(
-            self.bodies,
-            "static void {h}({ln} *p, tn_fn f) {{\n    int64_t n = {ln}_len(*p);\n    if (n < 2) return;\n    \
-             {kn} *keys = tn_alloc(sizeof({kn}) * (size_t)n);\n    \
-             for (int64_t i = 0; i < n; i++) keys[i] = (({kn} (*)(tn_env *, {et})) f.f)(f.env, (*p)->data[i]);\n    \
-             int64_t *idx = tn_alloc(sizeof(int64_t) * (size_t)n), *tmp = tn_alloc(sizeof(int64_t) * (size_t)n);\n    \
-             for (int64_t i = 0; i < n; i++) idx[i] = i;\n    tn_msort_idx(idx, tmp, n, {h}_cmp, keys);\n    \
-             {ln}_unique(p);\n    {et} *out = tn_alloc(sizeof({et}) * (size_t)n);\n    \
-             for (int64_t i = 0; i < n; i++) out[i] = (*p)->data[idx[i]];\n    \
-             memcpy((*p)->data, out, sizeof({et}) * (size_t)n);\n    \
-             for (int64_t i = 0; i < n; i++) {kn}_release(keys[i]);\n    free(keys); free(idx); free(tmp); free(out);\n}}"
-        );
-        h
-    }
 }
 
-fn is_ident(s: &str) -> bool {
+pub(crate) fn is_ident(s: &str) -> bool {
     s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
@@ -1495,30 +928,4 @@ fn pat_names(p: &Pattern, out: &mut std::collections::HashSet<String>) {
     }
 }
 
-// Expand or-patterns (also nested ones) into separate alternatives.
-fn expand_or(p: &Pattern) -> Vec<Pattern> {
-    let mk = |kind: PatKind| Pattern { id: p.id, span: p.span, kind };
-    match &p.kind {
-        PatKind::Or(alts) => alts.iter().flat_map(expand_or).collect(),
-        PatKind::Tuple(ps) => product(ps).into_iter().map(|v| mk(PatKind::Tuple(v))).collect(),
-        PatKind::Variant(q, n, ps) => product(ps).into_iter().map(|v| mk(PatKind::Variant(q.clone(), n.clone(), v))).collect(),
-        _ => vec![p.clone()],
-    }
-}
 
-fn product(ps: &[Pattern]) -> Vec<Vec<Pattern>> {
-    let mut acc: Vec<Vec<Pattern>> = vec![vec![]];
-    for p in ps {
-        let alts = expand_or(p);
-        let mut next = Vec::new();
-        for a in &acc {
-            for alt in &alts {
-                let mut v = a.clone();
-                v.push(alt.clone());
-                next.push(v);
-            }
-        }
-        acc = next;
-    }
-    acc
-}

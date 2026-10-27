@@ -1,11 +1,15 @@
 // tenon: bootstrap compiler and reference interpreter for the Tenon language.
 
 mod ast;
+mod builtins;
 mod check;
+mod check_expr;
 mod codec;
 mod diag;
 mod emit_body;
+mod emit_builtins;
 mod emit_c;
+mod emit_ctl;
 mod exhaust;
 mod interp;
 mod lexer;
