@@ -1,0 +1,11 @@
+CREATE p x y
+VOTE absent u z
+CLOSE absent
+VOTE p u z
+VOTE p u x
+CLOSE p
+VOTE p u z
+CLOSE p
+CREATE p a a
+CREATE p a b
+RESULT p

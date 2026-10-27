@@ -1,0 +1,13 @@
+SCORE ann 50
+SCORE bob 70
+SCORE cy 50
+SCORE dee 20
+SCORE ann 5
+TOP 3
+RANK cy
+RANK ann
+SCORE ann -5
+TOP 10
+RANK dee
+RANK zed
+COUNT

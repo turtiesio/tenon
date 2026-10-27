@@ -1,0 +1,4 @@
+CREATE p x y
+VOTE p u x
+VOTE p u x
+RESULT p

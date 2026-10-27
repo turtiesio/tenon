@@ -1,0 +1,17 @@
+PLAYED X 1
+PLAYED O 2
+PLAYED X 1
+PLAYED O 2
+PLAYED X 1
+PLAYED O 2
+TURN X
+PLAYED X 1 WIN
+ERR game over
+WIN X
+......./......./......./......./..OOO../.XXXX..
+UNDONE 2
+TURN X
+PLAYED X 1 WIN
+OK
+......./......./......./......./......./.......
+ERR nothing to undo

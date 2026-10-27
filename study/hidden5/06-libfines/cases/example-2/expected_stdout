@@ -1,0 +1,6 @@
+zed loans=1 late=1 fine=3.00
+  Y Big Book days=4 fine=3.00
+amy loans=2 late=2 fine=1.00
+  Y Big Book days=1 fine=1.00
+  X-1 Café Stories days=7 fine=0.00
+total=4.00 skipped=1

@@ -1,0 +1,11 @@
+OK
+ERR no such poll
+ERR no such poll
+ERR no such option
+VOTED
+OK
+ERR poll closed
+ERR poll closed
+ERR bad command
+ERR poll exists
+p closed x=1 y=0

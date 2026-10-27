@@ -1,0 +1,4 @@
+a loans=2 late=2 fine=0.03
+  A Upper days=1 fine=0.01
+  a Lower days=1 fine=0.02
+total=0.03 skipped=1

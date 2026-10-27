@@ -1,0 +1,6 @@
+ann +15.00
+bob -5.00
+cy -10.00
+--
+cy pays ann 10.00
+bob pays ann 5.00

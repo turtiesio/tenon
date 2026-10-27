@@ -1,0 +1,3 @@
+expense ann 30.00 ann bob cy
+expense bob 10.00 bob cy
+transfer cy ann 5.00

@@ -1,0 +1,7 @@
+ann loans=2 late=2 fine=2.25
+  B1 Dune days=5 fine=1.25
+  B2 The Hobbit days=23 fine=1.00
+bob loans=2 late=1 fine=0.50
+  B2 The Hobbit days=5 fine=0.50
+dee loans=1 late=0 fine=0.00
+total=2.75 skipped=1

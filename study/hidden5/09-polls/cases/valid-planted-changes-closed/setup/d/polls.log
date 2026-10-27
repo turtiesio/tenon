@@ -1,0 +1,6 @@
+CREATE p b a
+CREATE q x y
+VOTE p u b
+VOTE p v b
+VOTE p u a
+CLOSE p
