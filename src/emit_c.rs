@@ -55,12 +55,54 @@ pub struct Emitter<'a> {
     pub st: FnState,
 }
 
+// Builds are cached by the emitted C, the C compiler and its flags: rebuilding
+// an unchanged program (the edit-run loop) copies the cached executable instead
+// of running the C compiler. Cache: $TENON_CACHE, else <tmp>/tenon-cache;
+// TENON_CACHE=off disables it.
 pub fn build(c: &Checked, sm: &SourceMap, out: &str, opt: &str) -> Result<(), String> {
     let code = emit(c, sm);
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
+    let cached = cache_path(&code, &cc, opt);
+    // An entry is the executable plus its C source; a hit requires the source
+    // to match exactly, so a hash collision cannot run the wrong program.
+    if let Some(p) = &cached {
+        let same = std::fs::read_to_string(p.with_extension("c")).map_or(false, |c| c == code);
+        if same && std::fs::copy(p, out).is_ok() {
+            return Ok(());
+        }
+    }
+    compile(&code, &cc, out, opt)?;
+    if let Some(p) = cached {
+        // write then rename, so a concurrent build never sees a partial entry
+        let id = std::process::id();
+        let (tc, tx) = (p.with_extension(format!("c{}", id)), p.with_extension(format!("x{}", id)));
+        if std::fs::create_dir_all(p.parent().unwrap()).is_ok()
+            && std::fs::write(&tc, &code).is_ok()
+            && std::fs::copy(out, &tx).is_ok()
+        {
+            let _ = std::fs::rename(&tx, &p);
+            let _ = std::fs::rename(&tc, p.with_extension("c"));
+        }
+    }
+    Ok(())
+}
+
+fn cache_path(code: &str, cc: &str, opt: &str) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let dir = match std::env::var("TENON_CACHE") {
+        Ok(d) if d == "off" => return None,
+        Ok(d) => std::path::PathBuf::from(d),
+        Err(_) => std::env::temp_dir().join("tenon-cache"),
+    };
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (code, cc, opt, env!("CARGO_PKG_VERSION")).hash(&mut h);
+    Some(dir.join(format!("{:016x}-{}", h.finish(), code.len())))
+}
+
+fn compile(code: &str, cc: &str, out: &str, opt: &str) -> Result<(), String> {
     let cpath = format!("{}.c", out);
     std::fs::write(&cpath, code).map_err(|e| format!("cannot write {}: {}", cpath, e))?;
-    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
-    let st = std::process::Command::new(&cc)
+    let st = std::process::Command::new(cc)
         .args([opt, "-w", "-std=gnu11", "-pthread", "-o", out, &cpath, "-lm"])
         .status()
         .map_err(|e| format!("cannot run {}: {}", cc, e))?;
