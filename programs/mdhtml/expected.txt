@@ -1,0 +1,525 @@
+=== empty input
+| 
+[exit 0]
+=== only blank lines
+| 
+| 
+|    
+| 
+[exit 0]
+=== headings 1-6
+| # one
+| ## two
+| ### three
+| #### four
+| ##### five
+| ###### six
+<h1>one</h1>
+<h2>two</h2>
+<h3>three</h3>
+<h4>four</h4>
+<h5>five</h5>
+<h6>six</h6>
+[exit 0]
+=== not headings
+| ####### seven
+| #nospace
+| #
+| \# x
+<p>####### seven
+#nospace</p>
+<h1></h1>
+<p>\# x</p>
+[exit 0]
+=== paragraphs
+| first line
+| second line
+| 
+| next paragraph
+|    indented line
+| 
+| 
+| 
+| last
+<p>first line
+second line</p>
+<p>next paragraph
+indented line</p>
+<p>last</p>
+[exit 0]
+=== paragraph interrupted by blocks
+| text
+| # head
+| more
+| - item
+| after
+| > q
+| end
+| ---
+| x
+| ```
+| c
+| ```
+| y
+<p>text</p>
+<h1>head</h1>
+<p>more</p>
+<ul>
+<li>item</li>
+</ul>
+<p>after</p>
+<blockquote>
+<p>q</p>
+</blockquote>
+<p>end</p>
+<hr>
+<p>x</p>
+<pre><code>c
+</code></pre>
+<p>y</p>
+[exit 0]
+=== bullet lists
+| - one
+| * two
+| - three
+<ul>
+<li>one</li>
+<li>two</li>
+<li>three</li>
+</ul>
+[exit 0]
+=== ordered lists
+| 1. one
+| 2. two
+| 10. ten
+| 7. seven
+<ol>
+<li>one</li>
+<li>two</li>
+<li>ten</li>
+<li>seven</li>
+</ol>
+[exit 0]
+=== list kinds switch
+| - a
+| 1. b
+| 2. c
+| * d
+<ul>
+<li>a</li>
+</ul>
+<ol>
+<li>b</li>
+<li>c</li>
+</ol>
+<ul>
+<li>d</li>
+</ul>
+[exit 0]
+=== list items with inline
+| - **bold** item
+| - a [link](u) and `code`
+<ul>
+<li><strong>bold</strong> item</li>
+<li>a <a href="u">link</a> and <code>code</code></li>
+</ul>
+[exit 0]
+=== marker without text
+| -
+| - 
+| 1.
+| -x
+| 1.x
+<p>-
+-
+1.
+-x
+1.x</p>
+[exit 0]
+=== horizontal rules
+| above
+| ---
+| below
+| 
+| ---
+|   ---  
+| ----
+| --
+<p>above</p>
+<hr>
+<p>below</p>
+<hr>
+<hr>
+<p>----
+--</p>
+[exit 0]
+=== fenced code
+| ```
+| plain
+|   indented <b>&amp;</b> "q"
+| 
+|     after blank
+| ```
+| after
+<pre><code>plain
+  indented &lt;b&gt;&amp;amp;&lt;/b&gt; &quot;q&quot;
+
+    after blank
+</code></pre>
+<p>after</p>
+[exit 0]
+=== fenced code with language
+| ```rust
+| fn main() {}
+| ```
+| ``` python extra words
+| print("hi")
+| ```
+<pre><code class="language-rust">fn main() {}
+</code></pre>
+<pre><code class="language-python">print(&quot;hi&quot;)
+</code></pre>
+[exit 0]
+=== code is never formatted
+| ```
+| # not a heading
+| - not a list
+| **not bold** `x` [a](b)
+| > not a quote
+| ---
+| ```
+<pre><code># not a heading
+- not a list
+**not bold** `x` [a](b)
+&gt; not a quote
+---
+</code></pre>
+[exit 0]
+=== empty fenced code
+| ```
+| ```
+| ```js
+| ```
+<pre><code></code></pre>
+<pre><code class="language-js"></code></pre>
+[exit 0]
+=== unclosed fence
+| before
+| ```
+| line one
+| line two
+<p>before</p>
+<pre><code>line one
+line two
+</code></pre>
+[exit 0]
+=== fence with backtick in info is a paragraph
+| ```code``` here
+<p>``<code>code</code>`` here</p>
+[exit 0]
+=== language is escaped
+| ```a"b<c
+| x
+| ```
+<pre><code class="language-a&quot;b&lt;c">x
+</code></pre>
+[exit 0]
+=== block quote
+| > quoted text
+| > continues
+| >
+| > second paragraph
+| after quote
+<blockquote>
+<p>quoted text
+continues</p>
+<p>second paragraph</p>
+</blockquote>
+<p>after quote</p>
+[exit 0]
+=== block quote without space
+| >tight
+| >  two spaces
+<blockquote>
+<p>tight
+two spaces</p>
+</blockquote>
+[exit 0]
+=== block quote containing blocks
+| > # title
+| > - a
+| > - b
+| > ```
+| > code
+| >
+| > more
+| > ```
+| > ---
+| > text
+<blockquote>
+<h1>title</h1>
+<ul>
+<li>a</li>
+<li>b</li>
+</ul>
+<pre><code>code
+
+more
+</code></pre>
+<hr>
+<p>text</p>
+</blockquote>
+[exit 0]
+=== nested block quote
+| > outer
+| > > inner
+| > > more
+| > back
+<blockquote>
+<p>outer</p>
+<blockquote>
+<p>inner
+more</p>
+</blockquote>
+<p>back</p>
+</blockquote>
+[exit 0]
+=== unclosed fence stops at quote end
+| > ```
+| > code
+| plain
+<blockquote>
+<pre><code>code
+</code></pre>
+</blockquote>
+<p>plain</p>
+[exit 0]
+=== bold
+| a **bold** b **two words** c
+<p>a <strong>bold</strong> b <strong>two words</strong> c</p>
+[exit 0]
+=== em
+| a *em* b *two words* c
+<p>a <em>em</em> b <em>two words</em> c</p>
+[exit 0]
+=== inline code
+| use `x < y` or `a && b` or `**no** *format*`
+<p>use <code>x &lt; y</code> or <code>a &amp;&amp; b</code> or <code>**no** *format*</code></p>
+[exit 0]
+=== links
+| [text](http://example.com/a?b=1&c=2) and [two words](rel/path)
+<p><a href="http://example.com/a?b=1&amp;c=2">text</a> and <a href="rel/path">two words</a></p>
+[exit 0]
+=== nested inline
+| **bold *em* inside**
+| 
+| *em **bold** inside*
+| 
+| ***both***
+| 
+| [**bold link**](u)
+| 
+| [`code` and *em*](u)
+| 
+| **a [link](u) and `code`**
+<p><strong>bold <em>em</em> inside</strong></p>
+<p><em>em <strong>bold</strong> inside</em></p>
+<p><strong><em>both</em></strong></p>
+<p><a href="u"><strong>bold link</strong></a></p>
+<p><a href="u"><code>code</code> and <em>em</em></a></p>
+<p><strong>a <a href="u">link</a> and <code>code</code></strong></p>
+[exit 0]
+=== closers are found by plain search
+| **[**link**](u)**
+| 
+| *a `b* c`
+| 
+| *a **b *c* d** e*
+<p><strong>[</strong>link<strong>](u)</strong></p>
+<p><em>a `b</em> c`</p>
+<p><em>a **b *c</em> d** e*</p>
+[exit 0]
+=== star runs
+| **a***
+| 
+| ***a**
+| 
+| ****
+| 
+| *****
+| 
+| ******a******
+<p><strong>a*</strong></p>
+<p><strong>*a</strong></p>
+<p>****</p>
+<p><strong>*</strong></p>
+<p><strong>**</strong>a<strong>**</strong></p>
+[exit 0]
+=== adjacent markup
+| *a*`b`**c**[d](e)*f*
+<p><em>a</em><code>b</code><strong>c</strong><a href="e">d</a><em>f</em></p>
+[exit 0]
+=== escaping
+| a & b < c > d "e"
+| # & < > "
+| - & < > "
+| > & < > "
+| [a&b](x"y<z)
+<p>a &amp; b &lt; c &gt; d &quot;e&quot;</p>
+<h1>&amp; &lt; &gt; &quot;</h1>
+<ul>
+<li>&amp; &lt; &gt; &quot;</li>
+</ul>
+<blockquote>
+<p>&amp; &lt; &gt; &quot;</p>
+</blockquote>
+<p><a href="x&quot;y&lt;z">a&amp;b</a></p>
+[exit 0]
+=== unclosed markers
+| **open
+| 
+| *open
+| 
+| `open
+| 
+| [open
+| 
+| [open](
+| 
+| [open](x
+| 
+| [open] (x)
+| 
+| [a](b c)
+<p>**open</p>
+<p>*open</p>
+<p>`open</p>
+<p>[open</p>
+<p>[open](</p>
+<p>[open](x</p>
+<p>[open] (x)</p>
+<p>[a](b c)</p>
+[exit 0]
+=== markers that cannot open or close
+| 2 * 3 * 4
+| 
+| ** a **
+| 
+| *a *
+| 
+| ** 
+| 
+| a * x
+<p>2 * 3 * 4</p>
+<p>** a **</p>
+<p>*a *</p>
+<p>**</p>
+<p>a * x</p>
+[exit 0]
+=== empty markup stays literal
+| `` and **** and [](x) and [x]()
+<p>`` and **** and [](x) and [x]()</p>
+[exit 0]
+=== unclosed after closed
+| **a** and **b
+| 
+| `a` and `b
+| 
+| *a* and *b
+<p><strong>a</strong> and **b</p>
+<p><code>a</code> and `b</p>
+<p><em>a</em> and *b</p>
+[exit 0]
+=== markup across lines
+| a **bold
+| across** b
+| *em
+| across*
+<p>a <strong>bold
+across</strong> b
+<em>em
+across</em></p>
+[exit 0]
+=== unicode
+| # Héllo *wörld* ✓
+| `日本語` [ünï](ü)
+<h1>Héllo <em>wörld</em> ✓</h1>
+<p><code>日本語</code> <a href="ü">ünï</a></p>
+[exit 0]
+=== windows line endings
+| # head
+| 
+| text
+| more
+| ```
+| code
+| ```
+| 
+<h1>head</h1>
+<p>text
+more</p>
+<pre><code>code
+</code></pre>
+[exit 0]
+=== no trailing newline
+| last line without newline
+<p>last line without newline</p>
+[exit 0]
+=== everything
+| # Title
+| 
+| Intro with **bold**, *em*, `code` and [a link](http://x.y).
+| 
+| > A quote
+| > - with a list
+| 
+| 1. first
+| 2. second
+| 
+| ---
+| 
+| ```sh
+| echo "hi" > out
+| ```
+| Done.
+<h1>Title</h1>
+<p>Intro with <strong>bold</strong>, <em>em</em>, <code>code</code> and <a href="http://x.y">a link</a>.</p>
+<blockquote>
+<p>A quote</p>
+<ul>
+<li>with a list</li>
+</ul>
+</blockquote>
+<ol>
+<li>first</li>
+<li>second</li>
+</ol>
+<hr>
+<pre><code class="language-sh">echo &quot;hi&quot; &gt; out
+</code></pre>
+<p>Done.</p>
+[exit 0]
+$ mdhtml in.md
+<h1>From a file</h1>
+<p>text &amp; more</p>
+[exit 0]
+$ mdhtml empty.md
+[exit 0]
+$ mdhtml missing.md
+mdhtml: cannot read missing.md: no such file
+[exit 1]
+$ mdhtml adir
+mdhtml: cannot read adir: Is a directory
+[exit 1]
+$ mdhtml in.md extra
+usage: mdhtml [FILE]
+[exit 2]
+$ mdhtml a b c
+usage: mdhtml [FILE]
+[exit 2]
+# file argument wins over stdin
+<h1>From a file</h1>
+<p>text &amp; more</p>
+[exit 0]
+# no input at all
+[exit 0]
