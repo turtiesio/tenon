@@ -1,0 +1,3 @@
+// error: reserved for type parameters
+enum E { A }
+fn main() {}

@@ -656,7 +656,8 @@ impl<'a> Emitter<'a> {
                 let refs: Vec<&Expr> = xs.iter().collect();
                 let vs = self.eval_list(&refs);
                 if vs.is_empty() {
-                    return bor("NULL");
+                    let ln = self.cty(&t);
+                    return bor(format!("(({}) NULL)", ln));
                 }
                 let et = t.args()[0].clone();
                 let ln = self.cty(&t);
@@ -672,7 +673,8 @@ impl<'a> Emitter<'a> {
                 let refs: Vec<&Expr> = ps.iter().flat_map(|(k, v)| [k, v]).collect();
                 let vs = self.eval_list(&refs);
                 if vs.is_empty() {
-                    return bor("NULL");
+                    let mn = self.cty(&t);
+                    return bor(format!("(({}) NULL)", mn));
                 }
                 let (kt, vt) = (t.args()[0].clone(), t.args()[1].clone());
                 let mn = self.cty(&t);
