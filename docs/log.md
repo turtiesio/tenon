@@ -106,3 +106,35 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   inputs.
 - **Red team**: Codex refused the security-flavoured brief (as tenon.md §2.4
   warns); reassigned to Claude Sonnet, framed as compiler QA.
+
+## 2026-10-28 — programs 7-10, language batch from evidence, QA round 1
+
+- **Workers** (Claude Sonnet, isolated worktrees, landing themselves) wrote mkplan,
+  csvq, mdhtml and calc: 10 real programs. Their GAPS.md files plus the study notes
+  drove one batch, each item with 2+ independent reports: constants, INT_MAX/MIN,
+  checked arithmetic, sort_by_desc, `_` parameters, operator-leading continuation
+  lines, let-else, char-class helpers, find_from, Fs.rename/is_dir, Set, and `mut`
+  parameters (call site marked `f(mut x)`, no aliasing between mut arguments).
+- **String building** was quadratic (`out += s` copied): 2.9 s -> 0.01 s for 200k
+  appends by appending in place when the buffer is unshared (capacity in the
+  string header). Value semantics preserved and tested (aliasing cases + ASan).
+- **Performance target met** on all benchmarks after a one-lookup lowering of the
+  counting idiom `m[k] = m.get_or(k, d) + x` (wordfreq 1.7x -> ~1.35x of C).
+  Rust baselines added; Tenon beats idiomatic Box-based Rust on trees.
+- **Self-hosted checker** (worker, Claude Opus) agrees with the bootstrap on all 154
+  corpus files on first landing (49 accepted, 105 rejected, identical first
+  diagnostics).
+- **Mutation testing** first batch: 14/25 killed. Survivors became tests (UTF-8
+  boundaries, byte bounds, or-pattern bindings, duplicate literal arms, exponents)
+  and exposed that no test ran under sanitizers -> tools/asan.sh in the evidence loop.
+- **QA round 1** (Claude Sonnet; Codex refused): 9 findings, all fixed the same
+  day: Fs escape via NUL bytes (C truncation) and via symlinks under an attenuated
+  root; ports silently reduced mod 65536; a match guard could consume a linear
+  value; linear temporaries dropped after inspection; `..base` dropping a replaced
+  linear field; structs with function fields and function map keys compared
+  (backends disagreed); NaN map keys (backends disagreed; Float keys now rejected);
+  native stack overflow releasing a 1M-node chain (bounded-depth release).
+  Five new checker rules wait in tests/pending-reject/ until selfhost/ mirrors them.
+- **Incident**: a landing raced an agent writing into the shared checkout
+  (unstaged change during rebase). Fix: `rebase --autostash` in tools/land.sh.
+- **Open product decision**: the concurrency model (see the final report).
