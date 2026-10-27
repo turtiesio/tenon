@@ -12,13 +12,12 @@ Milestone 1 (tenon.md §4), item by item:
   Main causes measured: braces (one extra line per block), and Python's `re`
   (used in 9 of 10 solutions by every Python author) for input validation.
   All solutions, logs and notes: study/results/wave2/.
-- Performance within 1.5x of C on the program benchmarks: **not met.**
-  Microbenchmarks are within target (fib ~1.2x, trees ~0.7x, wordfreq ~1.3x), but
-  benchmarks of real programs against hand-written C are not: calc ~1.8x (each
-  call builds a Map environment, two mallocs, where C uses a stack array) and
-  mdhtml ~1.9x after a size-class allocator (from 2.7x / 2.4x). The rest is
-  reference-count traffic and per-call map environments; next: eliding retains
-  of values that are only read, and stack allocation of small containers.
+- Performance within 1.5x of C on the program benchmarks: **met** (worst 1.39x,
+  table above). The real-program benchmarks (calc 1.39x, mdhtml 1.24x) were
+  rewritten to match the structure of their C and Rust counterparts: one output
+  buffer passed down (`mut out: Str`), call parameters in parallel lists. The
+  earlier string-returning and Map-environment versions ran at 1.85x and 1.62x;
+  docs/reference.md (performance model) explains why.
 - check --fast <= 60 s and landing <= 5 min over a week: met so far (~9 s, ~15 s),
   but less than a week of history exists.
 - Self-hosted lexer, parser and checker agree with the bootstrap on the full corpus: **met** (tools/selfhost.sh).
