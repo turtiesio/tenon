@@ -39,8 +39,13 @@ def main():
     loops.setdefault("check_fast", {})[today] = round(fast, 2)
     json.dump(loops, open(os.path.join(EV, "loops.json"), "w"), indent=1, sort_keys=True)
 
-    rust = sorted("src/" + f for f in os.listdir(os.path.join(ROOT, "src")) if f.endswith(".rs"))
-    trusted, rows = loc(rust + ["runtime/tenon.h", "src/prelude.tn"])
+    # Only what a compiled program's correctness depends on: the compile path,
+    # the runtime and the Tenon sources compiled into every program. The
+    # interpreter, test runner and dump tools are checks, not trusted code.
+    not_trusted = {"interp.rs", "builtins.rs", "codec.rs", "testrun.rs", "astdump.rs"}
+    rust = sorted("src/" + f for f in os.listdir(os.path.join(ROOT, "src")) if f.endswith(".rs") and f not in not_trusted)
+    std = sorted("std/" + f for f in os.listdir(os.path.join(ROOT, "std")) if f.endswith(".tn"))
+    trusted, rows = loc(rust + ["runtime/tenon.h", "src/prelude.tn"] + std)
     bench = load("bench.json")
     fuzz = load("fuzz.json")
     study = load("study.json")
