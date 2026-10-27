@@ -29,11 +29,14 @@ pub enum Closure {
     Lambda(crate::ast::Id, Vec<(String, V)>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Cap {
     Console,
     Fs { root: String, attenuated: bool, writable: bool },
     Clock,
+    Net,
+    Listener(std::net::TcpListener),
+    Conn(std::cell::RefCell<std::io::BufReader<std::net::TcpStream>>),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -314,6 +317,9 @@ pub fn show(v: &V, top: bool, n: &Names, out: &mut String) {
             self::Cap::Console => "<Console>",
             self::Cap::Fs { .. } => "<Fs>",
             self::Cap::Clock => "<Clock>",
+            self::Cap::Net => "<Net>",
+            self::Cap::Listener(_) => "<Listener>",
+            self::Cap::Conn(_) => "<Conn>",
         }),
     }
 }

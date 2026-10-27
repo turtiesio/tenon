@@ -261,8 +261,9 @@ impl<'a> Parser<'a> {
             let pspan = self.span();
             let pname = self.ident()?;
             self.expect_sym(":")?;
+            let by_ref = self.eat_kw("ref");
             let ty = self.type_expr()?;
-            params.push(Param { name: pname, ty, span: pspan });
+            params.push(Param { name: pname, by_ref, ty, span: pspan });
             if !self.is_sym(")") {
                 self.expect_sym(",")?;
             }

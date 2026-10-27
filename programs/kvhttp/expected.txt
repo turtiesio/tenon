@@ -1,0 +1,32 @@
+listening on PORT with 0 keys
+$ -X PUT --data-binary hello world http://127.0.0.1:PORT/kv/greeting
+201 
+$ http://127.0.0.1:PORT/kv/greeting
+200 hello world
+$ -X PUT --data-binary two http://127.0.0.1:PORT/kv/greeting
+200 
+$ -X PUT --data-binary multi
+line {x} "q" http://127.0.0.1:PORT/kv/odd
+201 
+$ http://127.0.0.1:PORT/kv/missing
+404 no key missing
+$ -X DELETE http://127.0.0.1:PORT/kv/missing
+404 no key missing
+$ -X PATCH http://127.0.0.1:PORT/kv/greeting
+405 method PATCH not allowed
+$ http://127.0.0.1:PORT/stats
+200 keys 2 requests 8
+# crash: kill -9, then restart; acknowledged writes survive
+listening on PORT with 2 keys
+$ http://127.0.0.1:PORT/kv/greeting
+200 two
+$ http://127.0.0.1:PORT/kv/odd
+200 multi
+line {x} "q"
+$ -X DELETE http://127.0.0.1:PORT/kv/greeting
+204 
+$ http://127.0.0.1:PORT/kv/greeting
+404 no key greeting
+$ -X POST http://127.0.0.1:PORT/shutdown
+200 bye
+[server exit 0]

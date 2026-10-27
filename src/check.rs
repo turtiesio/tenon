@@ -94,7 +94,9 @@ impl Checked {
             Ty::Tuple(ts) => ts.iter().for_each(|t| self.kind_walk(t, k, seen)),
             Ty::Con(n, args) => {
                 args.iter().for_each(|t| self.kind_walk(t, k, seen));
-                if let Some(i) = self.struct_idx(n) {
+                if is_unique_builtin(n) {
+                    note(k, Kind::Unique);
+                } else if let Some(i) = self.struct_idx(n) {
                     note(k, self.structs[i].kind);
                 } else if let Some(i) = self.enum_idx(n) {
                     note(k, self.enums[i].kind);

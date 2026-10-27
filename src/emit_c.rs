@@ -175,7 +175,7 @@ impl<'a> Emitter<'a> {
             return n.clone();
         }
         let name = match t {
-            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs") => {
+            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn") => {
                 format!("tn_{}", n)
             }
             Ty::Con(n, a) if n == "List" && a[0].is("Str") => "tn_List_Str".to_string(),
@@ -619,7 +619,7 @@ impl<'a> Emitter<'a> {
             let n = self.cty(&sys);
             let _ = writeln!(
                 s,
-                "    {n} sys = {{ .f_console = 0, .f_fs = tn_fs_make(tn_str_lit(\"\", 0), false, true), .f_clock = 0, .f_args = tn_args() }};"
+                "    {n} sys = {{ .f_console = 0, .f_fs = tn_fs_make(tn_str_lit(\"\", 0), false, true), .f_clock = 0, .f_net = 0, .f_args = tn_args() }};"
             );
             "sys".to_string()
         };
