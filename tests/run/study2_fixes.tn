@@ -1,0 +1,19 @@
+fn first_neg(rows: List[List[Int]]) -> Int {
+    var i = 0
+    while true {
+        for x in rows[i] {
+            if x < 0 { break }
+        }
+        if rows[i].any(fn(x) => x < 0) { return i }
+        i += 1
+    }
+}
+fn check(r: Result[Unit, Str]) -> Int {
+    match r {
+        Ok(()) => 0,
+        Err(_) => 1,
+    }
+}
+fn main(sys: Sys) {
+    sys.console.println("{first_neg([[1, 2], [3, -4]])} {check(Ok(()))} {check(Err("x"))}")
+}

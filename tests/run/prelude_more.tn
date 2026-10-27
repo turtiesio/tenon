@@ -1,0 +1,17 @@
+fn main(sys: Sys) {
+    let c = sys.console
+    var h: Heap[(Int, Str)] = Heap.new()
+    for (p, s) in [(5, "e"), (1, "a"), (3, "c"), (1, "b"), (9, "z")] { h.push((p, s)) }
+    var order: List[Str] = []
+    while not h.is_empty() { order.push(h.pop().unwrap().1) }
+    c.println("{order} {h.pop()}")
+    var xs = [3, 1, 2, 1]
+    xs.sort_with(fn(a, b) => b - a)
+    var ys = List.filled(3, "x")
+    ys.swap(0, 2)
+    ys[0] = "y"
+    c.println("{xs} {ys} {(-7).rem_euclid(3)} {(-7).div_euclid(3)} {7.rem_euclid(-3)} {7.div_euclid(-3)}")
+    c.println("{"v1.2".strip_prefix("v")} {"a.txt".strip_suffix(".md")} {"123".is_digits()} {"+1".is_digits()} {"".is_digits()} [{" \t x y\t ".trim_chars(" \t")}]")
+    let o: Option[Int] = Some(4)
+    c.println("{o.and_then(fn(x) => if x > 3 { Some(x * 2) } else { None })} {o.is_some_and(fn(x) => x == 4)}")
+}

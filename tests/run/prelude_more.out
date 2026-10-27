@@ -1,0 +1,5 @@
+["a", "b", "c", "e", "z"] None
+[3, 2, 1, 1] ["y", "x", "x"] 2 -3 1 -2
+Some("1.2") None true false false [x y]
+Some(8) true
+exit: 0

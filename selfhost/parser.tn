@@ -513,7 +513,8 @@ fn Parser.pattern1(mut self) -> Result[Pattern, ParseError] {
             self.advance()
             let elems = self.pattern_list()?
             if elems.len() == 1 { return Ok(elems[0]) }
-            PTuple(elems)
+            // `()` is the Unit value; as a pattern it always matches (`Ok(())`).
+            if elems.is_empty() { Wild } else { PTuple(elems) }
         }
         Ident(name) => {
             self.advance()
