@@ -1,3 +1,0 @@
-import regex
-fn main(sys: Sys) { let r = regex.compile("a+b").unwrap()
- sys.console.println("{r.is_full("aab")}") }
