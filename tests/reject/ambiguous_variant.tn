@@ -1,0 +1,4 @@
+// error: variant 'Done' is ambiguous
+enum A { Done }
+enum B { Done }
+fn main() { let x = Done }

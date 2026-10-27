@@ -1,0 +1,2 @@
+// error: unknown name 'print'
+fn main() { print("hi") }

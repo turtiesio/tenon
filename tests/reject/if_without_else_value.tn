@@ -1,0 +1,2 @@
+// error: 'if' without 'else' must produce Unit
+fn main() { let x = if true { 1 } }

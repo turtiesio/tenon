@@ -1,0 +1,3 @@
+// error: unreachable pattern
+fn f(o: Option[Int]) -> Int { match o { _ => 0, Some(x) => x } }
+fn main() {}

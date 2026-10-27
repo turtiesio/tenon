@@ -1,0 +1,2 @@
+// error: type mismatch: expected Int, found Float
+fn main() { let x: Int = 1.5 }

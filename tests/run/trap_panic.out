@@ -1,0 +1,6 @@
+0
+1
+2
+exit: 70
+stderr: trap: n too big: 3
+stderr:   at trap_panic.tn:2:21

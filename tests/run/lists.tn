@@ -1,0 +1,36 @@
+fn main(sys: Sys) {
+    let c = sys.console
+    var xs = [3, 1, 2]
+    xs.push(5)
+    let ys = xs
+    xs.sort()
+    c.println("{xs} {ys} {xs.len()} {xs[0]} {xs.last()} {xs.first()} {xs.get(10)}")
+    let popped = xs.pop()
+    c.println("{popped} {xs} {xs.contains(2)} {xs.index_of(3)} {xs.index_of(9)}")
+    xs.insert(0, 10)
+    let r = xs.remove(1)
+    c.println("{xs} removed {r} {xs.slice(1, 3)} {xs.reversed()} {xs + [7, 8]}")
+    var grid = [[0, 0], [0, 0]]
+    grid[1][0] = 5
+    let g2 = grid
+    grid[0][1] += 3
+    c.println("{grid} {g2}")
+    let names = ["bob", "alice", "carol"]
+    var by_len = names
+    by_len.sort_by(fn(s) => s.len())
+    c.println("{names.sorted()} {by_len} {names.map(fn(s) => s.len())} {names.filter(fn(s) => s.contains("o"))}")
+    c.println("{[1, 2, 3].sum()} {[1, 2, 3].any(fn(x) => x > 2)} {[1, 2, 3].all(fn(x) => x > 2)} {[1, 2, 3].count(fn(x) => x % 2 == 1)}")
+    var e: List[Int] = []
+    c.println("{e} {e.pop()} {e.is_empty()} {e.sorted()}")
+    var big: List[Int] = []
+    for i in 0..1000 { big.push((i * 7919) % 1000) }
+    big.sort()
+    var ok = true
+    for i in 1..big.len() { if big[i - 1] > big[i] { ok = false } }
+    c.println("sorted {ok} {big[0]} {big[999]}")
+    var nested = [[3, 1], [2], [3, 0]]
+    nested.sort()
+    c.println("{nested} {[1, 2] < [1, 3]} {[1] < [1, 0]} {[(2, "b"), (1, "z"), (2, "a")].sorted()}")
+    xs.clear()
+    c.println("{xs}")
+}

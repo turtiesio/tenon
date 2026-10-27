@@ -1,0 +1,4 @@
+fn main(sys: Sys) {
+    let m = ["a": 1]
+    sys.console.println("{m["b"]}")
+}

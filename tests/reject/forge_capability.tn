@@ -1,0 +1,2 @@
+// error: unknown name 'Fs'
+fn main() { let f = Fs }

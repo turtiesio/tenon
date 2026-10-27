@@ -1,0 +1,34 @@
+fn main(sys: Sys) {
+    let c = sys.console
+    var m: Map[Str, Int] = [:]
+    m["b"] = 2
+    m["a"] = 1
+    m["c"] = 3
+    m["b"] = 20
+    c.println("{m} {m.len()} {m["a"]} {m.get("zz")} {m.contains("c")} {m.keys()} {m.values()}")
+    let old = m
+    let r = m.remove("a")
+    m["a"] = 100
+    c.println("{r} {m} {old} {m == old}")
+    m["c"] += 5
+    for (k, v) in m { c.println("{k}={v}") }
+    var counts = [1: "one", 2: "two"]
+    counts.insert(3, "three")
+    c.println("{counts} {counts.entries()} {counts.get_or(9, "none")}")
+    var big: Map[Int, Int] = [:]
+    for i in 0..500 { big[i] = i * i }
+    for i in 0..500 {
+        if i % 3 == 0 { let _ = big.remove(i) }
+    }
+    var total = 0
+    for (k, v) in big { total += v - k * k + 1 }
+    c.println("{big.len()} {total} {big[499]} {big.get(3)}")
+    let a = [1: 2, 3: 4]
+    let b = [3: 4, 1: 2]
+    c.println("{a == b} {[:] == a}")
+    var nested: Map[Str, List[Int]] = [:]
+    nested["x"] = []
+    nested["x"].push(1)
+    nested["x"].push(2)
+    c.println("{nested}")
+}

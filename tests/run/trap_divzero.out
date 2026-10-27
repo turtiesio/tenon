@@ -1,0 +1,3 @@
+exit: 70
+stderr: trap: division by zero
+stderr:   at trap_divzero.tn:1:33

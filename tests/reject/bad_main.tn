@@ -1,0 +1,2 @@
+// error: 'main' takes no parameters or a single 'Sys'
+fn main(x: Int) {}

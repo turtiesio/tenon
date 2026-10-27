@@ -1,0 +1,3 @@
+// error: shadowing is not allowed
+fn main() { let x = 1
+ if true { let x = 2 } }

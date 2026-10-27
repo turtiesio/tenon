@@ -1,0 +1,2 @@
+// error: unknown name 'null'
+fn main() { let x = null }

@@ -1,0 +1,4 @@
+// args: one two three
+fn main(sys: Sys) {
+    sys.console.println("{sys.args} {sys.args.len()}")
+}

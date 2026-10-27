@@ -1,0 +1,44 @@
+enum Tree[T] { Leaf, Node(Tree[T], T, Tree[T]) }
+
+fn Tree[T].insert(self, x: T) -> Tree[T] {
+    match self {
+        Leaf => Node(Leaf, x, Leaf),
+        Node(l, v, r) => if x < v { Node(l.insert(x), v, r) } else { Node(l, v, r.insert(x)) },
+    }
+}
+
+fn Tree[T].to_list(self) -> List[T] {
+    match self {
+        Leaf => [],
+        Node(l, v, r) => l.to_list() + [v] + r.to_list(),
+    }
+}
+
+fn largest[T](xs: List[T]) -> Option[T] {
+    var best: Option[T] = None
+    for x in xs {
+        best = match best {
+            None => Some(x),
+            Some(b) => if x > b { Some(x) } else { Some(b) },
+        }
+    }
+    best
+}
+
+struct Stack[T] { items: List[T] }
+fn Stack[T].push(mut self, x: T) { self.items.push(x) }
+fn Stack[T].pop(mut self) -> Option[T] { self.items.pop() }
+
+fn main(sys: Sys) {
+    let c = sys.console
+    var t: Tree[Int] = Leaf
+    for x in [5, 2, 8, 1, 9, 3] { t = t.insert(x) }
+    c.println("{t.to_list()}")
+    var ts: Tree[Str] = Leaf
+    for w in "pear apple fig".split(" ") { ts = ts.insert(w) }
+    let empty: List[Int] = []
+    var st = Stack { items: [1] }
+    st.push(2)
+    c.println("{st.pop()} {st.pop()} {st.pop()} {largest(empty)}")
+    c.println("{ts.to_list()} {largest([3, 9, 2])} {largest(["b", "a"])} ")
+}

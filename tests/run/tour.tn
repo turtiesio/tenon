@@ -1,0 +1,35 @@
+struct Point { x: Int, y: Int }
+enum Shape { Circle(Int), Rect(Int, Int) }
+
+fn Shape.area(self) -> Int {
+    match self {
+        Circle(r) => 3 * r * r,
+        Rect(w, h) => w * h,
+    }
+}
+
+fn fib(n: Int) -> Int {
+    if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
+}
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    let con = sys.console
+    let p = Point { x: 1, y: 2 }
+    con.println("hello {p} {p.x + p.y}")
+    let shapes = [Circle(2), Rect(3, 4)]
+    var total = 0
+    for s in shapes { total += s.area() }
+    con.println("total area {total}, fib {fib(20)}")
+    var m: Map[Str, Int] = [:]
+    for w in "the cat the dog the end".words() {
+        m[w] = m.get_or(w, 0) + 1
+    }
+    con.println("{m} {m.keys().sorted()}")
+    let xs = [5, 3, 9, 1].map(fn(x) => x * 10).filter(fn(x) => x > 20)
+    con.println("{xs} {xs.sum()} {1.5 / 3.0} {2.0e20} {0.1 + 0.2} {(1, "a")} {Some("x")}")
+    let n = "42".to_int().ok_or("bad")?
+    con.println("n={n}")
+    let bad = "zz".to_int().ok_or("not a number: zz")?
+    con.println("unreachable {bad}")
+    Ok(())
+}

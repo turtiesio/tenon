@@ -1,0 +1,2 @@
+// error: comparisons cannot be chained
+fn main() { let b = 1 < 2 < 3 }

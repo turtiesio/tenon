@@ -1,0 +1,5 @@
+fn down(n: Int) -> Int { if n == 0 { 0 } else { 1 + down(n - 1) } }
+fn main(sys: Sys) {
+    sys.console.println("{down(1000)}")
+    sys.console.println("{down(100000000)}")
+}

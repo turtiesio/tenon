@@ -1,0 +1,26 @@
+fn apply_twice(f: fn(Int) -> Int, x: Int) -> Int { f(f(x)) }
+
+fn make_adder(n: Int) -> fn(Int) -> Int { fn(x) => x + n }
+
+fn compose[A, B, C](f: fn(A) -> B, g: fn(B) -> C) -> fn(A) -> C { fn(x) => g(f(x)) }
+
+fn double(x: Int) -> Int { x * 2 }
+
+fn main(sys: Sys) {
+    let c = sys.console
+    let add5 = make_adder(5)
+    c.println("{apply_twice(add5, 1)} {apply_twice(double, 3)} {apply_twice(fn(x) => x * x, 3)}")
+    let prefix = "item-"
+    let label = fn(i: Int) -> Str { prefix + i.to_str() }
+    c.println("{[1, 2].map(label)} {compose(double, label)(21)}")
+    var counter = 0
+    let snapshot = fn() => counter
+    counter += 10
+    c.println("{snapshot()} {counter}")
+    let fs = [make_adder(1), make_adder(2), double]
+    var acc = 0
+    for f in fs { acc = f(acc + 1) }
+    c.println("{acc}")
+    let wrap = Some
+    c.println("{[1, 2].map(wrap)} {["a"].map(Str.len)}")
+}

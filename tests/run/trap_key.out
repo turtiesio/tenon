@@ -1,0 +1,3 @@
+exit: 70
+stderr: trap: key not found: "b"
+stderr:   at trap_key.tn:3:28

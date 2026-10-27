@@ -1,0 +1,6 @@
+fn main(sys: Sys) {
+    let m = ["a": 1]
+    sys.console.println("{m.get("a").unwrap()}")
+    let r: Result[Int, Str] = Err("bad thing")
+    sys.console.println("{r.unwrap()}")
+}

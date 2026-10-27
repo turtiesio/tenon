@@ -1,0 +1,6 @@
+fn main(sys: Sys) {
+    let xs = [1, 2, 3]
+    sys.console.println("before")
+    let i = xs.len()
+    sys.console.println("{xs[i]}")
+}

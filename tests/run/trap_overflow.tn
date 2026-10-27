@@ -1,0 +1,7 @@
+fn main(sys: Sys) {
+    var x = 1
+    for i in 0..70 {
+        x = x * 2
+        sys.console.println("{i} {x}")
+    }
+}

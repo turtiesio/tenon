@@ -1,0 +1,3 @@
+1000
+exit: 72
+stderr: trap: stack overflow

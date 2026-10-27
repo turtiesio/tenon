@@ -1,0 +1,210 @@
+// Tenon prelude: implicitly part of every program.
+// `extern fn` signatures are implemented by each backend (interpreter and C);
+// everything else is ordinary Tenon. This file is the single source of the
+// builtin API.
+
+enum Option[T] { Some(T), None }
+enum Result[T, E] { Ok(T), Err(E) }
+enum IoError { NotFound(Str), Denied(Str), Failed(Str) }
+
+// The authority a program starts with; only `main` receives one.
+struct Sys { console: Console, fs: Fs, clock: Clock, args: List[Str] }
+
+extern fn panic[T](msg: Str) -> T
+extern fn assert(cond: Bool)
+
+// ---- Int / Float ----
+extern fn Int.to_float(self) -> Float
+fn Int.abs(self) -> Int { if self < 0 { -self } else { self } }
+fn Int.min(self, o: Int) -> Int { if self < o { self } else { o } }
+fn Int.max(self, o: Int) -> Int { if self > o { self } else { o } }
+extern fn Int.char(self) -> Str
+extern fn Float.to_int(self) -> Int
+extern fn Float.sqrt(self) -> Float
+extern fn Float.floor(self) -> Float
+extern fn Float.ceil(self) -> Float
+extern fn Float.round(self) -> Float
+fn Float.abs(self) -> Float { if self < 0.0 { -self } else { self } }
+fn Float.min(self, o: Float) -> Float { if self < o { self } else { o } }
+fn Float.max(self, o: Float) -> Float { if self > o { self } else { o } }
+
+// ---- Str (UTF-8 bytes; offsets are byte offsets) ----
+extern fn Str.len(self) -> Int
+extern fn Str.byte(self, i: Int) -> Int
+extern fn Str.slice(self, start: Int, end: Int) -> Str
+extern fn Str.find(self, sub: Str) -> Option[Int]
+extern fn Str.split(self, sep: Str) -> List[Str]
+extern fn Str.trim(self) -> Str
+extern fn Str.trim_start(self) -> Str
+extern fn Str.trim_end(self) -> Str
+extern fn Str.starts_with(self, prefix: Str) -> Bool
+extern fn Str.ends_with(self, suffix: Str) -> Bool
+extern fn Str.to_int(self) -> Option[Int]
+extern fn Str.to_float(self) -> Option[Float]
+extern fn Str.upper(self) -> Str
+extern fn Str.lower(self) -> Str
+extern fn Str.replace(self, from: Str, to: Str) -> Str
+extern fn Str.chars(self) -> List[Str]
+fn Str.is_empty(self) -> Bool { self.len() == 0 }
+fn Str.contains(self, sub: Str) -> Bool { self.find(sub).is_some() }
+fn Str.lines(self) -> List[Str] {
+    var parts = self.split("\n")
+    if parts.len() > 0 and parts[parts.len() - 1] == "" {
+        let _ = parts.pop()
+    }
+    parts
+}
+fn Str.words(self) -> List[Str] {
+    var out: List[Str] = []
+    for w in self.replace("\t", " ").replace("\n", " ").replace("\r", " ").split(" ") {
+        if w != "" { out.push(w) }
+    }
+    out
+}
+fn Str.repeat(self, n: Int) -> Str {
+    var parts: List[Str] = []
+    for _ in 0..n { parts.push(self) }
+    parts.join("")
+}
+fn Str.pad_left(self, width: Int, fill: Str) -> Str {
+    if self.len() >= width { self } else { fill.repeat(width - self.len()) + self }
+}
+fn Str.pad_right(self, width: Int, fill: Str) -> Str {
+    if self.len() >= width { self } else { self + fill.repeat(width - self.len()) }
+}
+
+// ---- List ----
+extern fn List[T].len(self) -> Int
+extern fn List[T].push(mut self, x: T)
+extern fn List[T].pop(mut self) -> Option[T]
+extern fn List[T].insert(mut self, i: Int, x: T)
+extern fn List[T].remove(mut self, i: Int) -> T
+extern fn List[T].clear(mut self)
+extern fn List[T].slice(self, start: Int, end: Int) -> List[T]
+extern fn List[T].sort(mut self)
+extern fn List[T].sort_by[K](mut self, key: fn(T) -> K)
+extern fn List[T].reverse(mut self)
+extern fn List[Str].join(self, sep: Str) -> Str
+fn List[T].is_empty(self) -> Bool { self.len() == 0 }
+fn List[T].get(self, i: Int) -> Option[T] {
+    if i >= 0 and i < self.len() { Some(self[i]) } else { None }
+}
+fn List[T].first(self) -> Option[T] { self.get(0) }
+fn List[T].last(self) -> Option[T] { self.get(self.len() - 1) }
+fn List[T].index_of(self, x: T) -> Option[Int] {
+    for i in 0..self.len() {
+        if self[i] == x { return Some(i) }
+    }
+    None
+}
+fn List[T].contains(self, x: T) -> Bool { self.index_of(x).is_some() }
+fn List[T].extend(mut self, other: List[T]) {
+    for x in other { self.push(x) }
+}
+fn List[T].sorted(self) -> List[T] {
+    var c = self
+    c.sort()
+    c
+}
+fn List[T].reversed(self) -> List[T] {
+    var c = self
+    c.reverse()
+    c
+}
+fn List[T].map[U](self, f: fn(T) -> U) -> List[U] {
+    var out: List[U] = []
+    for x in self { out.push(f(x)) }
+    out
+}
+fn List[T].filter(self, keep: fn(T) -> Bool) -> List[T] {
+    var out: List[T] = []
+    for x in self {
+        if keep(x) { out.push(x) }
+    }
+    out
+}
+fn List[T].any(self, pred: fn(T) -> Bool) -> Bool {
+    for x in self {
+        if pred(x) { return true }
+    }
+    false
+}
+fn List[T].all(self, pred: fn(T) -> Bool) -> Bool {
+    for x in self {
+        if not pred(x) { return false }
+    }
+    true
+}
+fn List[T].count(self, pred: fn(T) -> Bool) -> Int {
+    var n = 0
+    for x in self {
+        if pred(x) { n += 1 }
+    }
+    n
+}
+fn List[Int].sum(self) -> Int {
+    var s = 0
+    for x in self { s += x }
+    s
+}
+
+// ---- Map (iteration follows insertion order) ----
+extern fn Map[K, V].len(self) -> Int
+extern fn Map[K, V].get(self, k: K) -> Option[V]
+extern fn Map[K, V].insert(mut self, k: K, v: V)
+extern fn Map[K, V].remove(mut self, k: K) -> Option[V]
+extern fn Map[K, V].keys(self) -> List[K]
+extern fn Map[K, V].values(self) -> List[V]
+fn Map[K, V].is_empty(self) -> Bool { self.len() == 0 }
+fn Map[K, V].contains(self, k: K) -> Bool { self.get(k).is_some() }
+fn Map[K, V].get_or(self, k: K, default: V) -> V { self.get(k).unwrap_or(default) }
+fn Map[K, V].entries(self) -> List[(K, V)] {
+    var out: List[(K, V)] = []
+    for e in self { out.push(e) }
+    out
+}
+
+// ---- Option / Result ----
+extern fn Option[T].unwrap(self) -> T
+extern fn Option[T].expect(self, msg: Str) -> T
+fn Option[T].is_some(self) -> Bool { match self { Some(_) => true, None => false } }
+fn Option[T].is_none(self) -> Bool { not self.is_some() }
+fn Option[T].unwrap_or(self, default: T) -> T { match self { Some(x) => x, None => default } }
+fn Option[T].ok_or[E](self, err: E) -> Result[T, E] {
+    match self { Some(x) => Ok(x), None => Err(err) }
+}
+fn Option[T].map[U](self, f: fn(T) -> U) -> Option[U] {
+    match self { Some(x) => Some(f(x)), None => None }
+}
+extern fn Result[T, E].unwrap(self) -> T
+extern fn Result[T, E].expect(self, msg: Str) -> T
+fn Result[T, E].is_ok(self) -> Bool { match self { Ok(_) => true, Err(_) => false } }
+fn Result[T, E].is_err(self) -> Bool { not self.is_ok() }
+fn Result[T, E].ok(self) -> Option[T] { match self { Ok(x) => Some(x), Err(_) => None } }
+fn Result[T, E].unwrap_or(self, default: T) -> T { match self { Ok(x) => x, Err(_) => default } }
+fn Result[T, E].map_err[F](self, f: fn(E) -> F) -> Result[T, F] {
+    match self { Ok(x) => Ok(x), Err(e) => Err(f(e)) }
+}
+
+// ---- Capabilities ----
+extern fn Console.print(self, s: Str)
+extern fn Console.println(self, s: Str)
+extern fn Console.eprintln(self, s: Str)
+extern fn Console.read_line(self) -> Option[Str]
+extern fn Console.read_all(self) -> Str
+
+// Paths are relative to the Fs root. `within` narrows the root; an attenuated
+// Fs rejects absolute paths and `..`. `read_only` drops write authority.
+extern fn Fs.read(self, path: Str) -> Result[Str, IoError]
+extern fn Fs.write(self, path: Str, data: Str) -> Result[Unit, IoError]
+extern fn Fs.append(self, path: Str, data: Str) -> Result[Unit, IoError]
+extern fn Fs.exists(self, path: Str) -> Bool
+extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError]
+extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]
+extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError]
+extern fn Fs.within(self, dir: Str) -> Fs
+extern fn Fs.read_only(self) -> Fs
+
+extern fn Clock.now_ms(self) -> Int
+extern fn Clock.mono_ns(self) -> Int
+extern fn Clock.sleep_ms(self, ms: Int)

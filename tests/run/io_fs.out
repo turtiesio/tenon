@@ -1,0 +1,10 @@
+hello
+world
+
+Err(NotFound("missing.txt"))
+Err(Denied("path escapes the Fs root: ../escape.txt"))
+true false
+Err(Denied("read-only Fs: b.txt"))
+["a.txt", "b.txt"]
+[] Err(NotFound("a.txt"))
+exit: 0

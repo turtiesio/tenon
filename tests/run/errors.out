@@ -1,0 +1,4 @@
+Ok(6) Err(Bad("x")) Err(Empty) Err(Bad("negative: -4"))
+Some(4) None
+exit: 1
+stderr: error: Bad("oops")

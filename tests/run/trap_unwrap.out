@@ -1,0 +1,4 @@
+1
+exit: 70
+stderr: trap: unwrap on Err("bad thing")
+stderr:   at trap_unwrap.tn:5:28

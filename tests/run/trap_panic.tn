@@ -1,0 +1,7 @@
+fn check(n: Int) -> Int {
+    if n > 2 { panic("n too big: {n}") }
+    n
+}
+fn main(sys: Sys) {
+    for i in 0..5 { sys.console.println("{check(i)}") }
+}

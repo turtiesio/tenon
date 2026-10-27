@@ -1,0 +1,1261 @@
+/* Tenon C runtime: the only C the compiler relies on. Depends on libc only.
+ * Every type N used by generated code has helpers N_retain, N_release, N_eq,
+ * N_cmp, N_hash and N_show; the list/map macros below build on that.
+ * Semantics must match the reference interpreter (src/interp.rs, src/value.rs). */
+#ifndef TENON_H
+#define TENON_H
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <math.h>
+#include <signal.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <unistd.h>
+
+#define TN_UNUSED __attribute__((unused))
+#define TN_NORETURN __attribute__((noreturn))
+#define TN_UNLIKELY(x) __builtin_expect(!!(x), 0)
+
+/* Reserved exit codes (also in src/interp.rs). */
+#define TN_EXIT_ERR 1
+#define TN_EXIT_TRAP 70
+#define TN_EXIT_OOM 71
+#define TN_EXIT_STACK 72
+#define TN_EXIT_OUTPUT 74
+
+typedef int64_t tn_Int;
+typedef double tn_Float;
+typedef bool tn_Bool;
+typedef uint8_t tn_Unit;
+typedef uint8_t tn_Console;
+typedef uint8_t tn_Clock;
+
+/* ---------- output, traps, memory ---------- */
+
+static char tn_out_buf[1 << 16];
+static size_t tn_out_len;
+static const char *tn_cur_loc = "?";
+
+static void tn_write_fd(int fd, const char *p, size_t n, bool fatal) {
+    while (n > 0) {
+        ssize_t w = write(fd, p, n);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) {
+            if (fatal) _exit(TN_EXIT_OUTPUT);
+            return;
+        }
+        p += w;
+        n -= (size_t)w;
+    }
+}
+static void tn_flush(void) {
+    tn_write_fd(1, tn_out_buf, tn_out_len, true);
+    tn_out_len = 0;
+}
+static TN_UNUSED void tn_write(const char *p, size_t n) {
+    if (tn_out_len + n > sizeof tn_out_buf) {
+        tn_flush();
+        if (n > sizeof tn_out_buf) {
+            tn_write_fd(1, p, n, true);
+            return;
+        }
+    }
+    memcpy(tn_out_buf + tn_out_len, p, n);
+    tn_out_len += n;
+}
+static void tn_ewrite(const char *s) { tn_write_fd(2, s, strlen(s), false); }
+
+TN_NORETURN static void tn_trap(const char *msg, const char *loc) {
+    tn_flush();
+    tn_ewrite("trap: ");
+    tn_ewrite(msg);
+    tn_ewrite("\n  at ");
+    tn_ewrite(loc);
+    tn_ewrite("\n");
+    _exit(TN_EXIT_TRAP);
+}
+TN_NORETURN static TN_UNUSED void tn_trapf(const char *loc, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+#include <stdarg.h>
+TN_NORETURN static TN_UNUSED void tn_trapf(const char *loc, const char *fmt, ...) {
+    char msg[512];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof msg, fmt, ap);
+    va_end(ap);
+    tn_trap(msg, loc);
+}
+TN_NORETURN static TN_UNUSED void tn_trap_bytes(const char *p, int64_t n, const char *loc) {
+    char msg[1024];
+    if (n > (int64_t)sizeof msg - 1) n = sizeof msg - 1;
+    memcpy(msg, p, (size_t)n);
+    msg[n] = 0;
+    tn_trap(msg, loc);
+}
+TN_NORETURN static void tn_oom(void) {
+    tn_flush();
+    tn_ewrite("trap: out of memory\n");
+    _exit(TN_EXIT_OOM);
+}
+static TN_UNUSED void *tn_alloc(size_t n) {
+    void *p = malloc(n ? n : 1);
+    if (!p) tn_oom();
+    return p;
+}
+static TN_UNUSED void *tn_realloc(void *p, size_t n) {
+    p = realloc(p, n ? n : 1);
+    if (!p) tn_oom();
+    return p;
+}
+
+static void tn_on_segv(int sig) {
+    (void)sig;
+    /* Generated code is memory-safe, so a fault means the stack ran out. */
+    static const char m[] = "trap: stack overflow\n";
+    tn_write_fd(1, tn_out_buf, tn_out_len, false);
+    tn_write_fd(2, m, sizeof m - 1, false);
+    _exit(TN_EXIT_STACK);
+}
+
+static int tn_argc;
+static char **tn_argv;
+static struct timespec tn_mono0;
+
+static TN_UNUSED void tn_init(int argc, char **argv) {
+    tn_argc = argc;
+    tn_argv = argv;
+    static char altstack[1 << 16];
+    stack_t ss = {.ss_sp = altstack, .ss_size = sizeof altstack, .ss_flags = 0};
+    sigaltstack(&ss, NULL);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = tn_on_segv;
+    sa.sa_flags = SA_ONSTACK;
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+    signal(SIGPIPE, SIG_IGN);
+    clock_gettime(CLOCK_MONOTONIC, &tn_mono0);
+}
+TN_NORETURN static TN_UNUSED void tn_exit(int code) {
+    tn_flush();
+    exit(code);
+}
+
+/* Capabilities and functions are not comparable (the checker rejects it);
+ * these exist only so derived helpers of enclosing types are complete. */
+#define TN_INCOMPARABLE(T)                                                      \
+    static inline TN_UNUSED bool T##_eq(T a, T b) { (void)a; (void)b; return false; } \
+    static inline TN_UNUSED int T##_cmp(T a, T b) { (void)a; (void)b; return 0; }     \
+    static inline TN_UNUSED uint64_t T##_hash(T a) { (void)a; return 0; }
+
+/* ---------- checked arithmetic ---------- */
+
+static inline tn_Int tn_add(tn_Int a, tn_Int b, const char *loc) {
+    tn_Int r;
+    if (TN_UNLIKELY(__builtin_add_overflow(a, b, &r))) tn_trap("integer overflow", loc);
+    return r;
+}
+static inline tn_Int tn_sub(tn_Int a, tn_Int b, const char *loc) {
+    tn_Int r;
+    if (TN_UNLIKELY(__builtin_sub_overflow(a, b, &r))) tn_trap("integer overflow", loc);
+    return r;
+}
+static inline tn_Int tn_mul(tn_Int a, tn_Int b, const char *loc) {
+    tn_Int r;
+    if (TN_UNLIKELY(__builtin_mul_overflow(a, b, &r))) tn_trap("integer overflow", loc);
+    return r;
+}
+static inline tn_Int tn_div(tn_Int a, tn_Int b, const char *loc) {
+    if (TN_UNLIKELY(b == 0)) tn_trap("division by zero", loc);
+    if (TN_UNLIKELY(a == INT64_MIN && b == -1)) tn_trap("integer overflow", loc);
+    return a / b;
+}
+static inline tn_Int tn_rem(tn_Int a, tn_Int b, const char *loc) {
+    if (TN_UNLIKELY(b == 0)) tn_trap("division by zero", loc);
+    if (TN_UNLIKELY(a == INT64_MIN && b == -1)) tn_trap("integer overflow", loc);
+    return a % b;
+}
+static inline tn_Int tn_neg(tn_Int a, const char *loc) {
+    if (TN_UNLIKELY(a == INT64_MIN)) tn_trap("integer overflow", loc);
+    return -a;
+}
+
+/* ---------- strings: refcounted buffers with views ---------- */
+
+typedef struct { int64_t rc; } tn_rc;
+typedef struct { const char *p; int64_t len; tn_rc *o; } tn_Str;
+
+static inline tn_Str tn_Str_retain(tn_Str s) {
+    if (s.o) s.o->rc++;
+    return s;
+}
+static inline void tn_Str_release(tn_Str s) {
+    if (s.o && --s.o->rc == 0) free(s.o);
+}
+static inline tn_Str tn_str_lit(const char *p, int64_t n) { return (tn_Str){p, n, NULL}; }
+static TN_UNUSED tn_Str tn_str_new(const char *p, int64_t n) {
+    tn_rc *o = tn_alloc(sizeof(tn_rc) + (size_t)n);
+    o->rc = 1;
+    memcpy(o + 1, p, (size_t)n);
+    return (tn_Str){(const char *)(o + 1), n, o};
+}
+static inline tn_Str tn_str_view(tn_Str s, int64_t a, int64_t b) {
+    if (s.o) s.o->rc++;
+    return (tn_Str){s.p + a, b - a, s.o};
+}
+
+/* String builder; tn_buf_finish hands the bytes over as a tn_Str. */
+typedef struct { char *p; int64_t len, cap; } tn_buf;
+static TN_UNUSED tn_buf tn_buf_new(void) {
+    tn_buf b;
+    b.cap = 64;
+    b.p = tn_alloc(sizeof(tn_rc) + 64);
+    b.len = 0;
+    return b;
+}
+static inline void tn_buf_grow(tn_buf *b, int64_t extra) {
+    if (b->len + extra > b->cap) {
+        while (b->len + extra > b->cap) b->cap *= 2;
+        b->p = tn_realloc(b->p, sizeof(tn_rc) + (size_t)b->cap);
+    }
+}
+static inline void tn_buf_add(tn_buf *b, const char *p, int64_t n) {
+    tn_buf_grow(b, n);
+    memcpy(b->p + sizeof(tn_rc) + b->len, p, (size_t)n);
+    b->len += n;
+}
+static inline void tn_buf_str(tn_buf *b, tn_Str s) { tn_buf_add(b, s.p, s.len); }
+static inline void tn_buf_cstr(tn_buf *b, const char *s) { tn_buf_add(b, s, (int64_t)strlen(s)); }
+static TN_UNUSED tn_Str tn_buf_finish(tn_buf *b) {
+    tn_rc *o = (tn_rc *)b->p;
+    o->rc = 1;
+    return (tn_Str){b->p + sizeof(tn_rc), b->len, o};
+}
+
+static inline bool tn_Str_eq(tn_Str a, tn_Str b) {
+    return a.len == b.len && (a.p == b.p || memcmp(a.p, b.p, (size_t)a.len) == 0);
+}
+static inline int tn_Str_cmp(tn_Str a, tn_Str b) {
+    int64_t n = a.len < b.len ? a.len : b.len;
+    int c = n ? memcmp(a.p, b.p, (size_t)n) : 0;
+    if (c) return c < 0 ? -1 : 1;
+    return a.len < b.len ? -1 : a.len > b.len ? 1 : 0;
+}
+static inline uint64_t tn_mix(uint64_t h) {
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    h *= 0xc4ceb9fe1a85ec53ULL;
+    h ^= h >> 33;
+    return h;
+}
+static inline uint64_t tn_Str_hash(tn_Str s) {
+    uint64_t h = 1469598103934665603ULL;
+    for (int64_t i = 0; i < s.len; i++) h = (h ^ (uint8_t)s.p[i]) * 1099511628211ULL;
+    return tn_mix(h);
+}
+static TN_UNUSED void tn_Str_show(tn_buf *b, tn_Str s, bool top) {
+    if (top) {
+        tn_buf_str(b, s);
+        return;
+    }
+    tn_buf_add(b, "\"", 1);
+    for (int64_t i = 0; i < s.len; i++) {
+        unsigned char c = (unsigned char)s.p[i];
+        switch (c) {
+        case '"': tn_buf_add(b, "\\\"", 2); break;
+        case '\\': tn_buf_add(b, "\\\\", 2); break;
+        case '\n': tn_buf_add(b, "\\n", 2); break;
+        case '\t': tn_buf_add(b, "\\t", 2); break;
+        case '\r': tn_buf_add(b, "\\r", 2); break;
+        default:
+            if (c < 0x20) {
+                char t[16];
+                snprintf(t, sizeof t, "\\u{%x}", c);
+                tn_buf_cstr(b, t);
+            } else {
+                tn_buf_add(b, (const char *)&c, 1);
+            }
+        }
+    }
+    tn_buf_add(b, "\"", 1);
+}
+
+/* ---------- scalar helpers ---------- */
+
+#define TN_TRIVIAL(T)                                                     \
+    static inline T T##_retain(T x) { return x; }                         \
+    static inline void T##_release(T x) { (void)x; }
+TN_TRIVIAL(tn_Int)
+TN_TRIVIAL(tn_Float)
+TN_TRIVIAL(tn_Bool)
+TN_TRIVIAL(tn_Unit)
+TN_TRIVIAL(tn_Console)
+TN_TRIVIAL(tn_Clock)
+
+static inline bool tn_Int_eq(tn_Int a, tn_Int b) { return a == b; }
+static inline int tn_Int_cmp(tn_Int a, tn_Int b) { return a < b ? -1 : a > b; }
+static inline uint64_t tn_Int_hash(tn_Int a) { return tn_mix((uint64_t)a); }
+static TN_UNUSED void tn_Int_show(tn_buf *b, tn_Int x, bool top) {
+    (void)top;
+    char t[24];
+    int n = snprintf(t, sizeof t, "%lld", (long long)x);
+    tn_buf_add(b, t, n);
+}
+static inline bool tn_Float_eq(tn_Float a, tn_Float b) { return a == b; }
+static inline int tn_Float_cmp(tn_Float a, tn_Float b) { return a < b ? -1 : a > b; }
+static inline uint64_t tn_Float_hash(tn_Float a) {
+    if (a == 0.0) a = 0.0;
+    uint64_t u;
+    memcpy(&u, &a, 8);
+    return tn_mix(u);
+}
+/* Shortest round-trip digits; layout matches value.rs layout_float. */
+static TN_UNUSED void tn_Float_show(tn_buf *b, tn_Float x, bool top) {
+    (void)top;
+    if (isnan(x)) { tn_buf_cstr(b, "nan"); return; }
+    if (isinf(x)) { tn_buf_cstr(b, x > 0 ? "inf" : "-inf"); return; }
+    if (signbit(x)) tn_buf_add(b, "-", 1);
+    double a = fabs(x);
+    char t[40];
+    int prec;
+    for (prec = 0; prec < 17; prec++) {
+        snprintf(t, sizeof t, "%.*e", prec, a);
+        if (strtod(t, NULL) == a) break;
+    }
+    char digits[24];
+    int nd = 0;
+    char *p = t;
+    for (; *p && *p != 'e'; p++)
+        if (*p != '.') digits[nd++] = *p;
+    int exp = atoi(p + 1);
+    while (nd > 1 && digits[nd - 1] == '0') nd--;
+    if (exp >= -5 && exp < 16) {
+        if (exp >= 0) {
+            for (int i = 0; i <= exp; i++) tn_buf_add(b, i < nd ? &digits[i] : "0", 1);
+            tn_buf_add(b, ".", 1);
+            if (nd > exp + 1) tn_buf_add(b, digits + exp + 1, nd - exp - 1);
+            else tn_buf_add(b, "0", 1);
+        } else {
+            tn_buf_add(b, "0.", 2);
+            for (int i = 0; i < -exp - 1; i++) tn_buf_add(b, "0", 1);
+            tn_buf_add(b, digits, nd);
+        }
+    } else {
+        tn_buf_add(b, digits, 1);
+        if (nd > 1) {
+            tn_buf_add(b, ".", 1);
+            tn_buf_add(b, digits + 1, nd - 1);
+        }
+        char e[12];
+        int n = snprintf(e, sizeof e, "e%d", exp);
+        tn_buf_add(b, e, n);
+    }
+}
+static inline bool tn_Bool_eq(tn_Bool a, tn_Bool b) { return a == b; }
+static inline int tn_Bool_cmp(tn_Bool a, tn_Bool b) { return (int)a - (int)b; }
+static inline uint64_t tn_Bool_hash(tn_Bool a) { return a; }
+static TN_UNUSED void tn_Bool_show(tn_buf *b, tn_Bool x, bool top) {
+    (void)top;
+    tn_buf_cstr(b, x ? "true" : "false");
+}
+static inline bool tn_Unit_eq(tn_Unit a, tn_Unit b) { (void)a; (void)b; return true; }
+static inline int tn_Unit_cmp(tn_Unit a, tn_Unit b) { (void)a; (void)b; return 0; }
+static inline uint64_t tn_Unit_hash(tn_Unit a) { (void)a; return 0; }
+static TN_UNUSED void tn_Unit_show(tn_buf *b, tn_Unit x, bool top) { (void)x; (void)top; tn_buf_cstr(b, "()"); }
+static TN_UNUSED void tn_Console_show(tn_buf *b, tn_Console x, bool top) { (void)x; (void)top; tn_buf_cstr(b, "<Console>"); }
+static TN_UNUSED void tn_Clock_show(tn_buf *b, tn_Clock x, bool top) { (void)x; (void)top; tn_buf_cstr(b, "<Clock>"); }
+TN_INCOMPARABLE(tn_Console)
+TN_INCOMPARABLE(tn_Clock)
+
+TN_NORETURN static TN_UNUSED void tn_trap_str(tn_Str s, const char *loc) { tn_trap_bytes(s.p, s.len, loc); }
+TN_NORETURN static TN_UNUSED void tn_trap_buf(tn_buf *b, const char *loc) {
+    tn_trap_bytes(b->p + sizeof(tn_rc), b->len, loc);
+}
+
+/* Stable merge sort of an index permutation; cmp compares the items at two indices. */
+static TN_UNUSED void tn_msort_idx(int64_t *idx, int64_t *tmp, int64_t n, int (*cmp)(void *, int64_t, int64_t), void *ctx) {
+    if (n < 2) return;
+    int64_t h = n / 2;
+    tn_msort_idx(idx, tmp, h, cmp, ctx);
+    tn_msort_idx(idx + h, tmp, n - h, cmp, ctx);
+    if (cmp(ctx, idx[h - 1], idx[h]) <= 0) return;
+    memcpy(tmp, idx, sizeof(int64_t) * (size_t)h);
+    int64_t i = 0, j = h, k = 0;
+    while (i < h && j < n) idx[k++] = cmp(ctx, idx[j], tmp[i]) < 0 ? idx[j++] : tmp[i++];
+    while (i < h) idx[k++] = tmp[i++];
+}
+
+/* ---------- closures ---------- */
+
+typedef struct tn_env { int64_t rc; void (*drop)(struct tn_env *); } tn_env;
+typedef struct { void *f; tn_env *env; } tn_fn;
+static inline tn_fn tn_fn_retain(tn_fn f) {
+    if (f.env) f.env->rc++;
+    return f;
+}
+static inline void tn_fn_release(tn_fn f) {
+    if (f.env && --f.env->rc == 0) f.env->drop(f.env);
+}
+static TN_UNUSED void tn_fn_show(tn_buf *b, tn_fn f, bool top) { (void)f; (void)top; tn_buf_cstr(b, "<fn>"); }
+TN_INCOMPARABLE(tn_fn)
+
+/* ---------- lists: NULL is the empty list ---------- */
+
+#define TN_LIST_TYPE(L, T) struct L##_s { int64_t rc, len, cap; T data[]; };
+#define TN_LIST_FUNCS(L, T)                                                              \
+    static TN_UNUSED L L##_retain(L l) { if (l) l->rc++; return l; }                     \
+    static TN_UNUSED void L##_release(L l) {                                             \
+        if (l && --l->rc == 0) {                                                         \
+            for (int64_t i = 0; i < l->len; i++) T##_release(l->data[i]);               \
+            free(l);                                                                     \
+        }                                                                                \
+    }                                                                                    \
+    static TN_UNUSED L L##_alloc(int64_t cap) {                                          \
+        if (cap < 4) cap = 4;                                                            \
+        L l = tn_alloc(sizeof(struct L##_s) + sizeof(T) * (size_t)cap);                  \
+        l->rc = 1; l->len = 0; l->cap = cap;                                             \
+        return l;                                                                        \
+    }                                                                                    \
+    static inline int64_t L##_len(L l) { return l ? l->len : 0; }                        \
+    static TN_UNUSED void L##_unique(L *p) {                                             \
+        L l = *p;                                                                        \
+        if (l && l->rc > 1) {                                                            \
+            L c = L##_alloc(l->len);                                                     \
+            for (int64_t i = 0; i < l->len; i++) c->data[i] = T##_retain(l->data[i]);    \
+            c->len = l->len;                                                             \
+            l->rc--;                                                                     \
+            *p = c;                                                                      \
+        }                                                                                \
+    }                                                                                    \
+    static TN_UNUSED void L##_reserve(L *p, int64_t extra) {                             \
+        if (!*p) { *p = L##_alloc(extra); return; }                                      \
+        L##_unique(p);                                                                   \
+        L l = *p;                                                                        \
+        if (l->len + extra > l->cap) {                                                   \
+            int64_t cap = l->cap * 2;                                                    \
+            if (cap < l->len + extra) cap = l->len + extra;                              \
+            l = tn_realloc(l, sizeof(struct L##_s) + sizeof(T) * (size_t)cap);           \
+            l->cap = cap;                                                                \
+            *p = l;                                                                      \
+        }                                                                                \
+    }                                                                                    \
+    static inline void L##_push(L *p, T x) {                                             \
+        L l = *p;                                                                        \
+        if (!(l && l->rc == 1 && l->len < l->cap)) { L##_reserve(p, 1); l = *p; }        \
+        l->data[l->len++] = x;                                                           \
+    }                                                                                    \
+    static inline T *L##_at(L l, int64_t i, const char *loc) {                           \
+        int64_t n = L##_len(l);                                                          \
+        if (TN_UNLIKELY((uint64_t)i >= (uint64_t)n))                                     \
+            tn_trapf(loc, "index %lld out of bounds for length %lld", (long long)i, (long long)n); \
+        return &l->data[i];                                                              \
+    }                                                                                    \
+    static inline T *L##_at_mut(L *p, int64_t i, const char *loc) {                      \
+        L##_at(*p, i, loc);                                                              \
+        if ((*p)->rc > 1) L##_unique(p);                                                 \
+        return &(*p)->data[i];                                                           \
+    }                                                                                    \
+    static TN_UNUSED bool L##_pop(L *p, T *out) {                                        \
+        if (L##_len(*p) == 0) return false;                                              \
+        L##_unique(p);                                                                   \
+        *out = (*p)->data[--(*p)->len];                                                  \
+        return true;                                                                     \
+    }                                                                                    \
+    static TN_UNUSED void L##_insert(L *p, int64_t i, T x, const char *loc) {            \
+        int64_t n = L##_len(*p);                                                         \
+        if (i < 0 || i > n)                                                              \
+            tn_trapf(loc, "index %lld out of bounds for length %lld", (long long)i, (long long)n); \
+        L##_reserve(p, 1);                                                               \
+        L l = *p;                                                                        \
+        memmove(&l->data[i + 1], &l->data[i], sizeof(T) * (size_t)(n - i));             \
+        l->data[i] = x;                                                                  \
+        l->len++;                                                                        \
+    }                                                                                    \
+    static TN_UNUSED T L##_remove(L *p, int64_t i, const char *loc) {                    \
+        L##_at(*p, i, loc);                                                              \
+        L##_unique(p);                                                                   \
+        L l = *p;                                                                        \
+        T x = l->data[i];                                                                \
+        memmove(&l->data[i], &l->data[i + 1], sizeof(T) * (size_t)(l->len - i - 1));     \
+        l->len--;                                                                        \
+        return x;                                                                        \
+    }                                                                                    \
+    static TN_UNUSED void L##_clear(L *p) { L##_release(*p); *p = NULL; }                \
+    static TN_UNUSED void L##_reverse(L *p) {                                            \
+        if (L##_len(*p) < 2) return;                                                     \
+        L##_unique(p);                                                                   \
+        L l = *p;                                                                        \
+        for (int64_t i = 0, j = l->len - 1; i < j; i++, j--) {                           \
+            T t = l->data[i]; l->data[i] = l->data[j]; l->data[j] = t;                   \
+        }                                                                                \
+    }                                                                                    \
+    static TN_UNUSED L L##_slice(L l, int64_t a, int64_t b, const char *loc) {           \
+        int64_t n = L##_len(l);                                                          \
+        if (a < 0 || b < a || b > n)                                                     \
+            tn_trapf(loc, "slice [%lld, %lld) out of bounds for length %lld",            \
+                     (long long)a, (long long)b, (long long)n);                          \
+        if (a == b) return NULL;                                                         \
+        L c = L##_alloc(b - a);                                                          \
+        for (int64_t i = a; i < b; i++) c->data[i - a] = T##_retain(l->data[i]);         \
+        c->len = b - a;                                                                  \
+        return c;                                                                        \
+    }                                                                                    \
+    static TN_UNUSED L L##_concat(L a, L b) {                                            \
+        int64_t n = L##_len(a), m = L##_len(b);                                          \
+        if (n + m == 0) return NULL;                                                     \
+        L c = L##_alloc(n + m);                                                          \
+        for (int64_t i = 0; i < n; i++) c->data[i] = T##_retain(a->data[i]);             \
+        for (int64_t i = 0; i < m; i++) c->data[n + i] = T##_retain(b->data[i]);         \
+        c->len = n + m;                                                                  \
+        return c;                                                                        \
+    }                                                                                    \
+    static TN_UNUSED bool L##_eq(L a, L b) {                                             \
+        int64_t n = L##_len(a);                                                          \
+        if (n != L##_len(b)) return false;                                               \
+        for (int64_t i = 0; i < n; i++)                                                  \
+            if (!T##_eq(a->data[i], b->data[i])) return false;                           \
+        return true;                                                                     \
+    }                                                                                    \
+    static TN_UNUSED int L##_cmp(L a, L b) {                                             \
+        int64_t n = L##_len(a), m = L##_len(b);                                          \
+        for (int64_t i = 0; i < n && i < m; i++) {                                       \
+            int c = T##_cmp(a->data[i], b->data[i]);                                     \
+            if (c) return c;                                                             \
+        }                                                                                \
+        return n < m ? -1 : n > m;                                                       \
+    }                                                                                    \
+    static TN_UNUSED uint64_t L##_hash(L l) {                                            \
+        uint64_t h = 7;                                                                  \
+        for (int64_t i = 0; i < L##_len(l); i++) h = tn_mix(h * 31 + T##_hash(l->data[i])); \
+        return h;                                                                        \
+    }                                                                                    \
+    static TN_UNUSED void L##_show(tn_buf *b, L l, bool top) {                           \
+        (void)top;                                                                       \
+        tn_buf_add(b, "[", 1);                                                           \
+        for (int64_t i = 0; i < L##_len(l); i++) {                                       \
+            if (i) tn_buf_add(b, ", ", 2);                                               \
+            T##_show(b, l->data[i], false);                                              \
+        }                                                                                \
+        tn_buf_add(b, "]", 1);                                                           \
+    }                                                                                    \
+    /* stable merge sort of xs by keys (keys == xs when sorting by value) */             \
+    static TN_UNUSED void L##_msort(T *xs, T *tmp, int64_t n) {                          \
+        if (n < 2) return;                                                               \
+        if (n <= 16) {                                                                   \
+            for (int64_t i = 1; i < n; i++) {                                            \
+                T x = xs[i];                                                             \
+                int64_t j = i;                                                           \
+                while (j > 0 && T##_cmp(xs[j - 1], x) > 0) { xs[j] = xs[j - 1]; j--; }   \
+                xs[j] = x;                                                               \
+            }                                                                            \
+            return;                                                                      \
+        }                                                                                \
+        int64_t h = n / 2;                                                               \
+        L##_msort(xs, tmp, h);                                                           \
+        L##_msort(xs + h, tmp, n - h);                                                   \
+        if (T##_cmp(xs[h - 1], xs[h]) <= 0) return;                                      \
+        memcpy(tmp, xs, sizeof(T) * (size_t)h);                                          \
+        int64_t i = 0, j = h, k = 0;                                                     \
+        while (i < h && j < n) xs[k++] = T##_cmp(xs[j], tmp[i]) < 0 ? xs[j++] : tmp[i++]; \
+        while (i < h) xs[k++] = tmp[i++];                                                \
+    }                                                                                    \
+    static TN_UNUSED void L##_sort(L *p) {                                               \
+        if (L##_len(*p) < 2) return;                                                     \
+        L##_unique(p);                                                                   \
+        T *tmp = tn_alloc(sizeof(T) * (size_t)((*p)->len / 2 + 1));                      \
+        L##_msort((*p)->data, tmp, (*p)->len);                                           \
+        free(tmp);                                                                       \
+    }
+
+/* ---------- maps: insertion-ordered hash maps; NULL is the empty map ---------- */
+
+#define TN_MAP_TYPE(M, K, V)                                                             \
+    struct M##_e { K k; V v; uint64_t h; bool live; };                                   \
+    struct M##_s { int64_t rc, len, n, cap, icap; struct M##_e *e; int64_t *idx; };
+#define TN_MAP_FUNCS(M, K, V)                                                            \
+    static TN_UNUSED M M##_retain(M m) { if (m) m->rc++; return m; }                     \
+    static TN_UNUSED void M##_release(M m) {                                             \
+        if (m && --m->rc == 0) {                                                         \
+            for (int64_t i = 0; i < m->n; i++)                                           \
+                if (m->e[i].live) { K##_release(m->e[i].k); V##_release(m->e[i].v); }    \
+            free(m->e); free(m->idx); free(m);                                           \
+        }                                                                                \
+    }                                                                                    \
+    static inline int64_t M##_len(M m) { return m ? m->len : 0; }                        \
+    static TN_UNUSED void M##_reindex(M m, int64_t icap) {                               \
+        free(m->idx);                                                                    \
+        m->icap = icap;                                                                  \
+        m->idx = tn_alloc(sizeof(int64_t) * (size_t)icap);                               \
+        for (int64_t i = 0; i < icap; i++) m->idx[i] = -1;                               \
+        int64_t w = 0;                                                                   \
+        for (int64_t r = 0; r < m->n; r++) {                                             \
+            if (!m->e[r].live) continue;                                                 \
+            m->e[w] = m->e[r];                                                           \
+            uint64_t s = m->e[w].h & (uint64_t)(icap - 1);                               \
+            while (m->idx[s] != -1) s = (s + 1) & (uint64_t)(icap - 1);                  \
+            m->idx[s] = w++;                                                             \
+        }                                                                                \
+        m->n = w;                                                                        \
+    }                                                                                    \
+    static TN_UNUSED M M##_alloc(int64_t cap) {                                          \
+        M m = tn_alloc(sizeof(struct M##_s));                                            \
+        m->rc = 1; m->len = 0; m->n = 0; m->cap = cap < 4 ? 4 : cap;                      \
+        m->e = tn_alloc(sizeof(struct M##_e) * (size_t)m->cap);                          \
+        m->idx = NULL;                                                                   \
+        int64_t ic = 8;                                                                  \
+        while (ic * 3 < m->cap * 4) ic *= 2;                                             \
+        M##_reindex(m, ic);                                                              \
+        return m;                                                                        \
+    }                                                                                    \
+    static TN_UNUSED void M##_unique(M *p) {                                             \
+        M m = *p;                                                                        \
+        if (!m) { *p = M##_alloc(4); return; }                                           \
+        if (m->rc == 1) return;                                                          \
+        M c = M##_alloc(m->len);                                                         \
+        for (int64_t i = 0; i < m->n; i++)                                               \
+            if (m->e[i].live) {                                                          \
+                struct M##_e x = m->e[i];                                                \
+                x.k = K##_retain(x.k); x.v = V##_retain(x.v);                            \
+                c->e[c->n++] = x;                                                        \
+            }                                                                            \
+        c->len = c->n;                                                                   \
+        M##_reindex(c, c->icap);                                                         \
+        m->rc--;                                                                         \
+        *p = c;                                                                          \
+    }                                                                                    \
+    /* index of the entry holding k, or -1; *slot gets the probe position */             \
+    static TN_UNUSED int64_t M##_find(M m, K k, uint64_t h, int64_t *slot) {             \
+        uint64_t s = h & (uint64_t)(m->icap - 1);                                        \
+        int64_t tomb = -1;                                                               \
+        for (;;) {                                                                       \
+            int64_t j = m->idx[s];                                                       \
+            if (j == -1) { if (slot) *slot = tomb >= 0 ? tomb : (int64_t)s; return -1; }  \
+            if (j == -2) { if (tomb < 0) tomb = (int64_t)s; }                            \
+            else if (m->e[j].h == h && K##_eq(m->e[j].k, k)) { if (slot) *slot = (int64_t)s; return j; } \
+            s = (s + 1) & (uint64_t)(m->icap - 1);                                       \
+        }                                                                                \
+    }                                                                                    \
+    static TN_UNUSED V *M##_get(M m, K k) {                                              \
+        if (!m || !m->len) return NULL;                                                  \
+        int64_t j = M##_find(m, k, K##_hash(k), NULL);                                   \
+        return j < 0 ? NULL : &m->e[j].v;                                                \
+    }                                                                                    \
+    static TN_UNUSED V *M##_at(M m, K k, const char *loc) {                              \
+        V *v = M##_get(m, k);                                                            \
+        if (TN_UNLIKELY(!v)) {                                                           \
+            tn_buf b = tn_buf_new();                                                     \
+            tn_buf_cstr(&b, "key not found: ");                                          \
+            K##_show(&b, k, false);                                                      \
+            tn_buf_add(&b, "", 1);                                                       \
+            tn_trap(b.p + sizeof(tn_rc), loc);                                           \
+        }                                                                                \
+        return v;                                                                        \
+    }                                                                                    \
+    /* slot for k (taking ownership of k); inserts a zero value if absent */             \
+    static TN_UNUSED V *M##_slot(M *p, K k, bool *fresh) {                               \
+        M##_unique(p);                                                                   \
+        M m = *p;                                                                        \
+        uint64_t h = K##_hash(k);                                                        \
+        int64_t s;                                                                       \
+        int64_t j = M##_find(m, k, h, &s);                                               \
+        if (j >= 0) { K##_release(k); *fresh = false; return &m->e[j].v; }              \
+        if ((m->n + 1) * 4 > m->icap * 3 || m->n == m->cap) {                            \
+            if (m->n == m->cap) {                                                        \
+                m->cap *= 2;                                                             \
+                m->e = tn_realloc(m->e, sizeof(struct M##_e) * (size_t)m->cap);          \
+            }                                                                            \
+            int64_t ic = m->icap;                                                        \
+            while ((m->len + 1) * 4 > ic * 3) ic *= 2;                                   \
+            M##_reindex(m, ic);                                                          \
+            M##_find(m, k, h, &s);                                                       \
+        }                                                                                \
+        j = m->n++;                                                                      \
+        m->e[j].k = k; m->e[j].h = h; m->e[j].live = true;                               \
+        memset(&m->e[j].v, 0, sizeof(V));                                                \
+        m->idx[s] = j;                                                                   \
+        m->len++;                                                                        \
+        *fresh = true;                                                                   \
+        return &m->e[j].v;                                                               \
+    }                                                                                    \
+    static TN_UNUSED V *M##_at_mut(M *p, K k, const char *loc) {                         \
+        M##_at(*p, k, loc);                                                              \
+        bool fresh;                                                                      \
+        return M##_slot(p, K##_retain(k), &fresh);                                       \
+    }                                                                                    \
+    static TN_UNUSED void M##_insert(M *p, K k, V v) {                                   \
+        bool fresh;                                                                      \
+        V *s = M##_slot(p, k, &fresh);                                                   \
+        if (!fresh) V##_release(*s);                                                     \
+        *s = v;                                                                          \
+    }                                                                                    \
+    static TN_UNUSED bool M##_remove(M *p, K k, V *out) {                                \
+        if (!*p || !(*p)->len) return false;                                             \
+        M##_unique(p);                                                                   \
+        M m = *p;                                                                        \
+        int64_t s;                                                                       \
+        int64_t j = M##_find(m, k, K##_hash(k), &s);                                     \
+        if (j < 0) return false;                                                         \
+        m->idx[s] = -2;                                                                  \
+        m->e[j].live = false;                                                            \
+        K##_release(m->e[j].k);                                                          \
+        *out = m->e[j].v;                                                                \
+        m->len--;                                                                        \
+        if (m->n > 8 && m->len * 2 < m->n) M##_reindex(m, m->icap);                      \
+        return true;                                                                     \
+    }                                                                                    \
+    static TN_UNUSED bool M##_eq(M a, M b) {                                             \
+        if (M##_len(a) != M##_len(b)) return false;                                      \
+        if (!M##_len(a)) return true;                                                    \
+        for (int64_t i = 0; i < a->n; i++) {                                             \
+            if (!a->e[i].live) continue;                                                 \
+            V *v = M##_get(b, a->e[i].k);                                                \
+            if (!v || !V##_eq(*v, a->e[i].v)) return false;                              \
+        }                                                                                \
+        return true;                                                                     \
+    }                                                                                    \
+    static TN_UNUSED int M##_cmp(M a, M b) {                                             \
+        (void)a; (void)b;                                                                \
+        tn_trap("maps are not ordered", tn_cur_loc);                                     \
+    }                                                                                    \
+    static TN_UNUSED uint64_t M##_hash(M m) { return (uint64_t)M##_len(m); }            \
+    static TN_UNUSED void M##_show(tn_buf *b, M m, bool top) {                           \
+        (void)top;                                                                       \
+        if (!M##_len(m)) { tn_buf_cstr(b, "[:]"); return; }                              \
+        tn_buf_add(b, "[", 1);                                                           \
+        bool first = true;                                                               \
+        for (int64_t i = 0; i < m->n; i++) {                                             \
+            if (!m->e[i].live) continue;                                                 \
+            if (!first) tn_buf_add(b, ", ", 2);                                          \
+            first = false;                                                               \
+            K##_show(b, m->e[i].k, false);                                               \
+            tn_buf_add(b, ": ", 2);                                                      \
+            V##_show(b, m->e[i].v, false);                                               \
+        }                                                                                \
+        tn_buf_add(b, "]", 1);                                                           \
+    }
+
+/* List[Str] is used by the runtime itself (split, lines, args, fs listing). */
+typedef struct tn_List_Str_s *tn_List_Str;
+TN_LIST_TYPE(tn_List_Str, tn_Str)
+TN_LIST_FUNCS(tn_List_Str, tn_Str)
+
+/* ---------- string operations ---------- */
+
+static TN_UNUSED tn_Int tn_str_byte(tn_Str s, tn_Int i, const char *loc) {
+    if ((uint64_t)i >= (uint64_t)s.len)
+        tn_trapf(loc, "index %lld out of bounds for length %lld", (long long)i, (long long)s.len);
+    return (uint8_t)s.p[i];
+}
+static inline bool tn_is_boundary(tn_Str s, int64_t i) {
+    return i == 0 || i == s.len || ((uint8_t)s.p[i] & 0xC0) != 0x80;
+}
+static TN_UNUSED tn_Str tn_str_slice(tn_Str s, tn_Int a, tn_Int b, const char *loc) {
+    if (a < 0 || b < a || b > s.len)
+        tn_trapf(loc, "slice [%lld, %lld) out of bounds for length %lld", (long long)a, (long long)b, (long long)s.len);
+    if (!tn_is_boundary(s, a) || !tn_is_boundary(s, b))
+        tn_trapf(loc, "slice [%lld, %lld) is not on a character boundary", (long long)a, (long long)b);
+    return tn_str_view(s, a, b);
+}
+static TN_UNUSED int64_t tn_str_find(tn_Str s, tn_Str sub, int64_t from) {
+    if (sub.len == 0) return from <= s.len ? from : -1;
+    for (int64_t i = from; i + sub.len <= s.len; i++)
+        if (s.p[i] == sub.p[0] && memcmp(s.p + i, sub.p, (size_t)sub.len) == 0) return i;
+    return -1;
+}
+static TN_UNUSED tn_List_Str tn_str_split(tn_Str s, tn_Str sep, const char *loc) {
+    if (sep.len == 0) tn_trap("split with an empty separator", loc);
+    tn_List_Str out = NULL;
+    int64_t start = 0;
+    for (;;) {
+        int64_t i = tn_str_find(s, sep, start);
+        if (i < 0) break;
+        tn_List_Str_push(&out, tn_str_view(s, start, i));
+        start = i + sep.len;
+    }
+    tn_List_Str_push(&out, tn_str_view(s, start, s.len));
+    return out;
+}
+static inline bool tn_is_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; }
+static TN_UNUSED tn_Str tn_str_trim(tn_Str s, bool front, bool back) {
+    int64_t a = 0, b = s.len;
+    if (front) while (a < b && tn_is_space(s.p[a])) a++;
+    if (back) while (b > a && tn_is_space(s.p[b - 1])) b--;
+    return tn_str_view(s, a, b);
+}
+static TN_UNUSED bool tn_str_starts(tn_Str s, tn_Str p) {
+    return p.len <= s.len && memcmp(s.p, p.p, (size_t)p.len) == 0;
+}
+static TN_UNUSED bool tn_str_ends(tn_Str s, tn_Str p) {
+    return p.len <= s.len && memcmp(s.p + s.len - p.len, p.p, (size_t)p.len) == 0;
+}
+static TN_UNUSED bool tn_str_to_int(tn_Str s, tn_Int *out) {
+    int64_t i = 0;
+    bool neg = false;
+    if (i < s.len && (s.p[i] == '+' || s.p[i] == '-')) neg = s.p[i++] == '-';
+    if (i == s.len) return false;
+    uint64_t v = 0, lim = neg ? (uint64_t)INT64_MAX + 1 : (uint64_t)INT64_MAX;
+    for (; i < s.len; i++) {
+        char c = s.p[i];
+        if (c < '0' || c > '9') return false;
+        uint64_t d = (uint64_t)(c - '0');
+        if (v > (lim - d) / 10) return false;
+        v = v * 10 + d;
+    }
+    *out = neg ? (tn_Int)(0 - v) : (tn_Int)v;
+    return true;
+}
+/* Same grammar as interp::parse_float. */
+static TN_UNUSED bool tn_str_to_float(tn_Str s, tn_Float *out) {
+    char tmp[64];
+    if (s.len == 0 || s.len >= (int64_t)sizeof tmp) {
+        if (s.len == 0) return false;
+    }
+    int64_t i = 0, n = s.len;
+    const char *p = s.p;
+    if (i < n && (p[i] == '+' || p[i] == '-')) i++;
+    int64_t rest = n - i;
+    char low[16];
+    if (rest <= 8) {
+        for (int64_t k = 0; k < rest; k++) low[k] = (char)(p[i + k] | 0x20);
+        low[rest] = 0;
+        if (!strcmp(low, "inf") || !strcmp(low, "infinity") || !strcmp(low, "nan")) {
+            bool neg = p[0] == '-';
+            *out = low[0] == 'n' ? (neg ? -NAN : NAN) : (neg ? -INFINITY : INFINITY);
+            return true;
+        }
+    }
+    int64_t nd = 0;
+    while (i < n && p[i] >= '0' && p[i] <= '9') i++, nd++;
+    if (i < n && p[i] == '.') {
+        i++;
+        while (i < n && p[i] >= '0' && p[i] <= '9') i++, nd++;
+    }
+    if (nd == 0) return false;
+    if (i < n && (p[i] == 'e' || p[i] == 'E')) {
+        i++;
+        if (i < n && (p[i] == '+' || p[i] == '-')) i++;
+        int64_t es = i;
+        while (i < n && p[i] >= '0' && p[i] <= '9') i++;
+        if (i == es) return false;
+    }
+    if (i != n) return false;
+    char *z = n < (int64_t)sizeof tmp ? tmp : tn_alloc((size_t)n + 1);
+    memcpy(z, p, (size_t)n);
+    z[n] = 0;
+    *out = strtod(z, NULL);
+    if (z != tmp) free(z);
+    return true;
+}
+static TN_UNUSED tn_Str tn_str_case(tn_Str s, bool up) {
+    tn_Str r = tn_str_new(s.p, s.len);
+    char *q = (char *)r.p;
+    for (int64_t i = 0; i < s.len; i++) {
+        char c = q[i];
+        if (up && c >= 'a' && c <= 'z') q[i] = (char)(c - 32);
+        if (!up && c >= 'A' && c <= 'Z') q[i] = (char)(c + 32);
+    }
+    return r;
+}
+static TN_UNUSED tn_Str tn_str_replace(tn_Str s, tn_Str from, tn_Str to, const char *loc) {
+    if (from.len == 0) tn_trap("replace with an empty pattern", loc);
+    int64_t i = tn_str_find(s, from, 0);
+    if (i < 0) return tn_Str_retain(s);
+    tn_buf b = tn_buf_new();
+    int64_t start = 0;
+    while (i >= 0) {
+        tn_buf_add(&b, s.p + start, i - start);
+        tn_buf_str(&b, to);
+        start = i + from.len;
+        i = tn_str_find(s, from, start);
+    }
+    tn_buf_add(&b, s.p + start, s.len - start);
+    return tn_buf_finish(&b);
+}
+static TN_UNUSED tn_Str tn_str_concat(tn_Str a, tn_Str b) {
+    if (a.len == 0) return tn_Str_retain(b);
+    if (b.len == 0) return tn_Str_retain(a);
+    tn_rc *o = tn_alloc(sizeof(tn_rc) + (size_t)(a.len + b.len));
+    o->rc = 1;
+    memcpy(o + 1, a.p, (size_t)a.len);
+    memcpy((char *)(o + 1) + a.len, b.p, (size_t)b.len);
+    return (tn_Str){(const char *)(o + 1), a.len + b.len, o};
+}
+static TN_UNUSED tn_List_Str tn_str_chars(tn_Str s) {
+    tn_List_Str out = NULL;
+    int64_t i = 0;
+    while (i < s.len) {
+        int64_t j = i + 1;
+        while (j < s.len && ((uint8_t)s.p[j] & 0xC0) == 0x80) j++;
+        tn_List_Str_push(&out, tn_str_view(s, i, j));
+        i = j;
+    }
+    return out;
+}
+static TN_UNUSED tn_Str tn_str_join(tn_List_Str l, tn_Str sep) {
+    tn_buf b = tn_buf_new();
+    for (int64_t i = 0; i < tn_List_Str_len(l); i++) {
+        if (i) tn_buf_str(&b, sep);
+        tn_buf_str(&b, l->data[i]);
+    }
+    return tn_buf_finish(&b);
+}
+static TN_UNUSED tn_Str tn_int_char(tn_Int c, const char *loc) {
+    if (c < 0 || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF))
+        tn_trapf(loc, "invalid character code %lld", (long long)c);
+    char t[4];
+    int n;
+    if (c < 0x80) { t[0] = (char)c; n = 1; }
+    else if (c < 0x800) { t[0] = (char)(0xC0 | (c >> 6)); t[1] = (char)(0x80 | (c & 0x3F)); n = 2; }
+    else if (c < 0x10000) {
+        t[0] = (char)(0xE0 | (c >> 12)); t[1] = (char)(0x80 | ((c >> 6) & 0x3F));
+        t[2] = (char)(0x80 | (c & 0x3F)); n = 3;
+    } else {
+        t[0] = (char)(0xF0 | (c >> 18)); t[1] = (char)(0x80 | ((c >> 12) & 0x3F));
+        t[2] = (char)(0x80 | ((c >> 6) & 0x3F)); t[3] = (char)(0x80 | (c & 0x3F)); n = 4;
+    }
+    return tn_str_new(t, n);
+}
+static TN_UNUSED tn_Int tn_float_to_int(tn_Float x, const char *loc) {
+    if (!(x >= -9223372036854775808.0 && x < 9223372036854775808.0))
+        tn_trap("float to int conversion out of range", loc);
+    return (tn_Int)x;
+}
+
+/* Decode UTF-8, replacing each maximal invalid subpart with U+FFFD (as Rust's
+ * String::from_utf8_lossy does). Returns false if the input was invalid. */
+static TN_UNUSED bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out) {
+    bool ok = true;
+    int64_t i = 0;
+    const unsigned char *s = (const unsigned char *)p;
+    while (i < n) {
+        unsigned c = s[i];
+        int need;
+        unsigned lo = 0x80, hi = 0xBF;
+        if (c < 0x80) { tn_buf_add(out, (const char *)s + i, 1); i++; continue; }
+        else if (c >= 0xC2 && c <= 0xDF) need = 1;
+        else if (c == 0xE0) { need = 2; lo = 0xA0; }
+        else if (c >= 0xE1 && c <= 0xEC) need = 2;
+        else if (c == 0xED) { need = 2; hi = 0x9F; }
+        else if (c >= 0xEE && c <= 0xEF) need = 2;
+        else if (c == 0xF0) { need = 3; lo = 0x90; }
+        else if (c >= 0xF1 && c <= 0xF3) need = 3;
+        else if (c == 0xF4) { need = 3; hi = 0x8F; }
+        else { tn_buf_add(out, "\xEF\xBF\xBD", 3); ok = false; i++; continue; }
+        int64_t j = i + 1;
+        int got = 0;
+        while (got < need && j < n) {
+            unsigned d = s[j];
+            if (got == 0 ? (d < lo || d > hi) : (d < 0x80 || d > 0xBF)) break;
+            j++, got++;
+        }
+        if (got == need) tn_buf_add(out, (const char *)s + i, j - i);
+        else { tn_buf_add(out, "\xEF\xBF\xBD", 3); ok = false; }
+        i = j;
+    }
+    return ok;
+}
+
+/* ---------- console ---------- */
+
+static char *tn_in_buf;
+static int64_t tn_in_len, tn_in_pos;
+static bool tn_in_eof;
+
+static bool tn_in_fill(void) {
+    if (tn_in_eof) return false;
+    if (!tn_in_buf) tn_in_buf = tn_alloc(1 << 16);
+    if (tn_in_pos > 0) {
+        memmove(tn_in_buf, tn_in_buf + tn_in_pos, (size_t)(tn_in_len - tn_in_pos));
+        tn_in_len -= tn_in_pos;
+        tn_in_pos = 0;
+    }
+    static int64_t cap = 1 << 16;
+    if (tn_in_len == cap) {
+        cap *= 2;
+        tn_in_buf = tn_realloc(tn_in_buf, (size_t)cap);
+    }
+    ssize_t r;
+    do r = read(0, tn_in_buf + tn_in_len, (size_t)(cap - tn_in_len));
+    while (r < 0 && errno == EINTR);
+    if (r <= 0) { tn_in_eof = true; return false; }
+    tn_in_len += r;
+    return true;
+}
+static TN_UNUSED bool tn_read_line(tn_Str *out) {
+    tn_flush();
+    int64_t scan = tn_in_pos;
+    for (;;) {
+        for (; scan < tn_in_len; scan++)
+            if (tn_in_buf[scan] == '\n') goto found;
+        int64_t off = scan - tn_in_pos;
+        if (!tn_in_fill()) break;
+        scan = tn_in_pos + off;
+    }
+    if (tn_in_pos == tn_in_len) return false;
+found:;
+    int64_t end = scan, next = scan < tn_in_len ? scan + 1 : scan;
+    if (scan < tn_in_len && end > tn_in_pos && tn_in_buf[end - 1] == '\r') end--;
+    tn_buf b = tn_buf_new();
+    tn_utf8_lossy(tn_in_buf + tn_in_pos, end - tn_in_pos, &b);
+    tn_in_pos = next;
+    *out = tn_buf_finish(&b);
+    return true;
+}
+static TN_UNUSED tn_Str tn_read_all(void) {
+    while (tn_in_fill()) {}
+    tn_buf b = tn_buf_new();
+    if (tn_in_buf) tn_utf8_lossy(tn_in_buf + tn_in_pos, tn_in_len - tn_in_pos, &b);
+    tn_in_pos = tn_in_len;
+    return tn_buf_finish(&b);
+}
+static TN_UNUSED void tn_eprintln(tn_Str s) {
+    tn_flush();
+    tn_write_fd(2, s.p, (size_t)s.len, false);
+    tn_write_fd(2, "\n", 1, false);
+}
+
+/* ---------- file system capability ---------- */
+
+typedef struct tn_Fs_s { int64_t rc; tn_Str root; bool att, wr; } *tn_Fs;
+static TN_UNUSED tn_Fs tn_Fs_retain(tn_Fs f) { f->rc++; return f; }
+static TN_UNUSED void tn_Fs_release(tn_Fs f) {
+    if (--f->rc == 0) { tn_Str_release(f->root); free(f); }
+}
+static TN_UNUSED void tn_Fs_show(tn_buf *b, tn_Fs f, bool top) { (void)f; (void)top; tn_buf_cstr(b, "<Fs>"); }
+TN_INCOMPARABLE(tn_Fs)
+static TN_UNUSED tn_Fs tn_fs_make(tn_Str root, bool att, bool wr) {
+    tn_Fs f = tn_alloc(sizeof *f);
+    f->rc = 1; f->root = root; f->att = att; f->wr = wr;
+    return f;
+}
+
+enum { TN_IO_OK = 0, TN_IO_NOTFOUND = 1, TN_IO_DENIED = 2, TN_IO_FAILED = 3 };
+
+/* Resolve p under f into a NUL-terminated path; false if it escapes the root. */
+static TN_UNUSED bool tn_fs_path(tn_Fs f, tn_Str p, tn_buf *out) {
+    if (f->att) {
+        if (p.len == 0 || p.p[0] == '/') return false;
+        int64_t s = 0;
+        for (int64_t i = 0; i <= p.len; i++) {
+            if (i == p.len || p.p[i] == '/') {
+                if (i - s == 2 && p.p[s] == '.' && p.p[s + 1] == '.') return false;
+                s = i + 1;
+            }
+        }
+    }
+    if (f->root.len == 0) {
+        if (p.len == 0) tn_buf_cstr(out, ".");
+        else tn_buf_str(out, p);
+    } else if (p.len == 0 || (p.len == 1 && p.p[0] == '.')) {
+        tn_buf_str(out, f->root);
+    } else {
+        tn_buf_str(out, f->root);
+        tn_buf_add(out, "/", 1);
+        tn_buf_str(out, p);
+    }
+    tn_buf_add(out, "", 1);
+    return true;
+}
+static TN_UNUSED int tn_io_kind(int e) {
+    if (e == ENOENT) return TN_IO_NOTFOUND;
+    if (e == EACCES || e == EPERM) return TN_IO_DENIED;
+    return TN_IO_FAILED;
+}
+/* Error message for kind: NotFound/Denied carry the path, Failed adds the reason. */
+static TN_UNUSED tn_Str tn_io_msg(int kind, tn_Str path, const char *why) {
+    tn_buf b = tn_buf_new();
+    tn_buf_str(&b, path);
+    if (kind == TN_IO_FAILED) {
+        tn_buf_cstr(&b, ": ");
+        tn_buf_cstr(&b, why);
+    }
+    return tn_buf_finish(&b);
+}
+#define TN_FS_PRE(writes)                                                                 \
+    tn_buf pb = tn_buf_new();                                                             \
+    if (!tn_fs_path(f, p, &pb)) {                                                         \
+        free(pb.p);                                                                       \
+        tn_buf b = tn_buf_new();                                                          \
+        tn_buf_cstr(&b, "path escapes the Fs root: ");                                    \
+        tn_buf_str(&b, p);                                                                \
+        *msg = tn_buf_finish(&b);                                                         \
+        return TN_IO_DENIED;                                                              \
+    }                                                                                     \
+    const char *full = pb.p + sizeof(tn_rc);                                              \
+    if ((writes) && !f->wr) {                                                             \
+        free(pb.p);                                                                       \
+        tn_buf b = tn_buf_new();                                                          \
+        tn_buf_cstr(&b, "read-only Fs: ");                                                \
+        tn_buf_str(&b, p);                                                                \
+        *msg = tn_buf_finish(&b);                                                         \
+        return TN_IO_DENIED;                                                              \
+    }
+#define TN_FS_FAIL(e)                                                                     \
+    do {                                                                                  \
+        int k_ = tn_io_kind(e);                                                           \
+        *msg = tn_io_msg(k_, p, strerror(e));                                             \
+        free(pb.p);                                                                       \
+        return k_;                                                                        \
+    } while (0)
+
+static TN_UNUSED int tn_fs_read(tn_Fs f, tn_Str p, tn_Str *res, tn_Str *msg) {
+    TN_FS_PRE(false)
+    int fd = open(full, O_RDONLY);
+    if (fd < 0) TN_FS_FAIL(errno);
+    struct stat st;
+    if (fstat(fd, &st) == 0 && S_ISDIR(st.st_mode)) { close(fd); TN_FS_FAIL(EISDIR); }
+    tn_buf b = tn_buf_new();
+    char chunk[1 << 16];
+    for (;;) {
+        ssize_t r = read(fd, chunk, sizeof chunk);
+        if (r < 0 && errno == EINTR) continue;
+        if (r < 0) { int e = errno; close(fd); free(b.p); TN_FS_FAIL(e); }
+        if (r == 0) break;
+        tn_buf_add(&b, chunk, r);
+    }
+    close(fd);
+    tn_buf chk = tn_buf_new();
+    bool valid = tn_utf8_lossy(b.p + sizeof(tn_rc), b.len, &chk);
+    free(chk.p);
+    if (!valid) {
+        free(b.p);
+        *msg = tn_io_msg(TN_IO_FAILED, p, "invalid UTF-8");
+        free(pb.p);
+        return TN_IO_FAILED;
+    }
+    free(pb.p);
+    *res = tn_buf_finish(&b);
+    return TN_IO_OK;
+}
+static TN_UNUSED bool tn_write_all(int fd, tn_Str d) {
+    const char *q = d.p;
+    int64_t n = d.len;
+    while (n > 0) {
+        ssize_t w = write(fd, q, (size_t)n);
+        if (w < 0 && errno == EINTR) continue;
+        if (w < 0) return false;
+        q += w;
+        n -= w;
+    }
+    return true;
+}
+/* Atomic, durable replace: write a temp file, fsync, rename over the target. */
+static TN_UNUSED int tn_fs_write(tn_Fs f, tn_Str p, tn_Str d, tn_Str *msg) {
+    TN_FS_PRE(true)
+    tn_buf tb = tn_buf_new();
+    tn_buf_cstr(&tb, full);
+    tn_buf_cstr(&tb, ".tmp");
+    tn_buf_add(&tb, "", 1);
+    const char *tmp = tb.p + sizeof(tn_rc);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) { int e = errno; free(tb.p); TN_FS_FAIL(e); }
+    if (!tn_write_all(fd, d) || fsync(fd) != 0) {
+        int e = errno; close(fd); unlink(tmp); free(tb.p); TN_FS_FAIL(e);
+    }
+    close(fd);
+    if (rename(tmp, full) != 0) { int e = errno; unlink(tmp); free(tb.p); TN_FS_FAIL(e); }
+    free(tb.p);
+    free(pb.p);
+    return TN_IO_OK;
+}
+static TN_UNUSED int tn_fs_append(tn_Fs f, tn_Str p, tn_Str d, tn_Str *msg) {
+    TN_FS_PRE(true)
+    int fd = open(full, O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd < 0) TN_FS_FAIL(errno);
+    if (!tn_write_all(fd, d) || fsync(fd) != 0) { int e = errno; close(fd); TN_FS_FAIL(e); }
+    close(fd);
+    free(pb.p);
+    return TN_IO_OK;
+}
+static TN_UNUSED bool tn_fs_exists(tn_Fs f, tn_Str p) {
+    tn_buf pb = tn_buf_new();
+    if (!tn_fs_path(f, p, &pb)) { free(pb.p); return false; }
+    struct stat st;
+    bool r = stat(pb.p + sizeof(tn_rc), &st) == 0;
+    free(pb.p);
+    return r;
+}
+static TN_UNUSED int tn_fs_remove(tn_Fs f, tn_Str p, tn_Str *msg) {
+    TN_FS_PRE(true)
+    if (unlink(full) != 0) TN_FS_FAIL(errno);
+    free(pb.p);
+    return TN_IO_OK;
+}
+static TN_UNUSED int tn_fs_mkdir(tn_Fs f, tn_Str p, tn_Str *msg) {
+    TN_FS_PRE(true)
+    char *q = (char *)full;
+    for (char *s = q + 1;; s++) {
+        if (*s == '/' || *s == 0) {
+            char c = *s;
+            *s = 0;
+            if (mkdir(q, 0755) != 0 && errno != EEXIST) { int e = errno; *s = c; TN_FS_FAIL(e); }
+            *s = c;
+            if (c == 0) break;
+        }
+    }
+    struct stat st;
+    if (stat(full, &st) != 0 || !S_ISDIR(st.st_mode)) TN_FS_FAIL(EEXIST);
+    free(pb.p);
+    return TN_IO_OK;
+}
+static int tn_cmp_cstr(const void *a, const void *b) {
+    return tn_Str_cmp(*(const tn_Str *)a, *(const tn_Str *)b);
+}
+static TN_UNUSED int tn_fs_list(tn_Fs f, tn_Str p, tn_List_Str *res, tn_Str *msg) {
+    TN_FS_PRE(false)
+    DIR *d = opendir(full);
+    if (!d) TN_FS_FAIL(errno);
+    tn_List_Str out = NULL;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        tn_List_Str_push(&out, tn_str_new(e->d_name, (int64_t)strlen(e->d_name)));
+    }
+    closedir(d);
+    if (out) qsort(out->data, (size_t)out->len, sizeof(tn_Str), tn_cmp_cstr);
+    free(pb.p);
+    *res = out;
+    return TN_IO_OK;
+}
+static TN_UNUSED tn_Fs tn_fs_within(tn_Fs f, tn_Str p) {
+    tn_buf pb = tn_buf_new();
+    if (!tn_fs_path(f, p, &pb)) {
+        free(pb.p);
+        return tn_fs_make(tn_str_lit("/nonexistent-denied", 19), true, false);
+    }
+    tn_Str root = tn_str_new(pb.p + sizeof(tn_rc), pb.len - 1);
+    free(pb.p);
+    return tn_fs_make(root, true, f->wr);
+}
+
+/* ---------- clock ---------- */
+
+static TN_UNUSED tn_Int tn_now_ms(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_REALTIME, &t);
+    return (tn_Int)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+static TN_UNUSED tn_Int tn_mono_ns(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (tn_Int)(t.tv_sec - tn_mono0.tv_sec) * 1000000000 + (t.tv_nsec - tn_mono0.tv_nsec);
+}
+static TN_UNUSED void tn_sleep_ms(tn_Int ms) {
+    if (ms <= 0) return;
+    struct timespec t = {ms / 1000, (ms % 1000) * 1000000};
+    while (nanosleep(&t, &t) != 0 && errno == EINTR) {}
+}
+
+static TN_UNUSED tn_List_Str tn_args(void) {
+    tn_List_Str out = NULL;
+    for (int i = 1; i < tn_argc; i++) tn_List_Str_push(&out, tn_str_lit(tn_argv[i], (int64_t)strlen(tn_argv[i])));
+    return out;
+}
+
+#endif

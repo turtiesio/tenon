@@ -1,0 +1,61 @@
+enum Expr {
+    Num(Int),
+    Add(Expr, Expr),
+    Mul(Expr, Expr),
+    Neg(Expr),
+}
+
+fn eval(e: Expr) -> Int {
+    match e {
+        Num(n) => n,
+        Add(a, b) => eval(a) + eval(b),
+        Mul(a, b) => eval(a) * eval(b),
+        Neg(a) => -eval(a),
+    }
+}
+
+fn show(e: Expr) -> Str {
+    match e {
+        Num(n) if n < 0 => "({n})",
+        Num(n) => "{n}",
+        Add(a, b) => "({show(a)} + {show(b)})",
+        Mul(a, b) => "{show(a)} * {show(b)}",
+        Neg(a) => "-{show(a)}",
+    }
+}
+
+enum Color { Red, Green, Blue }
+
+fn Color.name(self) -> Str {
+    match self {
+        Red => "red",
+        Green | Blue => "cool",
+    }
+}
+
+fn classify(p: (Int, Int)) -> Str {
+    match p {
+        (0, 0) => "origin",
+        (0, _) | (_, 0) => "axis",
+        (x, y) if x == y => "diagonal",
+        _ => "plane",
+    }
+}
+
+fn main(sys: Sys) {
+    let c = sys.console
+    let e = Add(Num(2), Mul(Num(3), Neg(Num(-4))))
+    c.println("{show(e)} = {eval(e)}")
+    c.println("{e}")
+    c.println("{Red.name()} {Blue.name()} {Color.Green} {Red == Red} {Red < Blue} {[Blue, Red, Green].sorted()}")
+    c.println("{classify((0, 0))} {classify((0, 5))} {classify((3, 3))} {classify((1, 2))}")
+    let o: Option[Int] = None
+    c.println("{o} {Some(3).unwrap_or(0)} {o.unwrap_or(7)} {Some(2).map(fn(x) => x * 10)} {o.is_none()}")
+    let r: Result[Int, Str] = Err("boom")
+    c.println("{r} {r.is_err()} {r.ok()} {Ok(5).unwrap_or(1)}")
+    match "hello" {
+        "hi" => c.println("hi"),
+        "hello" => c.println("hello matched"),
+        _ => c.println("other"),
+    }
+}

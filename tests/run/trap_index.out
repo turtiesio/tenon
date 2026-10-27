@@ -1,0 +1,4 @@
+before
+exit: 70
+stderr: trap: index 3 out of bounds for length 3
+stderr:   at trap_index.tn:5:29

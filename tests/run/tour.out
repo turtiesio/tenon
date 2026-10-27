@@ -1,0 +1,7 @@
+hello Point { x: 1, y: 2 } 3
+total area 24, fib 6765
+["the": 3, "cat": 1, "dog": 1, "end": 1] ["cat", "dog", "end", "the"]
+[50, 30, 90] 170 0.5 2e20 0.30000000000000004 (1, "a") Some("x")
+n=42
+exit: 1
+stderr: error: not a number: zz

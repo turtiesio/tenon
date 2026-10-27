@@ -1,0 +1,4 @@
+// error: '?' on Result[Int, Str] needs the function to return Result[_, Str]
+fn f() -> Int { let x: Result[Int, Str] = Ok(1)
+ x? }
+fn main() {}

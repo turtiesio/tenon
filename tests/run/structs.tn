@@ -1,0 +1,37 @@
+struct Account { id: Int, owner: Str, balance: Int, history: List[Int] }
+
+fn Account.new(id: Int, owner: Str) -> Account {
+    Account { id, owner, balance: 0, history: [] }
+}
+
+fn Account.deposit(mut self, amount: Int) {
+    self.balance += amount
+    self.history.push(amount)
+}
+
+fn Account.summary(self) -> Str { "{self.owner}#{self.id}: {self.balance} {self.history}" }
+
+struct Pair[A, B] { first: A, second: B }
+
+fn Pair[A, B].swap(self) -> Pair[B, A] { Pair { first: self.second, second: self.first } }
+
+fn main(sys: Sys) {
+    let c = sys.console
+    var a = Account.new(1, "ann")
+    let before = a
+    a.deposit(50)
+    a.deposit(25)
+    c.println(a.summary())
+    c.println(before.summary())
+    let b = Account { owner: "bob", ..a }
+    c.println("{b} {a == b} {a == Account { ..b, owner: "ann" }}")
+    var accts = [Account.new(2, "x"), Account.new(3, "y")]
+    accts[1].deposit(9)
+    accts[1].history.push(1)
+    c.println("{accts}")
+    let p = Pair { first: 1, second: "one" }
+    c.println("{p} {p.swap()} {p.swap().swap() == p}")
+    let t = (1, "two", 3.0)
+    let (x, y, z) = t
+    c.println("{t.0} {t.1} {x + 1} {y} {z} {t}")
+}

@@ -1,0 +1,19 @@
+// stdin: alpha 3\nbeta 5\n\ngamma 2
+fn main(sys: Sys) {
+    let c = sys.console
+    var total = 0
+    var n = 0
+    while true {
+        match c.read_line() {
+            None => break,
+            Some(line) => {
+                n += 1
+                let parts = line.words()
+                if parts.len() == 2 {
+                    total += parts[1].to_int().unwrap_or(0)
+                }
+            }
+        }
+    }
+    c.println("lines={n} total={total}")
+}

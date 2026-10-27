@@ -1,0 +1,19 @@
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    let root = sys.fs.within("fs_scratch")
+    let _ = sys.fs.mkdir("fs_scratch")
+    root.write("a.txt", "hello\n")?
+    root.append("a.txt", "world\n")?
+    c.println(root.read("a.txt")?)
+    c.println("{root.read("missing.txt")}")
+    c.println("{root.read("../escape.txt")}")
+    c.println("{root.exists("a.txt")} {root.exists("nope")}")
+    let ro = root.read_only()
+    c.println("{ro.write("b.txt", "x")}")
+    root.write("b.txt", "bee")?
+    c.println("{root.list(".")?}")
+    root.remove("a.txt")?
+    root.remove("b.txt")?
+    c.println("{root.list(".")?} {root.remove("a.txt")}")
+    Ok(())
+}

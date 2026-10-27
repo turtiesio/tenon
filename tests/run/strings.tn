@@ -1,0 +1,20 @@
+fn main(sys: Sys) {
+    let c = sys.console
+    let s = "  Hello, Wörld!  "
+    let t = s.trim()
+    c.println("[{t}] {t.len()} {t.upper()} {t.lower()} {t.find("W")} {t.find("zz")}")
+    c.println("{t.slice(0, 5)} {t.starts_with("Hell")} {t.ends_with("!")} {t.contains("lo")}")
+    c.println("{"a,b,,c".split(",")} {"x".split(",")} {"".split(",")}")
+    c.println("{"one\ntwo\nthree\n".lines()} {"  a  b\tc ".words()}")
+    c.println("{"42".to_int()} {"-7".to_int()} {"+3".to_int()} {"4x".to_int()} {"".to_int()} {"99999999999999999999".to_int()}")
+    c.println("{"3.5".to_float()} {".5".to_float()} {"5.".to_float()} {"1e3".to_float()} {"x".to_float()} {"1e".to_float()}")
+    c.println("{"abc".replace("b", "XY")} {"aaa".replace("a", "b")} {"ab".repeat(3)} {"héllo".chars()}")
+    c.println("{["a", "b", "c"].join("-")} {"7".pad_left(3, "0")} {"ab".pad_right(4, ".")}|")
+    c.println("{"a" + "b" + "c"} {"abc" < "abd"} {"b" > "abc"} {"x" == "x"} {"q\"uote"} {["q\"uote", "tab\t"]}")
+    c.println("{"abc".byte(0)} {65.char()}{128512.char()} {"é".len()}")
+    let words = "the quick brown fox".split(" ")
+    var out = ""
+    for w in words { out = out + w.slice(0, 1).upper() + w.slice(1, w.len()) + " " }
+    c.println(out.trim_end() + "|")
+    c.println("braces \{ok\} {1 + 1}")
+}
