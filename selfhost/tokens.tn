@@ -1,0 +1,9 @@
+// tokens FILE: print the self-hosted lexer's token dump (compare: tenon tokens FILE).
+import lexer
+
+fn main(sys: Sys) -> Result[Unit, Str] {
+    if sys.args.len() != 1 { return Err("usage: tokens FILE") }
+    let src = sys.fs.read(sys.args[0]).map_err(fn(e) => "cannot read: {e}")?
+    sys.console.print(lexer.dump(src))
+    Ok(())
+}

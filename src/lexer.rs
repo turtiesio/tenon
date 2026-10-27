@@ -278,7 +278,6 @@ impl<'a> Lexer<'a> {
                     toks.push(Token { tok: Tok::Eof, span: self.span() });
                     parts.push(StrPart::Expr(toks));
                 }
-                b'}' => return Err(Diag::new(self.span(), "unmatched '}' in string (write \\})")),
                 _ => lit.push(c),
             }
         }
@@ -291,4 +290,46 @@ impl<'a> Lexer<'a> {
 
 fn is_ident_char(c: u8) -> bool {
     c.is_ascii_alphanumeric() || c == b'_'
+}
+
+// `tenon tokens FILE`: the reference token dump the self-hosted lexer
+// (selfhost/lexer.tn) must reproduce exactly.
+pub fn dump(src: &str) -> String {
+    let mut out = String::new();
+    match lex(src, 1) {
+        Ok(toks) => dump_into(&toks, 0, &mut out),
+        Err(d) => out.push_str(&format!("error {}:{} {}\n", d.span.line, d.span.col, d.msg)),
+    }
+    out
+}
+
+fn dump_into(toks: &[Token], depth: usize, out: &mut String) {
+    let pad = "  ".repeat(depth);
+    for t in toks {
+        let (k, v) = match &t.tok {
+            Tok::Ident(s) => ("ident", s.clone()),
+            Tok::Kw(s) => ("kw", s.to_string()),
+            Tok::Sym(s) => ("sym", s.to_string()),
+            Tok::Int(i) => ("int", i.to_string()),
+            Tok::Float(f) => ("float", crate::value::fmt_float(*f)),
+            Tok::Str(_) => ("str", String::new()),
+            Tok::Eof => ("eof", String::new()),
+        };
+        out.push_str(&format!("{}{}:{} {} {}\n", pad, t.span.line, t.span.col, k, v));
+        if let Tok::Str(parts) = &t.tok {
+            for p in parts {
+                match p {
+                    StrPart::Lit(l) => {
+                        let mut q = String::new();
+                        crate::value::quote(l, &mut q);
+                        out.push_str(&format!("{}  lit {}\n", pad, q));
+                    }
+                    StrPart::Expr(ts) => {
+                        out.push_str(&format!("{}  expr\n", pad));
+                        dump_into(ts, depth + 2, out);
+                    }
+                }
+            }
+        }
+    }
 }

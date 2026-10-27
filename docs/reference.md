@@ -35,7 +35,7 @@ identically; the test suite checks this for every test program.
 - Names: types and enum variants start with an uppercase letter; functions,
   variables and fields start with a lowercase letter. The compiler enforces this.
 - Literals: `42`, `1_000`, `3.14`, `1e-9`, `true`, `false`, `"text"`.
-  Escapes: `\n \t \r \0 \\ \" \{ \}`. `"{expr}"` interpolates any value (see §8).
+  Escapes: `\n \t \r \0 \\ \" \{ \}`. `"{expr}"` interpolates any value (see §8); write `\{` for a literal `{` (a lone `}` is literal).
 - `()` is the only value of type `Unit`.
 
 ## 3. Types
