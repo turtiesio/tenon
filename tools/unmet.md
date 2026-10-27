@@ -9,8 +9,12 @@ Milestone 1 (tenon.md §4), item by item:
   Language changes since, driven by wave-1 notes: char literals, let-else,
   constants, mut parameters, Set, char-class helpers, find_from, Fs.rename.
   The full study (3 authors per language, 2 model families, task set 2) is next.
-- Performance within 1.5x of C on the benchmarks: **met** (fib 1.19x, trees
-  1.36x, wordfreq 1.35x). Benchmarks of the real programs against C are not done.
+- Performance within 1.5x of C on the program benchmarks: **not met.**
+  Microbenchmarks are within target (fib ~1.2x, trees ~0.7x, wordfreq ~1.3x), but
+  benchmarks of real programs against hand-written C are not: calc ~2.6x (each
+  call builds a Map environment, two mallocs, where C uses a stack array) and
+  mdhtml ~2.2x. Closing this needs escape analysis / stack allocation of small
+  containers or a size-class allocator; not attempted yet.
 - check --fast <= 60 s and landing <= 5 min over a week: met so far (~9 s, ~15 s),
   but less than a week of history exists.
 - Self-hosted lexer, parser and checker agree with the bootstrap on the full corpus: **met** (tools/selfhost.sh).

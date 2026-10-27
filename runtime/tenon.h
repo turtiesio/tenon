@@ -186,6 +186,9 @@ TN_NORETURN static TN_UNUSED void tn_exit(int code) {
  * queued and drained iteratively. */
 /* Freed nodes of recursive enums are reused, up to this many per type.
  * Sanitizer builds set it to 0 so that use-after-free stays detectable. */
+#ifndef TN_MAP_SMALL
+#define TN_MAP_SMALL 8
+#endif
 #ifndef TN_POOL_MAX
 #define TN_POOL_MAX 65536
 #endif
@@ -818,14 +821,23 @@ TN_INCOMPARABLE(tn_fn)
         m->n = w;                                                                        \
         m->last = -1;                                                                    \
     }                                                                                    \
+    /* small maps (at most TN_MAP_SMALL entries) have no index: lookups scan */         \
+    static TN_UNUSED void M##_compact(M m) {                                             \
+        int64_t w = 0;                                                                   \
+        for (int64_t r = 0; r < m->n; r++) if (m->e[r].live) m->e[w++] = m->e[r];        \
+        m->n = w;                                                                        \
+        m->last = -1;                                                                    \
+    }                                                                                    \
     static TN_UNUSED M M##_alloc(int64_t cap) {                                          \
         M m = tn_alloc(sizeof(struct M##_s));                                            \
         m->rc = 1; m->len = 0; m->n = 0; m->cap = cap < 4 ? 4 : cap;                      \
         m->e = tn_alloc(sizeof(struct M##_e) * (size_t)m->cap);                          \
-        m->idx = NULL;                                                                   \
-        int64_t ic = 8;                                                                  \
-        while (ic * 3 < m->cap * 4) ic *= 2;                                             \
-        M##_reindex(m, ic);                                                              \
+        m->idx = NULL; m->icap = 0; m->last = -1;                                        \
+        if (cap > TN_MAP_SMALL) {                                                        \
+            int64_t ic = 16;                                                             \
+            while (ic * 3 < m->cap * 4) ic *= 2;                                         \
+            M##_reindex(m, ic);                                                          \
+        }                                                                                \
         return m;                                                                        \
     }                                                                                    \
     static TN_UNUSED void M##_unique(M *p) {                                             \
@@ -840,7 +852,7 @@ TN_INCOMPARABLE(tn_fn)
                 c->e[c->n++] = x;                                                        \
             }                                                                            \
         c->len = c->n;                                                                   \
-        M##_reindex(c, c->icap);                                                         \
+        if (c->idx) M##_reindex(c, c->icap);                                             \
         m->rc--;                                                                         \
         *p = c;                                                                          \
     }                                                                                    \
@@ -849,6 +861,15 @@ TN_INCOMPARABLE(tn_fn)
         if (m->last >= 0 && m->e[m->last].h == h && K##_eq(m->e[m->last].k, k)) {        \
             if (slot) *slot = m->last_slot;                                              \
             return m->last;                                                              \
+        }                                                                                \
+        if (!m->idx) {                                                                   \
+            if (slot) *slot = -1;                                                        \
+            for (int64_t j = 0; j < m->n; j++)                                           \
+                if (m->e[j].live && m->e[j].h == h && K##_eq(m->e[j].k, k)) {            \
+                    m->last = j; m->last_slot = -1;                                      \
+                    return j;                                                            \
+                }                                                                        \
+            return -1;                                                                   \
         }                                                                                \
         uint64_t s = h & (uint64_t)(m->icap - 1);                                        \
         int64_t tomb = -1;                                                               \
@@ -892,6 +913,24 @@ TN_INCOMPARABLE(tn_fn)
         int64_t s;                                                                       \
         int64_t j = M##_find(m, k, h, &s);                                               \
         if (j >= 0) { K##_release(k); *fresh = false; return &m->e[j].v; }              \
+        if (!m->idx) {                                                                   \
+            if (m->n == m->cap && m->len < m->n) M##_compact(m);                         \
+            if (m->n == m->cap) {                                                        \
+                m->cap *= 2;                                                             \
+                m->e = tn_realloc(m->e, sizeof(struct M##_e) * (size_t)m->cap);          \
+            }                                                                            \
+            if (m->len + 1 <= TN_MAP_SMALL) {                                            \
+                j = m->n++;                                                              \
+                m->e[j].k = k; m->e[j].h = h; m->e[j].live = true;                       \
+                memset(&m->e[j].v, 0, sizeof(V));                                        \
+                m->last = j; m->last_slot = -1;                                          \
+                m->len++;                                                                \
+                *fresh = true;                                                           \
+                return &m->e[j].v;                                                       \
+            }                                                                            \
+            M##_reindex(m, 32);                                                          \
+            M##_find(m, k, h, &s);                                                       \
+        }                                                                                \
         if ((m->n + 1) * 4 > m->icap * 3 || m->n == m->cap) {                            \
             if (m->n == m->cap) {                                                        \
                 m->cap *= 2;                                                             \
@@ -930,13 +969,15 @@ TN_INCOMPARABLE(tn_fn)
         int64_t s;                                                                       \
         int64_t j = M##_find(m, k, M##_khash(m, k), &s);                                  \
         if (j < 0) return false;                                                         \
-        m->idx[s] = -2;                                                                  \
+        if (m->idx) m->idx[s] = -2;                                                      \
         m->e[j].live = false;                                                            \
         m->last = -1;                                                                    \
         K##_release(m->e[j].k);                                                          \
         *out = m->e[j].v;                                                                \
         m->len--;                                                                        \
-        if (m->n > 8 && m->len * 2 < m->n) M##_reindex(m, m->icap);                      \
+        if (m->n > 8 && m->len * 2 < m->n) {                                             \
+            if (m->idx) M##_reindex(m, m->icap); else M##_compact(m);                    \
+        }                                                                                \
         return true;                                                                     \
     }                                                                                    \
     static TN_UNUSED bool M##_eq(M a, M b) {                                             \
