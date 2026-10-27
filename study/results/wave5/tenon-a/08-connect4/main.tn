@@ -1,0 +1,121 @@
+// connect4: a Connect Four referee over a line protocol.
+
+const COLS: Int = 7
+const ROWS: Int = 6
+
+enum Outcome { Running, Won(Str), Draw }
+
+// cells[row * COLS + col] with row 0 at the bottom: "" when empty, else "X" or "O".
+struct Game { cells: List[Str], heights: List[Int], moves: List[Int], outcome: Outcome }
+
+fn Game.new() -> Game {
+    Game { cells: List.filled(ROWS * COLS, ""), heights: List.filled(COLS, 0), moves: [], outcome: Running }
+}
+
+fn Game.to_move(self) -> Str { if self.moves.len() % 2 == 0 { "X" } else { "O" } }
+
+fn Game.at(self, row: Int, col: Int) -> Str {
+    if row < 0 or row >= ROWS or col < 0 or col >= COLS { "" } else { self.cells[row * COLS + col] }
+}
+
+// The number of `player` discs in a row starting next to (row, col) in direction (dr, dc).
+fn Game.run(self, player: Str, row: Int, col: Int, dr: Int, dc: Int) -> Int {
+    var n = 0
+    var r = row + dr
+    var c = col + dc
+    while self.at(r, c) == player {
+        n += 1
+        r += dr
+        c += dc
+    }
+    n
+}
+
+fn Game.wins(self, player: Str, row: Int, col: Int) -> Bool {
+    [(0, 1), (1, 0), (1, 1), (1, -1)].any(fn(d) =>
+        1 + self.run(player, row, col, d.0, d.1) + self.run(player, row, col, -d.0, -d.1) >= 4)
+}
+
+fn Game.drop(mut self, col: Int) -> Str {
+    if self.outcome != Running { return "ERR game over" }
+    let row = self.heights[col]
+    if row == ROWS { return "ERR column full" }
+    let player = self.to_move()
+    self.cells[row * COLS + col] = player
+    self.heights[col] += 1
+    self.moves.push(col)
+    let played = "PLAYED {player} {row + 1}"
+    if self.wins(player, row, col) {
+        self.outcome = Won(player)
+        played + " WIN"
+    } else if self.moves.len() == ROWS * COLS {
+        self.outcome = Draw
+        played + " DRAW"
+    } else {
+        played
+    }
+}
+
+fn Game.undo(mut self) -> Str {
+    let Some(col) = self.moves.pop() else { return "ERR nothing to undo" }
+    self.heights[col] -= 1
+    self.cells[self.heights[col] * COLS + col] = ""
+    self.outcome = Running
+    "UNDONE {col + 1}"
+}
+
+fn Game.board(self) -> Str {
+    var rows: List[Str] = []
+    for i in 0..ROWS {
+        let r = ROWS - 1 - i
+        var line = ""
+        for c in 0..COLS {
+            let cell = self.at(r, c)
+            line += if cell.is_empty() { "." } else { cell }
+        }
+        rows.push(line)
+    }
+    rows.join("/")
+}
+
+fn Game.status(self) -> Str {
+    match self.outcome {
+        Running => "TURN {self.to_move()}",
+        Won(p) => "WIN {p}",
+        Draw => "DRAW",
+    }
+}
+
+fn handle(game: mut Game, line: Str) -> Str {
+    if let Some(arg) = line.strip_prefix("DROP ") {
+        if arg.len() == 1 and arg.byte(0) >= '1' and arg.byte(0) <= '7' {
+            return game.drop(arg.byte(0) - '1')
+        }
+        return "ERR bad command"
+    }
+    match line {
+        "UNDO" => game.undo(),
+        "BOARD" => game.board(),
+        "STATUS" => game.status(),
+        "NEW" => {
+            game = Game.new()
+            "OK"
+        }
+        _ => "ERR bad command",
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: connect4 < commands")
+        return 2
+    }
+    var game = Game.new()
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        con.println(handle(mut game, line))
+        con.flush()
+    }
+    0
+}

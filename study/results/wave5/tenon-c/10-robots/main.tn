@@ -1,0 +1,83 @@
+struct Robot { x: Int, y: Int, program: Str, moves: Int, bumps: Int, coins: Int }
+struct World { width: Int, height: Int, cells: List[Int], robots: Map[Int, Robot] }
+fn parse(input: Str) -> Option[World] {
+    let lines = input.lines().map(fn(raw) => raw.strip_suffix("\r").unwrap_or(raw))
+    var grid_rows: List[Str] = []
+    var programs: List[Str] = []
+    var after_grid = false
+    for line in lines {
+        if after_grid { programs.push(line) }
+        else if line.is_empty() { after_grid = true }
+        else { grid_rows.push(line) }
+    }
+    if grid_rows.is_empty() or grid_rows.len() > 50 { return None }
+    let width = grid_rows[0].len()
+    if width < 1 or width > 50 { return None }
+    var cells: List[Int] = []
+    var robots: Map[Int, Robot] = [:]
+    for (y, row) in grid_rows.enumerate() {
+        if row.len() != width { return None }
+        for (x, ch) in row.bytes().enumerate() {
+            if ch.is_upper() {
+                if robots.contains(ch) { return None }
+                robots[ch] = Robot { x, y, program: "", moves: 0, bumps: 0, coins: 0 }
+            } else if ch != '.' and ch != '#' and ch != '*' { return None }
+            cells.push(ch)
+        }
+    }
+    var assigned: Set[Int] = Set.new()
+    for record in programs {
+        if record.len() < 2 or record.byte(1) != ':' { return None }
+        let letter = record.byte(0)
+        if not robots.contains(letter) or not assigned.insert(letter) { return None }
+        let moves = record.slice(2, record.len())
+        if moves.len() > 100 or not moves.bytes().all(fn(c) => c == 'N' or c == 'E' or c == 'S' or c == 'W' or c == '.') { return None }
+        robots[letter].program = moves
+    }
+    Some(World { width, height: grid_rows.len(), cells, robots })
+}
+fn World.simulate(mut self, ticks: Int) {
+    let order = self.robots.keys().sorted()
+    for tick in 0..ticks {
+        for letter in order {
+            let robot = self.robots[letter]
+            if robot.program.is_empty() { continue }
+            let instruction = robot.program.byte(tick % robot.program.len())
+            if instruction == '.' { continue }
+            let dx = if instruction == 'E' { 1 } else if instruction == 'W' { -1 } else { 0 }
+            let dy = if instruction == 'S' { 1 } else if instruction == 'N' { -1 } else { 0 }
+            let x = robot.x + dx
+            let y = robot.y + dy
+            if x < 0 or x >= self.width or y < 0 or y >= self.height {
+                self.robots[letter].bumps += 1
+                continue
+            }
+            let target = y * self.width + x
+            let cell = self.cells[target]
+            if cell == '#' or cell.is_upper() { self.robots[letter].bumps += 1; continue }
+            if cell == '*' { self.robots[letter].coins += 1 }
+            self.cells[robot.y * self.width + robot.x] = '.'
+            self.cells[target] = letter
+            self.robots[letter].x = x
+            self.robots[letter].y = y
+            self.robots[letter].moves += 1
+        }
+    }
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("expected TICKS"); return 2 }
+    let arg = sys.args[0]
+    if not arg.is_digits() or arg.len() > 5 { sys.console.eprintln("invalid ticks"); return 2 }
+    let ticks = arg.to_int().unwrap()
+    let Some(parsed) = parse(sys.console.read_all()) else { sys.console.eprintln("invalid world"); return 1 }
+    var world = parsed
+    world.simulate(ticks)
+    for row in 0..world.height {
+        sys.console.println(Str.from_utf8(world.cells.slice(row * world.width, (row + 1) * world.width)).unwrap())
+    }
+    for letter in world.robots.keys().sorted() {
+        let robot = world.robots[letter]
+        sys.console.println("{letter.char()} {robot.x} {robot.y} moves={robot.moves} bumps={robot.bumps} coins={robot.coins}")
+    }
+    0
+}

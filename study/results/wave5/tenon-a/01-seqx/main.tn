@@ -1,0 +1,81 @@
+// seqx: print an arithmetic sequence of integers, in the style of `seq`.
+
+struct Options { sep: Str, wide: Bool, limit: Option[Int], numbers: List[Int] }
+
+// Matches -?[0-9]{1,18}.
+fn parse_number(s: Str) -> Option[Int] {
+    let digits = s.strip_prefix("-").unwrap_or(s)
+    if not digits.is_digits() or digits.len() > 18 { return None }
+    s.to_int()
+}
+
+fn parse_args(args: List[Str]) -> Result[Options, Str] {
+    var opts = Options { sep: "\n", wide: false, limit: None, numbers: [] }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-s" {
+            if i + 1 >= args.len() { return Err("-s needs a value") }
+            opts.sep = args[i + 1]
+            i += 2
+        } else if a == "-n" {
+            if i + 1 >= args.len() { return Err("-n needs a value") }
+            let v = args[i + 1]
+            if not v.is_digits() or v.len() > 9 { return Err("bad count '{v}'") }
+            opts.limit = v.to_int()
+            i += 2
+        } else if a == "-w" {
+            opts.wide = true
+            i += 1
+        } else {
+            let Some(n) = parse_number(a) else { return Err("bad number '{a}'") }
+            opts.numbers.push(n)
+            i += 1
+        }
+    }
+    if opts.numbers.len() != 2 and opts.numbers.len() != 3 {
+        return Err("expected FIRST [STEP] LAST")
+    }
+    Ok(opts)
+}
+
+fn pad(v: Int, width: Int) -> Str {
+    if v < 0 { "-" + (-v).to_str().pad_left(width - 1, "0") } else { v.to_str().pad_left(width, "0") }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let opts = match parse_args(sys.args) {
+        Ok(o) => o,
+        Err(msg) => {
+            con.eprintln("seqx: {msg}")
+            con.eprintln("usage: seqx [-s SEP] [-w] [-n COUNT] FIRST [STEP] LAST")
+            return 2
+        }
+    }
+    let nums = opts.numbers
+    let first = nums[0]
+    let last = nums[nums.len() - 1]
+    let step = if nums.len() == 3 { nums[1] } else { 1 }
+    if step == 0 {
+        con.eprintln("seqx: STEP must not be zero")
+        return 2
+    }
+    let limit = opts.limit.unwrap_or(INT_MAX)
+    var values: List[Int] = []
+    var v = first
+    while values.len() < limit and (if step > 0 { v <= last } else { v >= last }) {
+        values.push(v)
+        let Some(next) = v.checked_add(step) else { break }
+        v = next
+    }
+    if values.is_empty() { return 0 }
+    var texts = values.map(fn(x) => x.to_str())
+    if opts.wide {
+        var width = 0
+        for t in texts { width = width.max(t.len()) }
+        texts = values.map(fn(x) => pad(x, width))
+    }
+    con.println(texts.join(opts.sep))
+    0
+}

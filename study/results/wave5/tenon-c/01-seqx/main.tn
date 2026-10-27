@@ -1,0 +1,48 @@
+fn number(s: Str, signed: Bool, max_digits: Int) -> Option[Int] {
+    let digits = if signed and s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    if digits.len() > max_digits or not digits.is_digits() { return None }
+    s.to_int()
+}
+fn run(args: List[Str]) -> Option[Str] {
+    var sep = "\n"
+    var width = false
+    var limit = 100000
+    var nums: List[Int] = []
+    var i = 0
+    while i < args.len() {
+        let arg = args[i]
+        if arg == "-w" { width = true }
+        else if arg == "-s" or arg == "-n" {
+            i += 1
+            if i == args.len() { return None }
+            if arg == "-s" { sep = args[i] }
+            else { limit = number(args[i], false, 9)? }
+        } else { nums.push(number(arg, true, 18)?) }
+        i += 1
+    }
+    if nums.len() != 2 and nums.len() != 3 { return None }
+    let step = if nums.len() == 3 { nums[1] } else { 1 }
+    if step == 0 { return None }
+    let last = nums[nums.len() - 1]
+    var value = nums[0]
+    var values: List[Int] = []
+    var w = 0
+    while values.len() < limit and ((step > 0 and value <= last) or (step < 0 and value >= last)) {
+        values.push(value)
+        w = w.max(value.to_str().len())
+        value += step
+    }
+    var out: List[Str] = []
+    for v in values {
+        let text = v.to_str()
+        if width and v < 0 { out.push("-" + (-v).to_str().pad_left(w - 1, "0")) }
+        else { out.push(if width { text.pad_left(w, "0") } else { text }) }
+    }
+    Some(if out.is_empty() { "" } else { out.join(sep) + "\n" })
+}
+fn main(sys: Sys) -> Int {
+    match run(sys.args) {
+        Some(output) => { sys.console.print(output); 0 }
+        None => { sys.console.eprintln("invalid arguments"); 2 }
+    }
+}

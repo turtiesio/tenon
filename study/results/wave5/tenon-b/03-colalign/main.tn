@@ -1,0 +1,103 @@
+fn usage(sys: Sys, msg: Str) -> Int {
+    sys.console.eprintln("colalign: {msg}")
+    sys.console.eprintln("usage: colalign [-s CHAR] [-o OUTSEP] [-r LIST]")
+    2
+}
+
+fn cp_len(s: Str) -> Int { s.chars().len() }
+
+fn parse_columns(list: Str) -> Option[List[Int]] {
+    var out: List[Int] = []
+    for part in list.split(",") {
+        if part.len() < 1 or part.len() > 3 or not part.is_digits() { return None }
+        if part.byte(0) == '0' { return None }
+        out.push(part.to_int()?)
+    }
+    Some(out)
+}
+
+fn split_blank(line: Str) -> List[Str] {
+    var fields: List[Str] = []
+    var cur = ""
+    for c in line.chars() {
+        if c == " " or c == "\t" {
+            if not cur.is_empty() {
+                fields.push(cur)
+                cur = ""
+            }
+        } else {
+            cur += c
+        }
+    }
+    if not cur.is_empty() { fields.push(cur) }
+    fields
+}
+
+fn pad(s: Str, width: Int) -> Str {
+    " ".repeat((width - cp_len(s)).max(0))
+}
+
+fn main(sys: Sys) -> Int {
+    let args = sys.args
+    var sep: Option[Str] = None
+    var outsep = "  "
+    var right: List[Int] = []
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a != "-s" and a != "-o" and a != "-r" { return usage(sys, "unexpected argument '{a}'") }
+        if i + 1 >= args.len() { return usage(sys, "{a} needs a value") }
+        let v = args[i + 1]
+        if a == "-s" {
+            if cp_len(v) != 1 { return usage(sys, "-s needs exactly one character") }
+            sep = Some(v)
+        } else if a == "-o" {
+            outsep = v
+        } else {
+            let Some(cols) = parse_columns(v) else { return usage(sys, "bad column list '{v}'") }
+            right = cols
+        }
+        i += 2
+    }
+
+    var rows: List[List[Str]] = []
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if let Some(sp) = sep {
+            rows.push(if line.is_empty() { [] } else { line.split(sp) })
+        } else {
+            rows.push(split_blank(line))
+        }
+    }
+
+    var widths: List[Int] = []
+    for row in rows {
+        for (k, f) in row.enumerate() {
+            let n = cp_len(f)
+            if k >= widths.len() {
+                widths.push(n)
+            } else if n > widths[k] {
+                widths[k] = n
+            }
+        }
+    }
+
+    var out = ""
+    for row in rows {
+        var parts: List[Str] = []
+        for (k, f) in row.enumerate() {
+            let is_right = right.contains(k + 1)
+            if is_right {
+                parts.push(pad(f, widths[k]) + f)
+            } else if k == row.len() - 1 {
+                parts.push(f)
+            } else {
+                parts.push(f + pad(f, widths[k]))
+            }
+        }
+        out += parts.join(outsep)
+        out += "\n"
+    }
+    sys.console.print(out)
+    0
+}

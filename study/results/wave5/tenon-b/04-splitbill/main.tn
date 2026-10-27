@@ -1,0 +1,112 @@
+fn tokens(line: Str) -> List[Str] {
+    line.replace("\t", " ").split(" ").filter(fn(t) => not t.is_empty())
+}
+
+fn valid_name(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 16 { return false }
+    if not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_') { return false }
+    }
+    true
+}
+
+fn parse_amount(s: Str) -> Option[Int] {
+    let (whole, frac) = s.split_once(".")?
+    if whole.len() < 1 or whole.len() > 7 or not whole.is_digits() { return None }
+    if frac.len() != 2 or not frac.is_digits() { return None }
+    let cents = whole.to_int()? * 100 + frac.to_int()?
+    if cents == 0 { None } else { Some(cents) }
+}
+
+fn name_of(s: Str) -> Result[Str, Str] {
+    if valid_name(s) { Ok(s) } else { Err("bad name '{s}'") }
+}
+
+fn amount_of(s: Str) -> Result[Int, Str] {
+    parse_amount(s).ok_or("bad amount '{s}'")
+}
+
+fn apply(line: Str, bal: mut Map[Str, Int]) -> Result[Unit, Str] {
+    let t = tokens(line)
+    if t.is_empty() or t[0].starts_with("#") { return Ok(()) }
+    if t[0] == "expense" {
+        if t.len() < 4 { return Err("expense needs at least 4 tokens: {line}") }
+        let payer = name_of(t[1])?
+        let amount = amount_of(t[2])?
+        var seen: Set[Str] = Set.new()
+        for p in t.slice(3, t.len()) {
+            let _ = name_of(p)?
+            if not seen.insert(p) { return Err("participant '{p}' listed twice") }
+        }
+        let parts = t.slice(3, t.len())
+        let n = parts.len()
+        let q = amount / n
+        let r = amount % n
+        bal.or_insert(payer, 0)
+        bal[payer] += amount
+        for (k, p) in parts.enumerate() {
+            bal.or_insert(p, 0)
+            bal[p] -= if k < r { q + 1 } else { q }
+        }
+        Ok(())
+    } else if t[0] == "transfer" {
+        if t.len() != 4 { return Err("transfer needs exactly 4 tokens: {line}") }
+        let from = name_of(t[1])?
+        let to = name_of(t[2])?
+        let amount = amount_of(t[3])?
+        if from == to { return Err("transfer from '{from}' to itself") }
+        bal.or_insert(from, 0)
+        bal.or_insert(to, 0)
+        bal[from] += amount
+        bal[to] -= amount
+        Ok(())
+    } else {
+        Err("unknown record '{t[0]}'")
+    }
+}
+
+fn money(cents: Int) -> Str { cents.fmt_fixed(2) }
+
+fn signed(cents: Int) -> Str {
+    if cents > 0 { "+" + money(cents) } else { money(cents) }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: splitbill (no arguments)")
+        return 2
+    }
+    var balances: Map[Str, Int] = [:]
+    for raw in con.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if let Err(e) = apply(line, mut balances) {
+            con.eprintln("splitbill: {e}")
+            return 1
+        }
+    }
+    let names = balances.keys().sorted()
+    var out = ""
+    for name in names { out += "{name} {signed(balances[name])}\n" }
+    out += "--\n"
+
+    var work = balances
+    while true {
+        var debtor = ""
+        var creditor = ""
+        for name in names {
+            let b = work[name]
+            if b < 0 and (debtor.is_empty() or b < work[debtor]) { debtor = name }
+            if b > 0 and (creditor.is_empty() or b > work[creditor]) { creditor = name }
+        }
+        if debtor.is_empty() { break }
+        let x = (-work[debtor]).min(work[creditor])
+        out += "{debtor} pays {creditor} {money(x)}\n"
+        work[debtor] += x
+        work[creditor] -= x
+    }
+    con.print(out)
+    0
+}

@@ -1,0 +1,68 @@
+struct Game { cells: List[Str], heights: List[Int], history: List[Int], winner: Str }
+fn Game.empty() -> Game {
+    Game { cells: List.filled(42, "."), heights: List.filled(7, 0), history: [], winner: "" }
+}
+fn Game.player(self) -> Str { if self.history.len() % 2 == 0 { "X" } else { "O" } }
+fn Game.over(self) -> Bool { not self.winner.is_empty() or self.history.len() == 42 }
+fn Game.wins(self, col: Int, row: Int, player: Str) -> Bool {
+    for (dx, dy) in [(1, 0), (0, 1), (1, 1), (1, -1)] {
+        var count = 1
+        for sign in [-1, 1] {
+            var x = col + dx * sign
+            var y = row + dy * sign
+            while x >= 0 and x < 7 and y >= 0 and y < 6 {
+                if self.cells[y * 7 + x] != player { break }
+                count += 1
+                x += dx * sign
+                y += dy * sign
+            }
+        }
+        if count >= 4 { return true }
+    }
+    false
+}
+fn Game.respond(mut self, line: Str) -> Str {
+    if line == "NEW" { self = Game.empty(); return "OK" }
+    if line == "STATUS" {
+        return if not self.winner.is_empty() { "WIN {self.winner}" }
+            else if self.history.len() == 42 { "DRAW" } else { "TURN {self.player()}" }
+    }
+    if line == "BOARD" {
+        var rows: List[Str] = []
+        for index in 0..6 {
+            let row = 5 - index
+            rows.push(self.cells.slice(row * 7, row * 7 + 7).join(""))
+        }
+        return rows.join("/")
+    }
+    if line == "UNDO" {
+        let Some(column) = self.history.pop() else { return "ERR nothing to undo" }
+        self.heights[column] -= 1
+        self.cells[self.heights[column] * 7 + column] = "."
+        self.winner = ""
+        return "UNDONE {column + 1}"
+    }
+    if line.len() == 6 and line.starts_with("DROP ") and line.byte(5) >= '1' and line.byte(5) <= '7' {
+        if self.over() { return "ERR game over" }
+        let col = line.byte(5) - '1'
+        let row_num = self.heights[col]
+        if row_num == 6 { return "ERR column full" }
+        let player = self.player()
+        self.cells[row_num * 7 + col] = player
+        self.heights[col] += 1
+        self.history.push(col)
+        if self.wins(col, row_num, player) { self.winner = player }
+        let suffix = if not self.winner.is_empty() { " WIN" } else if self.history.len() == 42 { " DRAW" } else { "" }
+        return "PLAYED {player} {row_num + 1}{suffix}"
+    }
+    "ERR bad command"
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments expected"); return 2 }
+    var game = Game.empty()
+    while let Some(line) = sys.console.read_line() {
+        sys.console.println(game.respond(line))
+        sys.console.flush()
+    }
+    0
+}

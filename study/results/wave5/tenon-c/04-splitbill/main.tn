@@ -1,0 +1,65 @@
+fn valid_name(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 16 or not s.byte(0).is_lower() { return false }
+    s.bytes().all(fn(c) => c.is_lower() or c.is_digit() or c == '_')
+}
+fn amount(s: Str) -> Option[Int] {
+    let parts = s.split(".")
+    if parts.len() != 2 { return None }
+    if not parts[0].is_digits() or parts[0].len() > 7 or parts[1].len() != 2 or not parts[1].is_digits() { return None }
+    let cents = parts[0].to_int()? * 100 + parts[1].to_int()?
+    if cents == 0 { None } else { Some(cents) }
+}
+fn balances(input: Str) -> Option[Map[Str, Int]] {
+    var people: Map[Str, Int] = [:]
+    for raw in input.lines() {
+        let tokens = raw.strip_suffix("\r").unwrap_or(raw).replace("\t", " ").split(" ").filter(fn(t) => not t.is_empty())
+        if tokens.is_empty() or tokens[0].starts_with("#") { continue }
+        if tokens[0] == "expense" {
+            if tokens.len() < 4 or not valid_name(tokens[1]) { return None }
+            let cost = amount(tokens[2])?
+            let participants = tokens.slice(3, tokens.len())
+            var seen: Set[Str] = Set.new()
+            for person in participants {
+                if not valid_name(person) or not seen.insert(person) { return None }
+            }
+            people[tokens[1]] = people.get_or(tokens[1], 0) + cost
+            for (index, member) in participants.enumerate() {
+                let share = cost / participants.len() + if index < cost % participants.len() { 1 } else { 0 }
+                people[member] = people.get_or(member, 0) - share
+            }
+        } else if tokens[0] == "transfer" {
+            if tokens.len() != 4 or not valid_name(tokens[1]) or not valid_name(tokens[2]) or tokens[1] == tokens[2] { return None }
+            let payment = amount(tokens[3])?
+            people[tokens[1]] = people.get_or(tokens[1], 0) + payment
+            people[tokens[2]] = people.get_or(tokens[2], 0) - payment
+        } else { return None }
+    }
+    Some(people)
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments expected"); return 2 }
+    let Some(original) = balances(sys.console.read_all()) else { sys.console.eprintln("invalid input"); return 1 }
+    let names = original.keys().sorted()
+    for name in names {
+        let value = original[name]
+        sys.console.println("{name} {if value > 0 { "+" } else { "" }}{value.fmt_fixed(2)}")
+    }
+    sys.console.println("--")
+    var remaining = original
+    while true {
+        var debtor = ""
+        var creditor = ""
+        var debt = 0
+        var credit = 0
+        for candidate in names {
+            if remaining[candidate] < debt { debtor = candidate; debt = remaining[candidate] }
+            if remaining[candidate] > credit { creditor = candidate; credit = remaining[candidate] }
+        }
+        if debt == 0 { break }
+        let paid = (-debt).min(credit)
+        sys.console.println("{debtor} pays {creditor} {paid.fmt_fixed(2)}")
+        remaining[debtor] += paid
+        remaining[creditor] -= paid
+    }
+    0
+}

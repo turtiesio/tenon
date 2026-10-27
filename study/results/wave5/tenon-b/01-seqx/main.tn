@@ -1,0 +1,84 @@
+fn usage(sys: Sys, msg: Str) -> Int {
+    sys.console.eprintln("seqx: {msg}")
+    sys.console.eprintln("usage: seqx [-s SEP] [-w] [-n COUNT] FIRST [STEP] LAST")
+    2
+}
+
+fn is_digits_len(s: Str, max: Int) -> Bool {
+    s.len() >= 1 and s.len() <= max and s.is_digits()
+}
+
+fn parse_number(s: Str) -> Option[Int] {
+    let body = match s.strip_prefix("-") {
+        Some(rest) => rest,
+        None => s,
+    }
+    if not is_digits_len(body, 18) { return None }
+    s.to_int()
+}
+
+fn format_value(v: Int, width: Int) -> Str {
+    let digits = v.abs().to_str()
+    if v < 0 {
+        "-" + digits.pad_left(width - 1, "0")
+    } else {
+        digits.pad_left(width, "0")
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    var sep = "\n"
+    var wide = false
+    var limit: Option[Int] = None
+    var nums: List[Int] = []
+    let args = sys.args
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-s" {
+            if i + 1 >= args.len() { return usage(sys, "-s needs a value") }
+            sep = args[i + 1]
+            i += 2
+        } else if a == "-n" {
+            if i + 1 >= args.len() { return usage(sys, "-n needs a value") }
+            let v = args[i + 1]
+            if not is_digits_len(v, 9) { return usage(sys, "bad count '{v}'") }
+            limit = v.to_int()
+            i += 2
+        } else if a == "-w" {
+            wide = true
+            i += 1
+        } else {
+            let Some(n) = parse_number(a) else { return usage(sys, "bad number '{a}'") }
+            nums.push(n)
+            i += 1
+        }
+    }
+    if nums.len() != 2 and nums.len() != 3 {
+        return usage(sys, "expected FIRST [STEP] LAST")
+    }
+    let first = nums[0]
+    let last = nums[nums.len() - 1]
+    let step = if nums.len() == 3 { nums[1] } else { 1 }
+    if step == 0 { return usage(sys, "STEP must not be zero") }
+
+    var values: List[Int] = []
+    var cur = first
+    while (step > 0 and cur <= last) or (step < 0 and cur >= last) {
+        if let Some(l) = limit {
+            if values.len() >= l { break }
+        }
+        values.push(cur)
+        let Some(next) = cur.checked_add(step) else { break }
+        cur = next
+    }
+    if values.is_empty() { return 0 }
+
+    var width = 0
+    if wide {
+        for v in values { width = width.max(v.to_str().len()) }
+    }
+    let parts = values.map(fn(v) => format_value(v, width))
+    sys.console.println(parts.join(sep))
+    0
+}

@@ -1,0 +1,121 @@
+// leaderboard: an in-memory score ranking service over a line protocol.
+
+// Players are kept in leaderboard order as (-total, name) keys, ascending,
+// so the order is total descending, then name ascending.
+struct Board { totals: Map[Str, Int], order: List[(Int, Str)] }
+
+// The first position whose key is >= key.
+fn Board.lower_bound(self, key: (Int, Str)) -> Int {
+    var lo = 0
+    var hi = self.order.len()
+    while lo < hi {
+        let mid = (lo + hi) / 2
+        if self.order[mid] < key { lo = mid + 1 } else { hi = mid }
+    }
+    lo
+}
+
+fn Board.position(self, player: Str) -> Option[Int] {
+    let total = self.totals.get(player)?
+    Some(self.lower_bound((-total, player)))
+}
+
+// 1 + the number of players with a strictly higher total.
+fn Board.rank_of(self, total: Int) -> Int { self.lower_bound((-total, "")) + 1 }
+
+fn Board.remove(mut self, player: Str) -> Bool {
+    let Some(i) = self.position(player) else { return false }
+    let _ = self.order.remove(i)
+    let _ = self.totals.remove(player)
+    true
+}
+
+fn Board.score(mut self, player: Str, points: Int) -> Int {
+    let total = self.totals.get_or(player, 0) + points
+    let _ = self.remove(player)
+    self.totals[player] = total
+    let key = (-total, player)
+    self.order.insert(self.lower_bound(key), key)
+    total
+}
+
+fn Board.entries(self, from: Int, to: Int) -> Str {
+    var out = ""
+    for i in from..to {
+        let (neg, name) = self.order[i]
+        out += " {self.rank_of(-neg)}:{name}:{-neg}"
+    }
+    out
+}
+
+// [a-z][a-z0-9_]{0,15}
+fn is_player(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 16 or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_') { return false }
+    }
+    true
+}
+
+// An optional '-' and 1..max_digits decimal digits.
+fn small_int(s: Str, signed: Bool, max_digits: Int) -> Option[Int] {
+    let digits = if signed and s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    if not digits.is_digits() or digits.len() > max_digits { return None }
+    s.to_int()
+}
+
+fn player(s: Str) -> Option[Str] { if is_player(s) { Some(s) } else { None } }
+
+fn handle(board: mut Board, line: Str) -> Option[Str] {
+    let t = line.split(" ")
+    let n = t.len()
+    match t[0] {
+        "SCORE" if n == 3 => {
+            let p = player(t[1])?
+            let points = small_int(t[2], true, 6)?
+            Some("TOTAL {board.score(p, points)}")
+        }
+        "RANK" if n == 2 => {
+            let p = player(t[1])?
+            Some(match board.totals.get(p) {
+                Some(total) => "RANK {board.rank_of(total)} {total}",
+                None => "ERR unknown player",
+            })
+        }
+        "TOP" if n == 2 => {
+            if t[1].starts_with("0") { return None }
+            let k = small_int(t[1], false, 3)?
+            Some("TOP" + board.entries(0, k.min(board.order.len())))
+        }
+        "AROUND" if n == 3 => {
+            let p = player(t[1])?
+            let d = small_int(t[2], false, 3)?
+            Some(match board.position(p) {
+                Some(i) => "AROUND" + board.entries((i - d).max(0), (i + d + 1).min(board.order.len())),
+                None => "ERR unknown player",
+            })
+        }
+        "REMOVE" if n == 2 => {
+            let p = player(t[1])?
+            Some(if board.remove(p) { "OK" } else { "ERR unknown player" })
+        }
+        "COUNT" if n == 1 => Some("COUNT {board.order.len()}"),
+        _ => None,
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: leaderboard < commands")
+        return 2
+    }
+    var board = Board { totals: [:], order: [] }
+    while let Some(raw) = con.read_line() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        con.println(handle(mut board, line).unwrap_or("ERR bad command"))
+        con.flush()
+    }
+    0
+}

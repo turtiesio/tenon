@@ -1,0 +1,92 @@
+struct Poll { options: List[Str], closed: Bool, votes: Map[Str, Str], counts: Map[Str, Int] }
+enum Command { Create(Str, List[Str]), Vote(Str, Str, Str), Close(Str), ResultFor(Str) }
+fn name_ok(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.bytes().all(fn(c) => c.is_lower() or c.is_digit())
+}
+fn parse(line: Str) -> Option[Command] {
+    let t = line.split(" ")
+    if t.len() < 2 or not t.slice(1, t.len()).all(name_ok) { return None }
+    if t[0] == "CREATE" and t.len() >= 4 and t.len() <= 11 {
+        let options = t.slice(2, t.len())
+        if Set.of(options).len() != options.len() { return None }
+        return Some(Create(t[1], options))
+    }
+    if t[0] == "VOTE" and t.len() == 4 { return Some(Vote(t[1], t[2], t[3])) }
+    if t.len() == 2 {
+        if t[0] == "CLOSE" { return Some(Close(t[1])) }
+        if t[0] == "RESULT" { return Some(ResultFor(t[1])) }
+    }
+    None
+}
+fn apply(cmd: Command, polls: mut Map[Str, Poll]) -> (Str, Bool) {
+    match cmd {
+        Create(p, options) => {
+            if polls.contains(p) { return ("ERR poll exists", false) }
+            var counts: Map[Str, Int] = [:]
+            for opt in options { counts[opt] = 0 }
+            polls[p] = Poll { options, closed: false, votes: [:], counts }
+            ("OK", true)
+        }
+        Vote(poll, voter, option) => {
+            if not polls.contains(poll) { return ("ERR no such poll", false) }
+            if polls[poll].closed { return ("ERR poll closed", false) }
+            if not polls[poll].counts.contains(option) { return ("ERR no such option", false) }
+            let old = polls[poll].votes.get(voter)
+            if old == Some(option) { return ("UNCHANGED", false) }
+            if let Some(previous) = old { polls[poll].counts[previous] -= 1 }
+            polls[poll].votes[voter] = option
+            polls[poll].counts[option] += 1
+            (if old.is_some() { "CHANGED" } else { "VOTED" }, true)
+        }
+        Close(closing) => {
+            if not polls.contains(closing) { return ("ERR no such poll", false) }
+            if polls[closing].closed { return ("ERR poll closed", false) }
+            polls[closing].closed = true
+            ("OK", true)
+        }
+        ResultFor(query) => {
+            let Some(data) = polls.get(query) else { return ("ERR no such poll", false) }
+            var out = "{query} {if data.closed { "closed" } else { "open" }}"
+            for choice in data.options { out += " {choice}={data.counts[choice]}" }
+            (out, false)
+        }
+    }
+}
+fn serve(sys: Sys) -> Result[Unit, Str] {
+    let dir = sys.args[0]
+    if not sys.fs.exists(dir) { sys.fs.mkdir_one(dir).map_err(fn(e) => "{e}")? }
+    if not sys.fs.is_dir(dir) { return Err("not a directory") }
+    let path = path_join(dir, "polls.log")
+    let bytes = match sys.fs.read_bytes(path) {
+        Ok(data) => data,
+        Err(NotFound(_)) => [],
+        Err(error) => return Err("{error}"),
+    }
+    var cut = bytes.len()
+    while cut > 0 and bytes[cut - 1] != '\n' { cut -= 1 }
+    let text = Str.from_utf8(bytes.slice(0, cut)).ok_or("invalid journal encoding")?
+    var polls: Map[Str, Poll] = [:]
+    for record in text.lines() {
+        let cmd = parse(record).ok_or("invalid journal command")?
+        let (_, changed) = apply(cmd, mut polls)
+        if not changed { return Err("invalid journal transition") }
+    }
+    if cut < bytes.len() { sys.fs.write_bytes(path, bytes.slice(0, cut)).map_err(fn(e) => "{e}")? }
+    while let Some(line) = sys.console.read_line() {
+        let (response, change) = match parse(line) {
+            Some(command) => apply(command, mut polls),
+            None => ("ERR bad command", false),
+        }
+        if change { sys.fs.append(path, line + "\n").map_err(fn(e) => "{e}")? }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    Ok(())
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("expected DIR"); return 2 }
+    match serve(sys) {
+        Ok(()) => 0,
+        Err(message) => { sys.console.eprintln(message); 1 }
+    }
+}

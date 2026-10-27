@@ -1,0 +1,56 @@
+struct Config { separator: Option[Str], output: Str, right: List[Int] }
+fn config(args: List[Str]) -> Option[Config] {
+    var sep: Option[Str] = None
+    var out = "  "
+    var right: List[Int] = []
+    var i = 0
+    while i < args.len() {
+        let opt = args[i]
+        if i + 1 >= args.len() { return None }
+        let value = args[i + 1]
+        if opt == "-s" {
+            if value.chars().len() != 1 { return None }
+            sep = Some(value)
+        } else if opt == "-o" { out = value }
+        else if opt == "-r" {
+            right = []
+            for part in value.split(",") {
+                if not part.is_digits() or part.len() > 3 or part.starts_with("0") { return None }
+                right.push(part.to_int()?)
+            }
+        } else { return None }
+        i += 2
+    }
+    Some(Config { separator: sep, output: out, right })
+}
+fn fields(line: Str, sep: Option[Str]) -> List[Str] {
+    if line.is_empty() { return [] }
+    match sep {
+        Some(delimiter) => line.split(delimiter),
+        None => line.replace("\t", " ").split(" ").filter(fn(s) => not s.is_empty()),
+    }
+}
+fn main(sys: Sys) -> Int {
+    let Some(cfg) = config(sys.args) else { sys.console.eprintln("invalid arguments"); return 2 }
+    var rows: List[List[Str]] = []
+    var widths: List[Int] = []
+    for raw in sys.console.read_all().lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        let row = fields(line, cfg.separator)
+        for (col, field) in row.enumerate() {
+            if col == widths.len() { widths.push(0) }
+            widths[col] = widths[col].max(field.chars().len())
+        }
+        rows.push(row)
+    }
+    for row_out in rows {
+        var padded: List[Str] = []
+        for (index, text) in row_out.enumerate() {
+            let padding = " ".repeat(widths[index] - text.chars().len())
+            padded.push(if cfg.right.contains(index + 1) { padding + text }
+                else if index + 1 < row_out.len() { text + padding } else { text })
+        }
+        sys.console.println(padded.join(cfg.output))
+    }
+    0
+}

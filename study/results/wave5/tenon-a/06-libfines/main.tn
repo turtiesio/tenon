@@ -1,0 +1,117 @@
+// libfines: join books with loans and report overdue fines per member.
+
+struct Book { title: Str, rate: Int, cap: Int }
+struct Late { book_id: Str, title: Str, days: Int, fine: Int }
+struct Member { name: Str, loans: Int, fine: Int, late: List[Late] }
+
+// [0-9]{1,6}
+fn day_number(s: Str) -> Option[Int] {
+    if s.is_digits() and s.len() <= 6 { s.to_int() } else { None }
+}
+
+fn all_bytes(s: Str, ok: fn(Int) -> Bool) -> Bool {
+    for i in 0..s.len() {
+        if not ok(s.byte(i)) { return false }
+    }
+    true
+}
+
+// [A-Za-z0-9-]{1,12}
+fn is_book_id(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and all_bytes(s, fn(c) => c.is_alnum() or c == '-')
+}
+
+// [a-z][a-z0-9]{0,11}
+fn is_member(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.byte(0).is_lower()
+        and all_bytes(s, fn(c) => c.is_lower() or c.is_digit())
+}
+
+// The records of a file: lines split on `|`, without blank and comment lines,
+// each with its line number.
+fn records(fs: Fs, path: Str) -> Result[List[(Int, List[Str])], Str] {
+    let text = fs.read(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    var out: List[(Int, List[Str])] = []
+    for (i, raw) in text.lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.is_empty() or line.starts_with("#") { continue }
+        out.push((i + 1, line.split("|")))
+    }
+    Ok(out)
+}
+
+fn load_books(fs: Fs, path: Str) -> Result[Map[Str, Book], Str] {
+    var books: Map[Str, Book] = [:]
+    for (n, f) in records(fs, path)? {
+        let bad = "{path}:{n}: invalid book record"
+        if f.len() != 4 or not is_book_id(f[0]) or f[1].is_empty() { return Err(bad) }
+        let Some(rate) = day_number(f[2]) else { return Err(bad) }
+        let Some(cap) = day_number(f[3]) else { return Err(bad) }
+        if books.contains(f[0]) { return Err("{path}:{n}: duplicate book id '{f[0]}'") }
+        books[f[0]] = Book { title: f[1], rate, cap }
+    }
+    Ok(books)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    if args.len() != 3 or day_number(args[2]).is_none() {
+        con.eprintln("usage: libfines BOOKS LOANS TODAY")
+        return 2
+    }
+    let today = day_number(args[2]).unwrap()
+    match report(sys.fs, args[0], args[1], today) {
+        Ok(text) => {
+            con.print(text)
+            0
+        }
+        Err(msg) => {
+            con.eprintln("libfines: {msg}")
+            1
+        }
+    }
+}
+
+fn report(fs: Fs, books_path: Str, loans_path: Str, today: Int) -> Result[Str, Str] {
+    let books = load_books(fs, books_path)?
+    var members: Map[Str, Member] = [:]
+    var skipped = 0
+    for (n, f) in records(fs, loans_path)? {
+        let bad = "{loans_path}:{n}: invalid loan record"
+        if f.len() != 5 or not is_member(f[0]) or not is_book_id(f[1]) { return Err(bad) }
+        let Some(out) = day_number(f[2]) else { return Err(bad) }
+        let Some(due) = day_number(f[3]) else { return Err(bad) }
+        if due < out { return Err(bad) }
+        let returned = if f[4] == "-" { None } else {
+            let Some(r) = day_number(f[4]) else { return Err(bad) }
+            if r < out { return Err(bad) }
+            Some(r)
+        }
+        let Some(book) = books.get(f[1]) else {
+            skipped += 1
+            continue
+        }
+        let days = (returned.unwrap_or(today) - due).max(0)
+        let fine = (days * book.rate).min(book.cap)
+        members.or_insert(f[0], Member { name: f[0], loans: 0, fine: 0, late: [] })
+        members[f[0]].loans += 1
+        members[f[0]].fine += fine
+        if days > 0 {
+            members[f[0]].late.push(Late { book_id: f[1], title: book.title, days, fine })
+        }
+    }
+    var list = members.values()
+    list.sort_by(fn(m) => (-m.fine, m.name))
+    var out = ""
+    var total = 0
+    for m in list {
+        out += "{m.name} loans={m.loans} late={m.late.len()} fine={m.fine.fmt_fixed(2)}\n"
+        for l in m.late {
+            out += "  {l.book_id} {l.title} days={l.days} fine={l.fine.fmt_fixed(2)}\n"
+        }
+        total += m.fine
+    }
+    out += "total={total.fmt_fixed(2)} skipped={skipped}\n"
+    Ok(out)
+}

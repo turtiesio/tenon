@@ -1,0 +1,137 @@
+struct Book { title: Str, rate: Int, cap: Int }
+
+struct Stat { loans: Int, late: Int, fine: Int, details: List[Str] }
+
+fn is_id(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 12 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_alnum() or c == '-') { return false }
+    }
+    true
+}
+
+fn is_member(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 12 or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit()) { return false }
+    }
+    true
+}
+
+// A day number or amount: 1 to 6 digits.
+fn num(s: Str) -> Option[Int] {
+    if s.len() < 1 or s.len() > 6 or not s.is_digits() { return None }
+    s.to_int()
+}
+
+fn money(cents: Int) -> Str { cents.fmt_fixed(2) }
+
+fn read_records(fs: Fs, path: Str, nfields: Int) -> Result[List[List[Str]], Str] {
+    let text = fs.read(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    var out: List[List[Str]] = []
+    for raw in text.lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.is_empty() or line.starts_with("#") { continue }
+        let fields = line.split("|")
+        if fields.len() != nfields { return Err("{path}: wrong number of fields: {line}") }
+        out.push(fields)
+    }
+    Ok(out)
+}
+
+fn load_books(fs: Fs, path: Str) -> Result[Map[Str, Book], Str] {
+    var books: Map[Str, Book] = [:]
+    for f in read_records(fs, path, 4)? {
+        let id = f[0]
+        let Some(rate) = num(f[2]) else { return Err("{path}: bad rate '{f[2]}'") }
+        let Some(cap) = num(f[3]) else { return Err("{path}: bad cap '{f[3]}'") }
+        if not is_id(id) { return Err("{path}: bad book id '{id}'") }
+        if f[1].is_empty() { return Err("{path}: empty title for {id}") }
+        if books.contains(id) { return Err("{path}: duplicate book id '{id}'") }
+        books[id] = Book { title: f[1], rate, cap }
+    }
+    Ok(books)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 3 {
+        con.eprintln("usage: libfines BOOKS LOANS TODAY")
+        return 2
+    }
+    let Some(today) = num(sys.args[2]) else {
+        con.eprintln("libfines: bad TODAY '{sys.args[2]}'")
+        return 2
+    }
+    let books = match load_books(sys.fs, sys.args[0]) {
+        Ok(b) => b,
+        Err(e) => {
+            con.eprintln("libfines: {e}")
+            return 1
+        }
+    }
+    let loans = match read_records(sys.fs, sys.args[1], 5) {
+        Ok(l) => l,
+        Err(e) => {
+            con.eprintln("libfines: {e}")
+            return 1
+        }
+    }
+
+    var stats: Map[Str, Stat] = [:]
+    var skipped = 0
+    var total = 0
+    for f in loans {
+        let member = f[0]
+        let book_id = f[1]
+        let out_day = num(f[2])
+        let due = num(f[3])
+        if not is_member(member) or not is_id(book_id) or out_day.is_none() or due.is_none() {
+            con.eprintln("libfines: bad loan record for {member}")
+            return 1
+        }
+        let out = out_day.unwrap()
+        if due.unwrap() < out {
+            con.eprintln("libfines: due before out for {member}")
+            return 1
+        }
+        var returned: Option[Int] = None
+        if f[4] != "-" {
+            let r = num(f[4])
+            if r.is_none() or r.unwrap() < out {
+                con.eprintln("libfines: bad returned day '{f[4]}'")
+                return 1
+            }
+            returned = r
+        }
+        let Some(book) = books.get(book_id) else {
+            skipped += 1
+            continue
+        }
+        let end = returned.unwrap_or(today)
+        let days = (end - due.unwrap()).max(0)
+        let fine = (days * book.rate).min(book.cap)
+        stats.or_insert(member, Stat { loans: 0, late: 0, fine: 0, details: [] })
+        stats[member].loans += 1
+        stats[member].fine += fine
+        total += fine
+        if days > 0 {
+            stats[member].late += 1
+            stats[member].details.push("  {book_id} {book.title} days={days} fine={money(fine)}")
+        }
+    }
+
+    var members = stats.keys()
+    members.sort_by(fn(m) => (-stats[m].fine, m))
+    var out = ""
+    for m in members {
+        let s = stats[m]
+        out += "{m} loans={s.loans} late={s.late} fine={money(s.fine)}\n"
+        for d in s.details { out += d + "\n" }
+    }
+    out += "total={money(total)} skipped={skipped}\n"
+    con.print(out)
+    0
+}

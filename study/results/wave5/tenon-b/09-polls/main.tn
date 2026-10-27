@@ -1,0 +1,141 @@
+struct Poll { options: List[Str], open: Bool, votes: Map[Str, Int] }
+
+struct Polls { polls: Map[Str, Poll] }
+
+fn valid_token(s: Str) -> Bool {
+    if s.len() < 1 or s.len() > 12 { return false }
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit()) { return false }
+    }
+    true
+}
+
+fn all_valid(tokens: List[Str]) -> Bool { tokens.all(fn(t) => valid_token(t)) }
+
+fn distinct(xs: List[Str]) -> Bool {
+    var seen: Set[Str] = Set.new()
+    for x in xs {
+        if not seen.insert(x) { return false }
+    }
+    true
+}
+
+fn Polls.handle(mut self, line: Str) -> Str {
+    let bad = "ERR bad command"
+    let w = line.split(" ")
+    match w[0] {
+        "CREATE" => {
+            if w.len() < 4 or w.len() > 11 { return bad }
+            let rest = w.slice(1, w.len())
+            if not all_valid(rest) or not distinct(rest.slice(1, rest.len())) { return bad }
+            if self.polls.contains(w[1]) { return "ERR poll exists" }
+            self.polls[w[1]] = Poll { options: rest.slice(1, rest.len()), open: true, votes: [:] }
+            "OK"
+        }
+        "VOTE" => {
+            if w.len() != 4 or not all_valid(w.slice(1, 4)) { return bad }
+            let Some(poll) = self.polls.get(w[1]) else { return "ERR no such poll" }
+            if not poll.open { return "ERR poll closed" }
+            let Some(idx) = poll.options.index_of(w[3]) else { return "ERR no such option" }
+            let voter = w[2]
+            match poll.votes.get(voter) {
+                Some(prev) => {
+                    if prev == idx { return "UNCHANGED" }
+                    self.polls[w[1]].votes[voter] = idx
+                    "CHANGED"
+                }
+                None => {
+                    self.polls[w[1]].votes[voter] = idx
+                    "VOTED"
+                }
+            }
+        }
+        "CLOSE" => {
+            if w.len() != 2 or not valid_token(w[1]) { return bad }
+            let Some(poll) = self.polls.get(w[1]) else { return "ERR no such poll" }
+            if not poll.open { return "ERR poll closed" }
+            self.polls[w[1]].open = false
+            "OK"
+        }
+        "RESULT" => {
+            if w.len() != 2 or not valid_token(w[1]) { return bad }
+            let Some(poll) = self.polls.get(w[1]) else { return "ERR no such poll" }
+            var counts = List.filled(poll.options.len(), 0)
+            for idx in poll.votes.values() { counts[idx] += 1 }
+            var out = "{w[1]} {if poll.open { "open" } else { "closed" }}"
+            for (i, o) in poll.options.enumerate() { out += " {o}={counts[i]}" }
+            out
+        }
+        _ => bad,
+    }
+}
+
+fn changes_state(response: Str) -> Bool {
+    response == "OK" or response == "VOTED" or response == "CHANGED"
+}
+
+// Replays the journal at `path`. Returns the polls and, if the file ends in a
+// torn record, the bytes to keep (the file is not touched here).
+fn load(fs: Fs, path: Str) -> Result[(Polls, Option[List[Int]]), Str] {
+    var state = Polls { polls: [:] }
+    if not fs.exists(path) { return Ok((state, None)) }
+    let bytes = fs.read_bytes(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    var end = bytes.len()
+    while end > 0 and bytes[end - 1] != '\n' { end -= 1 }
+    let kept = bytes.slice(0, end)
+    let Some(text) = Str.from_utf8(kept) else { return Err("{path}: invalid UTF-8") }
+    for line in text.lines() {
+        let response = state.handle(line)
+        if not changes_state(response) { return Err("{path}: invalid record '{line}' ({response})") }
+    }
+    let torn: Option[List[Int]] = if end < bytes.len() { Some(kept) } else { None }
+    Ok((state, torn))
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: polls DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    let fs = sys.fs
+    if fs.exists(dir) {
+        if not fs.is_dir(dir) {
+            con.eprintln("polls: {dir} is not a directory")
+            return 1
+        }
+    } else if let Err(e) = fs.mkdir_one(dir) {
+        con.eprintln("polls: cannot create {dir}: {e}")
+        return 1
+    }
+    let path = path_join(dir, "polls.log")
+    let (loaded, torn) = match load(fs, path) {
+        Ok(r) => r,
+        Err(e) => {
+            con.eprintln("polls: {e}")
+            return 1
+        }
+    }
+    var state = loaded
+    if let Some(keep) = torn {
+        if let Err(e) = fs.write_bytes(path, keep) {
+            con.eprintln("polls: cannot truncate {path}: {e}")
+            return 1
+        }
+    }
+
+    while let Some(line) = con.read_line() {
+        let response = state.handle(line)
+        if changes_state(response) {
+            if let Err(e) = fs.append(path, line + "\n") {
+                con.eprintln("polls: cannot write journal: {e}")
+                return 1
+            }
+        }
+        con.println(response)
+        con.flush()
+    }
+    0
+}

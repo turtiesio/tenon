@@ -1,0 +1,107 @@
+// splitbill: shared expenses and a deterministic settlement, in cents.
+
+// name: [a-z][a-z0-9_]{0,15}
+fn is_name(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 16 or not s.byte(0).is_lower() { return false }
+    for i in 1..s.len() {
+        let c = s.byte(i)
+        if not (c.is_lower() or c.is_digit() or c == '_') { return false }
+    }
+    true
+}
+
+// amount: [0-9]{1,7}\.[0-9]{2}, not zero; in cents.
+fn parse_amount(s: Str) -> Result[Int, Str] {
+    let Some((whole, cents)) = s.split_once(".") else { return Err("bad amount '{s}'") }
+    if not whole.is_digits() or whole.len() > 7 or not cents.is_digits() or cents.len() != 2 {
+        return Err("bad amount '{s}'")
+    }
+    let a = whole.to_int().unwrap() * 100 + cents.to_int().unwrap()
+    if a == 0 { return Err("zero amount") }
+    Ok(a)
+}
+
+fn check_name(s: Str) -> Result[Str, Str] {
+    if is_name(s) { Ok(s) } else { Err("bad name '{s}'") }
+}
+
+fn add(balances: mut Map[Str, Int], name: Str, delta: Int) {
+    balances[name] = balances.get_or(name, 0) + delta
+}
+
+fn apply(line: Str, balances: mut Map[Str, Int]) -> Result[Unit, Str] {
+    let toks = line.replace("\t", " ").split(" ").filter(fn(t) => not t.is_empty())
+    if toks.is_empty() or toks[0].starts_with("#") { return Ok(()) }
+    match toks[0] {
+        "expense" => {
+            if toks.len() < 4 { return Err("expense needs a payer, an amount and participants") }
+            let payer = check_name(toks[1])?
+            let amount = parse_amount(toks[2])?
+            let people = toks.slice(3, toks.len())
+            var seen: Set[Str] = Set.new()
+            for p in people {
+                let _ = check_name(p)?
+                if not seen.insert(p) { return Err("participant '{p}' listed twice") }
+            }
+            let n = people.len()
+            let q = amount / n
+            let r = amount % n
+            add(mut balances, payer, amount)
+            for (i, p) in people.enumerate() {
+                add(mut balances, p, -(if i < r { q + 1 } else { q }))
+            }
+        }
+        "transfer" => {
+            if toks.len() != 4 { return Err("transfer needs from, to and an amount") }
+            let from = check_name(toks[1])?
+            let to = check_name(toks[2])?
+            let amount = parse_amount(toks[3])?
+            if from == to { return Err("transfer from '{from}' to itself") }
+            add(mut balances, from, amount)
+            add(mut balances, to, -amount)
+        }
+        other => return Err("unknown record '{other}'"),
+    }
+    Ok(())
+}
+
+fn money(cents: Int) -> Str { cents.abs().fmt_fixed(2) }
+
+fn signed(cents: Int) -> Str {
+    if cents > 0 { "+" + money(cents) } else if cents < 0 { "-" + money(cents) } else { money(0) }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: splitbill < records")
+        return 2
+    }
+    var balances: Map[Str, Int] = [:]
+    for (i, raw) in con.read_all().lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if let Err(msg) = apply(line, mut balances) {
+            con.eprintln("splitbill: line {i + 1}: {msg}")
+            return 1
+        }
+    }
+    let names = balances.keys().sorted()
+    for name in names { con.println("{name} {signed(balances[name])}") }
+    con.println("--")
+    var bal = names.map(fn(n) => balances[n])
+    while true {
+        // Names are sorted, so strict comparisons keep the first name on ties.
+        var debtor = 0
+        var creditor = 0
+        for i in 0..bal.len() {
+            if bal[i] < bal[debtor] { debtor = i }
+            if bal[i] > bal[creditor] { creditor = i }
+        }
+        if bal.is_empty() or bal[debtor] >= 0 { break }
+        let x = (-bal[debtor]).min(bal[creditor])
+        con.println("{names[debtor]} pays {names[creditor]} {money(x)}")
+        bal[debtor] += x
+        bal[creditor] -= x
+    }
+    0
+}
