@@ -138,3 +138,35 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 - **Incident**: a landing raced an agent writing into the shared checkout
   (unstaged change during rebase). Fix: `rebase --autostash` in tools/land.sh.
 - **Open product decision**: the concurrency model (see the final report).
+
+## 2026-10-28 (later) — real-program benchmarks, allocator, QA round 2, study wave 2
+
+- **Real-program benchmarks** (worker): calc and mdhtml against hand-written C,
+  Rust and Python. Honest result: 3.1x and 2.4x of C, so the 1.5x target is not met
+  on real programs (only on microbenchmarks). Then: small maps scan instead of
+  hashing (calc 3.1 -> 2.6x); a 16-byte size-class allocator with free lists for
+  blocks <= 512 bytes (calc 2.6 -> 1.8x, mdhtml 2.4 -> 1.9x, trees 0.53x);
+  `s += a + b` lowered to in-place appends (mdhtml 1.8x). Remaining gap: reference
+  counting traffic and a heap-allocated map per interpreted call (C: stack array).
+- **Recursive-enum node reuse** made trees faster than C (0.7x): C mallocs and frees
+  every node.
+- **QA round 2** (the same agent re-attacking round-1 fixes): 15 more findings,
+  including a high-severity one: a client generic wrapper (`struct Wrap[A]`) could
+  drop or duplicate another module's linear value because methods of any generic
+  type exempted `self`. Rule now: only types *declared* linear/unique decide how
+  their values end. Also: Fs.write followed a symlink planted at the temp file;
+  polymorphic recursion hung `tenon build`; map ordering, constant cycles and
+  un-inferable lets moved from run time to compile time; traps in prelude code are
+  reported at the user's call; the interpreter's equality short-circuited on Rc
+  identity (NaN/functions equal to themselves) unlike C; native main now runs on a
+  1 GB stack like the interpreter. All 24 repros re-verified on main.
+- **The sanitizer loop paid off the same day**: tools/asan.sh caught an
+  out-of-bounds read introduced by the symlink fix before it reached main.
+- **Study wave 2** (task set 2, hidden tests by Codex, 3 authors per language in a
+  Latin square of Claude Opus / Claude Sonnet / Codex, compiler frozen at f6b8396).
+  Round 1: 100% hidden-test pass rate in all languages; Tenon ~1.6x Python's tokens
+  and ~1.7x its time. Tenon authors' notes drove: while-true divergence bug with
+  nested breaks, `()` pattern bug, Heap, List.filled/swap/sort_with,
+  Option.and_then/is_some_and, rem/div_euclid, strip_prefix/suffix, is_digits,
+  trim_chars. Structural costs remain: braces add ~1 line per block against Python,
+  and Python's `re` compresses input validation.
