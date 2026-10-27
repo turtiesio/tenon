@@ -161,7 +161,7 @@ FAIL 07-ratelimit/example-2: example-2: stdout byte 0: expected b'ERR no such po
 FAIL 07-ratelimit/example-3: example-3: stdout byte 0: expected b'OK\nALLOW 1\nALLOW 0\nALLOW 0\nALLOW 1\nALLOW 0\nDENY 1\nALLOW', got b'' (length 58/0)
 FAIL 07-ratelimit/example-4: example-4: exit expected 2, got 0
 FAIL 07-ratelimit/full-anchor-peek-reset: full-anchor-peek-reset: stdout byte 0: expected b'OK\nTOKENS 2\nTOKENS 2\nALLOW 0\nDENY 1\nALLOW 0\n', got b'' (length 44/0)
-FAIL 07-ratelimit/initial-stats: initial-stats: stdout byte 0: expected b'OK\nallowed=0 denied=0 clients=0\n', got b'' (length 32/0)
+FAIL 07-ratelimit/initial-stats: step-1: stdout closed before N responses; stdout byte 0: expected b'OK\nallowed=0 denied=0 clients=0\n', got b'' (length 32/0)
 FAIL 07-ratelimit/leading-zero-crlf-final: leading-zero-crlf-final: stdout byte 0: expected b'OK\nALLOW 0\nTOKENS 1\n', got b'' (length 20/0)
 FAIL 07-ratelimit/malformed-lines: malformed-lines: stdout byte 0: expected b'ERR bad command\nERR bad command\nERR bad command\nERR bad', got b'' (length 288/0)
 FAIL 07-ratelimit/malformed-time-no-clock: malformed-time-no-clock: stdout byte 0: expected b'OK\nERR bad command\nALLOW 0\nERR time went backwards\n', got b'' (length 51/0)
@@ -195,7 +195,7 @@ FAIL 08-inventory/release-quantity-and-terminal-state: release-quantity-and-term
 FAIL 08-inventory/remove-available-equality: remove-available-equality: stdout byte 0: expected b'OK 5\nHOLD 1\nOK 2\nX on_hand=2 held=2 available=0\nERR ins', got b'' (length 67/0)
 FAIL 08-inventory/sku-width: sku-width: stdout byte 0: expected b'OK 1\nERR bad command\nXXXXXXXXXXXXXXXXXXXX on_hand=1 hel', got b'' (length 71/0)
 FAIL 08-inventory/success-only-ids: success-only-ids: stdout byte 0: expected b'ERR insufficient 0\nOK 2\nHOLD 1\nERR insufficient 1\nHOLD ', got b'' (length 57/0)
-FAIL 08-inventory/unknown-sku-and-hold: unknown-sku-and-hold: stdout byte 0: expected b'X on_hand=0 held=0 available=0\nERR insufficient 0\nERR i', got b'' (length 144/0)
+FAIL 08-inventory/unknown-sku-and-hold: step-1: stdout closed before N responses; stdout byte 0: expected b'X on_hand=0 held=0 available=0\nERR insufficient 0\nERR i', got b'' (length 144/0)
 FAIL 08-inventory/usage-empty-argument: usage-empty-argument: exit expected 2, got 0
 FAIL 08-inventory/wide-stock-sums: wide-stock-sums: stdout byte 0: expected b'OK 999999999\nOK 1999999998\nOK 2999999997\nX on_hand=2999', got b'' (length 90/0)
 FAIL 09-tally/compact-empty-after-deletes: step-1: stdout byte 0: expected b'OK\nOK\nOK 0\ncounters=0 log_records=0\n', got b'' (length 36/0); step-2: stdout byte 0: expected b'0\ncounters=0 log_records=0\n', got b'' (length 27/0)
