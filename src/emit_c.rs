@@ -61,7 +61,7 @@ pub fn build(c: &Checked, sm: &SourceMap, out: &str, opt: &str) -> Result<(), St
     std::fs::write(&cpath, code).map_err(|e| format!("cannot write {}: {}", cpath, e))?;
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
     let st = std::process::Command::new(&cc)
-        .args([opt, "-w", "-std=gnu11", "-o", out, &cpath, "-lm"])
+        .args([opt, "-w", "-std=gnu11", "-pthread", "-o", out, &cpath, "-lm"])
         .status()
         .map_err(|e| format!("cannot run {}: {}", cc, e))?;
     if !st.success() {
@@ -654,8 +654,13 @@ impl<'a> Emitter<'a> {
     }
 
     fn main_wrapper(&mut self, main_name: &str) -> String {
+        let body = self.main_body(main_name);
+        format!("{}int main(int argc, char **argv) {{\n    tn_init(argc, argv);\n    tn_run_main(tn_main_body);\n    tn_exit(0);\n}}\n", body)
+    }
+
+    fn main_body(&mut self, main_name: &str) -> String {
         let f = &self.c.fns[self.c.main];
-        let mut s = String::from("int main(int argc, char **argv) {\n    tn_init(argc, argv);\n");
+        let mut s = String::from("static void tn_main_body(void) {\n");
         let args = if f.params.is_empty() {
             String::new()
         } else {
