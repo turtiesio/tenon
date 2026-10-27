@@ -60,7 +60,7 @@ unchanged program is instant (cache in `$TENON_CACHE`, default
 | `Int` | 64-bit signed integer. Overflow **traps**. `/` and `%` truncate toward zero (`-7 / 2 == -3`, `-7 % 2 == -1`); dividing by zero traps. |
 | `Float` | 64-bit IEEE float. |
 | `Bool` | `true` / `false`. |
-| `Str` | Immutable UTF-8 text. Offsets are byte offsets. |
+| `Str` | Immutable UTF-8 text. Offsets and `len()` are in bytes; `char_count()` counts code points (§11). |
 | `Unit` | No information; written `()`. |
 | `List[T]` | Growable sequence with value semantics. |
 | `Map[K, V]` | Hash map; iteration follows insertion order. |
@@ -136,7 +136,16 @@ fn Point.norm1(self) -> Int { self.x.abs() + self.y.abs() }   // method: p.norm1
 fn Point.shift(mut self, d: Int) { self.x += d }     // mutating method: needs a `var` receiver
 fn Pair[A, B].swap(self) -> Pair[B, A] { ... }       // methods on generic types
 fn List[Int].total(self) -> Int { ... }              // methods for specific instantiations
+fn List[Robot].find(self, name: Str) -> Option[Robot] { ... }   // also of your own types
+fn Counter.bump(mut self) -> Int { self.n += 1; self.n }    // a `mut self` method may return a value
+fn Counter.reset(mut self) { self = Counter { n: 0 } }      // and may assign all of `self`
 ```
+
+Where methods may be defined: on your own types in their file, and on the
+builtin types (`Int`, `Str`, `List[T]` or a specific `List[Robot]`, `Map`,
+...) in any file. `Option`, `Result` and the other prelude enums and structs
+are declared types: only the prelude can add methods to them (write a free
+function such as `fn is_full(o: Option[Int]) -> Bool` instead). Details in §13.
 
 - A struct may not contain itself directly; use an enum or a `List`.
 - Variants are used unqualified (`Circle(3)`) unless two enums share a variant
@@ -274,7 +283,13 @@ value: the loop can then only be left by `return`, and no value is needed
 after it. If the loop has a `break` of its own (one in a nested loop does not
 count), the function must give a value after the loop.
 `break` and `continue` can appear anywhere inside the loop body, including
-inside `match` arms. Unary minus works on any number expression (`-x`, `-e.1`).
+inside `match` arms. A bare `return` (no value) may end a match arm or stand
+anywhere an expression may: `None => return,`, `if bad { return }`.
+
+Unary minus works on any number expression (`-x`, `-e.1`). It binds more
+loosely than method calls, field access and indexing: `-x.min(y)` is
+`-(x.min(y))`; write `(-x).min(y)` for the other meaning. A minus directly
+before a number literal is part of the literal: `-2.abs()` is `(-2).abs()`, `2`.
 
 ## 8. Strings and formatting
 
@@ -293,7 +308,9 @@ containers they are quoted:
 
 Floats print the shortest text that reads back as the same number, in plain
 notation when the exponent is in [-5, 16), otherwise as `1.5e-7`.
-`x.to_str()` gives the same text. Strings concatenate with `+`.
+`x.to_str()` gives the same text. Strings concatenate with `+`. An
+interpolation may contain string literals of its own:
+`"{m.get_or("k", 0)} {names.join(", ")}"`.
 
 There are no format specifiers (`{x:>3}`, `{x:x}`): use
 `"{x}".pad_left(3, " ")`, `x.to_str_radix(16)`, `f.to_fixed(2)` or
@@ -412,8 +429,20 @@ Highlights:
   find_from is_digits strip_prefix strip_suffix (Option) trim_chars (remove
   given ASCII bytes from both ends, e.g. `s.trim_chars(" \t")`)
   repeat pad_left pad_right is_empty rfind split_once rsplit_once to_int_radix
-  bytes`; `Int.char()` makes a one-character string; `Str.from_utf8(bytes)`
+  bytes char_count`; `Int.char()` makes a one-character string; `Str.from_utf8(bytes)`
   and `Str.from_utf8_lossy(bytes)` make text from bytes (see "Bytes" below).
+  - Bytes and characters: `s.len()` is the length in **bytes** (UTF-8), and
+    `byte`, `slice`, `find` and the other offsets are byte offsets.
+    `s.char_count()` is the number of code points (`"Zürich".len() == 7`,
+    `"Zürich".char_count() == 6`). `s.chars()` returns the code points, each as
+    a one-character string (`"Zü".chars() == ["Z", "ü"]`; a combining accent
+    is a code point of its own).
+  - `s.pad_left(width, fill)` / `s.pad_right(width, fill)` add `fill` until
+    the string is `width` **code points** long (like Python's `rjust`/`ljust`),
+    so `"Zürich".pad_right(8, ".") == "Zürich.."`; a longer string is returned
+    unchanged. `fill` must be exactly one character (one code point),
+    otherwise the call traps (`pad_left: fill must be exactly one character`).
+    Characters that a terminal shows double-width (`"東京"`) still count as one.
   - `s.rfind(sub)` is the byte offset of the last match. `s.split_once(sep)` /
     `s.rsplit_once(sep)` split around the first / last `sep`:
     `"k=v=w".split_once("=") == Some(("k", "v=w"))`, `None` if `sep` is absent.
@@ -421,7 +450,8 @@ Highlights:
   - `s.split(sep)` keeps empty pieces: `"a,,b,".split(",")` is
     `["a", "", "b", ""]` and `"".split(",")` is `[""]`.
   - `s.lines()` splits on `"\n"` and drops a final empty line; it does not
-    remove `"\r"`. `s.words()` splits on runs of spaces, tabs, `"\r"` and `"\n"`.
+    remove `"\r"`. So `"".lines() == []`, `"\n".lines() == [""]`,
+    `"a\n\nb\n".lines() == ["a", "", "b"]`. `s.words()` splits on runs of spaces, tabs, `"\r"` and `"\n"`.
   - `s.to_int()` accepts an optional `+`/`-` and decimal digits only (no spaces,
     no `_`), and gives `None` on overflow. `s.to_int_radix(base)` (base 2-36,
     otherwise a trap) accepts an optional `-` (no `+`) and one or more digits
@@ -432,7 +462,12 @@ Highlights:
   - `trim` removes ASCII whitespace; `upper`/`lower` change ASCII letters only.
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
   sort_by_desc sort_with swap first last index_of contains extend sorted reversed map filter any all count
-  is_empty`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
+  is_empty binary_search`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
+  - `xs.binary_search(x)` (`Result[Int, Int]`) needs `xs` sorted ascending by
+    the derived ordering (as `sort()` leaves it; otherwise the result is
+    unspecified). `Ok(i)`: `i` is the first index with `xs[i] == x`; `Err(i)`:
+    `x` is absent and `xs.insert(i, x)` keeps the list sorted. O(log n):
+    `[1, 3, 5].binary_search(3) == Ok(1)`, `[1, 3, 5].binary_search(4) == Err(2)`.
 - `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`,
   `update(k, default, f)` (store `f` of the current or default value), `insert`,
   `or_insert`, `remove`, `contains`, `keys`, `values`, `entries`, `len`,
@@ -466,9 +501,10 @@ Highlights:
   binary value half to even, like printf). There are no bitwise operators: use
   `/`, `%` and `pow` (`x / 2.pow(k)` shifts right by `k` for `x >= 0`).
 - `Console`: `print println eprintln read_line read_all flush read_all_bytes
-  write_bytes`. `read_line` returns `None` at end of input and removes the
-  line's `"\n"` and one `"\r"` directly before it (a last line without
-  `"\n"` is returned as is, `"\r"` included); `read_all` keeps every `"\r"`.
+  write_bytes`. `read_line` returns `None` at end of input; it removes the
+  line's `"\n"` and then one trailing `"\r"` from every line, including a
+  last line that has no `"\n"` (`"a\r\r\nb\r"` reads as `"a\r"`, `"b"`);
+  `read_all` keeps every `"\r"`.
   Standard output is buffered: it is flushed before any blocking read and at
   exit; a program that answers requests line by line while another process
   waits calls `flush()` after each answer.
@@ -514,7 +550,9 @@ Highlights:
 - Line endings: `s.lines()` splits on `"\n"` only and keeps `"\r"`
   (`"a\r\nb".lines() == ["a\r", "b"]`; use `l.trim_end()` or
   `l.strip_suffix("\r")`); `s.words()` treats `"\r"` as a separator;
-  `Console.read_line` and `Conn.read_line` remove one `"\r"` before the `"\n"`.
+  `Console.read_line` and `Conn.read_line` remove the `"\n"` and then one
+  trailing `"\r"` from every line they return, also from a last line without
+  `"\n"`, so CRLF and LF input read the same.
 - Paths: `path_join(a, b)`, `path_parent(p)`, `path_base(p)` (§10).
 - `Clock`: `now_ms mono_ns sleep_ms`.
 

@@ -1,0 +1,4 @@
+// An empty fill traps too, even when no padding is needed.
+fn main(sys: Sys) {
+    sys.console.println("{"long".pad_right(2, "")}")
+}

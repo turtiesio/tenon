@@ -430,7 +430,8 @@ fn Parser.stmt(mut self) -> Result[Stmt, ParseError] {
         let it = if self.eat_sym("..") { Range(a, self.head_expr()?) } else { Each(a) }
         ForLoop(pat, it, self.block()?)
     } else if self.eat_kw("return") {
-        if self.is_sym(";") or self.is_sym("}") { Return(None) } else { Return(Some(self.expr()?)) }
+        // No value when the next token cannot start one (`_ => return,`, `f(return)`).
+        if [";", "}", ",", ")", "]"].any(fn(s) => self.is_sym(s)) { Return(None) } else { Return(Some(self.expr()?)) }
     } else if self.eat_kw("break") {
         Break
     } else if self.eat_kw("continue") {

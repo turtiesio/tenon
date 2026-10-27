@@ -137,7 +137,10 @@ extern fn Str.to_float(self) -> Option[Float]
 extern fn Str.upper(self) -> Str
 extern fn Str.lower(self) -> Str
 extern fn Str.replace(self, from: Str, to: Str) -> Str
+// The code points of the string, each as a one-character string: "Zü".chars() == ["Z", "ü"].
 extern fn Str.chars(self) -> List[Str]
+// Number of code points (len() is the number of bytes): "Zürich".char_count() == 6, .len() == 7.
+extern fn Str.char_count(self) -> Int
 // Bytes are List[Int] with every element in 0..255. s.bytes() is the UTF-8 encoding of s.
 extern fn Str.bytes(self) -> List[Int]
 // Str.from_utf8(b): None if b is not valid UTF-8 or an element is outside 0..255.
@@ -195,11 +198,17 @@ fn Str.repeat(self, n: Int) -> Str {
     for _ in 0..n { parts.push(self) }
     parts.join("")
 }
+// Padding counts code points (char_count), not bytes, so "Zürich".pad_right(8, ".") is
+// "Zürich.."; `fill` must be exactly one character (one code point), otherwise a trap.
 fn Str.pad_left(self, width: Int, fill: Str) -> Str {
-    if self.len() >= width { self } else { fill.repeat(width - self.len()) + self }
+    if fill.char_count() != 1 { panic("pad_left: fill must be exactly one character, got {encode(fill)}") }
+    let n = self.char_count()
+    if n >= width { self } else { fill.repeat(width - n) + self }
 }
 fn Str.pad_right(self, width: Int, fill: Str) -> Str {
-    if self.len() >= width { self } else { self + fill.repeat(width - self.len()) }
+    if fill.char_count() != 1 { panic("pad_right: fill must be exactly one character, got {encode(fill)}") }
+    let n = self.char_count()
+    if n >= width { self } else { self + fill.repeat(width - n) }
 }
 
 // ---- List ----
@@ -271,6 +280,18 @@ fn List[T].index_of(self, x: T) -> Option[Int] {
     None
 }
 fn List[T].contains(self, x: T) -> Bool { self.index_of(x).is_some() }
+// The list must be sorted ascending by the derived ordering (as sort() leaves it).
+// Ok(i): the first index i with self[i] == x; Err(i): x is absent, and self.insert(i, x)
+// keeps the list sorted. O(log n).
+fn List[T].binary_search(self, x: T) -> Result[Int, Int] {
+    var lo = 0
+    var hi = self.len()
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2
+        if self[mid] < x { lo = mid + 1 } else { hi = mid }
+    }
+    if lo < self.len() and self[lo] == x { Ok(lo) } else { Err(lo) }
+}
 fn List[T].extend(mut self, other: List[T]) {
     for x in other { self.push(x) }
 }
@@ -460,7 +481,8 @@ fn Result[T, E].is_err_and(self, pred: fn(E) -> Bool) -> Bool {
 extern fn Console.print(self, s: Str)
 extern fn Console.println(self, s: Str)
 extern fn Console.eprintln(self, s: Str)
-// Text input replaces invalid UTF-8 with U+FFFD; read_line drops the "\n" and one "\r" before it.
+// Text input replaces invalid UTF-8 with U+FFFD; read_line drops the line's "\n" and then one
+// trailing "\r" (also from a last line without "\n").
 extern fn Console.read_line(self) -> Option[Str]
 extern fn Console.read_all(self) -> Str
 extern fn Console.read_all_bytes(self) -> List[Int] // the rest of stdin, unchanged
@@ -523,7 +545,7 @@ extern fn Net.listen(self, port: Int) -> Result[Listener, IoError] // port 0: an
 extern fn Net.connect(self, host: Str, port: Int) -> Result[Conn, IoError]
 extern fn Listener.port(self) -> Int
 extern fn Listener.accept(self) -> Result[Conn, IoError]
-extern fn Conn.read_line(self) -> Result[Option[Str], IoError] // None at end of stream; strips "\r\n"
+extern fn Conn.read_line(self) -> Result[Option[Str], IoError] // None at end of stream; drops "\n", then one trailing "\r", like Console.read_line
 extern fn Conn.read(self, n: Int) -> Result[Str, IoError]       // up to n bytes; fewer only at end
 extern fn Conn.write(self, s: Str) -> Result[Unit, IoError]
 

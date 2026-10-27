@@ -1,0 +1,20 @@
+// binary_search on a list sorted ascending: Ok(first index of x) or
+// Err(index where inserting x keeps the list sorted).
+fn main(sys: Sys) {
+    let c = sys.console
+    let xs = [1, 3, 5, 7]
+    for x in [0, 1, 4, 7, 8] { c.println("{x}: {xs.binary_search(x)}") }
+    let empty: List[Int] = []
+    c.println("empty: {empty.binary_search(5)}")
+    let dups = [2, 2, 2, 4, 4, 9]
+    for x in [2, 3, 4, 9, 10] { c.println("dup {x}: {dups.binary_search(x)}") }
+    var words = ["pear", "apple", "fig"].sorted()
+    let w = "kiwi"
+    match words.binary_search(w) {
+        Ok(i) => c.println("found at {i}"),
+        Err(i) => words.insert(i, w),
+    }
+    c.println("{words} {words.binary_search("fig")}")
+    let pairs = [(1, "b"), (1, "c"), (2, "a")]
+    c.println("{pairs.binary_search((1, "c"))} {pairs.binary_search((1, "a"))}")
+}

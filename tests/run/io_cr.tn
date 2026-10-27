@@ -1,5 +1,5 @@
-// stdin: a\x0d\x0d\nb\x0d
-// read_line removes the "\n" and one "\r" before it; a last line without "\n" keeps its "\r".
+// stdin: a\x0d\x0d\nb\x0d\n\x0d\nc\x0d
+// read_line removes the "\n", then one "\r" before it; a last line without "\n" loses one "\r" too.
 fn main(sys: Sys) {
     let c = sys.console
     while let Some(l) = c.read_line() { c.println("{l.bytes()}") }

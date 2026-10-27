@@ -1,0 +1,4 @@
+éé7
+exit: 70
+stderr: trap: pad_left: fill must be exactly one character, got "ab"
+stderr:   at trap_pad_fill.tn:4:30

@@ -1,0 +1,30 @@
+// A bare `return` (no value) works in expression position: before `,` in a
+// match arm, before `)` and `}`.
+fn show(sys: Sys, x: Option[Int]) {
+    match x {
+        None => return,
+        Some(n) if n < 0 => return,
+        Some(n) => sys.console.println("got {n}"),
+    }
+    sys.console.println("after match")
+}
+fn first_even(sys: Sys, xs: List[Int]) {
+    for x in xs {
+        if x % 2 == 0 { sys.console.println("even {x}"); return }
+    }
+    sys.console.println("none")
+}
+fn guard(sys: Sys, ok: Bool) {
+    let v = if ok { 1 } else { return }
+    sys.console.println("v = {v}")
+}
+fn main(sys: Sys) {
+    show(sys, None)
+    show(sys, Some(-1))
+    show(sys, Some(3))
+    first_even(sys, [1, 4, 6])
+    first_even(sys, [1, 3])
+    guard(sys, true)
+    guard(sys, false)
+    sys.console.println("done")
+}

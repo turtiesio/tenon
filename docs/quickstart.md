@@ -64,7 +64,7 @@ fn main(sys: Sys) -> Int {
 | `sys.argv[1:]` / `process.argv.slice(2)` | `sys.args` (program name excluded) |
 | `sys.exit(2)` | `fn main(sys: Sys) -> Int` and return the code |
 | `print(..., file=sys.stderr)` | `con.eprintln(...)` |
-| `for line in sys.stdin:` | `while let Some(line) = con.read_line() { ... }` (no newline) |
+| `for line in sys.stdin:` | `while let Some(line) = con.read_line() { ... }` (no `"\n"`, and one `"\r"` removed) |
 | `f"{a} and {b!r}"` / `` `${a}` `` | `"{a} and {b}"`; a literal brace is `\{` |
 | `int(s)` | `s.to_int()` gives `Option[Int]`: `let Some(n) = s.to_int() else { ... }` |
 | `int(s, 16)`, `hex(n)` | `s.to_int_radix(16)`, `n.to_str_radix(16)`; literals `0xFF 0b1010 1_000` |
@@ -72,6 +72,8 @@ fn main(sys: Sys) -> Int {
 | `s.strip()`, `s.startswith(p)` | `s.trim()`, `s.starts_with(p)`; also `strip_prefix` gives `Option` |
 | `a, _, b = s.partition("=")` | `let Some((a, b)) = s.split_once("=") else { ... }` |
 | `ord(c)`, `s[i]` as a byte | `'a'` is an `Int` code point; `s.byte(i)`; `s.chars()` |
+| `len(s)`, `s.rjust(8, ".")` | `s.len()` is **bytes**; `s.char_count()` code points; `s.pad_left(8, ".")` / `pad_right` pad to code points |
+| `bisect.bisect_left(xs, x)` | `xs.binary_search(x)` gives `Ok(i)` (found) or `Err(i)` (insertion point) |
 | `[f(x) for x in xs if p(x)]` | `xs.filter(fn(x) => p(x)).map(fn(x) => f(x))` |
 | `for i, x in enumerate(xs)` | `for (i, x) in xs.enumerate()` |
 | `for i in range(n)` | `for i in 0..n` |

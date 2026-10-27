@@ -1,0 +1,5 @@
+// pad_left/pad_right need a fill of exactly one character (code point).
+fn main(sys: Sys) {
+    sys.console.println("{"7".pad_left(3, "é")}")
+    sys.console.println("{"7".pad_left(3, "ab")}")
+}

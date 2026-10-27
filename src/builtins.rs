@@ -200,6 +200,7 @@ impl<'a> Interp<'a> {
                 if x.is_nan() { strv("nan") } else if x.is_infinite() { strv(if x > 0.0 { "inf" } else { "-inf" }) } else { strv(&format!("{:.*}", d, x)) }
             }
             "Str.len" => Int(s(0).len() as i64),
+            "Str.char_count" => Int(s(0).chars().count() as i64),
             "Str.byte" => {
                 let (st, i) = (s(0), int(1));
                 if i < 0 || i as usize >= st.len() {
@@ -343,9 +344,9 @@ impl<'a> Interp<'a> {
                     Ok(_) => {
                         if line.ends_with(b"\n") {
                             line.pop();
-                            if line.ends_with(b"\r") {
-                                line.pop();
-                            }
+                        }
+                        if line.ends_with(b"\r") {
+                            line.pop();
                         }
                         self.some(strv(&String::from_utf8_lossy(&line)))
                     }
@@ -435,9 +436,9 @@ impl<'a> Interp<'a> {
                     }
                     if buf.ends_with(b"\n") {
                         buf.pop();
-                        if buf.ends_with(b"\r") {
-                            buf.pop();
-                        }
+                    }
+                    if buf.ends_with(b"\r") {
+                        buf.pop();
                     }
                     Some(String::from_utf8_lossy(&buf).into_owned())
                 });

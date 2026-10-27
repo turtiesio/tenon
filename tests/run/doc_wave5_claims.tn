@@ -1,0 +1,36 @@
+// Reference claims: chars() gives code points; "".lines() == [], "\n".lines() == [""];
+// unary minus binds looser than a method call except on a number literal;
+// `mut self` methods may return values and assign `self`; nested string literals
+// inside "{...}"; methods on a specific instantiation of List.
+struct Robot { name: Str }
+struct Counter { n: Int }
+fn Counter.bump(mut self) -> Int {
+    self.n += 1
+    self.n
+}
+fn Counter.reset(mut self) {
+    self = Counter { n: 0 }
+}
+fn List[Robot].find_letter(self, c: Str) -> Option[Str] {
+    for r in self { if r.name.starts_with(c) { return Some(r.name) } }
+    None
+}
+fn main(sys: Sys) {
+    let con = sys.console
+    con.println("{"Zü東".chars()}")
+    let e: List[Str] = []
+    con.println("{"".lines() == e} {"\n".lines() == [""]} {"a\n\nb\n".lines()} {"\n\n".lines()}")
+    let x = 5
+    let y = 3
+    con.println("{-x.min(y)} {-(x.min(y))} {(-x).min(y)}")
+    con.println("{-2.abs()}")
+    var c = Counter { n: 0 }
+    let a = c.bump()
+    let b = c.bump()
+    c.reset()
+    con.println("{a} {b} {c.n}")
+    let m = ["k": 1]
+    con.println("{m.get_or("k", 0)} {"x".pad_left(3, "-")} {["a", "b"].join(", ")}")
+    let rs = [Robot { name: "Ada" }, Robot { name: "Bob" }]
+    con.println("{rs.find_letter("B")}")
+}
