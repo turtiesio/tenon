@@ -393,6 +393,9 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 }
 ```
 
+- `import name` looks for `name.tn` next to the importing file first, then in the
+  standard library (`journal`, `regex`). A local file therefore hides a std
+  module of the same name, except that a file never imports itself.
 - A module is a file; `import name` makes its public items available as
   `name.item` (functions, types, `name.Type.function`) and the variants of its
   public enums by their plain names.
