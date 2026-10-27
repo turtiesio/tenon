@@ -94,6 +94,7 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
             self.string()?
         } else {
             let rest = self.src.slice(self.pos, self.src.len())
+            if rest.starts_with("||") { return Err(self.fail(line, col, "unexpected '||' (write 'or')")) }
             match symbols().filter(fn(s) => rest.starts_with(s)).first() {
                 Some(s) => {
                     for _ in 0..s.len() { let _ = self.bump() }
@@ -103,7 +104,9 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
                 None => {
                     var n = 1
                     while n < rest.len() and rest.byte(n) >= 128 and rest.byte(n) < 192 { n += 1 }
-                    return Err(self.fail(line, col, "unexpected character '{rest.slice(0, n)}'"))
+                    let ch = rest.slice(0, n)
+                    let hint = if ch == "!" { " (write 'not' for negation)" } else if ch == "&" { " (write 'and')" } else { "" }
+                    return Err(self.fail(line, col, "unexpected character '{ch}'{hint}"))
                 }
             }
         }

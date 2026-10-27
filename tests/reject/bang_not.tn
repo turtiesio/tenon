@@ -1,0 +1,3 @@
+// error: unexpected character '!' (write 'not' for negation)
+fn main() { let a = true
+ let _ = !a }

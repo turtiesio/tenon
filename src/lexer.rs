@@ -169,6 +169,9 @@ impl<'a> Lexer<'a> {
                 self.string()?
             } else {
                 let rest = &self.src[self.pos..];
+                if rest.starts_with(b"||") {
+                    return Err(Diag::new(sp, "unexpected '||' (write 'or')"));
+                }
                 let sym = SYMBOLS.iter().find(|s| rest.starts_with(s.as_bytes()));
                 match sym {
                     Some(s) => {
@@ -187,7 +190,12 @@ impl<'a> Lexer<'a> {
                             .ok()
                             .and_then(|s| s.chars().next())
                             .unwrap_or('?');
-                        return Err(Diag::new(sp, &format!("unexpected character '{}'", ch)));
+                        let hint = match ch {
+                            '!' => " (write 'not' for negation)",
+                            '&' => " (write 'and')",
+                            _ => "",
+                        };
+                        return Err(Diag::new(sp, &format!("unexpected character '{}'{}", ch, hint)));
                     }
                 }
             };
