@@ -34,7 +34,9 @@ identically; the test suite checks this for every test program.
   continues the previous line, and so does anything inside `( )` or `[ ]`.
 - Names: types and enum variants start with an uppercase letter; functions,
   variables and fields start with a lowercase letter. The compiler enforces this.
-- Literals: `42`, `1_000`, `3.14`, `1e-9`, `true`, `false`, `"text"`.
+- Literals: `42`, `1_000`, `3.14`, `1e-9`, `true`, `false`, `"text"`, and
+  character literals `'a'`, `'\n'`, `'\''`, `'é'`, which are the character's
+  code point as an `Int` (`'a'` is `97`; compare with `s.byte(i)`).
   Escapes: `\n \t \r \0 \\ \" \{ \}`. `"{expr}"` interpolates any value (see §8); write `\{` for a literal `{` (a lone `}` is literal).
 - `()` is the only value of type `Unit`.
 
@@ -42,7 +44,7 @@ identically; the test suite checks this for every test program.
 
 | Type | Meaning |
 |---|---|
-| `Int` | 64-bit signed integer. Overflow **traps**. |
+| `Int` | 64-bit signed integer. Overflow **traps**. `/` and `%` truncate toward zero (`-7 / 2 == -3`, `-7 % 2 == -1`); dividing by zero traps. |
 | `Float` | 64-bit IEEE float. |
 | `Bool` | `true` / `false`. |
 | `Str` | Immutable UTF-8 text. Offsets are byte offsets. |
@@ -94,6 +96,13 @@ fn List[Int].total(self) -> Int { ... }              // methods for specific ins
 - Every type automatically supports `==`, `!=`, ordering (`<` ...; maps are
   not ordered), hashing (usable as a map key), and `to_str()`. Functions and
   capabilities cannot be compared.
+- Derived ordering: numbers numerically; `false < true`; strings by bytes
+  (so `"B" < "a"`); lists and tuples lexicographically, element by element;
+  structs field by field in declaration order; enums by variant declaration
+  order, then payload. `sort` and `sort_by` are stable. For descending order
+  sort by a negated key (`xs.sort_by(fn(p) => (-p.score, p.name))`).
+- Struct update: `Point { x: 3, ..p }` copies the other fields from `p`
+  (the `..base` part comes last).
 
 ## 5. Functions and closures
 
@@ -119,7 +128,11 @@ captured variables. Named functions and variants can be used as values:
 - Assignment targets: `x = v`, `p.field = v`, `xs[i] = v`, `m[k] = v`
   (inserts or replaces), and compound forms `+= -= *= /= %=`.
 - Mutating methods (`push`, `insert`, `sort`, user methods with `mut self`)
-  need a mutable place: a `var`, or a field/element of one.
+  need a mutable place: a `var`, or a field/element of one, including map
+  entries: `m[k].push(x)` and `m[k] += 1` update the entry in place (the key
+  must exist; `m[k] = v` inserts).
+- Function parameters are immutable; to change a value, return the new one
+  (or use a `mut self` method).
 
 ## 7. Control flow
 
@@ -150,6 +163,11 @@ Patterns: `_`, a name, literals (`3`, `-1`, `"text"`, `true`), tuples
 
 `if` without `else`, and statements in general, must produce `Unit`: a value
 cannot be silently dropped. Discard explicitly with `let _ = expr`.
+
+There is no separate `loop` keyword: `while true { ... }` with no `break`
+never finishes, so a function may end with it (no value is needed after it).
+`break` and `continue` can appear anywhere inside the loop body, including
+inside `match` arms. Unary minus works on any number expression (`-x`, `-e.1`).
 
 ## 8. Strings and formatting
 
@@ -212,7 +230,9 @@ source of capabilities is the `Sys` value passed to `main`:
 struct Sys { console: Console, fs: Fs, clock: Clock, args: List[Str] }
 ```
 
-There are no global functions for I/O, no ambient file system access, and no
+`sys.args` holds the command-line arguments *after* the program name. Paths
+given to the unattenuated `sys.fs` are relative to the current directory (or
+absolute). There are no global functions for I/O, no ambient file system access, and no
 way to construct a capability. Functions that need authority take it as a
 parameter, so a signature shows what a function can touch. Attenuate before
 passing on:
@@ -235,6 +255,14 @@ Highlights:
 - `Str`: `len byte slice find split lines words trim trim_start trim_end
   starts_with ends_with contains to_int to_float upper lower replace chars
   repeat pad_left pad_right is_empty`; `Int.char()` makes a one-character string.
+  - `s.split(sep)` keeps empty pieces: `"a,,b,".split(",")` is
+    `["a", "", "b", ""]` and `"".split(",")` is `[""]`.
+  - `s.lines()` splits on `"\n"` and drops a final empty line; it does not
+    remove `"\r"`. `s.words()` splits on runs of spaces, tabs, `"\r"` and `"\n"`.
+  - `s.to_int()` accepts an optional `+`/`-` and decimal digits only (no spaces,
+    no `_`), and gives `None` on overflow. `s.to_float()` also accepts `1.5`,
+    `.5`, `5.`, `1e-3`, `inf` and `nan`.
+  - `trim` removes ASCII whitespace; `upper`/`lower` change ASCII letters only.
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
   first last index_of contains extend sorted reversed map filter any all count
   is_empty`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
@@ -244,7 +272,9 @@ Highlights:
 - `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok map_err`.
 - `Int`: `abs min max to_float to_str char`; `Float`: `to_int floor ceil round
   sqrt abs min max`.
-- `Console`: `print println eprintln read_line read_all`.
+- `Console`: `print println eprintln read_line read_all flush`. `read_line`
+  returns `None` at end of input and removes the line's `"\n"` (and a `"\r"`
+  before it); invalid UTF-8 input becomes U+FFFD.
 - `Fs`: `read write append exists remove list mkdir within read_only`.
 - `Clock`: `now_ms mono_ns sleep_ms`.
 

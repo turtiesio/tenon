@@ -158,6 +158,10 @@ impl<'a> Emitter<'a> {
                 }
                 bor("0")
             }
+            "Console.flush" => {
+                self.line("tn_flush();");
+                bor("0")
+            }
             "Console.eprintln" => {
                 self.line(&format!("tn_eprintln({});", a[1]));
                 bor("0")

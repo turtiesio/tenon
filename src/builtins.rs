@@ -293,6 +293,12 @@ impl<'a> Interp<'a> {
                 }
                 Unit
             }
+            "Console.flush" => {
+                if self.out.flush().is_err() {
+                    return Err(Ctrl::Exit(crate::interp::EXIT_OUTPUT));
+                }
+                Unit
+            }
             "Console.eprintln" => {
                 let _ = self.out.flush();
                 eprintln!("{}", s(1));
