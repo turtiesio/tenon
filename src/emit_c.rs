@@ -148,7 +148,8 @@ impl<'a> Emitter<'a> {
     }
 
     pub fn note_prelude_call(&mut self, fi: usize, sp: Span) -> Option<String> {
-        if self.c.fns[fi].span.file == 0 && sp.file != 0 {
+        // externs get their location passed directly; only Tenon-written prelude code needs it
+        if self.c.fns[fi].span.file == 0 && sp.file != 0 && !self.c.fns[fi].is_extern {
             Some(format!("tn_cur_loc = {};", self.loc(sp)))
         } else {
             None
