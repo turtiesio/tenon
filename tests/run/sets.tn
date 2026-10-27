@@ -1,0 +1,11 @@
+fn main(sys: Sys) {
+    var seen: Set[Str] = Set.new()
+    var dups: List[Str] = []
+    for w in "a b a c b a".words() {
+        if not seen.insert(w) { dups.push(w) }
+    }
+    let s2 = Set.of([3, 1, 3])
+    var s3 = s2
+    let removed = s3.remove(1)
+    sys.console.println("{seen.items()} {dups} {seen.len()} {seen.contains("c")} {s2.items()} {s3.items()} {removed} {s3.remove(9)} {s3 == s2}")
+}
