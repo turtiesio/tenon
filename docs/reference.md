@@ -72,6 +72,26 @@ let b = a
 a.push(3)      // b is still [1, 2]
 ```
 
+### Performance model
+
+- Copying a value (`let b = a`, passing an argument, returning) never copies
+  a list, map or string: it shares it and bumps a reference count. A copy is
+  made only when a shared value is changed (copy-on-write).
+- Changing a value in place through a `var` is cheap, also deep inside it:
+  `self.sides[i].levels[p].qty -= n`, `m[k].push(x)`. Copying a part out,
+  changing it, and writing it back (`var g = m[k]; g.x += 1; m[k] = g`) is
+  also correct, but costs a copy of the part while two references exist.
+- `s += t` on a `var` string appends in place (amortized O(1)); building a
+  string piece by piece is fine. `slice`, `split`, `lines` and `words` return
+  views that share the original's bytes.
+- `Map` and `Set` lookups and inserts are O(1) on average; small maps (up to
+  8 entries) are scanned. `m[k] = m.get_or(k, 0) + 1` is compiled to a single
+  lookup. Iteration follows insertion order.
+- `List.push`/`pop` are amortized O(1); `insert`/`remove` at the front are O(n).
+  `sort`/`sort_by` are stable O(n log n) merge sorts.
+- Integers are 64-bit machine integers with an overflow check; structs,
+  tuples and non-recursive enums are stored inline, without allocation.
+
 ## 4. Declarations
 
 ```tenon
