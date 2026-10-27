@@ -215,18 +215,15 @@ fn leaves(b: &Block) -> bool {
 fn breaks(stmts: &[Stmt]) -> bool {
     fn in_expr(e: &Expr) -> bool {
         let mut found = false;
-        if let ExprKind::Block(b) = &e.kind {
-            if breaks(&b.stmts) {
-                return true;
+        // Blocks are walked statement by statement so that nested loops (whose
+        // `break`s are their own) are skipped.
+        match &e.kind {
+            ExprKind::Block(b) => return breaks(&b.stmts),
+            ExprKind::If(c, b, els) => {
+                return in_expr(c) || breaks(&b.stmts) || els.as_ref().map(|x| in_expr(x)).unwrap_or(false);
             }
-        }
-        if let ExprKind::If(_, b, _) = &e.kind {
-            if breaks(&b.stmts) {
-                return true;
-            }
-        }
-        if let ExprKind::Lambda(..) = &e.kind {
-            return false;
+            ExprKind::Lambda(..) => return false,
+            _ => {}
         }
         crate::interp::visit_children(e, &mut |x| found = found || in_expr(x));
         found

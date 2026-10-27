@@ -495,10 +495,18 @@ pub fn breaks(stmts: List[Stmt]) -> Bool {
     false
 }
 
+// Blocks are walked statement by statement so that nested loops (whose
+// `break`s are their own) are skipped.
 fn in_expr(e: Expr) -> Bool {
     match e.k {
-        XBlock(b) => if breaks(b.stmts) { return true },
-        XIf(_, b, _) => if breaks(b.stmts) { return true },
+        XBlock(b) => return breaks(b.stmts),
+        XIf(c, b, els) => {
+            let in_else = match els {
+                Some(x) => in_expr(x),
+                None => false,
+            }
+            return in_expr(c) or breaks(b.stmts) or in_else
+        }
         XLambda(_, _, _) => return false,
         _ => {}
     }

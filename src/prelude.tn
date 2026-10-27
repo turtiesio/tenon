@@ -32,6 +32,12 @@ extern fn Int.to_float(self) -> Float
 fn Int.abs(self) -> Int { if self < 0 { -self } else { self } }
 fn Int.min(self, o: Int) -> Int { if self < o { self } else { o } }
 fn Int.max(self, o: Int) -> Int { if self > o { self } else { o } }
+// Euclidean division: the remainder is never negative (-7.rem_euclid(3) == 2).
+fn Int.rem_euclid(self, d: Int) -> Int {
+    let r = self % d
+    if r < 0 { r + d.abs() } else { r }
+}
+fn Int.div_euclid(self, d: Int) -> Int { (self - self.rem_euclid(d)) / d }
 extern fn Int.char(self) -> Str
 // Character classes for code points (ASCII): '7'.is_digit(), s.byte(i).is_space()
 fn Int.is_digit(self) -> Bool { self >= '0' and self <= '9' }
@@ -68,6 +74,27 @@ extern fn Str.lower(self) -> Str
 extern fn Str.replace(self, from: Str, to: Str) -> Str
 extern fn Str.chars(self) -> List[Str]
 fn Str.is_empty(self) -> Bool { self.len() == 0 }
+fn Str.is_digits(self) -> Bool {
+    if self.is_empty() { return false }
+    for i in 0..self.len() {
+        if not self.byte(i).is_digit() { return false }
+    }
+    true
+}
+fn Str.strip_prefix(self, p: Str) -> Option[Str] {
+    if self.starts_with(p) { Some(self.slice(p.len(), self.len())) } else { None }
+}
+fn Str.strip_suffix(self, p: Str) -> Option[Str] {
+    if self.ends_with(p) { Some(self.slice(0, self.len() - p.len())) } else { None }
+}
+// Removes leading and trailing bytes that occur in `chars` (ASCII), e.g. s.trim_chars(" \t").
+fn Str.trim_chars(self, chars: Str) -> Str {
+    var a = 0
+    var b = self.len()
+    while a < b and chars.find(self.slice(a, a + 1)).is_some() { a += 1 }
+    while b > a and chars.find(self.slice(b - 1, b)).is_some() { b -= 1 }
+    self.slice(a, b)
+}
 fn Str.contains(self, sub: Str) -> Bool { self.find(sub).is_some() }
 // Lines without their "\n"; a final empty line is dropped.
 extern fn Str.lines(self) -> List[Str]
@@ -99,6 +126,43 @@ extern fn List[T].sort_by_desc[K](mut self, key: fn(T) -> K) // stable: equal ke
 extern fn List[T].reverse(mut self)
 extern fn List[Str].join(self, sep: Str) -> Str
 fn List[T].is_empty(self) -> Bool { self.len() == 0 }
+fn List[T].filled(n: Int, x: T) -> List[T] {
+    var out: List[T] = []
+    for _ in 0..n { out.push(x) }
+    out
+}
+fn List[T].swap(mut self, i: Int, j: Int) {
+    let t = self[i]
+    self[i] = self[j]
+    self[j] = t
+}
+// Stable sort with a comparison: cmp(a, b) < 0 puts a first.
+fn List[T].sort_with(mut self, cmp: fn(T, T) -> Int) {
+    var width = 1
+    let n = self.len()
+    while width < n {
+        var out: List[T] = []
+        var lo = 0
+        while lo < n {
+            let mid = (lo + width).min(n)
+            let hi = (lo + 2 * width).min(n)
+            var i = lo
+            var j = mid
+            while i < mid or j < hi {
+                if j >= hi or (i < mid and cmp(self[j], self[i]) >= 0) {
+                    out.push(self[i])
+                    i += 1
+                } else {
+                    out.push(self[j])
+                    j += 1
+                }
+            }
+            lo = hi
+        }
+        self = out
+        width *= 2
+    }
+}
 fn List[T].get(self, i: Int) -> Option[T] {
     if i >= 0 and i < self.len() { Some(self[i]) } else { None }
 }
@@ -196,6 +260,47 @@ fn Set[T].len(self) -> Int { self.items_.len() }
 fn Set[T].is_empty(self) -> Bool { self.items_.len() == 0 }
 fn Set[T].items(self) -> List[T] { self.items_.keys() }
 
+// ---- Heap: a priority queue; pop returns the smallest item (derived ordering).
+// For largest-first, push negated keys: h.push((-priority, item)).
+pub struct Heap[T] { items_: List[T] }
+fn Heap[T].new() -> Heap[T] { Heap { items_: [] } }
+fn Heap[T].len(self) -> Int { self.items_.len() }
+fn Heap[T].is_empty(self) -> Bool { self.items_.len() == 0 }
+fn Heap[T].peek(self) -> Option[T] { self.items_.first() }
+fn Heap[T].push(mut self, x: T) {
+    self.items_.push(x)
+    var i = self.items_.len() - 1
+    while i > 0 {
+        let p = (i - 1) / 2
+        if self.items_[i] < self.items_[p] {
+            self.items_.swap(i, p)
+            i = p
+        } else {
+            break
+        }
+    }
+}
+fn Heap[T].pop(mut self) -> Option[T] {
+    let n = self.items_.len()
+    if n == 0 { return None }
+    let top = self.items_[0]
+    let last = self.items_.pop().unwrap()
+    if n > 1 {
+        self.items_[0] = last
+        var i = 0
+        while true {
+            let (l, r) = (2 * i + 1, 2 * i + 2)
+            var m = i
+            if l < n - 1 and self.items_[l] < self.items_[m] { m = l }
+            if r < n - 1 and self.items_[r] < self.items_[m] { m = r }
+            if m == i { break }
+            self.items_.swap(i, m)
+            i = m
+        }
+    }
+    Some(top)
+}
+
 // ---- Option / Result ----
 extern fn Option[T].unwrap(self) -> T
 extern fn Option[T].expect(self, msg: Str) -> T
@@ -207,6 +312,12 @@ fn Option[T].ok_or[E](self, err: E) -> Result[T, E] {
 }
 fn Option[T].map[U](self, f: fn(T) -> U) -> Option[U] {
     match self { Some(x) => Some(f(x)), None => None }
+}
+fn Option[T].and_then[U](self, f: fn(T) -> Option[U]) -> Option[U] {
+    match self { Some(x) => f(x), None => None }
+}
+fn Option[T].is_some_and(self, pred: fn(T) -> Bool) -> Bool {
+    match self { Some(x) => pred(x), None => false }
 }
 extern fn Result[T, E].unwrap(self) -> T
 extern fn Result[T, E].expect(self, msg: Str) -> T

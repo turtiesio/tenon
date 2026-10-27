@@ -1,5 +1,5 @@
-// A break of a loop nested in an `if` still counts for the outer `while true`
-// (src/check.rs `breaks` descends into nested loop bodies through `visit_stmt`).
+// A break of a loop nested in an `if` belongs to that loop, so the outer
+// `while true` still never finishes and needs no value after it.
 fn f(c: Bool) -> Int {
     while true {
         if c {

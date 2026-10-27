@@ -517,7 +517,12 @@ impl<'a> Parser<'a> {
                 if elems.len() == 1 {
                     return Ok(elems.pop().unwrap());
                 }
-                PatKind::Tuple(elems)
+                if elems.is_empty() {
+                    // `()` is the Unit value; as a pattern it always matches (`Ok(())`).
+                    PatKind::Wild
+                } else {
+                    PatKind::Tuple(elems)
+                }
             }
             Tok::Ident(name) => {
                 self.advance();
