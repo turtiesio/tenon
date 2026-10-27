@@ -69,7 +69,13 @@ def main():
         w(f"- differential fuzzing: {fuzz.get('programs', 0)} generated programs, {fuzz.get('disagreements', 0)} backend disagreements, {fuzz.get('rejected', 0)} rejected by the checker (generator imprecision) (`tools/fuzz.py N`)")
     else:
         w("- differential fuzzing: not run yet")
-    w("- mutation testing: not run yet")
+    mut = load("mutation.json")
+    if mut:
+        t = mut["killed"] + len(mut["survived"])
+        w(f"- mutation testing: {mut['killed']}/{t} mutants killed ({mut['score']}); survivors become tests or are judged equivalent (`tools/mutate.py N`)")
+    else:
+        w("- mutation testing: not run yet")
+    w("- sanitizers: every run test compiled with ASan+UBSan (`tools/asan.sh`, evidence loop)")
     w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`)\n")
     if bench:
         w("| Program | Tenon | C (cc -O2) | Python | Tenon / C | Binary (Tenon / C) |\n|---|---|---|---|---|---|")
