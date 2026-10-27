@@ -206,6 +206,8 @@ Patterns: `_`, a name, literals (`3`, `-1`, `"text"`, `'a'`, `true`), tuples
 Reserved words: `and break continue else enum extern false fn for if import
 in let linear match mut not or pub ref return self struct true unique var while`.
 
+`()` as a pattern matches the Unit value (`Ok(()) => ...`).
+
 `if` without `else`, and statements in general, must produce `Unit`: a value
 cannot be silently dropped. Discard explicitly with `let _ = expr`.
 
@@ -299,7 +301,8 @@ Highlights:
 
 - `Str`: `len byte slice find split lines words trim trim_start trim_end
   starts_with ends_with contains to_int to_float upper lower replace chars
-  find_from
+  find_from is_digits strip_prefix strip_suffix (Option) trim_chars (remove
+  given ASCII bytes from both ends, e.g. `s.trim_chars(" \t")`)
   repeat pad_left pad_right is_empty`; `Int.char()` makes a one-character string.
   - `s.split(sep)` keeps empty pieces: `"a,,b,".split(",")` is
     `["a", "", "b", ""]` and `"".split(",")` is `[""]`.
@@ -310,16 +313,21 @@ Highlights:
     `.5`, `5.`, `1e-3`, `inf` and `nan`.
   - `trim` removes ASCII whitespace; `upper`/`lower` change ASCII letters only.
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
-  sort_by_desc first last index_of contains extend sorted reversed map filter any all count
+  sort_by_desc sort_with swap first last index_of contains extend sorted reversed map filter any all count
   is_empty`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
 - `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`, `insert`,
   `remove`, `contains`, `keys`, `values`, `entries`, `len`, `is_empty`.
+- `Heap[T]`: a priority queue: `Heap.new()`, `push`, `pop` (smallest first, as
+  `Option`), `peek`, `len`, `is_empty`. For largest first push negated keys.
 - `Set[T]`: `Set.new()`, `Set.of(list)`, `insert` (false if already present),
   `remove` (false if absent), `contains`, `len`, `is_empty`, `items` (insertion order).
-- `Option[T]`: `unwrap expect unwrap_or is_some is_none map ok_or`.
+- `List.filled(n, x)` makes a list of n copies of x; `xs.sort_with(fn(a, b) => ...)`
+  sorts stably by a comparison (negative: a first).
+- `Option[T]`: `unwrap expect unwrap_or is_some is_none map and_then is_some_and ok_or`.
 - `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok map_err`.
 - `Int`: `abs min max to_float to_str char`; `checked_add checked_sub
-  checked_mul checked_div` give `None` instead of trapping; constants
+  checked_mul checked_div` give `None` instead of trapping; `rem_euclid` and
+  `div_euclid` (the remainder is never negative); constants
   `INT_MAX`, `INT_MIN`; and for code points
   `is_digit is_alpha is_alnum is_space is_upper is_lower`
   (`s.byte(i).is_digit()`, `'7' - '0'`); `Float`: `to_int floor ceil round
