@@ -194,7 +194,7 @@ static inline tn_Int tn_neg(tn_Int a, const char *loc) {
 
 /* ---------- strings: refcounted buffers with views ---------- */
 
-typedef struct { int64_t rc; } tn_rc;
+typedef struct { int64_t rc, cap; } tn_rc; /* cap: bytes available after the header */
 typedef struct { const char *p; int64_t len; tn_rc *o; } tn_Str;
 
 static inline tn_Str tn_Str_retain(tn_Str s) {
@@ -208,6 +208,7 @@ static inline tn_Str tn_str_lit(const char *p, int64_t n) { return (tn_Str){p, n
 static TN_UNUSED tn_Str tn_str_new(const char *p, int64_t n) {
     tn_rc *o = tn_alloc(sizeof(tn_rc) + (size_t)n);
     o->rc = 1;
+    o->cap = n;
     memcpy(o + 1, p, (size_t)n);
     return (tn_Str){(const char *)(o + 1), n, o};
 }
@@ -241,6 +242,7 @@ static inline void tn_buf_cstr(tn_buf *b, const char *s) { tn_buf_add(b, s, (int
 static TN_UNUSED tn_Str tn_buf_finish(tn_buf *b) {
     tn_rc *o = (tn_rc *)b->p;
     o->rc = 1;
+    o->cap = b->cap;
     return (tn_Str){b->p + sizeof(tn_rc), b->len, o};
 }
 
@@ -1139,9 +1141,33 @@ static TN_UNUSED tn_Str tn_str_concat(tn_Str a, tn_Str b) {
     if (b.len == 0) return tn_Str_retain(a);
     tn_rc *o = tn_alloc(sizeof(tn_rc) + (size_t)(a.len + b.len));
     o->rc = 1;
+    o->cap = a.len + b.len;
     memcpy(o + 1, a.p, (size_t)a.len);
     memcpy((char *)(o + 1) + a.len, b.p, (size_t)b.len);
     return (tn_Str){(const char *)(o + 1), a.len + b.len, o};
+}
+/* x += y. Appends in place when x is the only reference to its buffer and
+ * starts at its beginning (amortized O(1)); otherwise copies. */
+static TN_UNUSED void tn_str_append(tn_Str *x, tn_Str y) {
+    tn_rc *o = x->o;
+    if (y.len == 0) return;
+    if (o && o->rc == 1 && x->p == (const char *)(o + 1) && y.o != o) {
+        if (x->len + y.len > o->cap) {
+            int64_t cap = o->cap * 2;
+            if (cap < x->len + y.len) cap = x->len + y.len;
+            if (cap < 32) cap = 32;
+            o = tn_realloc(o, sizeof(tn_rc) + (size_t)cap);
+            o->cap = cap;
+            x->o = o;
+            x->p = (const char *)(o + 1);
+        }
+        memcpy((char *)(o + 1) + x->len, y.p, (size_t)y.len);
+        x->len += y.len;
+        return;
+    }
+    tn_Str r = tn_str_concat(*x, y);
+    tn_Str_release(*x);
+    *x = r;
 }
 static TN_UNUSED tn_List_Str tn_str_chars(tn_Str s) {
     tn_List_Str out = NULL;
@@ -1299,6 +1325,7 @@ static TN_UNUSED tn_Str tn_read_all(void) {
     if (tn_in_mem && tn_in_pos == 0 && tn_utf8_valid(tn_in_buf, tn_in_len)) {
         tn_rc *o = (tn_rc *)tn_in_mem;
         o->rc = 1;
+        o->cap = tn_in_cap;
         tn_Str r = {tn_in_buf, tn_in_len, o};
         tn_in_mem = tn_in_buf = NULL;
         tn_in_len = tn_in_pos = 0;
