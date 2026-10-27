@@ -70,9 +70,8 @@ wrap [-w WIDTH] [-i INDENT] [-j]
    `s mod g` gaps get one more. Lines with one word, and the last line of every
    paragraph, are not changed (one space between words).
 5. **Output.** Paragraphs are printed in order, separated by exactly one
-   empty line. No line has trailing spaces (apart from an indent-only line,
-   which cannot occur because every line has at least one word). If the input
-   has no paragraphs (it is empty or all blank), the output is empty.
+   empty line. No output line has trailing spaces. If the input has no
+   paragraphs (it is empty or all blank), the output is empty.
 6. **Limits.** At most 1 MB of input.
 
 ## Examples

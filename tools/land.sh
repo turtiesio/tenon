@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # The landing path (budget: 5 min): commit local changes, rebase onto
 # origin/main, pass ./check --fast, push. Nothing reaches main unless the
-# check passes on exactly what is pushed. Usage: tools/land.sh "message"
+# check passes on exactly what is pushed. Usage: tools/land.sh "message" [NEW_PATH...]
+# Commits changes to tracked files, plus the new files or directories listed;
+# other untracked files (another agent's drafts) are left alone.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-msg=${1:?usage: tools/land.sh MESSAGE}
+msg=${1:?usage: tools/land.sh MESSAGE [NEW_PATH...]}; shift
 start=$(date +%s)
-if [ -n "$(git status --porcelain)" ]; then
-  git add -A
+git add -u
+[ $# -gt 0 ] && git add -- "$@"
+if ! git diff --cached --quiet; then
   git commit -q -m "$msg" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 fi
 for attempt in 1 2 3; do

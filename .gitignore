@@ -4,3 +4,4 @@
 /.evidence
 /bench/*/input.txt
 .check.log
+.claude/
