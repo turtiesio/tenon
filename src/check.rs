@@ -158,6 +158,37 @@ pub fn is_tparam_name(s: &str) -> bool {
     !b.is_empty() && b[0].is_ascii_uppercase() && b[1..].iter().all(|c| c.is_ascii_digit())
 }
 
+// Does this loop body contain a `break` for its own loop (not a nested one)?
+fn breaks(stmts: &[Stmt]) -> bool {
+    fn in_expr(e: &Expr) -> bool {
+        let mut found = false;
+        if let ExprKind::Block(b) = &e.kind {
+            if breaks(&b.stmts) {
+                return true;
+            }
+        }
+        if let ExprKind::If(_, b, _) = &e.kind {
+            if breaks(&b.stmts) {
+                return true;
+            }
+        }
+        if let ExprKind::Lambda(..) = &e.kind {
+            return false;
+        }
+        crate::interp::visit_children(e, &mut |x| found = found || in_expr(x));
+        found
+    }
+    stmts.iter().any(|s| match &s.kind {
+        StmtKind::Break => true,
+        StmtKind::While { .. } | StmtKind::For { .. } => false,
+        _ => {
+            let mut found = false;
+            crate::interp::visit_stmt(s, &mut |x| found = found || in_expr(x));
+            found
+        }
+    })
+}
+
 pub(crate) fn upper(s: &str) -> bool {
     s.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
 }
@@ -675,6 +706,11 @@ impl Checker {
                         result = Some(self.expr(e, exp)?);
                     }
                     StmtKind::Return(_) | StmtKind::Break | StmtKind::Continue => {
+                        self.stmt(s)?;
+                        result = Some(self.sub.fresh());
+                    }
+                    // `while true` without a `break` never finishes: it needs no value after it.
+                    StmtKind::While { cond: Expr { kind: ExprKind::Bool(true), .. }, body } if !breaks(&body.stmts) => {
                         self.stmt(s)?;
                         result = Some(self.sub.fresh());
                     }

@@ -158,6 +158,8 @@ impl<'a> Lexer<'a> {
                     Some(k) => Tok::Kw(k),
                     None => Tok::Ident(s.to_string()),
                 }
+            } else if c == b'\'' {
+                self.char_lit()?
             } else if c == b'"' {
                 self.string()?
             } else {
@@ -231,6 +233,42 @@ impl<'a> Lexer<'a> {
                 .map(Tok::Int)
                 .map_err(|_| Diag::new(sp, "integer literal does not fit in Int (64-bit)"))
         }
+    }
+
+    // 'a', '\n', 'é': the character's code point, as an Int.
+    fn char_lit(&mut self) -> Result<Tok, Diag> {
+        let sp = self.span();
+        let bad = |_: ()| Diag::new(sp, "a character literal is one character in single quotes, like 'a' or '\\n'");
+        self.bump();
+        let c = self.peek(0);
+        let code = if c == b'\\' {
+            self.bump();
+            let e = self.bump();
+            match e {
+                b'n' => 10,
+                b't' => 9,
+                b'r' => 13,
+                b'0' => 0,
+                b'\\' => 92,
+                b'\'' => 39,
+                b'"' => 34,
+                _ => return Err(Diag::new(self.span(), &format!("unknown escape '\\{}'", e as char))),
+            }
+        } else if c == b'\'' || c == b'\n' || c == 0 {
+            return Err(bad(()));
+        } else {
+            let rest = std::str::from_utf8(&self.src[self.pos..]).map_err(|_| bad(()))?;
+            let ch = rest.chars().next().ok_or_else(|| bad(()))?;
+            for _ in 0..ch.len_utf8() {
+                self.bump();
+            }
+            ch as i64
+        };
+        if self.peek(0) != b'\'' {
+            return Err(bad(()));
+        }
+        self.bump();
+        Ok(Tok::Int(code))
     }
 
     fn string(&mut self) -> Result<Tok, Diag> {

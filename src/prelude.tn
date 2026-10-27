@@ -189,6 +189,7 @@ extern fn Console.println(self, s: Str)
 extern fn Console.eprintln(self, s: Str)
 extern fn Console.read_line(self) -> Option[Str]
 extern fn Console.read_all(self) -> Str
+extern fn Console.flush(self) // output is also flushed before any blocking read and at exit
 
 // Paths are relative to the Fs root. `within` narrows the root; an attenuated
 // Fs rejects absolute paths and `..`. `read_only` drops write authority.

@@ -1,0 +1,24 @@
+// stdin: 3\n4\nx\n5
+fn first_bad(con: Console) -> Str {
+    while true {
+        match con.read_line() {
+            None => return "none",
+            Some(l) => if l.to_int().is_none() { return l },
+        }
+    }
+}
+fn sum_until_zero(xs: List[Int]) -> Int {
+    var i = 0
+    var s = 0
+    while true {
+        if xs[i] == 0 { break }
+        s += xs[i]
+        i += 1
+    }
+    s
+}
+fn main(sys: Sys) {
+    sys.console.println("first bad: {first_bad(sys.console)}")
+    sys.console.flush()
+    sys.console.println("{sum_until_zero([1, 2, 0, 9])} {'A'} {'a' - 'A'}")
+}

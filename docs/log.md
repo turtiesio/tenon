@@ -88,3 +88,21 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 - **Papercut measured three times today**: `{` in string literals starts
   interpolation, so JSON/struct text in tests needs `\{`. Candidate fixes for the
   study to decide: raw strings, or interpolation only with a prefix. Kept for now.
+
+## 2026-10-28 — study wave 1 (in progress), self-hosted parser
+
+- **Study wave 1**: one author per language (Tenon: Claude Sonnet; Python: Claude
+  Opus; TypeScript: Codex) against the frozen compiler of commit 3dc25e3. Python
+  and TypeScript finished all 10 tasks quickly. The Tenon author's notes are the
+  most valuable output so far: no character literals (magic byte numbers in 4 of 5
+  tasks), undocumented details (args, ordering, split/lines, read_line, to_int,
+  integer division, struct update), `while true` needing a dummy tail value, no
+  `flush`. All fixed for wave 2: char literals `'a'` (Int code point, both
+  lexers), `while true` without `break` diverges, `Console.flush`, ~20 doc
+  clarifications. Deferred until more evidence: mutable parameters for plain
+  functions, map entry/update APIs.
+- **Self-hosted parser** (selfhost/parser.tn, ~700 lines) agreed with the
+  bootstrap AST dump on all 118 files on its first run, including malformed
+  inputs.
+- **Red team**: Codex refused the security-flavoured brief (as tenon.md §2.4
+  warns); reassigned to Claude Sonnet, framed as compiler QA.

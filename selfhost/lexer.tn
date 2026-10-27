@@ -83,6 +83,8 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
             while is_ident_char(self.peek(0)) { let _ = self.bump() }
             let s = self.src.slice(start, self.pos)
             if keywords().contains(s) { Kw(s) } else { Ident(s) }
+        } else if c == 39 {
+            self.char_lit()?
         } else if c == 34 {
             self.string()?
         } else {
@@ -140,6 +142,40 @@ fn Lx.number(mut self) -> Result[Tok, LexError] {
             None => Err(self.fail(line, col, "integer literal does not fit in Int (64-bit)")),
         }
     }
+}
+
+// 'a', '\n', 'é': the character's code point, as an Int.
+fn Lx.char_lit(mut self) -> Result[Tok, LexError] {
+    let (line, col) = (self.line, self.col)
+    let bad = self.fail(line, col, "a character literal is one character in single quotes, like 'a' or '\\n'")
+    let _ = self.bump()
+    let c = self.peek(0)
+    var code = 0
+    if c == '\\' {
+        let _ = self.bump()
+        let e = self.bump()
+        code = match e {
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            '0' => 0,
+            '\\' => '\\',
+            '\'' => '\'',
+            '"' => '"',
+            _ => return Err(self.fail(self.line, self.col, "unknown escape '\\{e.char()}'")),
+        }
+    } else if c == '\'' or c == '\n' or c == 0 {
+        return Err(bad)
+    } else {
+        // decode one UTF-8 character
+        let n = if c < 128 { 1 } else if c < 224 { 2 } else if c < 240 { 3 } else { 4 }
+        code = if n == 1 { c } else if n == 2 { c % 32 } else if n == 3 { c % 16 } else { c % 8 }
+        let _ = self.bump()
+        for _ in 1..n { code = code * 64 + self.bump() % 64 }
+    }
+    if self.peek(0) != '\'' { return Err(bad) }
+    let _ = self.bump()
+    Ok(IntTok(code))
 }
 
 fn escape(e: Int) -> Option[Str] {
