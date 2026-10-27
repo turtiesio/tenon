@@ -8,6 +8,7 @@ mod emit_c;
 mod exhaust;
 mod interp;
 mod lexer;
+mod linear;
 mod parser;
 mod testrun;
 mod types;

@@ -1,0 +1,6 @@
+// error: would drop its linear value
+linear struct Claim { job: Str }
+fn Claim.done(self) {}
+fn main() { var c = Claim { job: "x" }
+ c = Claim { job: "y" }
+ c.done() }

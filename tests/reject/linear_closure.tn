@@ -1,0 +1,6 @@
+// error: closures cannot capture the linear value 'c'
+linear struct Claim { job: Str }
+fn Claim.done(self) {}
+fn main() { let c = Claim { job: "x" }
+ let f = fn() => c.job
+ c.done() }

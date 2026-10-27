@@ -247,8 +247,36 @@ Highlights:
 - `Fs`: `read write append exists remove list mkdir within read_only`.
 - `Clock`: `now_ms mono_ns sleep_ms`.
 
-## 12. Not yet implemented
+## 12. Obligations: linear and unique types
 
-Linear and unique types (obligations and handles), modules, concurrency,
-networking and derived data codecs are designed but not implemented yet; see
-`docs/log.md`. Programs using `linear`/`unique` are rejected with a clear message.
+```tenon
+linear struct Claim { job: Str }      // must be used exactly once
+unique struct Handle { fd: Int }      // never copied; may be dropped
+```
+
+A **linear** value is an obligation (a claimed job, a pending reply, a held
+lock). The compiler rejects any program that copies one or loses one:
+
+- it is *consumed* by passing it by value: as an argument, as the receiver of
+  a method taking `self`, by returning it, by storing it in a struct or variant
+  field, or by destructuring it with `match`;
+- reading fields (`c.job`), comparing and formatting do not consume it;
+- every path must consume it: both branches of an `if`, every `match` arm,
+  and before `return`, `break`, `continue` or `?`;
+- a value from outside a loop cannot be consumed inside the loop;
+- `_` patterns and `let _ =` cannot discard it, and it cannot be overwritten;
+- closures cannot capture it; `List`/`Map` cannot hold it; generic functions
+  other than `unwrap`/`expect` cannot take it (they might copy or drop).
+
+Inside a method of the type itself, `self` is exempt: the type's own methods
+(`fn Claim.complete(self)`) decide how a value is finished. A struct or enum
+that contains a linear value must itself be declared `linear` (generic
+wrappers such as `Option[Claim]` become linear automatically).
+
+A **unique** value follows the same rules except that it may be dropped.
+
+## 13. Not yet implemented
+
+Modules (with privacy, so that only a type's own module can finish its
+obligations), concurrency, networking and derived data codecs are designed but
+not implemented yet; see `docs/log.md`.

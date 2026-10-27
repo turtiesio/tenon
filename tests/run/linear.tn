@@ -1,0 +1,35 @@
+// A claimed job is an obligation: it must be completed or released exactly once.
+linear struct Claim { job: Str, attempt: Int }
+
+enum Done { Completed(Str), Released(Str) }
+
+fn claim(queue: List[Str], i: Int) -> Option[Claim] {
+    match queue.get(i) {
+        Some(j) => Some(Claim { job: j, attempt: 1 }),
+        None => None,
+    }
+}
+
+fn Claim.complete(self) -> Done { Completed(self.job) }
+fn Claim.release(self) -> Done { Released(self.job) }
+
+fn process(c: Claim) -> Done {
+    if c.job.starts_with("bad") { c.release() } else { c.complete() }
+}
+
+fn main(sys: Sys) {
+    let q = ["a", "bad-b", "c"]
+    for i in 0..4 {
+        match claim(q, i) {
+            Some(c) => {
+                sys.console.println("claimed {c.job} (attempt {c.attempt}) {c}")
+                let d = process(c)
+                sys.console.println("{d}")
+            }
+            None => sys.console.println("nothing at {i}"),
+        }
+    }
+    let c = claim(q, 0).unwrap()
+    let d = c.complete()
+    sys.console.println("{d}")
+}

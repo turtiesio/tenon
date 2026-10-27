@@ -1,0 +1,5 @@
+// error: consumed on some paths but not others
+linear struct Claim { job: Str }
+fn Claim.done(self) {}
+fn f(c: Claim, b: Bool) { if b { c.done() } }
+fn main() {}

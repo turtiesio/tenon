@@ -1,0 +1,6 @@
+// error: this 'return' would drop it
+linear struct Claim { job: Str }
+fn Claim.done(self) {}
+fn f(c: Claim, b: Bool) { if b { return }
+ c.done() }
+fn main() {}

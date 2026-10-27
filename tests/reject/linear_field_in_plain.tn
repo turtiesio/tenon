@@ -1,0 +1,4 @@
+// error: declare 'linear struct Holder'
+linear struct Claim { job: Str }
+struct Holder { c: Claim }
+fn main() {}

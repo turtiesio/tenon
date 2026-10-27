@@ -1,0 +1,6 @@
+// error: a unique value cannot be copied
+unique struct Handle { fd: Int }
+fn close(h: Handle) {}
+fn main() { let h = Handle { fd: 3 }
+ close(h)
+ close(h) }
