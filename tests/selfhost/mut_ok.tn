@@ -1,0 +1,8 @@
+fn inc(a: mut Int) { a += 1 }
+fn main() {
+    var x = 1
+    var p = (1, 2)
+    inc(mut x)
+    inc(mut p.0)
+    inc(mut p.1)
+}

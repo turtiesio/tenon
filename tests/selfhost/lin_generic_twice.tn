@@ -1,0 +1,6 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn dup[T](x: T) -> (T, T) { (x, x) }
+fn main() {
+    let p = dup(Claim { id: 1 })
+}

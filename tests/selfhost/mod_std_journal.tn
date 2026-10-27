@@ -1,0 +1,5 @@
+import journal
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let j = journal.open(sys.fs.within("data"), 3)
+    Ok(())
+}

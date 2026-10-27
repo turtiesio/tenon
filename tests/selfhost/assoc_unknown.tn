@@ -1,0 +1,4 @@
+struct Pt { x: Int }
+fn main() {
+    let p = Pt.nothing()
+}

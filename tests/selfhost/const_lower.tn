@@ -1,0 +1,2 @@
+const max: Int = 3
+fn main() {}

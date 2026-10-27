@@ -1,0 +1,5 @@
+struct Box { f: fn(Int) -> Int }
+fn main() {
+    let b = Box { f: fn(x) => x }
+    let y = b.f(1)
+}

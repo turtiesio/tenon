@@ -1,0 +1,2 @@
+fn List[T].thing[T](self) {}
+fn main() {}

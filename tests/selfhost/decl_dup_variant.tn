@@ -1,0 +1,2 @@
+enum En { A, B, A }
+fn main() {}

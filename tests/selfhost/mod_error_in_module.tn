@@ -1,0 +1,4 @@
+import ckbad
+fn main() {
+    let n = ckbad.broken()
+}

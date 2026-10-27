@@ -1,0 +1,6 @@
+fn f(o: Option[Int]) -> Int {
+    let Some(x) = o else { panic("none") }
+    let Some(y) = o else { { return 0 } }
+    x + y
+}
+fn main() { let _ = f(None) }

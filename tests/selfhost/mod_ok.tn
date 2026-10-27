@@ -1,0 +1,19 @@
+import ckmod
+import ckmod2
+fn main() {
+    let o = ckmod.Open { x: 1, y: "a" }
+    let s = ckmod.make()
+    let p = s.peek()
+    let m = ckmod.Mode.Slow(2)
+    let c = m.code() + ckmod.LIMIT + s.id
+    var n = 1
+    ckmod.bump(mut n)
+    let sp0: ckmod2.Speed = Medium
+    let sp = sp0.slower()
+    let t = ckmod.pass(ckmod.Token { n: 1 })
+    t.spend()
+    let e = encode(o)
+    let back: Result[ckmod.Open, Str] = decode(e)
+    let q = Slow(3)
+    let k = ckmod.hidden_inner()
+}

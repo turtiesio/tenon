@@ -1,0 +1,3 @@
+linear struct Claim { id: Int }
+enum Holder { H(Claim) }
+fn main() {}

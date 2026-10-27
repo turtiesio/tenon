@@ -1,0 +1,4 @@
+fn main() {
+    let s = "abc"
+    let c = s[0]
+}

@@ -1,0 +1,4 @@
+linear struct Claim { id: Int }
+fn main() {
+    let m: Map[Str, Claim] = [:]
+}

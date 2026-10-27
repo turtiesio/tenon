@@ -1,0 +1,5 @@
+fn f() -> Int {
+    if true { return }
+    1
+}
+fn main() { let _ = f() }

@@ -1,0 +1,4 @@
+struct Rec { f: fn(Int) -> Int }
+fn main() {
+    let r: Result[Rec, Str] = decode("x")
+}

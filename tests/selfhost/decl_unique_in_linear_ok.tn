@@ -1,0 +1,3 @@
+unique struct Hd { fd: Int }
+linear struct Lin { h: Hd }
+fn main() {}

@@ -1,0 +1,6 @@
+struct Sx { xs: List[Int] }
+fn Sx.take(mut self, other: mut List[Int]) { self.xs.extend(other) }
+fn main() {
+    var s = Sx { xs: [] }
+    s.take(mut s.xs)
+}

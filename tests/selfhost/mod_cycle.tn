@@ -1,0 +1,5 @@
+import ckcycle
+pub fn pong(n: Int) -> Int { ckcycle.ping(n) }
+fn main() {
+    let n: Str = ckcycle.ping(3)
+}

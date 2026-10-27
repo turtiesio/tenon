@@ -1,0 +1,9 @@
+enum En { A, B }
+fn f(x: En, y: En) -> Int {
+    match (x, y) {
+        (A, A) => 1,
+        (B, B) => 2,
+        (A, B) => 3,
+    }
+}
+fn main() { let _ = f(A, A) }

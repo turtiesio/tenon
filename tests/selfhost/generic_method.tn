@@ -1,0 +1,2 @@
+fn f[T](x: T) -> Int { x.len() }
+fn main() { let _ = f(1) }

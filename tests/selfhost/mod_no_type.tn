@@ -1,0 +1,3 @@
+import ckmod
+fn f(h: ckmod.Nope) {}
+fn main() {}

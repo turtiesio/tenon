@@ -1,0 +1,9 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn main() {
+    while true {
+        let c = Claim { id: 1 }
+        if true { break }
+        c.done()
+    }
+}

@@ -1,0 +1,9 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn main() {
+    for i in 0..3 {
+        let c = Claim { id: i }
+        if i == 1 { continue }
+        c.done()
+    }
+}

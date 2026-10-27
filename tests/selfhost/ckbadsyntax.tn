@@ -1,0 +1,2 @@
+// module (imported by tests/selfhost/mod_parse_error_in_module.tn): a syntax error
+pub fn broken( -> Int { 1 }

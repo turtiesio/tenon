@@ -1,0 +1,2 @@
+enum Wrap[Item] { W(Item) }
+fn main() {}

@@ -1,0 +1,4 @@
+fn main() {
+    let xs = [1, 2].map(Some)
+    let ys: List[Option[Str]] = [1].map(Some)
+}

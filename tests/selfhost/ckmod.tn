@@ -1,0 +1,27 @@
+// module (imported by the tests/selfhost/mod_*.tn cases)
+pub struct Open { pub x: Int, pub y: Str }
+pub struct Sealed { pub id: Int, secret: Str }
+struct Hidden { a: Int }
+pub enum Mode { Fast, Slow(Int) }
+enum Inner { Deep }
+pub const LIMIT: Int = 3
+const PRIVATE_LIMIT: Int = 4
+pub fn make() -> Sealed { Sealed { id: 1, secret: "s" } }
+fn helper() -> Int { 1 }
+pub fn Sealed.peek(self) -> Str { self.secret }
+fn Sealed.hidden(self) -> Int { 2 }
+pub fn Mode.code(self) -> Int {
+    match self {
+        Fast => 0,
+        Slow(n) => n,
+    }
+}
+pub fn bump(x: mut Int) { x += 1 }
+pub linear struct Token { pub n: Int }
+pub fn Token.spend(self) {}
+pub fn pass[T](x: T) -> T { x }
+pub fn hidden_inner() -> Int {
+    match Deep {
+        Deep => helper(),
+    }
+}

@@ -1,0 +1,8 @@
+linear struct Claim { id: Int }
+fn Claim.done(self) {}
+fn peek(c: ref Claim) -> Int { c.id }
+fn main() {
+    let c = Claim { id: 1 }
+    let n = peek(c)
+    c.done()
+}

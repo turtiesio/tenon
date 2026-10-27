@@ -1,0 +1,5 @@
+fn main() {
+    let words = ["a", "bb"]
+    let ns = words.map(Str.len)
+    let ms: List[Str] = words.map(Str.len)
+}

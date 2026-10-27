@@ -1,0 +1,4 @@
+fn main() {
+    var xs = []
+    xs[0] += 1
+}

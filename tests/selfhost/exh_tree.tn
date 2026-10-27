@@ -1,0 +1,9 @@
+enum Tree { Leaf, Node(Tree, Int, Tree) }
+fn f(t: Tree) -> Int {
+    match t {
+        Leaf => 0,
+        Node(Leaf, n, _) => n,
+        Node(Node(_, a, _), b, Leaf) => a + b,
+    }
+}
+fn main() { let _ = f(Leaf) }

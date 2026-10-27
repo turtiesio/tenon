@@ -1,0 +1,3 @@
+// module (imported by the tests/selfhost/mod_*.tn cases)
+pub enum Speed { Fast, Medium }
+pub fn Speed.slower(self) -> Speed { Medium }

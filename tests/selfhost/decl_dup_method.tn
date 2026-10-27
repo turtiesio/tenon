@@ -1,0 +1,4 @@
+struct Pnt { x: Int }
+fn Pnt.f(self) {}
+fn Pnt.f(self) {}
+fn main() {}

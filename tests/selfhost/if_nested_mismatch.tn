@@ -1,0 +1,7 @@
+// Any type mismatch inside an else-less if gets the Unit hint appended.
+fn main() {
+    let c = true
+    if c {
+        let x: Int = "a"
+    }
+}

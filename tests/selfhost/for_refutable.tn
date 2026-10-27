@@ -1,0 +1,3 @@
+fn main() {
+    for Some(x) in [Some(1)] { }
+}

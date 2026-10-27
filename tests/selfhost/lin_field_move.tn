@@ -1,0 +1,7 @@
+linear struct Claim { id: Int }
+linear struct Pair { a: Claim, b: Int }
+fn take(c: Claim) {}
+fn main() {
+    let p = Pair { a: Claim { id: 1 }, b: 2 }
+    take(p.a)
+}

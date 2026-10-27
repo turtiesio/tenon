@@ -1,0 +1,6 @@
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.net.connect("localhost", 1)?
+    c.write("a")?
+    c.write("b")?
+    Ok(())
+}

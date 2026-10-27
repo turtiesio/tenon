@@ -1,0 +1,2 @@
+struct Pnt { x: Int, x: Str }
+fn main() {}

@@ -1,0 +1,3 @@
+struct Pt { x: Int }
+enum Pt { A }
+fn main() {}

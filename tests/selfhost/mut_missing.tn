@@ -1,0 +1,5 @@
+fn inc(a: mut Int) { a += 1 }
+fn main() {
+    var x = 1
+    inc(x)
+}
