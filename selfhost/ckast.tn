@@ -466,16 +466,17 @@ fn Fixer.children(self, k: EK) -> EK {
 // ---- traversal helpers ----
 
 // Does this block always leave (return, break, continue, or panic)?
-pub fn leaves(b: Block) -> Bool {
+// `panic_is_prelude`: the name `panic` here means the prelude's `panic`.
+pub fn leaves(b: Block, panic_is_prelude: Bool) -> Bool {
     if b.stmts.is_empty() { return false }
     match b.stmts[b.stmts.len() - 1].k {
         KReturn(_) | KBreak | KContinue => true,
         KExpr(e) => match e.k {
             XCall(f, _) => match f.k {
-                XName(n) => n == "panic",
+                XName(n) => panic_is_prelude and n == "panic",
                 _ => false,
             },
-            XBlock(inner) => leaves(inner),
+            XBlock(inner) => leaves(inner, panic_is_prelude),
             _ => false,
         },
         _ => false,

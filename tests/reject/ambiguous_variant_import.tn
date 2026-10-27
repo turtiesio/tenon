@@ -1,0 +1,6 @@
+// error: variant 'Circle' is ambiguous
+// User variants hide prelude variants, but a variant defined both in this file
+// and in an imported module is still ambiguous.
+import shapes
+enum Mark { Circle, Cross }
+fn main() { let _ = Circle }

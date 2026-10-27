@@ -1,0 +1,5 @@
+some 3 none ok
+Some(4) None 5
+prelude some 4
+prelude ok 8
+exit: 0

@@ -1,0 +1,4 @@
+// error: function 'twice' is already defined
+fn twice(x: Int) -> Int { x * 2 }
+fn twice(x: Int) -> Int { x + x }
+fn main() { let _ = twice(1) }

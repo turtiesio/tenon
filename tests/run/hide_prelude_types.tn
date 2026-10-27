@@ -1,0 +1,43 @@
+// The main file defines its own `Result` and `Option`. In this file those
+// names (and the variants `Some`/`None` written unqualified) mean the file's
+// own items; values of the prelude's Option/Result (from `to_int`, `get`,
+// `decode`, ...) keep working: patterns follow the matched value's type,
+// methods and `?` are the prelude's.
+struct Result { code: Int, note: Str }
+enum Option { Some(Str), None, Many(List[Str]) }
+
+fn Result.ok(self) -> Bool { self.code == 0 }
+
+fn describe(o: Option) -> Str {
+    match o {
+        Some(s) => "one " + s,
+        None => "none",
+        Many(xs) => "many {xs.len()}",
+    }
+}
+
+fn main(sys: Sys) {
+    let r = Result { code: 0, note: "fine" }
+    sys.console.println("{r} {r.ok()}")
+    sys.console.println("{describe(Some("x"))} {describe(None)} {describe(Many(["a", "b"]))}")
+    sys.console.println("{Some("y")}")
+
+    // The prelude's Option, from a prelude method: matched by its own variants.
+    let xs = [10, 20]
+    match xs.get(1) {
+        Some(n) => sys.console.println("got {n}"),
+        None => sys.console.println("nothing"),
+    }
+    sys.console.println("{xs.get(5).is_none()} {"7".to_int().unwrap_or(0)} {xs.get(0)}")
+
+    // The prelude's Result, from decode and ok_or, with its methods and `?` in a lambda.
+    let add_one = fn(s: Str) => {
+        let v: Int = decode(s)?
+        Ok(v + 1)
+    }
+    sys.console.println("{add_one("41").unwrap_or(-1)} {add_one("x").is_err()}")
+    match "5".to_int().ok_or("bad") {
+        Ok(v) => sys.console.println("ok {v}"),
+        Err(e) => sys.console.println("err {e}"),
+    }
+}

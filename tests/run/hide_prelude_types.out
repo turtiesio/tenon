@@ -1,0 +1,8 @@
+Result { code: 0, note: "fine" } true
+one x none many 2
+Some("y")
+got 20
+true 7 Some(10)
+42 true
+ok 5
+exit: 0

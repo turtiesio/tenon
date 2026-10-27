@@ -1,0 +1,10 @@
+// error: '?' on Result[_, Str] needs the function to return Result[_, Str], but it returns <main>.Result
+// This file's `Result` hides the prelude's, so a function here cannot be
+// declared to return the prelude's Result; `?` on one is rejected with the
+// hidden name shown as `<main>.Result`.
+struct Result { code: Int }
+fn parse(s: Str) -> Result {
+    let v: Int = decode(s)?
+    Result { code: v }
+}
+fn main() { let _ = parse("1") }

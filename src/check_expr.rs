@@ -82,6 +82,10 @@ impl Checker {
                 found.push((ei, vi));
             }
         }
+        // Variants of the file's own and imported enums hide the prelude's.
+        if found.iter().any(|(ei, _)| self.out.enums[*ei].file != 0) {
+            found.retain(|(ei, _)| self.out.enums[*ei].file != 0);
+        }
         match found.len() {
             0 => Ok(None),
             1 => Ok(Some(found[0])),

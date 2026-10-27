@@ -176,8 +176,8 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
 - Names may not be redeclared inside a function (no shadowing). This includes
   parameters and names bound by patterns: `let v = f()` followed by
   `match v { Some(v) => ... }` is rejected; use another name (`Some(x)`).
-- The prelude's names (`Option`, `Result`, `Set`, `path_join`, ...) cannot be
-  redefined by a program.
+- A file may define its own item with a prelude name (`path_join`, `Result`,
+  ...); it hides the prelude's in that file only (§13).
 - Assignment targets: `x = v`, `p.field = v`, `xs[i] = v`, `m[k] = v`
   (inserts or replaces), and compound forms `+= -= *= /= %=`. Evaluation
   order: the target's index expressions, then the right-hand side, then (for
@@ -520,6 +520,33 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   marked `pub`. Outside its module, a struct with private fields cannot be
   built, and its private fields cannot be read. Derived formatting shows a
   foreign type's private fields as `..`.
+- A top-level item (function, constant, struct, enum) defined in a file
+  hides the prelude item of the same name in that file, so a new prelude
+  name never breaks a program. Other files still see the prelude's item
+  (or the module's as `mod.name`), and the prelude's own code, `?` and the
+  values prelude functions return always use the prelude's. Unqualified
+  variant names work the same way: a variant of the file's own or an
+  imported enum hides a prelude variant of the same name (`Option.Some`
+  still names the prelude's; two user enums with the same variant are
+  still ambiguous), and patterns follow the matched value's type. A file
+  that hides `Result`, `Option` or `Sys` cannot name the prelude's type, so
+  its functions cannot return one (or take `sys: Sys` in `main`);
+  diagnostics show the file's own type as `<main>.Result` in the main file.
+  Defining a name twice in one file is still an error, and so is a method
+  the prelude already defines (`fn Str.trim`).
+
+  ```tenon
+  fn path_join(a: Str, b: Str) -> Str { a + "::" + b }   // hides the prelude's
+  struct Result { code: Int }                             // a distinct type
+
+  fn main(sys: Sys) {
+      sys.console.println(path_join("a", "b"))            // a::b
+      match "7".to_int().ok_or("bad") {                   // the prelude's Result
+          Ok(n) => sys.console.println("{n}"),
+          Err(e) => sys.console.println(e),
+      }
+  }
+  ```
 - Methods of a type can only be defined in the module that defines the type.
   Together with privacy this makes a module the only place that can create a
   value of its type or finish a linear one: privacy is unforgeability.

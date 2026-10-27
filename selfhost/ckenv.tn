@@ -40,6 +40,7 @@ pub struct Env {
     pub variant_ix: Map[Str, List[(Int, Int)]], // variant name -> (enum, variant), in declaration order
     pub modules: List[Str], pub imports: List[List[Str]],
     pub cur: Int, // file (module) being checked
+    pub prelude_items: Map[Str, Bool], // top-level names the prelude declares (hidden by the main file's own)
 }
 
 fn span0() -> ckast.Span { ckast.Span { file: 0, line: 0, col: 0 } }
@@ -59,8 +60,12 @@ pub fn Env.enum_idx(self, n: Str) -> Option[Int] { self.enum_ix.get(n) }
 pub fn Env.find_fn(self, full: Str) -> Option[Int] { self.fn_ix.get(full) }
 
 // Internal name of item `n` declared in `file`: modules prefix their items.
+// The main file's items keep their plain names, except those that hide a
+// prelude item: they become `<main>.n`.
 pub fn Env.internal(self, file: Int, n: Str) -> Str {
-    if file < self.modules.len() and self.modules[file] != "" { self.modules[file] + "." + n } else { n }
+    if file < self.modules.len() and self.modules[file] != "" { return self.modules[file] + "." + n }
+    if file == 1 and self.prelude_items.contains(n) { return "<main>." + n }
+    n
 }
 
 pub fn Env.imported(self, m: Str) -> Bool { self.cur < self.imports.len() and self.imports[self.cur].contains(m) }
@@ -288,9 +293,13 @@ pub fn declare(prog: ckast.Program) -> Result[Env, ckast.Diag] {
     var imports: List[List[Str]] = []
     for _ in 0..prog.modules.len() { imports.push([]) }
     for im in prog.imports { imports[im.file].push(im.name) }
+    var prelude_items: Map[Str, Bool] = [:]
+    for f in prog.fns { if f.sp.file == 0 and f.owner.is_none() { prelude_items[f.name] = true } }
+    for s in prog.structs { if s.sp.file == 0 { prelude_items[s.name] = true } }
+    for e in prog.enums { if e.sp.file == 0 { prelude_items[e.name] = true } }
     var env = Env {
         structs: [], enums: [], fns: [], struct_ix: [:], enum_ix: [:], fn_ix: [:], variant_ix: [:],
-        modules: prog.modules, imports, cur: 1,
+        modules: prog.modules, imports, cur: 1, prelude_items,
     }
     env.declare_types(prog)?
     env.check_recursion()?

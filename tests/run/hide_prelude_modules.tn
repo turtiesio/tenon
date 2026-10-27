@@ -1,0 +1,22 @@
+// Hiding is per file: hidepre_a hides path_join and Set; hidepre_b imports
+// hidepre_a and still gets the prelude's path_join and Set unqualified (a's
+// are hidepre_a.path_join, hidepre_a.Set); this main file hides path_join
+// again with its own.
+import hidepre_a
+import hidepre_b
+
+fn path_join(a: Str, b: Str) -> Str { a + "|" + b }
+
+fn main(sys: Sys) {
+    sys.console.println(path_join("a", "b"))
+    sys.console.println(hidepre_a.joined())
+    sys.console.println(hidepre_b.joined())
+    sys.console.println("{hidepre_b.count()}")
+    let s: hidepre_a.Set = hidepre_a.set()
+    var p: Set[Str] = Set.new()
+    let _ = p.insert(s.label)
+    sys.console.println("{s.label} {p.len()}")
+    // An imported enum's variant hides the prelude's `None` here too.
+    let l: hidepre_a.Level = None
+    sys.console.println("{l} {Low}")
+}
