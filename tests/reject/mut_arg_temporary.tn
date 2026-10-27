@@ -1,0 +1,4 @@
+// error: cannot mutate a temporary value
+fn bump(xs: mut List[Int]) { xs.push(1) }
+fn mk() -> List[Int] { [] }
+fn main() { bump(mut mk()) }

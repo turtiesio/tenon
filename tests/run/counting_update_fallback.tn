@@ -1,0 +1,13 @@
+// `m[k] = m.get_or(k, d) OP x` takes a one-lookup fast path; every shape it
+// does not cover must still assign through the general path.
+struct Tally { m: Map[Str, Int] }
+fn main(sys: Sys) {
+    var t = Tally { m: [:] }
+    t.m["a"] = t.m.get_or("a", 0) + 1
+    t.m["a"] = t.m.get_or("a", 0) + 1
+    var m: Map[Str, Int] = [:]
+    let k = "x"
+    m[k] = m.get_or(k, 3) * 2
+    m[k] = m.get_or(k, 0) * 5
+    sys.console.println("{t.m} {m}")
+}

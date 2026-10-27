@@ -211,7 +211,8 @@ impl Checker {
                 let Ty::Fn(ps, r) = ct else {
                     return err(callee.span, format!("cannot call a value of type {}", self.sub.resolve(&ct)));
                 };
-                if !matches!(callee.kind, ExprKind::Name(_) | ExprKind::Path(..)) || matches!(self.res_of(callee.id), Some(Res::Local(_))) {
+                // Calling a local or a constant calls the function value it holds.
+                if !matches!(callee.kind, ExprKind::Name(_) | ExprKind::Path(..)) || matches!(self.res_of(callee.id), Some(Res::Local(_) | Res::Const(_))) {
                     self.pending_res.push((e.id, Res::CallValue));
                 }
                 let muts = match self.res_of(callee.id) {
