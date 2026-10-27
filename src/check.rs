@@ -108,6 +108,12 @@ fn err<T>(span: Span, msg: impl AsRef<str>) -> CResult<T> {
     Err(Diag::new(span, msg.as_ref()))
 }
 
+// Type parameters are `T`, `K`, `V2`, ...; type names are longer, so the two never collide.
+pub fn is_tparam_name(s: &str) -> bool {
+    let b = s.as_bytes();
+    !b.is_empty() && b[0].is_ascii_uppercase() && b[1..].iter().all(|c| c.is_ascii_digit())
+}
+
 fn upper(s: &str) -> bool {
     s.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
 }
@@ -238,6 +244,9 @@ impl Checker {
             if !upper(n) {
                 return err(sp, format!("type names start with an uppercase letter: '{}'", n));
             }
+            if is_tparam_name(n) {
+                return err(sp, format!("'{}' is reserved for type parameters (one capital letter, optional digits); use a longer type name", n));
+            }
             if seen.contains_key(n) || BUILTIN_TYPES.iter().any(|(b, _, _)| b == n) {
                 return err(sp, format!("type '{}' is already defined", n));
             }
@@ -245,6 +254,11 @@ impl Checker {
                 return err(sp, "linear and unique types are not implemented yet");
             }
             seen.insert(n.clone(), sp);
+        }
+        for (n, sp, ps) in prog.structs.iter().map(|s| (&s.name, s.span, &s.tparams)).chain(prog.enums.iter().map(|e| (&e.name, e.span, &e.tparams))) {
+            if let Some(p) = ps.iter().find(|p| !is_tparam_name(p)) {
+                return err(sp, format!("type parameter '{}' of '{}' must be one capital letter, optionally followed by digits", p, n));
+            }
         }
         for s in &prog.structs {
             self.out.structs.push(StructInfo { name: s.name.clone(), tparams: s.tparams.clone(), fields: vec![] });
@@ -303,7 +317,7 @@ impl Checker {
                     }
                     for a in args {
                         if let TypeExprKind::Named(an, aa) = &a.kind {
-                            if aa.is_empty() && !self.type_known(an) {
+                            if aa.is_empty() && is_tparam_name(an) {
                                 tparams.push(an.clone());
                             }
                         }
@@ -312,7 +326,10 @@ impl Checker {
                 }
             };
             for t in &f.tparams {
-                if tparams.contains(t) || self.type_known(t) {
+                if !is_tparam_name(t) {
+                    return err(f.span, format!("type parameter '{}' must be one capital letter, optionally followed by digits", t));
+                }
+                if tparams.contains(t) {
                     return err(f.span, format!("type parameter '{}' shadows another type", t));
                 }
                 tparams.push(t.clone());

@@ -61,7 +61,7 @@ def main():
     w(f"- {rejects} reject programs (must fail to compile with a specific diagnostic)")
     w(f"- failed: {failed}")
     if fuzz:
-        w(f"- differential fuzzing: {fuzz.get('programs', 0)} generated programs, {fuzz.get('disagreements', 0)} disagreements (`tools/fuzz.sh`)")
+        w(f"- differential fuzzing: {fuzz.get('programs', 0)} generated programs, {fuzz.get('disagreements', 0)} backend disagreements, {fuzz.get('rejected', 0)} rejected by the checker (generator imprecision) (`tools/fuzz.py N`)")
     else:
         w("- differential fuzzing: not run yet")
     w("- mutation testing: not run yet")

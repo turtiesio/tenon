@@ -1,0 +1,3 @@
+// error: must be one capital letter
+fn id[Item](x: Item) -> Item { x }
+fn main() {}

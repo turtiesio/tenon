@@ -549,6 +549,18 @@ impl<'a> Parser<'a> {
 
     fn unary(&mut self) -> PResult<Expr> {
         let span = self.span();
+        if self.is_sym("-") && matches!(self.peek_at(1), Tok::Int(_) | Tok::Float(_)) {
+            // A negative literal binds tighter than postfix: `-2.abs()` is `(-2).abs()`.
+            self.advance();
+            let lit = match self.peek().clone() {
+                Tok::Int(i) => ExprKind::Int(i.wrapping_neg()),
+                Tok::Float(f) => ExprKind::Float(-f),
+                _ => unreachable!(),
+            };
+            self.advance();
+            let e = self.mk(span, lit);
+            return self.postfix_from(e);
+        }
         if self.eat_sym("-") {
             let e = self.unary()?;
             if let ExprKind::Int(i) = e.kind {
@@ -581,7 +593,11 @@ impl<'a> Parser<'a> {
     }
 
     fn postfix(&mut self) -> PResult<Expr> {
-        let mut e = self.primary()?;
+        let e = self.primary()?;
+        self.postfix_from(e)
+    }
+
+    fn postfix_from(&mut self, mut e: Expr) -> PResult<Expr> {
         loop {
             let span = self.span();
             if self.eat_sym("(") {
