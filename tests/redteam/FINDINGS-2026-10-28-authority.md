@@ -24,7 +24,9 @@ comparison, deep-stack, path, wrapper and temporary findings; the weak package h
 | 6 | Medium | a moved unique value "cannot be used" (§18); never copied (§12) | A consumed linear/unique value can still be inspected: fields, `ref` calls, handle methods, `==`, formatting | `05a`, `v2/05b` |
 | 7 | Low | "killed" on timeout (library, `Proc`); tenon.md §2.4 process groups | `run_with` kills only the direct child on timeout; its descendants live on | `06` |
 
-Everything else in scope held (list at the end). Findings 1, 2, 4 and 6 are checker holes (accepted
+Everything else in scope held (list at the end). All seven are fixed (each section names the commit
+and the regression test); the repros of findings whose fix the frozen seed does not share moved to
+`repros-2026-10-28-authority/v2/`. Findings 1, 2, 4 and 6 are checker holes (accepted
 programs break a documented promise) and behave identically in `run` and `build`; 3 is a backend
 difference; 5 is a privacy hole; 7 is a resource-control gap.
 
@@ -154,6 +156,13 @@ exit.)
 timeout): the program deadlocks. Exit by timeout is the symptom; no sanitizer report is involved.
 
 **Expected:** the interpreter closes handles at the same points as the compiled program.
+
+Fixed in ba6303c, test tests/run/net_drop_closes.tn (function return, block end, a temporary, an
+overwritten variable, a match arm in a loop, a struct, a value moved into a call, a temporary argument,
+the peer of a dropped `Conn` reading the end of the stream; `run` = native = `tenon-seed run`). The
+interpreter closes a socket where the C backend's reference counts reach zero (docs/dev/compiler.md,
+"Dropped sockets"; reference §15). `07a` and `07c` were the two files `ops/evidence/interp_diff.py` found
+differing from the seed's interpreter; it finds none now.
 
 ## 4. A constant of a linear or unique type is copied at every use (Medium)
 
