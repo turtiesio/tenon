@@ -1,0 +1,57 @@
+const RANKS: Str = "23456789TJQKA"
+fn result(con: Console, round: Int, a: Int, b: Int) {
+    if a > b { con.println("A wins in round {round}") }
+    else if b > a { con.println("B wins in round {round}") }
+    else { con.println("draw in round {round}") }
+}
+fn main(sys: Sys) -> Int {
+    var maximum = 1000
+    var quiet = false
+    var index = 0
+    while index < sys.args.len() {
+        let arg = sys.args[index]
+        if arg == "-q" { quiet = true }
+        else if arg == "-n" {
+            index += 1
+            if index >= sys.args.len() { sys.console.eprintln("missing maximum"); return 2 }
+            let value = sys.args[index]
+            if value.is_empty() or value.len() > 6 or value.starts_with("0") or not value.all_bytes(fn(b) => b.is_digit()) { sys.console.eprintln("invalid maximum"); return 2 }
+            maximum = value.to_int().unwrap()
+        } else { sys.console.eprintln("usage"); return 2 }
+        index += 1
+    }
+    let lines = sys.console.read_all().lines()
+    if lines.len() != 2 { sys.console.eprintln("expected two decks"); return 1 }
+    for deck in lines {
+        if deck.is_empty() or deck.len() > 52 or not deck.all_bytes(fn(ch) => RANKS.contains(ch.char())) { sys.console.eprintln("invalid deck"); return 1 }
+    }
+    var adeck = lines[0].chars()
+    var bdeck = lines[1].chars()
+    for round in 1..maximum + 1 {
+        var pile: List[Str] = []
+        var aface = adeck.remove(0)
+        var bface = bdeck.remove(0)
+        var alog = [aface]
+        var blog = [bface]
+        pile.push(aface); pile.push(bface)
+        var unfinished = false
+        while aface == bface {
+            if adeck.len() < 4 or bdeck.len() < 4 { unfinished = true; break }
+            for ai in 0..4 { aface = adeck.remove(0); pile.push(aface) }
+            for bi in 0..4 { bface = bdeck.remove(0); pile.push(bface) }
+            alog.push(aface); blog.push(bface)
+        }
+        var winner = "-"
+        if not unfinished {
+            if RANKS.find(aface).unwrap() > RANKS.find(bface).unwrap() { adeck.extend(pile); winner = "A" }
+            else { bdeck.extend(pile); winner = "B" }
+        }
+        if not quiet { sys.console.println("{round} {alog.join("/")} {blog.join("/")} {winner} {adeck.len()} {bdeck.len()}") }
+        if unfinished or adeck.is_empty() or bdeck.is_empty() {
+            result(sys.console,round,adeck.len(),bdeck.len())
+            return 0
+        }
+    }
+    sys.console.println("stopped at round {maximum}")
+    0
+}

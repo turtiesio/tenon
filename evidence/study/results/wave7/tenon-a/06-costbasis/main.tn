@@ -1,0 +1,127 @@
+struct Lot { qty: Int, cost: Int }
+
+enum Trade { Buy(Str, Int, Int), Sell(Str, Int, Int), Split(Str, Int) }
+
+fn is_sym(s: Str) -> Bool { s.len() >= 1 and s.len() <= 5 and s.all_bytes(fn(b) => b.is_upper()) }
+
+// [1-9][0-9]{0,5}
+fn parse_qty(s: Str) -> Option[Int] {
+    if s.len() < 1 or s.len() > 6 or not s.is_digits() or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+// (0|[1-9][0-9]{0,5})\.[0-9]{2} as cents
+fn parse_price(s: Str) -> Option[Int] {
+    let (whole, frac) = s.split_once(".")?
+    if whole.is_empty() or whole.len() > 6 or not whole.is_digits() { return None }
+    if whole.len() > 1 and whole.byte(0) == '0' { return None }
+    if frac.len() != 2 or not frac.is_digits() { return None }
+    Some(whole.to_int()? * 100 + frac.to_int()?)
+}
+
+fn parse_ratio(s: Str) -> Option[Int] {
+    if s.is_empty() or not s.is_digits() or s.byte(0) == '0' { return None }
+    let r = s.to_int()?
+    if r >= 2 and r <= 10 { Some(r) } else { None }
+}
+
+fn parse_trade(line: Str) -> Option[Trade] {
+    let t = line.split(" ")
+    match t[0] {
+        "BUY" | "SELL" if t.len() == 4 => {
+            if not is_sym(t[1]) { return None }
+            let q = parse_qty(t[2])?
+            let p = parse_price(t[3])?
+            Some(if t[0] == "BUY" { Buy(t[1], q, p) } else { Sell(t[1], q, p) })
+        }
+        "SPLIT" if t.len() == 3 => {
+            if not is_sym(t[1]) { return None }
+            Some(Split(t[1], parse_ratio(t[2])?))
+        }
+        _ => None,
+    }
+}
+
+fn money(c: Int) -> Str { c.fmt_fixed(2) }
+
+fn held(lots: List[Lot]) -> Int {
+    var h = 0
+    for l in lots { h += l.qty }
+    h
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: costbasis < trades")
+        return 2
+    }
+    var book: Map[Str, List[Lot]] = [:]
+    var total = 0
+    var errors = false
+    var n = 0
+    while let Some(line) = con.read_line() {
+        n += 1
+        if line.is_empty() or line.starts_with("#") { continue }
+        let Some(trade) = parse_trade(line) else {
+            con.println("{n}: ERR bad line")
+            errors = true
+            continue
+        }
+        match trade {
+            Buy(sym, q, p) => {
+                book.or_insert(sym, [])
+                book[sym].push(Lot { qty: q, cost: q * p })
+            }
+            Sell(sym, k, p) => {
+                let lots = book.get_or(sym, [])
+                let h = held(lots)
+                if k > h {
+                    con.println("{n}: ERR insufficient {sym} held={h}")
+                    errors = true
+                    continue
+                }
+                var rest: List[Lot] = []
+                var need = k
+                var cost = 0
+                for lot in lots {
+                    if need == 0 {
+                        rest.push(lot)
+                    } else if lot.qty <= need {
+                        cost += lot.cost
+                        need -= lot.qty
+                    } else {
+                        let part = (2 * lot.cost * need + lot.qty) / (2 * lot.qty)
+                        cost += part
+                        rest.push(Lot { qty: lot.qty - need, cost: lot.cost - part })
+                        need = 0
+                    }
+                }
+                if rest.is_empty() { let _ = book.remove(sym) } else { book[sym] = rest }
+                let proceeds = k * p
+                let gain = proceeds - cost
+                total += gain
+                con.println("{n}: SELL {sym} {k} proceeds={money(proceeds)} cost={money(cost)} gain={money(gain)}")
+            }
+            Split(sym, r) => {
+                if not book.contains(sym) {
+                    con.println("{n}: ERR not held {sym}")
+                    errors = true
+                    continue
+                }
+                book[sym] = book[sym].map(fn(l) => Lot { qty: l.qty * r, cost: l.cost })
+                con.println("{n}: SPLIT {sym} {r} held={held(book[sym])}")
+            }
+        }
+    }
+    var syms = book.keys()
+    syms.sort()
+    for sym in syms {
+        let lots = book[sym]
+        var cost = 0
+        for l in lots { cost += l.cost }
+        con.println("HOLD {sym} {held(lots)} cost={money(cost)} lots={lots.len()}")
+    }
+    con.println("TOTAL gain={money(total)}")
+    if errors { 1 } else { 0 }
+}

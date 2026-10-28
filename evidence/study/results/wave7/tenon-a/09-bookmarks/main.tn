@@ -1,0 +1,231 @@
+struct Bookmark { url: Str, tags: List[Str] } // tags sorted in byte order
+
+enum Cmd { Add(Str, Str), Del(Str), Tag(Str, Str), Untag(Str, Str), Get(Str), Find(Str), Compact }
+
+struct Store { fs: Fs, dir: Str, marks: Map[Str, Bookmark], last: Int }
+
+fn is_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 20 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '-')
+}
+
+fn is_url(s: Str) -> Bool { s.len() >= 1 and s.len() <= 200 and s.all_bytes(fn(b) => b >= 33 and b <= 126) }
+
+fn is_tag(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+// A decimal number without leading zeros ("0" allowed).
+fn plain_number(s: Str) -> Option[Int] {
+    if s.is_empty() or not s.is_digits() or (s.len() > 1 and s.byte(0) == '0') { return None }
+    s.to_int()
+}
+
+fn parse(line: Str) -> Option[Cmd] {
+    let t = line.split(" ")
+    match t[0] {
+        "ADD" if t.len() == 3 and is_name(t[1]) and is_url(t[2]) => Some(Add(t[1], t[2])),
+        "DEL" if t.len() == 2 and is_name(t[1]) => Some(Del(t[1])),
+        "TAG" if t.len() == 3 and is_name(t[1]) and is_tag(t[2]) => Some(Tag(t[1], t[2])),
+        "UNTAG" if t.len() == 3 and is_name(t[1]) and is_tag(t[2]) => Some(Untag(t[1], t[2])),
+        "GET" if t.len() == 2 and is_name(t[1]) => Some(Get(t[1])),
+        "FIND" if t.len() == 2 and is_tag(t[1]) => Some(Find(t[1])),
+        "COMPACT" if t.len() == 1 => Some(Compact),
+        _ => None,
+    }
+}
+
+fn is_change(cmd: Cmd) -> Bool {
+    match cmd {
+        Add(_, _) | Del(_) | Tag(_, _) | Untag(_, _) => true,
+        _ => false,
+    }
+}
+
+fn tags_text(tags: List[Str]) -> Str { if tags.is_empty() { "-" } else { tags.join(",") } }
+
+// Applies a change or a query to the bookmarks; gives the response.
+fn apply(marks: mut Map[Str, Bookmark], cmd: Cmd) -> Str {
+    match cmd {
+        Add(name, url) => {
+            if marks.contains(name) { return "ERR exists" }
+            marks[name] = Bookmark { url, tags: [] }
+            "OK"
+        }
+        Del(name) => if marks.remove(name).is_some() { "OK" } else { "ERR no such bookmark" },
+        Tag(name, tag) => {
+            let Some(b) = marks.get(name) else { return "ERR no such bookmark" }
+            match b.tags.binary_search(tag) {
+                Ok(_) => "UNCHANGED",
+                Err(i) => {
+                    marks[name].tags.insert(i, tag)
+                    "OK"
+                }
+            }
+        }
+        Untag(name, tag) => {
+            let Some(b) = marks.get(name) else { return "ERR no such bookmark" }
+            match b.tags.binary_search(tag) {
+                Ok(i) => {
+                    let _ = marks[name].tags.remove(i)
+                    "OK"
+                }
+                Err(_) => "UNCHANGED",
+            }
+        }
+        Get(name) => match marks.get(name) {
+            Some(b) => "{name} {b.url} {tags_text(b.tags)}",
+            None => "ERR no such bookmark",
+        },
+        Find(tag) => {
+            var names = marks.entries().filter(fn(e) => e.1.tags.contains(tag)).map(fn(e) => e.0)
+            names.sort()
+            if names.is_empty() { "-" } else { names.join(" ") }
+        }
+        Compact => "ERR bad command", // handled by the store
+    }
+}
+
+fn strictly_increasing(xs: List[Str]) -> Bool {
+    for i in 1..xs.len() {
+        if xs[i - 1] >= xs[i] { return false }
+    }
+    true
+}
+
+// The snapshot's bookmarks and sequence number.
+fn parse_snapshot(text: Str) -> Result[(Map[Str, Bookmark], Int), Str] {
+    if not text.ends_with("\n") { return Err("snapshot does not end with a newline") }
+    let lines = text.slice(0, text.len() - 1).split("\n")
+    let Some(s_text) = lines[0].strip_prefix("bookmarks ") else { return Err("bad snapshot header") }
+    let Some(s) = plain_number(s_text) else { return Err("bad snapshot number") }
+    var marks: Map[Str, Bookmark] = [:]
+    var names: List[Str] = []
+    for line in lines.slice(1, lines.len()) {
+        let t = line.split(" ")
+        if t.len() != 3 or not is_name(t[0]) or not is_url(t[1]) { return Err("bad snapshot line '{line}'") }
+        let tags = if t[2] == "-" { [] } else { t[2].split(",") }
+        if not tags.all(is_tag) or not strictly_increasing(tags) { return Err("bad tags in snapshot line '{line}'") }
+        names.push(t[0])
+        marks[t[0]] = Bookmark { url: t[1], tags }
+    }
+    if not strictly_increasing(names) { return Err("snapshot names are not sorted") }
+    Ok((marks, s))
+}
+
+fn read_optional(fs: Fs, path: Str) -> Result[Str, Str] {
+    if not fs.exists(path) { return Ok("") }
+    fs.read(path).map_err(fn(e) => "cannot read {path}: {e}")
+}
+
+fn load(fs: Fs, dir: Str) -> Result[Store, Str] {
+    let snap_path = path_join(dir, "snapshot")
+    var marks: Map[Str, Bookmark] = [:]
+    var s = 0
+    if fs.exists(snap_path) {
+        let text = read_optional(fs, snap_path)?
+        let (m, n) = parse_snapshot(text)?
+        marks = m
+        s = n
+    }
+    let journal_path = path_join(dir, "journal")
+    let jtext = read_optional(fs, journal_path)?
+    let complete_len = match jtext.rfind("\n") {
+        Some(i) => i + 1,
+        None => 0,
+    }
+    // complete lines only: what follows the last "\n" is a torn record
+    let records = if complete_len == 0 { [] } else { jtext.slice(0, complete_len - 1).split("\n") }
+    var prev = -1
+    for line in records {
+        let Some((seq_text, command)) = line.split_once(" ") else { return Err("bad journal line '{line}'") }
+        let Some(seq) = plain_number(seq_text) else { return Err("bad journal number in '{line}'") }
+        let Some(cmd) = parse(command) else { return Err("bad journal command in '{line}'") }
+        if not is_change(cmd) { return Err("journal line '{line}' is not a change") }
+        if prev == -1 {
+            if seq < 1 or seq > s + 1 { return Err("journal starts at {seq}, after snapshot {s}") }
+        } else if seq != prev + 1 {
+            return Err("journal jumps from {prev} to {seq}")
+        }
+        prev = seq
+        if seq > s {
+            let reply = apply(mut marks, cmd)
+            if reply != "OK" { return Err("journal record {seq} gives '{reply}'") }
+        }
+    }
+    if prev != -1 and prev < s { return Err("journal ends at {prev}, before snapshot {s}") }
+    if complete_len < jtext.len() {
+        fs.truncate(journal_path, complete_len).map_err(fn(e) => "cannot truncate the journal: {e}")?
+    }
+    Ok(Store { fs, dir, marks, last: s.max(prev) })
+}
+
+fn Store.compact(mut self) -> Result[Unit, IoError] {
+    var names = self.marks.keys()
+    names.sort()
+    var text = "bookmarks {self.last}\n"
+    for name in names {
+        let b = self.marks[name]
+        text += "{name} {b.url} {tags_text(b.tags)}\n"
+    }
+    let tmp = path_join(self.dir, "snapshot.tmp")
+    self.fs.write(tmp, text)?
+    self.fs.rename(tmp, path_join(self.dir, "snapshot"))?
+    let journal = path_join(self.dir, "journal")
+    if self.fs.exists(journal) { self.fs.truncate(journal, 0)? }
+    Ok(())
+}
+
+fn Store.handle(mut self, line: Str) -> Result[Str, IoError] {
+    let Some(cmd) = parse(line) else { return Ok("ERR bad command") }
+    if cmd == Compact {
+        self.compact()?
+        return Ok("OK {self.last}")
+    }
+    if not is_change(cmd) { return Ok(apply(mut self.marks, cmd)) }
+    // try the change on a copy, so that it is recorded before it is applied
+    var next = self.marks
+    let reply = apply(mut next, cmd)
+    if reply == "OK" {
+        self.fs.append(path_join(self.dir, "journal"), "{self.last + 1} {line}\n")?
+        self.last += 1
+        self.marks = next
+    }
+    Ok(reply)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: bookmarks DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    let fs = sys.fs
+    if fs.exists(dir) {
+        if not fs.is_dir(dir) {
+            con.eprintln("bookmarks: {dir} is not a directory")
+            return 1
+        }
+    } else if let Err(e) = fs.mkdir_one(dir) {
+        con.eprintln("bookmarks: cannot create {dir}: {e}")
+        return 1
+    }
+    var store = match load(fs, dir) {
+        Ok(st) => st,
+        Err(msg) => {
+            con.eprintln("bookmarks: {msg}")
+            return 1
+        }
+    }
+    while let Some(line) = con.read_line() {
+        match store.handle(line) {
+            Ok(reply) => con.println(reply),
+            Err(e) => {
+                con.eprintln("bookmarks: {e}")
+                return 1
+            }
+        }
+        con.flush()
+    }
+    0
+}

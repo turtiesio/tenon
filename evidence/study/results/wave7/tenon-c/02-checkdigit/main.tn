@@ -1,0 +1,51 @@
+fn valid(value: Str, scheme: Str, mode: Str) -> Bool {
+    if value.is_empty() or value.starts_with("-") or value.ends_with("-") or value.contains("--") { return false }
+    for (i, b) in value.bytes().enumerate() {
+        if b == '-' { continue }
+        if b.is_digit() { continue }
+        if b == 'X' and scheme == "isbn10" and mode == "check" and i == value.len() - 1 { continue }
+        return false
+    }
+    let digits = value.replace("-", "")
+    let n = digits.len()
+    let extra = if mode == "check" { 1 } else { 0 }
+    if scheme == "luhn" { return n >= 1 + extra and n <= 18 + extra }
+    if scheme == "isbn10" { return n == 9 + extra }
+    n == 12 + extra and (digits.starts_with("978") or digits.starts_with("979"))
+}
+fn checksum(digits: Str, scheme: Str) -> Int {
+    var sum = 0
+    for (i, b) in digits.bytes().enumerate() {
+        var digit = if b == 'X' { 10 } else { b - '0' }
+        if scheme == "luhn" {
+            if (digits.len() - i) % 2 == 0 { digit *= 2; if digit > 9 { digit -= 9 } }
+            sum += digit
+        } else if scheme == "isbn10" { sum += (10 - i) * digit }
+        else { sum += (if i % 2 == 0 { 1 } else { 3 }) * digit }
+    }
+    sum % (if scheme == "isbn10" { 11 } else { 10 })
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() < 3 { sys.console.eprintln("usage"); return 2 }
+    let scheme = sys.args[0]
+    let mode = sys.args[1]
+    if not ["luhn", "isbn10", "isbn13"].contains(scheme) or not ["check", "make"].contains(mode) {
+        sys.console.eprintln("usage"); return 2
+    }
+    var status = 0
+    for value in sys.args.slice(2, sys.args.len()) {
+        if not valid(value, scheme, mode) { sys.console.println("{value} invalid"); status = 1; continue }
+        let digits = value.replace("-", "")
+        if mode == "check" {
+            if checksum(digits, scheme) == 0 { sys.console.println("{value} ok") }
+            else { sys.console.println("{value} bad"); status = 1 }
+        } else {
+            let modulus = if scheme == "isbn10" { 11 } else { 10 }
+            let check = (modulus - checksum(digits + "0", scheme)) % modulus
+            let char = if check == 10 { "X" } else { check.to_str() }
+            let sep = if value.contains("-") { "-" } else { "" }
+            sys.console.println("{value}{sep}{char}")
+        }
+    }
+    status
+}

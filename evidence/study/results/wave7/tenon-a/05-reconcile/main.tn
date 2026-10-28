@@ -1,0 +1,149 @@
+struct Entry { line: Int, date: Str, day: Int, cents: Int, text: Str }
+
+fn is_leap(y: Int) -> Bool { y % 4 == 0 }
+
+fn days_in_month(y: Int, m: Int) -> Int {
+    match m {
+        2 => if is_leap(y) { 29 } else { 28 },
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn digits(s: Str, start: Int, n: Int) -> Option[Int] {
+    let part = s.slice(start, start + n)
+    if not part.is_digits() { return None }
+    part.to_int()
+}
+
+// Days since 1970-01-01 of a valid YYYY-MM-DD date in 1970..2099.
+fn parse_date(s: Str) -> Option[Int] {
+    if s.len() != 10 or s.byte(4) != '-' or s.byte(7) != '-' { return None }
+    let y = digits(s, 0, 4)?
+    let m = digits(s, 5, 2)?
+    let d = digits(s, 8, 2)?
+    if y < 1970 or y > 2099 or m < 1 or m > 12 or d < 1 or d > days_in_month(y, m) { return None }
+    var days = 0
+    for yy in 1970..y { days += if is_leap(yy) { 366 } else { 365 } }
+    for mm in 1..m { days += days_in_month(y, mm) }
+    Some(days + d - 1)
+}
+
+// -?(0|[1-9][0-9]{0,8})\.[0-9]{2} as cents
+fn parse_amount(s: Str) -> Option[Int] {
+    let neg = s.starts_with("-")
+    let body = if neg { s.slice(1, s.len()) } else { s }
+    let (whole, frac) = body.split_once(".")?
+    if whole.is_empty() or whole.len() > 9 or not whole.is_digits() { return None }
+    if whole.len() > 1 and whole.byte(0) == '0' { return None }
+    if frac.len() != 2 or not frac.is_digits() { return None }
+    let cents = whole.to_int()? * 100 + frac.to_int()?
+    Some(if neg { -cents } else { cents })
+}
+
+fn valid_text(t: Str) -> Bool {
+    t.len() >= 1 and t.len() <= 40 and t.all_bytes(fn(b) => b >= 32 and b <= 126 and b != ',')
+        and not t.starts_with(" ") and not t.ends_with(" ")
+}
+
+fn parse_file(fs: Fs, path: Str) -> Result[List[Entry], Str] {
+    let text = fs.read(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    var out: List[Entry] = []
+    for (i, line) in text.lines().enumerate() {
+        if line.is_empty() { continue }
+        let bad = "{path}:{i + 1}: invalid line '{line}'"
+        let parts = line.split(",")
+        if parts.len() != 3 { return Err(bad) }
+        let Some(day) = parse_date(parts[0]) else { return Err(bad) }
+        let Some(cents) = parse_amount(parts[1]) else { return Err(bad) }
+        if not valid_text(parts[2]) { return Err(bad) }
+        out.push(Entry { line: i + 1, date: parts[0], day, cents, text: parts[2] })
+    }
+    Ok(out)
+}
+
+fn money(c: Int) -> Str { c.fmt_fixed(2) }
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    var max_days = 3
+    var files: List[Str] = []
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-d" {
+            let v = args.get(i + 1).unwrap_or("")
+            let ok = v == "0" or (v.len() >= 1 and v.len() <= 3 and v.is_digits() and v.byte(0) != '0')
+            if not ok or v.to_int().unwrap_or(999) > 365 {
+                con.eprintln("reconcile: -d needs a number of days from 0 to 365")
+                return 2
+            }
+            max_days = v.to_int().unwrap()
+            i += 2
+        } else if a.starts_with("-") {
+            con.eprintln("reconcile: unknown option '{a}'")
+            return 2
+        } else {
+            files.push(a)
+            i += 1
+        }
+    }
+    if files.len() != 2 {
+        con.eprintln("usage: reconcile [-d DAYS] BANK LEDGER")
+        return 2
+    }
+    let bank = match parse_file(sys.fs, files[0]) {
+        Ok(es) => es,
+        Err(msg) => {
+            con.eprintln("reconcile: {msg}")
+            return 1
+        }
+    }
+    let ledger = match parse_file(sys.fs, files[1]) {
+        Ok(es) => es,
+        Err(msg) => {
+            con.eprintln("reconcile: {msg}")
+            return 1
+        }
+    }
+    var ledger_used = List.filled(ledger.len(), false)
+    var bank_used = List.filled(bank.len(), false)
+    var matched = 0
+    for (bi, b) in bank.enumerate() {
+        var best: Option[(Int, Int)] = None // (distance, ledger index)
+        for (li, l) in ledger.enumerate() {
+            if ledger_used[li] or l.cents != b.cents { continue }
+            let dist = (l.day - b.day).abs()
+            if dist > max_days { continue }
+            let better = match best {
+                None => true,
+                Some((d, _)) => dist < d,
+            }
+            if better { best = Some((dist, li)) }
+        }
+        if let Some((dist, li)) = best {
+            ledger_used[li] = true
+            bank_used[bi] = true
+            matched += 1
+            con.println("M {b.line} {ledger[li].line} {money(b.cents)} {dist}")
+        }
+    }
+    var diff = 0
+    var bank_only = 0
+    for (bi, b) in bank.enumerate() {
+        if bank_used[bi] { continue }
+        bank_only += 1
+        diff += b.cents
+        con.println("B {b.line} {b.date} {money(b.cents)} {b.text}")
+    }
+    var ledger_only = 0
+    for (li, l) in ledger.enumerate() {
+        if ledger_used[li] { continue }
+        ledger_only += 1
+        diff -= l.cents
+        con.println("L {l.line} {l.date} {money(l.cents)} {l.text}")
+    }
+    con.println("matched={matched} bank_only={bank_only} ledger_only={ledger_only} diff={money(diff)}")
+    0
+}

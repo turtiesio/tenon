@@ -1,0 +1,138 @@
+const RANKS: Str = "23456789TJQKA"
+
+// A queue of ranks (0 = '2' ... 12 = 'A'): draw from the front, win at the back.
+struct Deck { cards: List[Int], head: Int }
+
+fn Deck.len(self) -> Int { self.cards.len() - self.head }
+
+fn Deck.draw(mut self) -> Int {
+    let c = self.cards[self.head]
+    self.head += 1
+    if self.head >= 4096 {
+        // drop the drawn prefix now and then, so the list stays small
+        self.cards = self.cards.slice(self.head, self.cards.len())
+        self.head = 0
+    }
+    c
+}
+
+fn Deck.put(mut self, cs: List[Int]) {
+    self.cards.extend(cs)
+}
+
+fn parse_deck(line: Str) -> Option[Deck] {
+    if line.len() < 1 or line.len() > 52 { return None }
+    var cards: List[Int] = []
+    for i in 0..line.len() {
+        let r = RANKS.find(line.byte(i).char())?
+        cards.push(r)
+    }
+    Some(Deck { cards, head: 0 })
+}
+
+fn card_text(r: Int) -> Str { RANKS.slice(r, r + 1) }
+
+fn face_text(cards: List[Int]) -> Str {
+    cards.map(fn(r) => card_text(r)).join("/")
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var max_rounds = 1000
+    var quiet = false
+    let args = sys.args
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        i += 1
+        if a == "-q" {
+            quiet = true
+        } else if a == "-n" {
+            let ok = i < args.len() and args[i].len() >= 1 and args[i].len() <= 6
+                and args[i].is_digits() and args[i].byte(0) != '0'
+            if not ok {
+                con.eprintln("war: -n needs a number from 1 to 999999")
+                return 2
+            }
+            max_rounds = args[i].to_int().unwrap()
+            i += 1
+        } else {
+            con.eprintln("war: unknown argument '{a}'")
+            return 2
+        }
+    }
+
+    let lines = con.read_all().lines()
+    if lines.len() != 2 {
+        con.eprintln("war: expected exactly two lines")
+        return 1
+    }
+    let (Some(a), Some(b)) = (parse_deck(lines[0]), parse_deck(lines[1])) else {
+        con.eprintln("war: invalid deck")
+        return 1
+    }
+    var da = a
+    var db = b
+
+    var out = ""
+    var round = 0
+    var result = ""
+    while true {
+        if round >= max_rounds {
+            result = "stopped at round {max_rounds}"
+            break
+        }
+        round += 1
+        var pile: List[Int] = []
+        var fa: List[Int] = []
+        var fb: List[Int] = []
+        var ca = da.draw()
+        var cb = db.draw()
+        pile.push(ca)
+        pile.push(cb)
+        fa.push(ca)
+        fb.push(cb)
+        var incomplete = false
+        while ca == cb {
+            if da.len() < 4 or db.len() < 4 {
+                incomplete = true
+                break
+            }
+            for _ in 0..4 {
+                ca = da.draw()
+                pile.push(ca)
+            }
+            for _ in 0..4 {
+                cb = db.draw()
+                pile.push(cb)
+            }
+            fa.push(ca)
+            fb.push(cb)
+        }
+        if incomplete {
+            if not quiet { out += "{round} {face_text(fa)} {face_text(fb)} - {da.len()} {db.len()}\n" }
+            if da.len() > db.len() {
+                result = "A wins in round {round}"
+            } else if db.len() > da.len() {
+                result = "B wins in round {round}"
+            } else {
+                result = "draw in round {round}"
+            }
+            break
+        }
+        let winner = if ca > cb { "A" } else { "B" }
+        if ca > cb { da.put(pile) } else { db.put(pile) }
+        if not quiet { out += "{round} {face_text(fa)} {face_text(fb)} {winner} {da.len()} {db.len()}\n" }
+        if da.len() == 0 {
+            result = "B wins in round {round}"
+            break
+        }
+        if db.len() == 0 {
+            result = "A wins in round {round}"
+            break
+        }
+    }
+    out += result + "\n"
+    con.print(out)
+    0
+}

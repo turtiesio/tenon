@@ -1,0 +1,56 @@
+fn main(sys: Sys) -> Int {
+    var stops = [8]
+    var leading_only = false
+    var files: List[Str] = []
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg == "-i" { leading_only = true }
+        else if arg == "-t" {
+            i += 1
+            if i >= sys.args.len() { sys.console.eprintln("missing stops"); return 2 }
+            var parsed: List[Int] = []
+            for part in sys.args[i].split(",") {
+                if part.is_empty() or part.len() > 4 or part.starts_with("0") or not part.all_bytes(fn(b) => b.is_digit()) {
+                    sys.console.eprintln("invalid stops"); return 2
+                }
+                let stop = part.to_int().unwrap()
+                if not parsed.is_empty() and stop <= parsed.last().unwrap() { sys.console.eprintln("unordered stops"); return 2 }
+                parsed.push(stop)
+            }
+            stops = parsed
+        } else if arg.starts_with("-") { sys.console.eprintln("unknown option"); return 2 }
+        else { files.push(arg) }
+        i += 1
+    }
+    var text = ""
+    var status = 0
+    if files.is_empty() { text = sys.console.read_all() }
+    else {
+        for file in files {
+            match sys.fs.read(file) {
+                Ok(data) => text += data,
+                Err(_) => { sys.console.eprintln("unreadable: {file}"); status = 1 }
+            }
+        }
+    }
+    var column = 0
+    var leading = true
+    var out = ""
+    for ch in text.chars() {
+        if ch == "\n" { out += ch; column = 0; leading = true }
+        else if ch == "\t" and (not leading_only or leading) {
+            var spaces = 1
+            if stops.len() == 1 { spaces = stops[0] - column % stops[0] }
+            else { for target in stops { if target > column { spaces = target - column; break } } }
+            out += " ".repeat(spaces)
+            column += spaces
+        } else {
+            out += ch
+            column += 1
+            if ch != " " and ch != "\t" { leading = false }
+        }
+    }
+    sys.console.print(out)
+    status
+}

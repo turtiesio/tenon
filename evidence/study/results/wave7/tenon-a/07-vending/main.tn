@@ -1,0 +1,140 @@
+const DENOMS: List[Int] = [5, 10, 20, 50, 100, 200]
+
+struct Slot { name: Str, price: Int, count: Int }
+
+struct Machine { tubes: List[Int], escrow: List[Int], slots: Map[Str, Slot] }
+
+enum Cmd { Load(Str, Str, Int, Int), Fill(Int, Int), Insert(Int), Select(Str), Refund, Stock(Str), Coins }
+
+// A decimal number without leading zeros with 1 to max_len digits.
+fn number(s: Str, max_len: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > max_len or not s.is_digits() { return None }
+    if s.len() > 1 and s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+fn is_slot(s: Str) -> Bool {
+    s.len() == 2 and s.byte(0) >= 'A' and s.byte(0) <= 'F' and s.byte(1) >= '1' and s.byte(1) <= '9'
+}
+
+fn denom_index(coin: Int) -> Option[Int] { DENOMS.index_of(coin) }
+
+fn parse(line: Str) -> Option[Cmd] {
+    let t = line.split(" ")
+    match t[0] {
+        "LOAD" if t.len() == 5 => {
+            if not is_slot(t[1]) { return None }
+            let name = t[2]
+            if name.is_empty() or name.len() > 12 or not name.all_bytes(fn(b) => b.is_lower()) { return None }
+            let price = number(t[3], 4)?
+            if price == 0 or price % 5 != 0 { return None }
+            let count = number(t[4], 2)?
+            Some(Load(t[1], name, price, count))
+        }
+        "FILL" if t.len() == 3 => {
+            let coin = number(t[1], 3)?
+            let _ = denom_index(coin)?
+            let n = number(t[2], 3)?
+            if n == 0 { return None }
+            Some(Fill(coin, n))
+        }
+        "INSERT" if t.len() == 2 => {
+            let coin = number(t[1], 6)?
+            if coin == 0 { return None }
+            Some(Insert(coin))
+        }
+        "SELECT" if t.len() == 2 => if is_slot(t[1]) { Some(Select(t[1])) } else { None },
+        "STOCK" if t.len() == 2 => if is_slot(t[1]) { Some(Stock(t[1])) } else { None },
+        "REFUND" if t.len() == 1 => Some(Refund),
+        "COINS" if t.len() == 1 => Some(Coins),
+        _ => None,
+    }
+}
+
+fn total(coins: List[Int]) -> Int {
+    var s = 0
+    for (i, n) in coins.enumerate() { s += DENOMS[i] * n }
+    s
+}
+
+// Largest denomination first; "-" if there are no coins.
+fn coin_list(coins: List[Int]) -> Str {
+    var parts: List[Str] = []
+    for i in rev_range(0, DENOMS.len()) {
+        if coins[i] > 0 { parts.push("{DENOMS[i]}x{coins[i]}") }
+    }
+    if parts.is_empty() { "-" } else { parts.join(" ") }
+}
+
+// The greedy change for `owed` from `available`, or None if it cannot be paid.
+fn change(available: List[Int], owed: Int) -> Option[List[Int]] {
+    var out = List.filled(DENOMS.len(), 0)
+    var rest = owed
+    for i in rev_range(0, DENOMS.len()) {
+        let n = available[i].min(rest / DENOMS[i])
+        out[i] = n
+        rest -= n * DENOMS[i]
+    }
+    if rest == 0 { Some(out) } else { None }
+}
+
+fn Machine.run(mut self, cmd: Cmd) -> Str {
+    match cmd {
+        Load(slot, name, price, count) => {
+            self.slots[slot] = Slot { name, price, count }
+            "OK"
+        }
+        Fill(coin, n) => {
+            self.tubes[denom_index(coin).unwrap()] += n
+            "OK"
+        }
+        Insert(coin) => {
+            let Some(i) = denom_index(coin) else { return "REJECT {coin}" }
+            self.escrow[i] += 1
+            "CREDIT {total(self.escrow)}"
+        }
+        Refund => {
+            let r = "REFUND {total(self.escrow)} {coin_list(self.escrow)}"
+            self.escrow = List.filled(DENOMS.len(), 0)
+            r
+        }
+        Stock(slot) => match self.slots.get(slot) {
+            Some(s) => "{slot} {s.name} {s.price} {s.count}",
+            None => "ERR no such slot",
+        },
+        Coins => DENOMS.enumerate().map(fn(p) => "{p.1}x{self.tubes[p.0]}").join(" "),
+        Select(slot) => {
+            let Some(s) = self.slots.get(slot) else { return "ERR no such slot" }
+            if s.count == 0 { return "ERR sold out" }
+            let credit = total(self.escrow)
+            if credit < s.price { return "ERR need {s.price - credit}" }
+            var pool = self.tubes
+            for i in 0..DENOMS.len() { pool[i] += self.escrow[i] }
+            let owed = credit - s.price
+            let Some(coins) = change(pool, owed) else { return "ERR no change" }
+            for i in 0..DENOMS.len() { pool[i] -= coins[i] }
+            self.tubes = pool
+            self.escrow = List.filled(DENOMS.len(), 0)
+            self.slots[slot].count -= 1
+            "VEND {s.name} {owed} {coin_list(coins)}"
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: vending < commands")
+        return 2
+    }
+    var m = Machine { tubes: List.filled(DENOMS.len(), 0), escrow: List.filled(DENOMS.len(), 0), slots: [:] }
+    while let Some(line) = con.read_line() {
+        let reply = match parse(line) {
+            Some(cmd) => m.run(cmd),
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

@@ -1,0 +1,129 @@
+{"event": "start", "task": "01-numlines", "t": 1793187480.259839}
+{"event": "run", "task": "01-numlines", "t": 1793187493.412673, "exit": 0, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187493.5463831, "exit": 0, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187493.681629, "exit": 0, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187493.81473, "exit": 0, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187493.948577, "exit": 0, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187494.082313, "exit": 0, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187494.212757, "exit": 1, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187494.347143, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187494.481466, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187494.61472, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187494.7479439, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187494.880877, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187495.014509, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187495.147402, "exit": 1, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187495.278216, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187495.413206, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187495.5447319, "exit": 0, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187501.027325, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187501.1633868, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187501.2983198, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187501.429085, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187501.5614421, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187501.6953669, "exit": 2, "crash": false}
+{"event": "run", "task": "01-numlines", "t": 1793187501.828085, "exit": 2, "crash": false}
+{"event": "done", "task": "01-numlines", "t": 1793187501.848235}
+{"event": "start", "task": "02-checkdigit", "t": 1793187501.86974}
+{"event": "run", "task": "02-checkdigit", "t": 1793187512.6688561, "exit": 1, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187512.802711, "exit": 0, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187512.9322329, "exit": 0, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.0619268, "exit": 1, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.190047, "exit": 1, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.3203032, "exit": 1, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.452388, "exit": 2, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.58269, "exit": 2, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.7120798, "exit": 2, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.8398578, "exit": 2, "crash": false}
+{"event": "run", "task": "02-checkdigit", "t": 1793187513.968483, "exit": 2, "crash": false}
+{"event": "done", "task": "02-checkdigit", "t": 1793187515.84806}
+{"event": "start", "task": "03-detab", "t": 1793187515.870719}
+{"event": "run", "task": "03-detab", "t": 1793187527.850715, "exit": 0, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187527.983936, "exit": 0, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187528.129869, "exit": 0, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187528.2612228, "exit": 0, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187528.394207, "exit": 1, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187528.535382, "exit": 2, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187528.668166, "exit": 2, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187528.802766, "exit": 2, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187528.931803, "exit": 2, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187529.064584, "exit": 2, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187529.1952598, "exit": 2, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187529.3266659, "exit": 2, "crash": false}
+{"event": "run", "task": "03-detab", "t": 1793187529.459975, "exit": 2, "crash": false}
+{"event": "done", "task": "03-detab", "t": 1793187532.973185}
+{"event": "start", "task": "04-cidrmerge", "t": 1793187532.995403}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187545.849993, "exit": 0, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187545.981508, "exit": 0, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187546.112889, "exit": 0, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187546.243318, "exit": 0, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187546.3751, "exit": 0, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187546.504147, "exit": 0, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187546.63907, "exit": 1, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187546.770588, "exit": 2, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187546.900773, "exit": 2, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187547.030695, "exit": 2, "crash": false}
+{"event": "run", "task": "04-cidrmerge", "t": 1793187547.1595168, "exit": 0, "crash": false}
+{"event": "done", "task": "04-cidrmerge", "t": 1793187549.337064}
+{"event": "start", "task": "05-reconcile", "t": 1793187549.359327}
+{"event": "run", "task": "05-reconcile", "t": 1793187567.1319401, "exit": 0, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187567.26738, "exit": 0, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187567.4038332, "exit": 0, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187567.549748, "exit": 1, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187567.682306, "exit": 1, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187567.814307, "exit": 2, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187567.9473479, "exit": 2, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187568.085186, "exit": 2, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187568.2198431, "exit": 2, "crash": false}
+{"event": "run", "task": "05-reconcile", "t": 1793187568.3547258, "exit": 2, "crash": false}
+{"event": "done", "task": "05-reconcile", "t": 1793187570.473514}
+{"event": "start", "task": "06-costbasis", "t": 1793187570.497082}
+{"event": "run", "task": "06-costbasis", "t": 1793187583.980722, "exit": 0, "crash": false}
+{"event": "run", "task": "06-costbasis", "t": 1793187584.114461, "exit": 0, "crash": false}
+{"event": "run", "task": "06-costbasis", "t": 1793187584.246479, "exit": 1, "crash": false}
+{"event": "run", "task": "06-costbasis", "t": 1793187584.378168, "exit": 0, "crash": false}
+{"event": "run", "task": "06-costbasis", "t": 1793187584.510015, "exit": 2, "crash": false}
+{"event": "done", "task": "06-costbasis", "t": 1793187589.3805141}
+{"event": "start", "task": "07-vending", "t": 1793187589.4043388}
+{"event": "run", "task": "07-vending", "t": 1793187608.564237, "exit": 0, "crash": false}
+{"event": "run", "task": "07-vending", "t": 1793187608.696909, "exit": 0, "crash": false}
+{"event": "run", "task": "07-vending", "t": 1793187608.832403, "exit": 0, "crash": false}
+{"event": "run", "task": "07-vending", "t": 1793187608.971025, "exit": 0, "crash": false}
+{"event": "run", "task": "07-vending", "t": 1793187609.10896, "exit": 2, "crash": false}
+{"event": "done", "task": "07-vending", "t": 1793187612.652836}
+{"event": "start", "task": "08-vfs", "t": 1793187612.67536}
+{"event": "run", "task": "08-vfs", "t": 1793187645.3249469, "exit": 0, "crash": false}
+{"event": "run", "task": "08-vfs", "t": 1793187645.4662552, "exit": 0, "crash": false}
+{"event": "run", "task": "08-vfs", "t": 1793187655.288106, "exit": 0, "crash": false}
+{"event": "run", "task": "08-vfs", "t": 1793187655.425366, "exit": 2, "crash": false}
+{"event": "done", "task": "08-vfs", "t": 1793187657.528554}
+{"event": "start", "task": "09-bookmarks", "t": 1793187657.552029}
+{"event": "run", "task": "09-bookmarks", "t": 1793187693.704045, "exit": 0, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187702.499038, "exit": 137, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187702.976646, "exit": 0, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187703.113688, "exit": 0, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187703.254115, "exit": 0, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187703.3926752, "exit": 1, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187703.527702, "exit": 1, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187703.6618922, "exit": 1, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187703.797346, "exit": 1, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187703.935791, "exit": 1, "crash": false}
+{"event": "run", "task": "09-bookmarks", "t": 1793187704.06862, "exit": 2, "crash": false}
+{"event": "done", "task": "09-bookmarks", "t": 1793187706.133006}
+{"event": "start", "task": "10-war", "t": 1793187706.156123}
+{"event": "run", "task": "10-war", "t": 1793187726.813756, "exit": 0, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187726.94768, "exit": 0, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187727.084028, "exit": 0, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187727.220603, "exit": 0, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187727.3550642, "exit": 0, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187727.4884322, "exit": 0, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187727.620985, "exit": 0, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187727.752507, "exit": 1, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187727.894302, "exit": 1, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187728.027189, "exit": 1, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187728.155668, "exit": 2, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187728.285604, "exit": 2, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187728.414034, "exit": 2, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187728.546208, "exit": 2, "crash": false}
+{"event": "run", "task": "10-war", "t": 1793187728.6800141, "exit": 2, "crash": false}
+{"event": "done", "task": "10-war", "t": 1793187734.080002}

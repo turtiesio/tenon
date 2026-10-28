@@ -1,0 +1,143 @@
+const COINS: List[Int] = [5, 10, 20, 50, 100, 200]
+
+struct Slot { name: Str, price: Int, count: Int }
+
+struct Machine {
+    tubes: List[Int],     // coins per denomination, indexed like COINS
+    escrow: List[Int],    // inserted coins, same indexing
+    slots: Map[Str, Slot],
+}
+
+fn Machine.new() -> Machine {
+    Machine { tubes: List.filled(6, 0), escrow: List.filled(6, 0), slots: [:] }
+}
+
+// `[1-9][0-9]{0,max_len-1}`
+fn parse_pos(s: Str, max_len: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > max_len or not s.is_digits() or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+fn valid_slot(s: Str) -> Bool {
+    s.len() == 2 and s.byte(0) >= 'A' and s.byte(0) <= 'F' and s.byte(1) >= '1' and s.byte(1) <= '9'
+}
+
+fn coin_index(coin: Int) -> Option[Int] {
+    COINS.index_of(coin)
+}
+
+// "200x1 20x2", largest first, or "-"
+fn coin_list(counts: List[Int]) -> Str {
+    var parts: List[Str] = []
+    for i in rev_range(0, 6) {
+        if counts[i] > 0 { parts.push("{COINS[i]}x{counts[i]}") }
+    }
+    if parts.is_empty() { "-" } else { parts.join(" ") }
+}
+
+fn credit_of(counts: List[Int]) -> Int {
+    var sum = 0
+    for i in 0..6 { sum += COINS[i] * counts[i] }
+    sum
+}
+
+// The greedy change from `avail`, or None if it cannot pay exactly.
+fn make_change(avail: List[Int], amount: Int) -> Option[List[Int]] {
+    var owed = amount
+    var given = List.filled(6, 0)
+    for i in rev_range(0, 6) {
+        let n = avail[i].min(owed / COINS[i])
+        given[i] = n
+        owed -= n * COINS[i]
+    }
+    if owed == 0 { Some(given) } else { None }
+}
+
+fn Machine.select(mut self, slot: Str) -> Str {
+    let Some(s) = self.slots.get(slot) else { return "ERR no such slot" }
+    if s.count == 0 { return "ERR sold out" }
+    let credit = credit_of(self.escrow)
+    if credit < s.price { return "ERR need {s.price - credit}" }
+    var pool: List[Int] = []
+    for i in 0..6 { pool.push(self.tubes[i] + self.escrow[i]) }
+    let Some(change) = make_change(pool, credit - s.price) else { return "ERR no change" }
+    for i in 0..6 { pool[i] -= change[i] }
+    self.tubes = pool
+    self.escrow = List.filled(6, 0)
+    self.slots[slot].count -= 1
+    "VEND {s.name} {credit - s.price} {coin_list(change)}"
+}
+
+fn Machine.load(mut self, t: List[Str]) -> Str {
+    if t.len() != 5 or not valid_slot(t[1]) { return "ERR bad command" }
+    let name = t[2]
+    if name.is_empty() or name.len() > 12 or not name.all_bytes(fn(b) => b.is_lower()) {
+        return "ERR bad command"
+    }
+    let Some(price) = parse_pos(t[3], 4) else { return "ERR bad command" }
+    if price % 5 != 0 { return "ERR bad command" }
+    let count = if t[4] == "0" { Some(0) } else { parse_pos(t[4], 2) }
+    let Some(n) = count else { return "ERR bad command" }
+    self.slots[t[1]] = Slot { name, price, count: n }
+    "OK"
+}
+
+fn Machine.handle(mut self, line: Str) -> Str {
+    let t = line.split(" ")
+    match t[0] {
+        "LOAD" => self.load(t),
+        "FILL" => {
+            if t.len() != 3 { return "ERR bad command" }
+            let Some(coin) = parse_pos(t[1], 6) else { return "ERR bad command" }
+            let Some(i) = coin_index(coin) else { return "ERR bad command" }
+            let Some(n) = parse_pos(t[2], 3) else { return "ERR bad command" }
+            self.tubes[i] += n
+            "OK"
+        }
+        "INSERT" => {
+            if t.len() != 2 { return "ERR bad command" }
+            let Some(coin) = parse_pos(t[1], 6) else { return "ERR bad command" }
+            let Some(i) = coin_index(coin) else { return "REJECT {coin}" }
+            self.escrow[i] += 1
+            "CREDIT {credit_of(self.escrow)}"
+        }
+        "SELECT" => {
+            if t.len() != 2 or not valid_slot(t[1]) { return "ERR bad command" }
+            self.select(t[1])
+        }
+        "REFUND" => {
+            if t.len() != 1 { return "ERR bad command" }
+            let reply = "REFUND {credit_of(self.escrow)} {coin_list(self.escrow)}"
+            self.escrow = List.filled(6, 0)
+            reply
+        }
+        "STOCK" => {
+            if t.len() != 2 or not valid_slot(t[1]) { return "ERR bad command" }
+            match self.slots.get(t[1]) {
+                Some(s) => "{t[1]} {s.name} {s.price} {s.count}",
+                None => "ERR no such slot",
+            }
+        }
+        "COINS" => {
+            if t.len() != 1 { return "ERR bad command" }
+            var parts: List[Str] = []
+            for i in 0..6 { parts.push("{COINS[i]}x{self.tubes[i]}") }
+            parts.join(" ")
+        }
+        _ => "ERR bad command",
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("vending takes no arguments")
+        return 2
+    }
+    var m = Machine.new()
+    while let Some(line) = con.read_line() {
+        con.println(m.handle(line))
+        con.flush()
+    }
+    0
+}

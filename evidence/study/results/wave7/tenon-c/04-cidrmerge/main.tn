@@ -1,0 +1,64 @@
+fn decimal(s: Str, limit: Int) -> Option[Int] {
+    if s.is_empty() or (s.len() > 1 and s.starts_with("0")) or not s.all_bytes(fn(b) => b.is_digit()) { return None }
+    let Some(n) = s.to_int() else { return None }
+    if n > limit { None } else { Some(n) }
+}
+fn parse(line: Str) -> Option[(Int, Int)] {
+    let parts = line.split("/")
+    if parts.len() > 2 { return None }
+    var prefix = 32
+    if parts.len() == 2 {
+        let Some(p) = decimal(parts[1], 32) else { return None }
+        prefix = p
+    }
+    let octets = parts[0].split(".")
+    if octets.len() != 4 { return None }
+    var address = 0
+    for octet in octets {
+        let Some(n) = decimal(octet, 255) else { return None }
+        address = address * 256 + n
+    }
+    let size = 2.pow(32 - prefix)
+    if address % size != 0 { return None }
+    Some((address, address + size - 1))
+}
+fn dotted(address: Int) -> Str {
+    "{address / 16777216}.{address / 65536 % 256}.{address / 256 % 256}.{address % 256}"
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() and sys.args != ["-r"] { sys.console.eprintln("usage"); return 2 }
+    var status = 0
+    var ranges: List[(Int, Int)] = []
+    while let Some(line) = sys.console.read_line() {
+        if line.is_empty() or line.starts_with("#") { continue }
+        match parse(line) {
+            Some(interval) => ranges.push(interval),
+            None => { sys.console.eprintln("bad entry: {line}"); status = 1 }
+        }
+    }
+    ranges.sort()
+    var merged: List[(Int, Int)] = []
+    for interval in ranges {
+        if not merged.is_empty() and interval.0 <= merged.last().unwrap().1 + 1 {
+            let index = merged.len() - 1
+            merged[index].1 = merged[index].1.max(interval.1)
+        } else { merged.push(interval) }
+    }
+    for (start, end) in merged {
+        if sys.args == ["-r"] { sys.console.println("{dotted(start)}-{dotted(end)} {end - start + 1}") }
+        else {
+            var cursor = start
+            while cursor <= end {
+                var size = 1
+                var prefix = 32
+                while prefix > 0 and cursor % (size * 2) == 0 and cursor + size * 2 - 1 <= end {
+                    size *= 2
+                    prefix -= 1
+                }
+                sys.console.println("{dotted(cursor)}/{prefix}")
+                cursor += size
+            }
+        }
+    }
+    status
+}

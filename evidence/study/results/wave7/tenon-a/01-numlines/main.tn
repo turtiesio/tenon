@@ -1,0 +1,112 @@
+struct Opts { style: Str, width: Int, sep: Str, start: Int, step: Int, format: Str, file: Option[Str] }
+
+// -?[0-9]{1,9}
+fn parse_signed(s: Str) -> Option[Int] {
+    let digits = s.strip_prefix("-").unwrap_or(s)
+    if digits.len() < 1 or digits.len() > 9 or not digits.is_digits() { return None }
+    s.to_int()
+}
+
+// [1-9][0-9]? and at most 20
+fn parse_width(s: Str) -> Option[Int] {
+    if s.len() < 1 or s.len() > 2 or not s.is_digits() or s.byte(0) == '0' { return None }
+    let n = s.to_int()?
+    if n > 20 { None } else { Some(n) }
+}
+
+fn parse_args(args: List[Str]) -> Result[Opts, Str] {
+    var o = Opts { style: "t", width: 6, sep: "\t", start: 1, step: 1, format: "rn", file: None }
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if not a.starts_with("-") {
+            if o.file.is_some() { return Err("more than one FILE") }
+            o.file = Some(a)
+            i += 1
+            continue
+        }
+        if i + 1 >= args.len() {
+            return Err(if ["-b", "-w", "-s", "-v", "-i", "-f"].contains(a) { "option {a} needs a value" } else { "unknown option '{a}'" })
+        }
+        let v = args[i + 1]
+        match a {
+            "-b" => {
+                if v != "a" and v != "t" and v != "n" { return Err("bad style '{v}'") }
+                o.style = v
+            }
+            "-w" => {
+                let Some(w) = parse_width(v) else { return Err("bad width '{v}'") }
+                o.width = w
+            }
+            "-s" => o.sep = v,
+            "-v" => {
+                let Some(n) = parse_signed(v) else { return Err("bad start '{v}'") }
+                o.start = n
+            }
+            "-i" => {
+                let Some(n) = parse_signed(v) else { return Err("bad step '{v}'") }
+                o.step = n
+            }
+            "-f" => {
+                if v != "ln" and v != "rn" and v != "rz" { return Err("bad format '{v}'") }
+                o.format = v
+            }
+            other => return Err("unknown option '{other}'"),
+        }
+        i += 2
+    }
+    Ok(o)
+}
+
+fn field(n: Int, width: Int, format: Str) -> Str {
+    let d = n.to_str()
+    match format {
+        "ln" => d.pad_right(width, " "),
+        "rz" => {
+            if n < 0 { "-" + (-n).to_str().pad_left(width - 1, "0") } else { d.pad_left(width, "0") }
+        }
+        _ => d.pad_left(width, " "),
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let o = match parse_args(sys.args) {
+        Ok(x) => x,
+        Err(msg) => {
+            con.eprintln("numlines: {msg}")
+            con.eprintln("usage: numlines [-b STYLE] [-w WIDTH] [-s SEP] [-v START] [-i STEP] [-f FORMAT] [FILE]")
+            return 2
+        }
+    }
+    let data = match o.file {
+        Some(path) => match sys.fs.read_bytes(path) {
+            Ok(bs) => bs,
+            Err(e) => {
+                con.eprintln("numlines: cannot read {path}: {e}")
+                return 1
+            }
+        },
+        None => con.read_all_bytes(),
+    }
+    let sep = o.sep.bytes()
+    var out: List[Int] = []
+    var n = o.start
+    var line_start = 0
+    while line_start < data.len() {
+        var end = line_start
+        while end < data.len() and data[end] != '\n' { end += 1 }
+        let empty = end == line_start
+        let numbered = o.style == "a" or (o.style == "t" and not empty)
+        if numbered {
+            out.extend(field(n, o.width, o.format).bytes())
+            out.extend(sep)
+            n += o.step
+        }
+        out.extend(data.slice(line_start, end))
+        out.push('\n')
+        line_start = end + 1
+    }
+    con.write_bytes(out)
+    0
+}

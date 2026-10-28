@@ -1,0 +1,123 @@
+// The digits of a well-formed value, or None if it is not well formed.
+fn digits_of(value: Str, scheme: Str, check: Bool) -> Option[List[Int]] {
+    if value.is_empty() { return None }
+    let allow_x = scheme == "isbn10" and check
+    var ds: List[Int] = []
+    var prev_hyphen = true // a value may not start with '-'
+    for i in 0..value.len() {
+        let c = value.byte(i)
+        if c == '-' {
+            if prev_hyphen { return None }
+            prev_hyphen = true
+        } else if c.is_digit() {
+            ds.push(c - '0')
+            prev_hyphen = false
+        } else if c == 'X' {
+            if not allow_x or i != value.len() - 1 { return None }
+            ds.push(10)
+            prev_hyphen = false
+        } else {
+            return None
+        }
+    }
+    if prev_hyphen { return None }
+    let n = ds.len()
+    let ok_len = match scheme {
+        "luhn" => if check { n >= 2 and n <= 19 } else { n >= 1 and n <= 18 },
+        "isbn10" => n == if check { 10 } else { 9 },
+        _ => n == if check { 13 } else { 12 },
+    }
+    if not ok_len { return None }
+    if scheme == "isbn13" {
+        let prefix = ds[0] * 100 + ds[1] * 10 + ds[2]
+        if prefix != 978 and prefix != 979 { return None }
+    }
+    Some(ds)
+}
+
+fn luhn_sum(ds: List[Int]) -> Int {
+    var s = 0
+    for (k, i) in rev_range(0, ds.len()).enumerate() {
+        let pos = k + 1
+        var v = ds[i]
+        if pos % 2 == 0 {
+            v *= 2
+            if v > 9 { v -= 9 }
+        }
+        s += v
+    }
+    s
+}
+
+fn isbn10_sum(ds: List[Int]) -> Int {
+    var s = 0
+    for (i, d) in ds.enumerate() { s += (10 - i) * d }
+    s
+}
+
+fn isbn13_sum(ds: List[Int]) -> Int {
+    var s = 0
+    for (i, d) in ds.enumerate() { s += if i % 2 == 0 { d } else { 3 * d } }
+    s
+}
+
+fn is_correct(scheme: Str, ds: List[Int]) -> Bool {
+    match scheme {
+        "luhn" => luhn_sum(ds) % 10 == 0,
+        "isbn10" => isbn10_sum(ds) % 11 == 0,
+        _ => isbn13_sum(ds) % 10 == 0,
+    }
+}
+
+fn check_char(scheme: Str, ds: List[Int]) -> Str {
+    match scheme {
+        "luhn" => {
+            var c = 0
+            while not is_correct("luhn", ds + [c]) { c += 1 }
+            c.to_str()
+        }
+        "isbn10" => {
+            let v = (11 - isbn10_sum(ds) % 11) % 11
+            if v == 10 { "X" } else { v.to_str() }
+        }
+        _ => ((10 - isbn13_sum(ds) % 10) % 10).to_str(),
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    let usage = "usage: checkdigit luhn|isbn10|isbn13 check|make VALUE..."
+    if args.len() < 3 {
+        con.eprintln(usage)
+        return 2
+    }
+    let scheme = args[0]
+    let mode = args[1]
+    if not ["luhn", "isbn10", "isbn13"].contains(scheme) or not ["check", "make"].contains(mode) {
+        con.eprintln(usage)
+        return 2
+    }
+    let check = mode == "check"
+    var all_ok = true
+    for value in args.slice(2, args.len()) {
+        match digits_of(value, scheme, check) {
+            None => {
+                con.println("{value} invalid")
+                all_ok = false
+            }
+            Some(ds) => {
+                if check {
+                    if is_correct(scheme, ds) { con.println("{value} ok") } else {
+                        con.println("{value} bad")
+                        all_ok = false
+                    }
+                } else {
+                    let sep = if value.contains("-") { "-" } else { "" }
+                    con.println("{value}{sep}{check_char(scheme, ds)}")
+                }
+            }
+        }
+    }
+    if all_ok { 0 } else { 1 }
+}

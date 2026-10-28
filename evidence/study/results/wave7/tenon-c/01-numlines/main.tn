@@ -1,0 +1,67 @@
+fn signed(s: Str) -> Bool {
+    let d = if s.starts_with("-") { s.slice(1, s.len()) } else { s }
+    d.len() >= 1 and d.len() <= 9 and d.all_bytes(fn(b) => b.is_digit())
+}
+fn main(sys: Sys) -> Int {
+    var style = "t"
+    var width = 6
+    var sep = "\t"
+    var number = 1
+    var step = 1
+    var format = "rn"
+    var file: Option[Str] = None
+    var i = 0
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg.starts_with("-") {
+            if not ["-b", "-w", "-s", "-v", "-i", "-f"].contains(arg) or i + 1 >= sys.args.len() {
+                sys.console.eprintln("invalid option")
+                return 2
+            }
+            i += 1
+            let value = sys.args[i]
+            var valid = true
+            match arg {
+                "-b" => { valid = ["a", "t", "n"].contains(value); style = value }
+                "-f" => { valid = ["ln", "rn", "rz"].contains(value); format = value }
+                "-s" => sep = value,
+                "-w" => {
+                    valid = value.len() >= 1 and value.len() <= 2 and not value.starts_with("0") and value.all_bytes(fn(b) => b.is_digit())
+                    width = value.to_int().unwrap_or(0)
+                    valid = valid and width <= 20
+                }
+                "-v" => { valid = signed(value); number = value.to_int().unwrap_or(0) }
+                "-i" => { valid = signed(value); step = value.to_int().unwrap_or(0) }
+                _ => {}
+            }
+            if not valid { sys.console.eprintln("invalid value"); return 2 }
+        } else {
+            if file.is_some() { sys.console.eprintln("multiple files"); return 2 }
+            file = Some(arg)
+        }
+        i += 1
+    }
+    let text = match file {
+        Some(path) => match sys.fs.read(path) {
+            Ok(data) => data,
+            Err(_) => { sys.console.eprintln("unreadable file"); return 1 }
+        },
+        None => sys.console.read_all(),
+    }
+    if text.is_empty() { return 0 }
+    var lines = text.split("\n")
+    if text.ends_with("\n") { let _ = lines.pop() }
+    for line in lines {
+        if style == "a" or (style == "t" and not line.is_empty()) {
+            let digits = number.to_str()
+            let field = if format == "ln" { digits.pad_right(width, " ") }
+                else if format == "rz" {
+                    if number < 0 { "-" + (-number).to_str().pad_left(width - 1, "0") }
+                    else { digits.pad_left(width, "0") }
+                } else { digits.pad_left(width, " ") }
+            sys.console.println("{field}{sep}{line}")
+            number += step
+        } else { sys.console.println(line) }
+    }
+    0
+}

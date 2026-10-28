@@ -1,0 +1,95 @@
+// A decimal number without leading zeros, at most `max_digits` digits.
+fn parse_plain(s: Str, max_digits: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > max_digits or not s.is_digits() { return None }
+    if s.len() > 1 and s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+fn parse_addr(s: Str) -> Option[Int] {
+    let parts = s.split(".")
+    if parts.len() != 4 { return None }
+    var n = 0
+    for p in parts {
+        let o = parse_plain(p, 3)?
+        if o > 255 { return None }
+        n = n * 256 + o
+    }
+    Some(n)
+}
+
+// An entry as the first and last address of its block.
+fn parse_entry(line: Str) -> Option[(Int, Int)] {
+    var addr_text = line
+    var prefix = 32
+    if let Some((a, p)) = line.split_once("/") {
+        addr_text = a
+        prefix = parse_plain(p, 2)?
+        if prefix > 32 { return None }
+    }
+    let first = parse_addr(addr_text)?
+    let size = 2.pow(32 - prefix)
+    if first % size != 0 { return None }
+    Some((first, first + size - 1))
+}
+
+fn dotted(n: Int) -> Str {
+    "{n / 16777216 % 256}.{n / 65536 % 256}.{n / 256 % 256}.{n % 256}"
+}
+
+// The fewest blocks covering first..=last, greedily from the left.
+fn blocks(first: Int, last: Int) -> List[Str] {
+    var out: List[Str] = []
+    var s = first
+    while s <= last {
+        var k = 32
+        while s % 2.pow(k) != 0 or s + 2.pow(k) - 1 > last { k -= 1 }
+        out.push("{dotted(s)}/{32 - k}")
+        s += 2.pow(k)
+    }
+    out
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    var ranges_mode = false
+    if args.len() == 1 and args[0] == "-r" {
+        ranges_mode = true
+    } else if args.len() != 0 {
+        con.eprintln("usage: cidrmerge [-r]")
+        return 2
+    }
+    var entries: List[(Int, Int)] = []
+    var bad = 0
+    var lineno = 0
+    while let Some(line) = con.read_line() {
+        lineno += 1
+        if line.is_empty() or line.starts_with("#") { continue }
+        match parse_entry(line) {
+            Some(e) => entries.push(e),
+            None => {
+                con.eprintln("line {lineno}: bad entry '{line}'")
+                bad += 1
+            }
+        }
+    }
+    entries.sort()
+    var merged: List[(Int, Int)] = []
+    for (first, last) in entries {
+        if not merged.is_empty() and first <= merged[merged.len() - 1].1 + 1 {
+            if last > merged[merged.len() - 1].1 { merged[merged.len() - 1].1 = last }
+        } else {
+            merged.push((first, last))
+        }
+    }
+    var out = ""
+    for (first, last) in merged {
+        if ranges_mode {
+            out += "{dotted(first)}-{dotted(last)} {last - first + 1}\n"
+        } else {
+            for b in blocks(first, last) { out += b + "\n" }
+        }
+    }
+    con.print(out)
+    if bad > 0 { 1 } else { 0 }
+}

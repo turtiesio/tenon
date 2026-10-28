@@ -1,0 +1,89 @@
+import regex
+struct Entry { line: Int, date: Str, day: Int, amount: Int, text: Str }
+fn date_day(date: Str) -> Option[Int] {
+    let parts = date.split("-")
+    let year = parts[0].to_int().unwrap()
+    let month = parts[1].to_int().unwrap()
+    let day = parts[2].to_int().unwrap()
+    if year < 1970 or year > 2099 or month < 1 or month > 12 { return None }
+    var lengths = [31,28,31,30,31,30,31,31,30,31,30,31]
+    if year % 4 == 0 { lengths[1] = 29 }
+    if day < 1 or day > lengths[month - 1] { return None }
+    var ordinal = day
+    for y in 1970..year { ordinal += if y % 4 == 0 { 366 } else { 365 } }
+    for m in 0..month - 1 { ordinal += lengths[m] }
+    Some(ordinal)
+}
+fn load(fs: Fs, path: Str) -> Result[List[Entry], Str] {
+    let data = fs.read(path).map_err(fn(_) => "unreadable file")?
+    let pattern = regex.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2}),(-?(?:0|[1-9][0-9]{0,8})\.[0-9]{2}),([^,]{1,40})").unwrap()
+    var entries: List[Entry] = []
+    for (index, line) in data.lines().enumerate() {
+        if line.is_empty() { continue }
+        let Some(g) = pattern.full(line) else { return Err("invalid line") }
+        let Some(day) = date_day(g[1]) else { return Err("invalid date") }
+        let text = g[3]
+        if text.starts_with(" ") or text.ends_with(" ") or not text.all_bytes(fn(b) => b >= 32 and b <= 126) { return Err("invalid text") }
+        let amount = g[2].replace(".", "").to_int().unwrap()
+        entries.push(Entry { line: index + 1, date: g[1], day, amount, text })
+    }
+    Ok(entries)
+}
+fn main(sys: Sys) -> Int {
+    var days = 3
+    var files: List[Str] = []
+    var i = 0
+    let day_pattern = regex.compile(r"(?:0|[1-9][0-9]{0,2})").unwrap()
+    while i < sys.args.len() {
+        let arg = sys.args[i]
+        if arg == "-d" {
+            i += 1
+            if i >= sys.args.len() { sys.console.eprintln("usage"); return 2 }
+            let value = sys.args[i]
+            if not day_pattern.is_full(value) { sys.console.eprintln("invalid days"); return 2 }
+            days = value.to_int().unwrap()
+            if days > 365 { sys.console.eprintln("invalid days"); return 2 }
+        } else if arg.starts_with("-") { sys.console.eprintln("usage"); return 2 }
+        else { files.push(arg) }
+        i += 1
+    }
+    if files.len() != 2 { sys.console.eprintln("usage"); return 2 }
+    let bank = match load(sys.fs, files[0]) { Ok(b) => b, Err(be) => { sys.console.eprintln(be); return 1 } }
+    let ledger = match load(sys.fs, files[1]) { Ok(l) => l, Err(le) => { sys.console.eprintln(le); return 1 } }
+    var bank_used = List.filled(bank.len(), false)
+    var ledger_used = List.filled(ledger.len(), false)
+    var matches = 0
+    for (bi, bentry) in bank.enumerate() {
+        var best = -1
+        var distance = days + 1
+        for (li, lentry) in ledger.enumerate() {
+            let delta = (bentry.day - lentry.day).abs()
+            if not ledger_used[li] and bentry.amount == lentry.amount and delta < distance {
+                best = li; distance = delta
+            }
+        }
+        if best >= 0 {
+            bank_used[bi] = true
+            ledger_used[best] = true
+            matches += 1
+            sys.console.println("M {bentry.line} {ledger[best].line} {bentry.amount.fmt_fixed(2)} {distance}")
+        }
+    }
+    var bank_only = 0
+    var ledger_only = 0
+    var diff = 0
+    for (bj, unmatched_bank) in bank.enumerate() {
+        if not bank_used[bj] {
+            bank_only += 1; diff += unmatched_bank.amount
+            sys.console.println("B {unmatched_bank.line} {unmatched_bank.date} {unmatched_bank.amount.fmt_fixed(2)} {unmatched_bank.text}")
+        }
+    }
+    for (lj, unmatched_ledger) in ledger.enumerate() {
+        if not ledger_used[lj] {
+            ledger_only += 1; diff -= unmatched_ledger.amount
+            sys.console.println("L {unmatched_ledger.line} {unmatched_ledger.date} {unmatched_ledger.amount.fmt_fixed(2)} {unmatched_ledger.text}")
+        }
+    }
+    sys.console.println("matched={matches} bank_only={bank_only} ledger_only={ledger_only} diff={diff.fmt_fixed(2)}")
+    0
+}

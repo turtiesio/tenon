@@ -1,0 +1,80 @@
+import regex
+const DENOMS: List[Int] = [5,10,20,50,100,200]
+struct Product { name: Str, price: Int, count: Int }
+struct Machine { slots: Map[Str, Product], tubes: List[Int], escrow: List[Int] }
+fn coin_list(counts: List[Int]) -> Str {
+    var parts: List[Str] = []
+    for i in rev_range(0, 6) { if counts[i] > 0 { parts.push("{DENOMS[i]}x{counts[i]}") } }
+    if parts.is_empty() { "-" } else { parts.join(" ") }
+}
+fn credit(coins: List[Int]) -> Int {
+    var sum = 0
+    for i in 0..6 { sum += DENOMS[i] * coins[i] }
+    sum
+}
+fn Machine.command(mut self, line: Str) -> Str {
+    let load = regex.compile(r"LOAD ([A-F][1-9]) ([a-z]{1,12}) ([1-9][0-9]{0,3}) (0|[1-9][0-9]?)").unwrap()
+    let fill = regex.compile(r"FILL (5|10|20|50|100|200) ([1-9][0-9]{0,2})").unwrap()
+    let insert = regex.compile(r"INSERT ([1-9][0-9]{0,5})").unwrap()
+    let slot_cmd = regex.compile(r"(SELECT|STOCK) ([A-F][1-9])").unwrap()
+    if let Some(l) = load.full(line) {
+        let price = l[3].to_int().unwrap()
+        if price % 5 != 0 { return "ERR bad command" }
+        self.slots[l[1]] = Product { name: l[2], price, count: l[4].to_int().unwrap() }
+        return "OK"
+    }
+    if let Some(f) = fill.full(line) {
+        let fi = DENOMS.index_of(f[1].to_int().unwrap()).unwrap()
+        self.tubes[fi] += f[2].to_int().unwrap()
+        return "OK"
+    }
+    if let Some(ins) = insert.full(line) {
+        let coin = ins[1].to_int().unwrap()
+        let Some(ci) = DENOMS.index_of(coin) else { return "REJECT {coin}" }
+        self.escrow[ci] += 1
+        return "CREDIT {credit(self.escrow)}"
+    }
+    if line == "REFUND" {
+        let response = "REFUND {credit(self.escrow)} {coin_list(self.escrow)}"
+        self.escrow = List.filled(6, 0)
+        return response
+    }
+    if line == "COINS" {
+        var all: List[Str] = []
+        for ti in 0..6 { all.push("{DENOMS[ti]}x{self.tubes[ti]}") }
+        return all.join(" ")
+    }
+    if let Some(cmd) = slot_cmd.full(line) {
+        let slot = cmd[2]
+        let Some(product) = self.slots.get(slot) else { return "ERR no such slot" }
+        if cmd[1] == "STOCK" { return "{slot} {product.name} {product.price} {product.count}" }
+        if product.count == 0 { return "ERR sold out" }
+        let balance = credit(self.escrow)
+        if balance < product.price { return "ERR need {product.price - balance}" }
+        var available = self.tubes
+        for ai in 0..6 { available[ai] += self.escrow[ai] }
+        let change = balance - product.price
+        var owed = change
+        var paid = List.filled(6, 0)
+        for pi in rev_range(0, 6) {
+            paid[pi] = available[pi].min(owed / DENOMS[pi])
+            available[pi] -= paid[pi]
+            owed -= paid[pi] * DENOMS[pi]
+        }
+        if owed != 0 { return "ERR no change" }
+        self.tubes = available
+        self.escrow = List.filled(6, 0)
+        self.slots[slot].count -= 1
+        return "VEND {product.name} {change} {coin_list(paid)}"
+    }
+    "ERR bad command"
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("usage"); return 2 }
+    var machine = Machine { slots: [:], tubes: List.filled(6, 0), escrow: List.filled(6, 0) }
+    while let Some(line) = sys.console.read_line() {
+        sys.console.println(machine.command(line))
+        sys.console.flush()
+    }
+    0
+}

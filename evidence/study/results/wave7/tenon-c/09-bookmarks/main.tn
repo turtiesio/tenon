@@ -1,0 +1,172 @@
+struct Bookmark { url: Str, tags: List[Str] }
+enum Command { Add(Str, Str), Del(Str), Tag(Str, Str), Untag(Str, Str), Get(Str), Find(Str), Compact }
+fn name_ok(s: Str) -> Bool { s.len() >= 1 and s.len() <= 20 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '-') }
+fn tag_ok(s: Str) -> Bool { s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit()) }
+fn url_ok(s: Str) -> Bool { s.len() >= 1 and s.len() <= 200 and s.all_bytes(fn(b) => b >= 33 and b <= 126) }
+fn number(s: Str) -> Option[Int] {
+    if s.is_empty() or (s.len() > 1 and s.starts_with("0")) or not s.all_bytes(fn(b) => b.is_digit()) { return None }
+    s.to_int()
+}
+fn parse(line: Str) -> Option[Command] {
+    let w = line.split(" ")
+    if w == ["COMPACT"] { return Some(Compact) }
+    if w.len() == 2 {
+        if w[0] == "FIND" and tag_ok(w[1]) { return Some(Find(w[1])) }
+        if not name_ok(w[1]) { return None }
+        if w[0] == "DEL" { return Some(Del(w[1])) }
+        if w[0] == "GET" { return Some(Get(w[1])) }
+    }
+    if w.len() == 3 and name_ok(w[1]) {
+        if w[0] == "ADD" and url_ok(w[2]) { return Some(Add(w[1],w[2])) }
+        if w[0] == "TAG" and tag_ok(w[2]) { return Some(Tag(w[1],w[2])) }
+        if w[0] == "UNTAG" and tag_ok(w[2]) { return Some(Untag(w[1],w[2])) }
+    }
+    None
+}
+fn modifying(cmd: Command) -> Bool {
+    match cmd { Add(_,_) | Del(_) | Tag(_,_) | Untag(_,_) => true, _ => false }
+}
+fn tags_text(tags: List[Str]) -> Str { if tags.is_empty() { "-" } else { tags.join(",") } }
+fn apply(store: mut Map[Str, Bookmark], cmd: Command) -> Str {
+    match cmd {
+        Add(name,url) => {
+            if store.contains(name) { return "ERR exists" }
+            store[name] = Bookmark { url, tags: [] }
+            "OK"
+        }
+        Del(dname) => {
+            if store.remove(dname).is_none() { "ERR no such bookmark" } else { "OK" }
+        }
+        Tag(tname,tag) => {
+            if not store.contains(tname) { return "ERR no such bookmark" }
+            if store[tname].tags.contains(tag) { return "UNCHANGED" }
+            store[tname].tags.push(tag)
+            store[tname].tags.sort()
+            "OK"
+        }
+        Untag(uname,utag) => {
+            if not store.contains(uname) { return "ERR no such bookmark" }
+            let Some(index) = store[uname].tags.index_of(utag) else { return "UNCHANGED" }
+            let _ = store[uname].tags.remove(index)
+            "OK"
+        }
+        Get(gname) => {
+            let Some(bookmark) = store.get(gname) else { return "ERR no such bookmark" }
+            "{gname} {bookmark.url} {tags_text(bookmark.tags)}"
+        }
+        Find(ftag) => {
+            var names: List[Str] = []
+            for (key,value) in store { if value.tags.contains(ftag) { names.push(key) } }
+            names.sort()
+            if names.is_empty() { "-" } else { names.join(" ") }
+        }
+        Compact => "ERR bad command",
+    }
+}
+fn io(result: Result[Unit, IoError]) -> Result[Unit, Str] { result.map_err(fn(_) => "file operation failed") }
+fn read(fs: Fs, path: Str) -> Result[Str, Str] { fs.read(path).map_err(fn(_) => "cannot read data") }
+fn run(sys: Sys, dir: Str) -> Result[Unit, Str] {
+    let fs = sys.fs
+    if not fs.exists(dir) { io(fs.mkdir_one(dir))? }
+    if not fs.is_dir(dir) { return Err("not a directory") }
+    let snap_path = path_join(dir,"snapshot")
+    let journal_path = path_join(dir,"journal")
+    let temp_path = path_join(dir,"snapshot.tmp")
+    var store: Map[Str, Bookmark] = [:]
+    var snapshot_seq = 0
+    if fs.exists(snap_path) {
+        let snapshot = read(fs,snap_path)?
+        if not snapshot.ends_with("\n") { return Err("invalid snapshot") }
+        var lines = snapshot.split("\n")
+        let _ = lines.pop()
+        let header = lines[0].split(" ")
+        if header.len() != 2 or header[0] != "bookmarks" { return Err("invalid header") }
+        let Some(sseq) = number(header[1]) else { return Err("invalid snapshot sequence") }
+        snapshot_seq = sseq
+        var previous_name = ""
+        for row in lines.slice(1,lines.len()) {
+            let fields = row.split(" ")
+            if fields.len() != 3 { return Err("invalid snapshot row") }
+            let bname = fields[0]
+            if not name_ok(bname) or bname <= previous_name or not url_ok(fields[1]) { return Err("invalid snapshot entry") }
+            var tags: List[Str] = []
+            if fields[2] != "-" {
+                var previous_tag = ""
+                for item in fields[2].split(",") {
+                    if not tag_ok(item) or item <= previous_tag { return Err("invalid snapshot tags") }
+                    tags.push(item)
+                    previous_tag = item
+                }
+            }
+            store[bname] = Bookmark { url: fields[1], tags }
+            previous_name = bname
+        }
+    }
+    var last_seq = snapshot_seq
+    var truncate_to: Option[Int] = None
+    if fs.exists(journal_path) {
+        let journal = read(fs,journal_path)?
+        var complete = journal
+        if not journal.is_empty() and not journal.ends_with("\n") {
+            let length = journal.rfind("\n").map_or(0,fn(pos) => pos + 1)
+            complete = journal.slice(0,length)
+            truncate_to = Some(length)
+        }
+        var previous_seq: Option[Int] = None
+        if not complete.is_empty() {
+            var records = complete.split("\n")
+            let _ = records.pop()
+            for record in records {
+                let Some((seq_text, command_text)) = record.split_once(" ") else { return Err("invalid journal record") }
+                let Some(seq) = number(seq_text) else { return Err("invalid journal sequence") }
+                if seq == 0 { return Err("invalid journal sequence") }
+                match previous_seq {
+                    Some(prior) => { if prior.checked_add(1) != Some(seq) { return Err("journal gap") } }
+                    None => { if seq > snapshot_seq and snapshot_seq.checked_add(1) != Some(seq) { return Err("journal gap") } }
+                }
+                let Some(command) = parse(command_text) else { return Err("invalid journal command") }
+                if not modifying(command) { return Err("invalid journal command") }
+                if seq > snapshot_seq {
+                    if apply(mut store,command) != "OK" { return Err("inapplicable journal record") }
+                }
+                previous_seq = Some(seq)
+                last_seq = last_seq.max(seq)
+            }
+            if previous_seq.unwrap() < snapshot_seq { return Err("journal ends before snapshot") }
+        }
+    }
+    if let Some(length_to_keep) = truncate_to { io(fs.truncate(journal_path,length_to_keep))? }
+    while let Some(line) = sys.console.read_line() {
+        let response = match parse(line) {
+            None => "ERR bad command",
+            Some(Compact) => {
+                var snapshot_out = "bookmarks {last_seq}\n"
+                var sorted_names = store.keys()
+                sorted_names.sort()
+                for key_name in sorted_names {
+                    let entry = store[key_name]
+                    snapshot_out += "{key_name} {entry.url} {tags_text(entry.tags)}\n"
+                }
+                io(fs.write(temp_path,snapshot_out))?
+                io(fs.rename(temp_path,snap_path))?
+                if fs.exists(journal_path) { io(fs.truncate(journal_path,0))? }
+                "OK {last_seq}"
+            }
+            Some(operation) => {
+                let answer = apply(mut store,operation)
+                if answer == "OK" and modifying(operation) {
+                    last_seq += 1
+                    io(fs.append(journal_path,"{last_seq} {line}\n"))?
+                }
+                answer
+            }
+        }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    Ok(())
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("usage"); return 2 }
+    match run(sys,sys.args[0]) { Ok(()) => 0, Err(message) => { sys.console.eprintln(message); 1 } }
+}

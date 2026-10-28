@@ -1,0 +1,250 @@
+const BAD: Str = "ERR bad command"
+
+struct Node {
+    name: Str,
+    parent: Int,
+    is_dir: Bool,
+    text: Str,
+    kids: Map[Str, Int],
+}
+
+// Where a path ends.
+enum Res {
+    Found(Int),
+    Missing(Int, Str),   // parent directory, final name
+    Fail(Str),           // the whole ERR response
+}
+
+struct Tree { nodes: List[Node], cwd: Int }
+
+fn Tree.new() -> Tree {
+    Tree { nodes: [Node { name: "", parent: 0, is_dir: true, text: "", kids: [:] }], cwd: 0 }
+}
+
+fn valid_name(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 32 or s == "." or s == ".." { return false }
+    s.all_bytes(fn(b) => b.is_alnum() or b == '.' or b == '_' or b == '-')
+}
+
+// The components of a well-formed path, and whether it is absolute.
+fn parse_path(p: Str) -> Option[(Bool, List[Str])] {
+    if p == "/" { return Some((true, [])) }
+    let absolute = p.starts_with("/")
+    let body = if absolute { p.slice(1, p.len()) } else { p }
+    if body.is_empty() { return None }
+    let comps = body.split("/")
+    for c in comps {
+        if c != "." and c != ".." and not valid_name(c) { return None }
+    }
+    Some((absolute, comps))
+}
+
+fn Tree.resolve(self, path: Str) -> Option[Res] {
+    let (absolute, comps) = parse_path(path)?
+    var cur = if absolute { 0 } else { self.cwd }
+    for (i, c) in comps.enumerate() {
+        if not self.nodes[cur].is_dir { return Some(Fail("ERR not a directory")) }
+        if c == "." {
+            continue
+        } else if c == ".." {
+            cur = self.nodes[cur].parent
+        } else {
+            match self.nodes[cur].kids.get(c) {
+                Some(id) => cur = id,
+                None => {
+                    if i == comps.len() - 1 { return Some(Missing(cur, c)) }
+                    return Some(Fail("ERR not found"))
+                }
+            }
+        }
+    }
+    Some(Found(cur))
+}
+
+fn Tree.abs_path(self, id: Int) -> Str {
+    if id == 0 { return "/" }
+    var names: List[Str] = []
+    var cur = id
+    while cur != 0 {
+        names.push(self.nodes[cur].name)
+        cur = self.nodes[cur].parent
+    }
+    names.reverse()
+    "/" + names.join("/")
+}
+
+// Is `anc` the node `id` itself or one of its ancestors?
+fn Tree.contains(self, anc: Int, id: Int) -> Bool {
+    var cur = id
+    while true {
+        if cur == anc { return true }
+        if cur == 0 { return false }
+        cur = self.nodes[cur].parent
+    }
+    false
+}
+
+// (bytes, files, directories) below a directory, or of a file itself.
+fn Tree.usage(self, id: Int) -> (Int, Int, Int) {
+    let n = self.nodes[id]
+    if not n.is_dir { return (n.text.len(), 1, 0) }
+    var bytes = 0
+    var files = 0
+    var dirs = 0
+    for (_, kid) in n.kids {
+        let (b, f, d) = self.usage(kid)
+        bytes += b
+        files += f
+        dirs += d
+        if self.nodes[kid].is_dir { dirs += 1 }
+    }
+    (bytes, files, dirs)
+}
+
+fn Tree.listing(self, id: Int) -> Str {
+    let n = self.nodes[id]
+    if not n.is_dir { return n.name }
+    var names = n.kids.keys()
+    names.sort()
+    if names.is_empty() { return "-" }
+    var parts: List[Str] = []
+    for name in names {
+        parts.push(if self.nodes[n.kids[name]].is_dir { name + "/" } else { name })
+    }
+    parts.join(" ")
+}
+
+fn Tree.add(mut self, parent: Int, name: Str, is_dir: Bool, text: Str) {
+    let id = self.nodes.len()
+    self.nodes.push(Node { name, parent, is_dir, text, kids: [:] })
+    self.nodes[parent].kids[name] = id
+}
+
+fn Tree.move(mut self, src: Str, dst: Str) -> Str {
+    let Some(sres) = self.resolve(src) else { return BAD }
+    let Some(dres) = self.resolve(dst) else { return BAD }
+    var id = 0
+    match sres {
+        Fail(e) => return e,
+        Missing(_, _) => return "ERR not found",
+        Found(n) => id = n,
+    }
+    if id == 0 { return "ERR invalid" }
+    var tparent = 0
+    var tname = ""
+    match dres {
+        Fail(e) => return e,
+        Found(d) => {
+            if not self.nodes[d].is_dir { return "ERR exists" }
+            tparent = d
+            tname = self.nodes[id].name
+            if self.nodes[d].kids.contains(tname) { return "ERR exists" }
+        }
+        Missing(p, n) => {
+            tparent = p
+            tname = n
+        }
+    }
+    if self.nodes[id].is_dir and self.contains(id, tparent) { return "ERR invalid" }
+    let old_parent = self.nodes[id].parent
+    let old_name = self.nodes[id].name
+    let _ = self.nodes[old_parent].kids.remove(old_name)
+    self.nodes[id].name = tname
+    self.nodes[id].parent = tparent
+    self.nodes[tparent].kids[tname] = id
+    "OK"
+}
+
+fn Tree.handle(mut self, line: Str) -> Str {
+    let t = line.split(" ")
+    let cmd = t[0]
+    if cmd == "WRITE" {
+        // WRITE <path> <text>: the text is the rest of the line
+        let Some(rest) = line.strip_prefix("WRITE ") else { return BAD }
+        let Some((path, text)) = rest.split_once(" ") else { return BAD }
+        if text.is_empty() or text.len() > 100 or not text.all_bytes(fn(b) => b >= 32 and b <= 126) {
+            return BAD
+        }
+        let Some(r) = self.resolve(path) else { return BAD }
+        match r {
+            Fail(e) => return e,
+            Found(id) => {
+                if self.nodes[id].is_dir { return "ERR is a directory" }
+                self.nodes[id].text = text
+            }
+            Missing(parent, name) => self.add(parent, name, false, text),
+        }
+        return "OK"
+    }
+    let takes_path = cmd == "CD" or cmd == "MKDIR" or cmd == "CAT" or cmd == "RM"
+    let optional_path = cmd == "LS" or cmd == "DU"
+    if cmd == "PWD" {
+        if t.len() != 1 { return BAD }
+        return self.abs_path(self.cwd)
+    } else if cmd == "MV" {
+        if t.len() != 3 { return BAD }
+        return self.move(t[1], t[2])
+    } else if takes_path or optional_path {
+        if t.len() != 2 and not (optional_path and t.len() == 1) { return BAD }
+        var r = Found(self.cwd)
+        if t.len() == 2 {
+            let Some(parsed) = self.resolve(t[1]) else { return BAD }
+            r = parsed
+        }
+        if cmd == "MKDIR" {
+            return match r {
+                Fail(e) => e,
+                Found(_) => "ERR exists",
+                Missing(parent, name) => {
+                    self.add(parent, name, true, "")
+                    "OK"
+                }
+            }
+        }
+        let id = match r {
+            Fail(e) => return e,
+            Missing(_, _) => return "ERR not found",
+            Found(id) => id,
+        }
+        return match cmd {
+            "CD" => {
+                if self.nodes[id].is_dir {
+                    self.cwd = id
+                    "OK"
+                } else {
+                    "ERR not a directory"
+                }
+            }
+            "CAT" => if self.nodes[id].is_dir { "ERR is a directory" } else { self.nodes[id].text },
+            "LS" => self.listing(id),
+            "DU" => {
+                let (b, f, d) = self.usage(id)
+                "{b} {f} {d}"
+            }
+            _ => {
+                // RM
+                if self.contains(id, self.cwd) { return "ERR busy" }
+                if not self.nodes[id].kids.is_empty() { return "ERR not empty" }
+                let parent = self.nodes[id].parent
+                let name = self.nodes[id].name
+                let _ = self.nodes[parent].kids.remove(name)
+                "OK"
+            }
+        }
+    }
+    BAD
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("vfs takes no arguments")
+        return 2
+    }
+    var tree = Tree.new()
+    while let Some(line) = con.read_line() {
+        con.println(tree.handle(line))
+        con.flush()
+    }
+    0
+}

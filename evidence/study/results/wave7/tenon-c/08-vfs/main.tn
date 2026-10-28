@@ -1,0 +1,155 @@
+struct Node { name: Str, parent: Int, directory: Bool, text: Str, children: Map[Str, Int] }
+struct Vfs { nodes: List[Node], cwd: Int }
+fn valid_path(path: Str) -> Bool {
+    if path == "/" { return true }
+    if path.is_empty() or path.len() > 200 { return false }
+    let tail = if path.starts_with("/") { path.slice(1, path.len()) } else { path }
+    for component in tail.split("/") {
+        if component.is_empty() or component.len() > 32 or not component.all_bytes(fn(b) => b.is_alnum() or b == '.' or b == '_' or b == '-') { return false }
+    }
+    true
+}
+fn Vfs.resolve(self, path: Str) -> Result[(Int, Int, Str), Str] {
+    var current = if path.starts_with("/") { 0 } else { self.cwd }
+    if path == "/" { return Ok((0,0,"")) }
+    let tail = if path.starts_with("/") { path.slice(1, path.len()) } else { path }
+    let components = tail.split("/")
+    for (index, name) in components.enumerate() {
+        if not self.nodes[current].directory { return Err("ERR not a directory") }
+        if name == "." { continue }
+        if name == ".." { current = self.nodes[current].parent; continue }
+        match self.nodes[current].children.get(name) {
+            Some(child) => current = child,
+            None => {
+                if index == components.len() - 1 { return Ok((-1, current, name)) }
+                return Err("ERR not found")
+            }
+        }
+    }
+    Ok((current, self.nodes[current].parent, self.nodes[current].name))
+}
+fn Vfs.below(self, node: Int, ancestor: Int) -> Bool {
+    var cursor = node
+    while true {
+        if cursor == ancestor { return true }
+        if cursor == 0 { return false }
+        cursor = self.nodes[cursor].parent
+    }
+    false
+}
+fn Vfs.pwd(self) -> Str {
+    var names: List[Str] = []
+    var cursor = self.cwd
+    while cursor != 0 { names.push(self.nodes[cursor].name); cursor = self.nodes[cursor].parent }
+    names.reverse()
+    "/" + names.join("/")
+}
+fn Vfs.usage(self, node: Int) -> (Int, Int, Int) {
+    if not self.nodes[node].directory { return (self.nodes[node].text.len(),1,0) }
+    var bytes = 0
+    var files = 0
+    var dirs = 0
+    for child in self.nodes[node].children.values() {
+        let counts = self.usage(child)
+        bytes += counts.0; files += counts.1; dirs += counts.2
+        if self.nodes[child].directory { dirs += 1 }
+    }
+    (bytes, files, dirs)
+}
+fn Vfs.command(mut self, line: Str) -> Str {
+    var words = line.split(" ")
+    var text = ""
+    if line.starts_with("WRITE ") {
+        let rest = line.slice(6, line.len())
+        let Some((write_path, body)) = rest.split_once(" ") else { return "ERR bad command" }
+        if body.is_empty() or body.len() > 100 or not body.all_bytes(fn(b) => b >= 32 and b <= 126) { return "ERR bad command" }
+        words = ["WRITE", write_path]
+        text = body
+    }
+    let op = words[0]
+    if op == "PWD" { if words.len() != 1 { return "ERR bad command" }; return self.pwd() }
+    if op == "LS" or op == "DU" {
+        if words.len() == 1 { words.push(".") }
+        if words.len() != 2 { return "ERR bad command" }
+    } else if op == "MV" {
+        if words.len() != 3 { return "ERR bad command" }
+    } else if ["CD","MKDIR","WRITE","CAT","RM"].contains(op) {
+        if words.len() != 2 or (op == "WRITE" and text.is_empty()) { return "ERR bad command" }
+    } else { return "ERR bad command" }
+    for path in words.slice(1, words.len()) { if not valid_path(path) { return "ERR bad command" } }
+    let source = match self.resolve(words[1]) { Ok(src) => src, Err(src_error) => { return src_error } }
+    let node = source.0
+    if op == "MV" {
+        if node == -1 { return "ERR not found" }
+        if node == 0 { return "ERR invalid" }
+        let destination = match self.resolve(words[2]) { Ok(dst) => dst, Err(dst_error) => { return dst_error } }
+        var parent = destination.1
+        var name = destination.2
+        if destination.0 >= 0 {
+            if not self.nodes[destination.0].directory { return "ERR exists" }
+            parent = destination.0
+            name = self.nodes[node].name
+            if self.nodes[parent].children.contains(name) { return "ERR exists" }
+        }
+        if self.nodes[node].directory and self.below(parent, node) { return "ERR invalid" }
+        let old_parent = self.nodes[node].parent
+        let old_name = self.nodes[node].name
+        let _ = self.nodes[old_parent].children.remove(old_name)
+        self.nodes[parent].children[name] = node
+        self.nodes[node].parent = parent
+        self.nodes[node].name = name
+        return "OK"
+    }
+    if op == "MKDIR" or op == "WRITE" {
+        if node >= 0 {
+            if op == "MKDIR" { return "ERR exists" }
+            if self.nodes[node].directory { return "ERR is a directory" }
+            self.nodes[node].text = text
+        } else {
+            let new_id = self.nodes.len()
+            self.nodes.push(Node { name: source.2, parent: source.1, directory: op == "MKDIR", text, children: [:] })
+            self.nodes[source.1].children[source.2] = new_id
+        }
+        return "OK"
+    }
+    if node == -1 { return "ERR not found" }
+    if op == "CD" {
+        if not self.nodes[node].directory { return "ERR not a directory" }
+        self.cwd = node
+        return "OK"
+    }
+    if op == "CAT" {
+        if self.nodes[node].directory { return "ERR is a directory" }
+        return self.nodes[node].text
+    }
+    if op == "RM" {
+        if self.below(self.cwd, node) { return "ERR busy" }
+        if not self.nodes[node].children.is_empty() { return "ERR not empty" }
+        let rm_parent = self.nodes[node].parent
+        let rm_name = self.nodes[node].name
+        let _ = self.nodes[rm_parent].children.remove(rm_name)
+        return "OK"
+    }
+    if op == "LS" {
+        if not self.nodes[node].directory { return self.nodes[node].name }
+        var names = self.nodes[node].children.keys()
+        names.sort()
+        var entries: List[Str] = []
+        for child_name in names {
+            let suffix = if self.nodes[self.nodes[node].children[child_name]].directory { "/" } else { "" }
+            entries.push(child_name + suffix)
+        }
+        return if entries.is_empty() { "-" } else { entries.join(" ") }
+    }
+    let usage = self.usage(node)
+    "{usage.0} {usage.1} {usage.2}"
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("usage"); return 2 }
+    var vfs = Vfs { nodes: [Node { name: "", parent: 0, directory: true, text: "", children: [:] }], cwd: 0 }
+    while let Some(line) = sys.console.read_line() {
+        sys.console.println(vfs.command(line))
+        sys.console.flush()
+    }
+    0
+}

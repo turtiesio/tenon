@@ -1,0 +1,65 @@
+import regex
+struct Lot { qty: Int, cost: Int }
+fn held(lots: List[Lot]) -> Int { lots.map(fn(lot) => lot.qty).sum() }
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("usage"); return 2 }
+    let trade_re = regex.compile(r"(BUY|SELL) ([A-Z]{1,5}) ([1-9][0-9]{0,5}) ((?:0|[1-9][0-9]{0,5})\.[0-9]{2})").unwrap()
+    let split_re = regex.compile(r"SPLIT ([A-Z]{1,5}) (2|3|4|5|6|7|8|9|10)").unwrap()
+    var stock: Map[Str, List[Lot]] = [:]
+    var total = 0
+    var status = 0
+    var line_no = 0
+    while let Some(line) = sys.console.read_line() {
+        line_no += 1
+        if line.is_empty() or line.starts_with("#") { continue }
+        if let Some(t) = trade_re.full(line) {
+            let sym = t[2]
+            let qty = t[3].to_int().unwrap()
+            let price = t[4].replace(".", "").to_int().unwrap()
+            if t[1] == "BUY" {
+                stock.or_insert(sym, [])
+                stock[sym].push(Lot { qty, cost: qty * price })
+            } else {
+                let holding = held(stock.get_or(sym, []))
+                if qty > holding { sys.console.println("{line_no}: ERR insufficient {sym} held={holding}"); status = 1; continue }
+                var remaining = qty
+                var cost = 0
+                while remaining > 0 {
+                    let oldest = stock[sym][0]
+                    if remaining >= oldest.qty {
+                        cost += oldest.cost
+                        remaining -= oldest.qty
+                        let _ = stock[sym].remove(0)
+                    } else {
+                        let part = (2 * oldest.cost * remaining + oldest.qty) / (2 * oldest.qty)
+                        cost += part
+                        stock[sym][0].qty -= remaining
+                        stock[sym][0].cost -= part
+                        remaining = 0
+                    }
+                }
+                let proceeds = qty * price
+                let gain = proceeds - cost
+                total += gain
+                sys.console.println("{line_no}: SELL {sym} {qty} proceeds={proceeds.fmt_fixed(2)} cost={cost.fmt_fixed(2)} gain={gain.fmt_fixed(2)}")
+            }
+        } else if let Some(s) = split_re.full(line) {
+            let symbol = s[1]
+            let ratio = s[2].to_int().unwrap()
+            if stock.get_or(symbol, []).is_empty() { sys.console.println("{line_no}: ERR not held {symbol}"); status = 1; continue }
+            for index in 0..stock[symbol].len() { stock[symbol][index].qty *= ratio }
+            sys.console.println("{line_no}: SPLIT {symbol} {ratio} held={held(stock[symbol])}")
+        } else { sys.console.println("{line_no}: ERR bad line"); status = 1 }
+    }
+    var symbols = stock.keys()
+    symbols.sort()
+    for name in symbols {
+        let lots = stock[name]
+        if lots.is_empty() { continue }
+        let quantity = held(lots)
+        let basis = lots.map(fn(item) => item.cost).sum()
+        sys.console.println("HOLD {name} {quantity} cost={basis.fmt_fixed(2)} lots={lots.len()}")
+    }
+    sys.console.println("TOTAL gain={total.fmt_fixed(2)}")
+    status
+}

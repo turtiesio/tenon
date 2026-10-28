@@ -1,0 +1,90 @@
+const ALL: Int = 4294967296 // 2^32
+
+// A decimal number without leading zeros, at most `max`.
+fn parse_num(s: Str, max: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > 3 or not s.is_digits() { return None }
+    if s.len() > 1 and s.byte(0) == '0' { return None }
+    let n = s.to_int()?
+    if n > max { None } else { Some(n) }
+}
+
+fn parse_addr(s: Str) -> Option[Int] {
+    let parts = s.split(".")
+    if parts.len() != 4 { return None }
+    var a = 0
+    for p in parts { a = a * 256 + parse_num(p, 255)? }
+    Some(a)
+}
+
+// The inclusive range (first, last) that the entry covers.
+fn parse_entry(line: Str) -> Result[(Int, Int), Str] {
+    let (addr_text, prefix) = match line.split_once("/") {
+        Some((a, p)) => {
+            let Some(n) = parse_num(p, 32) else { return Err("bad prefix length '{p}'") }
+            (a, n)
+        }
+        None => (line, 32),
+    }
+    let Some(addr) = parse_addr(addr_text) else { return Err("bad address '{addr_text}'") }
+    let size = 2.pow(32 - prefix)
+    if addr % size != 0 { return Err("bits set after the prefix /{prefix}") }
+    Ok((addr, addr + size - 1))
+}
+
+fn dotted(a: Int) -> Str {
+    "{a / 16777216}.{a / 65536 % 256}.{a / 256 % 256}.{a % 256}"
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    let ranges_mode = args.len() == 1 and args[0] == "-r"
+    if not args.is_empty() and not ranges_mode {
+        con.eprintln("usage: cidrmerge [-r]")
+        return 2
+    }
+    var blocks: List[(Int, Int)] = []
+    var bad = false
+    var lineno = 0
+    while let Some(line) = con.read_line() {
+        lineno += 1
+        if line.is_empty() or line.starts_with("#") { continue }
+        match parse_entry(line) {
+            Ok(b) => blocks.push(b),
+            Err(msg) => {
+                con.eprintln("cidrmerge: line {lineno}: {msg}: '{line}'")
+                bad = true
+            }
+        }
+    }
+    blocks.sort()
+    var merged: List[(Int, Int)] = []
+    for (s, e) in blocks {
+        if let Some(last) = merged.last() {
+            if s <= last.1 + 1 {
+                merged[merged.len() - 1] = (last.0, last.1.max(e))
+                continue
+            }
+        }
+        merged.push((s, e))
+    }
+    for (s, e) in merged {
+        if ranges_mode {
+            con.println("{dotted(s)}-{dotted(e)} {e - s + 1}")
+            continue
+        }
+        var start = s
+        while start <= e {
+            var p = 0
+            var size = ALL
+            // the largest aligned block at start that ends at or before e
+            while start % size != 0 or start + size - 1 > e {
+                size /= 2
+                p += 1
+            }
+            con.println("{dotted(start)}/{p}")
+            start += size
+        }
+    }
+    if bad { 1 } else { 0 }
+}
