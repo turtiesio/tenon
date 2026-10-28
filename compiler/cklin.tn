@@ -545,6 +545,7 @@ fn Walk.method(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr]
         Some(RTrait(tr, mi, _, _)) => {
             let tm = self.env.traits[tr].methods[mi]
             self.expr(recv, tm.self_kind == ValSelf)?
+            refs = tm.refs
         }
         _ => self.expr(recv, false)?,
     }

@@ -751,6 +751,10 @@ fn Ck.fmt_spec(self, x: ckast.Expr, t0: cktypes.Ty, f: parser.Spec) -> Result[Un
     Ok(())
 }
 
+fn ref_value[T](sp: ckast.Span, n: Str) -> Result[T, ckast.Diag] {
+    ckast.fail(sp, "'" + n + "' has 'ref' parameters, so it can only be called, not used as a value")
+}
+
 fn Ck.name(mut self, e: ckast.Expr, n: Str) -> Result[cktypes.Ty, ckast.Diag] {
     match self.lookup(n) {
         Some((si, l)) => {
@@ -766,6 +770,8 @@ fn Ck.name(mut self, e: ckast.Expr, n: Str) -> Result[cktypes.Ty, ckast.Diag] {
             if not self.in_callee and f.muts.contains(true) {
                 return ckast.fail(e.sp, "'" + n + "' has 'mut' parameters, so it can only be called, not used as a value")
             }
+            // A function type cannot say `ref`: as a value, its argument would count as consumed.
+            if not self.in_callee and f.refs.contains(true) { return ref_value(e.sp, n) }
             if f.is_const {
                 self.pres[e.id] = RConst(fi)
                 return Ok(f.ret)
@@ -807,6 +813,7 @@ fn Ck.path(mut self, e: ckast.Expr, t0: Str, m: Str) -> Result[cktypes.Ty, ckast
         None => return ckast.fail(e.sp, "'" + t + "' has no member '" + m + "'"),
     }
     self.env.visible(fi, e.sp)?
+    if not self.in_callee and self.env.fns[fi].refs.contains(true) { return ref_value(e.sp, self.env.fns[fi].name) }
     if self.env.fns[fi].is_const {
         self.pres[e.id] = RConst(fi)
         return Ok(self.env.fns[fi].ret)

@@ -1,0 +1,10 @@
+// error: method 'peek' of impl Peek for Peeker has the wrong signature: expected fn(self, Claim) -> Int, found fn(self, ref Claim) -> Int
+// Authority finding 2 (2026-10-28): through a bound T: Peek the call consumes its argument (the trait's
+// signature), but this impl only inspects it, so the claim was lost.
+linear struct Claim { id: Int }
+fn Claim.done(self) -> Int { self.id }
+trait Peek { fn peek(self, c: Claim) -> Int }
+struct Peeker { n: Int }
+impl Peek for Peeker { fn peek(self, c: ref Claim) -> Int { c.id } }
+fn go[T: Peek](t: T, c: Claim) -> Int { t.peek(c) }
+fn main(sys: Sys) { sys.console.println("{go(Peeker { n: 1 }, Claim { id: 3 })}") }

@@ -1,0 +1,13 @@
+// error: method 'take' of impl Taker for Box has the wrong signature: expected fn(self, ref Claim) -> Int, found fn(self, Claim) -> Int
+// Authority finding 2 (2026-10-28): the trait promises to only inspect the claim, so callers keep it;
+// an impl that consumes it would finish the claim twice.
+linear struct Claim { id: Int }
+fn Claim.done(self) -> Int { self.id }
+trait Taker { fn take(self, c: ref Claim) -> Int }
+struct Box { n: Int }
+impl Taker for Box { fn take(self, c: Claim) -> Int { c.done() } }
+fn main(sys: Sys) {
+    let c = Claim { id: 3 }
+    let b = Box { n: 1 }
+    sys.console.println("{b.take(c)}")
+}

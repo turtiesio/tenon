@@ -1,0 +1,9 @@
+// error: 'Claim.same' has 'ref' parameters, so it can only be called, not used as a value
+// Authority finding 2 (2026-10-28): a method with a `ref` parameter, named as a value (`Type.method`).
+linear struct Claim { id: Int }
+fn Claim.done(self) -> Int { self.id }
+fn Claim.same(self, other: ref Claim) -> Int { self.id + other.id }
+fn main(sys: Sys) {
+    let g: fn(Claim, Claim) -> Int = Claim.same
+    sys.console.println("{g(Claim { id: 1 }, Claim { id: 2 })}")
+}

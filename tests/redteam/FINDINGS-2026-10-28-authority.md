@@ -169,6 +169,9 @@ mints values outside the type's module, which is how "privacy is unforgeability"
 to be prevented (the module's own `mk` function is not needed). A `let a = CLAIM` that is never
 used is still rejected ("never used"), so only duplication is open.
 
+Fixed in d2de63f, tests tests/v2/reject/const_linear.tn, tests/v2/reject/const_unique.tn (a constant
+cannot have a linear or unique type; reference §12).
+
 ## 5. Private enum: forgeable with `decode`, variants visible to patterns (Medium)
 
 **Property:** reference §13: "Items are private unless declared `pub`"; "a module is the only

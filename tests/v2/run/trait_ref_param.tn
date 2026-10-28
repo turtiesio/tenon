@@ -1,0 +1,17 @@
+// A trait method may take a `ref` parameter: the caller keeps the value, through a bound and
+// through `dyn`, as with a direct call (authority finding 2, 2026-10-28).
+linear struct Claim { id: Int }
+fn Claim.done(self) -> Int { self.id }
+trait Inspect { fn look(self, c: ref Claim) -> Int }
+struct Doubler { k: Int }
+impl Inspect for Doubler { fn look(self, c: ref Claim) -> Int { c.id * self.k } }
+fn via_bound[T: Inspect](t: T, c: ref Claim) -> Int { t.look(c) }
+fn via_dyn(d: dyn Inspect, c: ref Claim) -> Int { d.look(c) }
+fn main(sys: Sys) {
+    let c = Claim { id: 21 }
+    let d = Doubler { k: 2 }
+    let a = via_bound(d, c)
+    let b = via_dyn(dyn Inspect(d), c)
+    let e = d.look(c)
+    sys.console.println("{a} {b} {e} then done {c.done()}")
+}

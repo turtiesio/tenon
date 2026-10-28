@@ -222,7 +222,8 @@ fn declare_fns(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.Di
         }
         if not derived and not env.fn_ix.contains(full) { env.fn_ix[full] = env.fns.len() }
         env.fns.push(ckenv.FnInfo {
-            name: full, tparams, owner, params, muts: f.params.map(fn(p) => p.by_mut), ret, self_kind: f.self_kind,
+            name: full, tparams, owner, params, muts: f.params.map(fn(p) => p.by_mut),
+            refs: f.params.map(fn(p) => p.by_ref), ret, self_kind: f.self_kind,
             is_extern: f.body.is_none(), is_const: f.is_const, public: f.public, sp: f.sp, bounds, origin: f.origin,
         })
     }
@@ -373,7 +374,8 @@ fn declare_traits(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast
                 None => cktypes.t_unit(),
             }
             ms.push(ckenv.TMethod {
-                name: m.name, tparams: m.tparams, self_kind: m.self_kind, params, muts: m.params.map(fn(p) => p.by_mut), ret,
+                name: m.name, tparams: m.tparams, self_kind: m.self_kind, params, muts: m.params.map(fn(p) => p.by_mut),
+                refs: m.params.map(fn(p) => p.by_ref), ret,
                 default: t.defaults[mi], sp: m.sp,
             })
         }
@@ -383,11 +385,14 @@ fn declare_traits(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast
 }
 
 // `fn(self, Int) -> Str`, for messages.
-fn sig_text(self_kind: ckast.SelfK, ps: List[cktypes.Ty], muts: List[Bool], ret: cktypes.Ty) -> Str {
+fn sig_text(self_kind: ckast.SelfK, ps: List[cktypes.Ty], muts: List[Bool], refs: List[Bool], ret: cktypes.Ty) -> Str {
     var parts: List[Str] = []
     if self_kind == ValSelf { parts.push("self") }
     if self_kind == MutSelf { parts.push("mut self") }
-    for i in 0..ps.len() { parts.push((if i < muts.len() and muts[i] { "mut " } else { "" }) + ps[i].show()) }
+    for i in 0..ps.len() {
+        let mode = if i < muts.len() and muts[i] { "mut " } else if i < refs.len() and refs[i] { "ref " } else { "" }
+        parts.push(mode + ps[i].show())
+    }
     "fn(" + parts.join(", ") + ") -> " + ret.show()
 }
 
@@ -481,10 +486,11 @@ fn impl_fns(env: ckenv.Env, prog: ckast.Program, im: ckast.ImplDecl, tr: Int, ta
         let want_ps = tm.params.map(fn(p) => p.1.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x))))
         let want_ret = tm.ret.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x)))
         let have_ps = f.params.slice(if f.self_kind == NoSelf { 0 } else { 1 }, f.params.len()).map(fn(p) => p.1)
-        let ok = f.self_kind == tm.self_kind and own.len() == tm.tparams.len() and have_ps == want_ps and f.muts == tm.muts and f.ret == want_ret
+        let ok = f.self_kind == tm.self_kind and own.len() == tm.tparams.len() and have_ps == want_ps and f.muts == tm.muts and f.refs == tm.refs and
+            f.ret == want_ret
         if not ok {
-            let want = sig_text(tm.self_kind, want_ps, tm.muts, want_ret)
-            let have = sig_text(f.self_kind, have_ps, f.muts, f.ret)
+            let want = sig_text(tm.self_kind, want_ps, tm.muts, tm.refs, want_ret)
+            let have = sig_text(f.self_kind, have_ps, f.muts, f.refs, f.ret)
             let gen = if own.len() != tm.tparams.len() { " (type parameters: expected {tm.tparams.len()}, found {own.len()})" } else { "" }
             return ckast.fail(f.sp, "method '{mname}' of impl {tname} for {tshow} has the wrong signature: expected " + want + ", found " + have + gen)
         }

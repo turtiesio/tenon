@@ -17,6 +17,7 @@ pub struct EnumInfo {
 pub struct FnInfo {
     pub name: Str, pub tparams: List[Str], pub owner: Option[cktypes.Ty], pub params: List[(Str, cktypes.Ty)],
     pub muts: List[Bool], // per explicit (non-self) parameter: `x: mut T`
+    pub refs: List[Bool], // per explicit (non-self) parameter: `x: ref T`
     pub ret: cktypes.Ty, pub self_kind: ckast.SelfK, pub is_extern: Bool, pub is_const: Bool, pub public: Bool,
     pub sp: ckast.Span,
     pub bounds: List[List[Int]], // per type parameter: the traits it must implement
@@ -27,7 +28,7 @@ pub struct FnInfo {
 // of its default body, or -1.
 pub struct TMethod {
     pub name: Str, pub tparams: List[Str], pub self_kind: ckast.SelfK, pub params: List[(Str, cktypes.Ty)],
-    pub muts: List[Bool], pub ret: cktypes.Ty, pub default: Int, pub sp: ckast.Span,
+    pub muts: List[Bool], pub refs: List[Bool], pub ret: cktypes.Ty, pub default: Int, pub sp: ckast.Span,
 }
 // `unsafe_why`: why `dyn` cannot be used with it ("" when it can).
 pub struct TraitInfo {

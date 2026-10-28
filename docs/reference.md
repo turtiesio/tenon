@@ -574,6 +574,13 @@ not consume it. Use it for helpers that look at an obligation or a handle:
 fn respond(c: ref Conn, body: Str) -> Result[Unit, IoError] { c.write(body) }
 ```
 
+`ref` is not part of a function type (`fn(Conn, Str)` has no way to say it),
+so a function with a `ref` parameter can only be called, not used as a value
+(neither can a function with `mut` parameters): passed as a `fn(Claim) -> Int`, its argument
+would count as consumed and be lost. A trait method may declare `ref`
+parameters; every impl must declare the same ones (a call through a bound or
+`dyn` follows the trait's signature).
+
 ## 13. Modules
 
 ```tenon

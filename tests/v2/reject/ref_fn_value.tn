@@ -1,0 +1,10 @@
+// error: 'peek' has 'ref' parameters, so it can only be called, not used as a value
+// Authority finding 2 (2026-10-28): as a fn(Claim) -> Int, peek "consumed" the claim and dropped it.
+linear struct Claim { id: Int }
+fn Claim.done(self) -> Int { self.id }
+fn peek(c: ref Claim) -> Int { c.id }
+fn apply(f: fn(Claim) -> Int, c: Claim) -> Int { f(c) }
+fn main(sys: Sys) {
+    let n = apply(peek, Claim { id: 7 })
+    sys.console.println("{n}")
+}
