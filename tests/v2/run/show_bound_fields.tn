@@ -1,0 +1,27 @@
+// Show as a bound looks through fields and payloads (conformance 2026-10-28 #5):
+// a type with a Show impl satisfies it whatever it contains; a type without
+// one, when every part does.
+struct Logger { con: Console, name: Str }
+
+impl Show for Logger {
+    fn to_str(self) -> Str { "Logger({self.name})" }
+}
+
+struct Pair[A, B] { a: A, b: B }
+
+enum Tree { Leaf(Int), Node(List[Tree]) }
+
+struct Named { log: Logger, tree: Tree }
+
+fn show[T: Show](x: T) -> Str { x.to_str() }
+
+fn twice[T: Show](x: T) -> Str { show(Pair { a: x, b: [x] }) }
+
+fn main(sys: Sys) {
+    let log = Logger { con: sys.console, name: "main" }
+    let t = Node([Leaf(1), Node([Leaf(2)])])
+    sys.console.println(show(log))
+    sys.console.println(show(Named { log, tree: t }))
+    sys.console.println(twice(Some(3)))
+    sys.console.println("{[dyn Show(log), dyn Show(t)]}")
+}

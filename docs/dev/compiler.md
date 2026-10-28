@@ -162,8 +162,10 @@ cross-checked (the seed cannot parse them).
   one may), giving an ordinary `RMethod` of the impl's function. Bounds are
   checked after the body (`pbounds`), when the types are known:
   `ckenv.implements` (a type parameter has the bounds it declares; derived
-  traits structurally; otherwise an impl whose target matches, and its
-  bounds recursively). `cklin`: a trait call with `self` consumes its
+  traits structurally, Show through fields and payloads with
+  `unshowable_part`, where a part whose Show impl applies, `show_impl`, is
+  shown; otherwise an impl whose target matches, and its bounds
+  recursively). `cklin`: a trait call with `self` consumes its
   receiver; `dyn` cannot hold linear or unique values; an impl method's
   `self` is exempt only in the type's own module.
 

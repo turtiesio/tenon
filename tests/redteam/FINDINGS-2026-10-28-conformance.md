@@ -225,6 +225,8 @@ the `x` in the comment. Diagnostics are empty, the server exits 0, and the
 program itself prints `1\n` with exit 0 in both backends. Removing the
 comment makes navigation locate the field correctly.
 
+Fixed in c8dd8c3, test tests/lsp/fields.tn (run by tools/lsp_test.py).
+
 ## Negative results and validation limits
 
 - Ran 45 accepted, newly authored exploratory programs through generated-C

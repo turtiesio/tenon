@@ -49,6 +49,15 @@ pub fn is_var(t: cktypes.Ty) -> Bool {
     }
 }
 
+// t is itself what Show excludes (no part of it needs naming in the message).
+fn unshowable_itself(t: cktypes.Ty) -> Bool {
+    match t {
+        Fun(_, _) | Par(_) => true,
+        Con(n, _) => cktypes.is_capability(n),
+        _ => false,
+    }
+}
+
 fn irrefutable(p: ckast.Pat) -> Bool {
     match p.k {
         QWild | QBind(_) => true,
@@ -95,9 +104,15 @@ pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Di
             if pb.3.starts_with("dyn ") and kind != Plain {
                 return ckast.fail(pb.0, "a 'dyn' value cannot hold the " + ckenv.kind_word(kind) + " type " + t.show())
             }
-            let why = if self.env.is_builtin_trait(pb.2) and self.env.traits[pb.2].name == "Send" {
+            let derived = if self.env.is_builtin_trait(pb.2) { self.env.traits[pb.2].name } else { "" }
+            let why = if derived == "Send" {
                 match self.env.unsendable_part(t) {
                     Some(w) => ": " + w,
+                    None => "",
+                }
+            } else if derived == "Show" and not unshowable_itself(t) {
+                match self.env.unshowable_part(t, self.bmap) {
+                    Some(w) => ": it contains " + w,
                     None => "",
                 }
             } else {

@@ -490,6 +490,7 @@ pub fn Env.implements(self, t: cktypes.Ty, tr: Int, pb: Map[Str, List[Int]]) -> 
     }
     if self.is_builtin_trait(tr) {
         let n = self.traits[tr].name
+        if n == "Show" { return self.unshowable_part(t, pb).is_none() }
         // every type parameter inside needs the bound itself
         if t.any(fn(x) => match x {
             Par(p) => not pb.get(p).map_or(false, fn(bs) => bs.contains(tr)),
@@ -498,13 +499,6 @@ pub fn Env.implements(self, t: cktypes.Ty, tr: Int, pb: Map[Str, List[Int]]) -> 
             return false
         }
         if n == "Send" { return self.unsendable_part(t).is_none() }
-        if n == "Show" {
-            return not t.any(fn(x) => match x {
-                Fun(_, _) => true,
-                Con(c, _) => cktypes.is_capability(c),
-                _ => false,
-            })
-        }
         if self.incomparable_part(t, n == "Hash").is_some() { return false }
         if n == "Ord" and t.any(fn(x) => x.is("Map")) { return false }
         return true
@@ -524,6 +518,90 @@ pub fn Env.implements(self, t: cktypes.Ty, tr: Int, pb: Map[Str, List[Int]]) -> 
             true
         }
         None => false,
+    }
+}
+
+// The prelude's Show.
+pub fn Env.show_ix(self) -> Option[Int] {
+    match self.trait_ix.get("Show") {
+        Some(tr) if self.traits[tr].file == 0 => Some(tr),
+        _ => None,
+    }
+}
+
+// The Show impl that formats t, and its type arguments, if one applies: its
+// target matches t and the impl's bounds hold for them (else t is formatted
+// structurally). `pb`: the bounds of the type parameters in scope.
+pub fn Env.show_impl(self, t: cktypes.Ty, pb: Map[Str, List[Int]]) -> Option[(Int, List[cktypes.Ty])] {
+    let Some(tr) = self.show_ix() else { return None }
+    let Some((ii, ts)) = self.find_impl(tr, t) else { return None }
+    let im = self.impls[ii]
+    for i in 0..ts.len().min(im.bounds.len()) {
+        for b in im.bounds[i] {
+            if not self.implements(ts[i], b, pb) { return None }
+        }
+    }
+    Some((ii, ts))
+}
+
+// The first part of t that keeps it from implementing Show, or None: a
+// function, a capability or a type parameter without the bound, looking
+// through tuples, struct fields, enum payloads and type arguments. A part
+// with a Show impl that applies is shown by it, whatever it contains.
+pub fn Env.unshowable_part(self, t: cktypes.Ty, pb: Map[Str, List[Int]]) -> Option[Str] { self.unshowable_walk(t, pb, []).0 }
+
+fn Env.unshowable_walk(self, t: cktypes.Ty, pb: Map[Str, List[Int]], seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
+    // polymorphic recursion (enum Poly[T] { A(T), B(Poly[List[T]]) }) unfolds
+    // without end; no backend builds types deeper than 48 (emit.ty_depth)
+    if seen0.contains(t) or deeper(t, 48) { return (None, seen0) }
+    var seen = seen0
+    seen.push(t)
+    match t {
+        Par(p) => {
+            let ok = match self.show_ix() {
+                Some(tr) => pb.get(p).map_or(false, fn(bs) => bs.contains(tr)),
+                None => false,
+            }
+            return (if ok { None } else { Some("the type parameter " + p + " without the bound Show") }, seen)
+        }
+        Fun(_, _) => return (Some("the function type " + t.show()), seen),
+        Con(n, _) if cktypes.is_capability(n) => return (Some("the capability " + n), seen),
+        Con(n, _) if is_dyn(n) => return (None, seen),
+        _ => {}
+    }
+    if self.show_impl(t, pb).is_some() { return (None, seen) }
+    var parts: List[cktypes.Ty] = []
+    match t {
+        Tup(ts) => parts = ts,
+        Con(_, args) => {
+            match self.struct_fields(t) {
+                Some(fs) => parts = fs.map(fn(f) => f.1),
+                None => match self.enum_variants(t) {
+                    Some(vs) => {
+                        for v in vs { parts.extend(v.1) }
+                    }
+                    None => {}
+                },
+            }
+            parts.extend(args)
+        }
+        _ => {}
+    }
+    for x in parts {
+        let r = self.unshowable_walk(x, pb, seen)
+        if r.0.is_some() { return r }
+        seen = r.1
+    }
+    (None, seen)
+}
+
+// Is t nested deeper than n?
+fn deeper(t: cktypes.Ty, n: Int) -> Bool {
+    if n < 0 { return true }
+    match t {
+        Con(_, a) | Tup(a) => a.any(fn(x) => deeper(x, n - 1)),
+        Fun(a, r) => a.any(fn(x) => deeper(x, n - 1)) or deeper(r, n - 1),
+        _ => false,
     }
 }
 

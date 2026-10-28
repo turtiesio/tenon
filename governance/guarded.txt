@@ -17,6 +17,10 @@ tests/run/trap_euclid_extremes.out
 tests/run/fmt_fixed_extremes.tn
 tests/run/fmt_fixed_extremes.out
 tests/lsp/fields.tn
+tests/v2/reject/bound_show_capability_field.tn
+tests/v2/reject/dyn_show_function_payload.tn
+tests/v2/run/show_bound_fields.tn
+tests/v2/run/show_bound_fields.out
 # The bootstrap is a frozen seed (tenon.md §5): any change to it needs an
 # approval line, and its line count may only shrink (tools/approvals.py).
 frozen bootstrap/*

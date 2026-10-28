@@ -1,0 +1,9 @@
+// error: type Box does not implement Show (needed by bound T: Show of show): it contains the capability Console
+// A struct is Show only if its fields are (conformance 2026-10-28 #5).
+struct Box { c: Console }
+
+fn show[T: Show](x: T) -> Str { x.to_str() }
+
+fn main(sys: Sys) {
+    sys.console.println(show(Box { c: sys.console }))
+}

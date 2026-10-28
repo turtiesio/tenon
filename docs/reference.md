@@ -790,7 +790,10 @@ a type parameter is used for: `fn largest[T: Ord](xs: List[T]) -> T`,
 `fn count[K: Hash + Eq](xs: List[K]) -> Int`. Eq: no functions,
 capabilities or `dyn` values inside; Ord: Eq and no maps; Hash (usable as a
 map key): Eq and no Float; Show: no functions or capabilities (a fifth,
-Send, says what can go to another worker: §18). A type that
+Send, says what can go to another worker: §18). "Inside" counts every
+field and payload, through other declared types (`struct Log { c: Console }`
+is not Show), except that a type whose Show impl applies is Show whatever it
+contains. A type that
 contains a function does not satisfy Eq: `type fn(Int) -> Int does not
 implement Eq (needed by bound T: Eq of same)`. Only Show can be implemented,
 to replace the derived text:

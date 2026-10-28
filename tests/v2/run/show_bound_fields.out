@@ -1,0 +1,5 @@
+Logger(main)
+Named { log: Logger(main), tree: Node([Leaf(1), Node([Leaf(2)])]) }
+Pair { a: Some(3), b: [Some(3)] }
+[Logger(main), Node([Leaf(1), Node([Leaf(2)])])]
+exit: 0

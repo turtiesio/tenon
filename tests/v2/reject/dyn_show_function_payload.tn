@@ -1,0 +1,12 @@
+// error: type Wrap does not implement Show (needed by dyn Show): it contains the function type fn(Int) -> Int
+// An enum is Show only if its payloads are, through other declared types too (conformance 2026-10-28 #5).
+enum Op { Apply(fn(Int) -> Int), Stop }
+
+struct Wrap { ops: List[Op] }
+
+fn inc(x: Int) -> Int { x + 1 }
+
+fn main(sys: Sys) {
+    let shown = [dyn Show(1), dyn Show(Wrap { ops: [Apply(inc)] })]
+    sys.console.println("{shown}")
+}
