@@ -75,7 +75,12 @@ def main():
         w(f"- mutation testing: {mut['killed']}/{t} mutants killed ({mut['score']}); survivors become tests or are judged equivalent (`tools/mutate.py N`)")
     else:
         w("- mutation testing: not run yet")
-    w("- sanitizers: every run test compiled with ASan+UBSan (`tools/asan.sh`, evidence loop)")
+    san = load("asan.json")
+    if san:
+        verdict = "all clean" if san["failed"] == 0 else f"**{san['failed']} FAILED**"
+        w(f"- sanitizers: {san['programs']} run tests under ASan+UBSan, {verdict} ({san['date']}, {san['commit']}; `tools/asan.sh`)")
+    else:
+        w("- sanitizers: not run yet (`tools/asan.sh`)")
     w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`)\n")
     if bench:
         w("| Program | Tenon | C (cc -O2) | Rust (-O) | Python | TypeScript (node) | Tenon / C | Binary (Tenon / C) |\n|---|---|---|---|---|---|---|---|")

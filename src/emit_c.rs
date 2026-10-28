@@ -62,7 +62,8 @@ pub struct Emitter<'a> {
 pub fn build(c: &Checked, sm: &SourceMap, out: &str, opt: &str) -> Result<(), String> {
     let code = emit(c, sm);
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
-    let cached = cache_path(&code, &cc, opt);
+    // TENON_KEEP_C asks for the C file next to the output, so always compile then.
+    let cached = if std::env::var("TENON_KEEP_C").is_ok() { None } else { cache_path(&code, &cc, opt) };
     // An entry is the executable plus its C source; a hit requires the source
     // to match exactly, so a hash collision cannot run the wrong program.
     if let Some(p) = &cached {

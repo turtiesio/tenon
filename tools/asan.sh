@@ -22,4 +22,6 @@ for tn in tests/run/*.tn; do
   fi
 done
 echo "asan: $n programs under ASan+UBSan, $fail failed"
+mkdir -p .evidence
+printf '{"programs": %d, "failed": %d, "date": "%s", "commit": "%s"}\n' "$n" "$fail" "$(date +%F)" "$(git rev-parse --short HEAD)" > .evidence/asan.json
 [ $fail = 0 ]
