@@ -173,6 +173,10 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Goal closed (after wave 6):** the user accepted the current state and cleared
+  the goal. Milestone 1 stands as reported in STATUS.md: study time unmet (1.47x
+  Python), human sample review and a week of loop history still open.
+
 - **Study time target (decided after wave 5):** stays "at or below Python" and
   is reported as unmet (wave 5: Tenon 1.47x Python, TypeScript 1.2x). No design
   change (braces, explicit types, let/var, explicit console) is made to chase
