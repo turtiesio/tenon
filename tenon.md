@@ -290,8 +290,14 @@ count as real users. No Windows or WebAssembly target in this milestone.
 - **Gaps carried over:** user Eq/Ord/Hash impls, trait type parameters and
   supertraits, channels the event loop can wait on, all diagnostics in the
   language server, and the small language gaps the studies found.
-- **Self-governing infrastructure in Tenon.** The authority over the project's
-  process lives in Tenon programs, not in any hosting service:
+- **Self-governing infrastructure in Tenon.** The whole flow is defined in Tenon
+  and only realized by a host. The definition (gates, landing, approvals,
+  guarded and frozen paths, schedules, roles and briefs, budgets, the kill switch,
+  the queue and what counts as a regression) is Tenon code and data in this
+  repository, run as `tenon ops ...`. A host such as GitHub Actions only executes
+  it: its workflow files are thin shims generated from the definition (a check
+  fails if they drift), and the same definition runs unchanged on another host
+  (the local scheduler, a self-hosted machine, several runners). Concretely:
   - One Tenon system (`tenon ops` or similar) owns the task queue, governance
     (approvals, frozen paths, guarded tests), the evidence record and the agent
     harness (starting Codex, Claude or other agents through `Proc`, with their
