@@ -35,3 +35,10 @@ Mechanisms added from incidents:
   Amended (2026-10-28): it commits tracked changes plus the new paths named
   on its command line, after it swept another agent's unfinished drafts
   (study/tasks3) into two unrelated commits.
+- `tools/approvals.py --pr` and the `owner GLOB` lines of
+  `governance/guarded.txt` (2026-10-28, user decision: unattended agents
+  land only through pull requests that merge when CI passes). CI runs the
+  base's checker on every pull request; it refuses any change to the
+  approvals log (a pull request cannot approve itself), a removed rule, and
+  any change under an `owner` path (the gate, this checker, CI). Its test:
+  four scenarios of `tools/approvals_test.sh`. docs/dev/automation.md.

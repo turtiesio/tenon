@@ -11,20 +11,21 @@ C=${TENON:-$PWD/target/tenon}
 RUNS=${RUNS:-3}
 export TENON_ROOT=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-n=0; fail=0; runs=0
+n=0; fail=0; failures=""; runs=0
+bad() { echo "FAIL $1"; failures+="\"$1\","; fail=$((fail+1)); } # a failure, also named in the JSON
 check() { # check NAME DIR FILE.tn EXPECTED_STATUS STDIN ARGS
   local name=$1 dir=$2 tn=$3 want=$4 stdin=$5 args=$6
   n=$((n+1))
-  ( cd "$dir" && TENON_KEEP_C=1 "$C" build "$tn" -o "$tmp/$name" -O0 ) > /dev/null 2>&1 || { echo "FAIL $name: build"; fail=$((fail+1)); return; }
-  cc -g -O1 -fsanitize=thread -w -std=gnu11 -pthread "$tmp/$name.c" -o "$tmp/$name.tsan" -lm 2>/dev/null || { echo "FAIL $name: sanitizer build"; fail=$((fail+1)); return; }
+  ( cd "$dir" && TENON_KEEP_C=1 "$C" build "$tn" -o "$tmp/$name" -O0 ) > /dev/null 2>&1 || { bad "$name: build"; return; }
+  cc -g -O1 -fsanitize=thread -w -std=gnu11 -pthread "$tmp/$name.c" -o "$tmp/$name.tsan" -lm 2>/dev/null || { bad "$name: sanitizer build"; return; }
   for _ in $(seq "$RUNS"); do
     runs=$((runs+1))
     ( cd "$dir" && printf '%b' "$stdin" | TSAN_OPTIONS=halt_on_error=1 "$tmp/$name.tsan" $args ) > "$tmp/out" 2> "$tmp/err"
     local st=$?
     if grep -q "ThreadSanitizer" "$tmp/err"; then
-      echo "FAIL $name: ThreadSanitizer report"; grep -m5 "WARNING\|SUMMARY\|#[0-3] " "$tmp/err"; fail=$((fail+1)); return
+      bad "$name: ThreadSanitizer report"; grep -m5 "WARNING\|SUMMARY\|#[0-3] " "$tmp/err"; return
     fi
-    if [ "$st" != "$want" ]; then echo "FAIL $name: exit $st, expected $want"; head -3 "$tmp/err"; fail=$((fail+1)); return; fi
+    if [ "$st" != "$want" ]; then bad "$name: exit $st, expected $want"; head -3 "$tmp/err"; return; fi
   done
 }
 for tn in tests/v2/run/*.tn; do
@@ -46,5 +47,5 @@ for d in programs/*/ programs/v2/*/; do
 done
 echo "tsan: $n programs under ThreadSanitizer ($runs runs), $fail failed"
 mkdir -p .evidence
-printf '{"programs": %d, "runs": %d, "failed": %d, "date": "%s", "commit": "%s"}\n' "$n" "$runs" "$fail" "$(date +%F)" "$(git rev-parse --short HEAD)" > .evidence/tsan.json
+printf '{"programs": %d, "runs": %d, "failed": %d, "failures": [%s], "date": "%s", "commit": "%s"}\n' "$n" "$runs" "$fail" "${failures%,}" "$(date +%F)" "$(git rev-parse --short HEAD)" > .evidence/tsan.json
 [ $fail = 0 ]

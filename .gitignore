@@ -6,3 +6,4 @@
 .check.log
 .claude/
 __pycache__/
+/.agent

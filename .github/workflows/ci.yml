@@ -1,8 +1,15 @@
 name: ci
+# The gate on Linux and macOS for every push to main and every pull request;
+# for pull requests also the approvals guard (docs/dev/automation.md). Pull
+# requests opened by the workflows' own token start no `pull_request` run, so
+# tools/gh.py starts this workflow on the branch with workflow_dispatch.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   fast:
     strategy:
@@ -10,8 +17,26 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: check --fast
         run: ./check --fast
+  approvals:
+    # A pull request is unattended work: tools/approvals.py --pr, run as the
+    # base has it (the branch's copy could be changed), refuses approval lines,
+    # removed guard rules, owner paths and frozen-seed changes.
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: tools/approvals.py --pr (the base's)
+        run: |
+          git fetch -q origin main
+          base=$(git merge-base origin/main HEAD)
+          git show "$base:tools/approvals.py" > .git/approvals_base.py
+          python3 .git/approvals_base.py --pr "$base"

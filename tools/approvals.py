@@ -3,17 +3,24 @@
 change to a frozen path (governance/README.md).
 
     tools/approvals.py BASE       compare the working tree's HEAD with BASE
+    tools/approvals.py --pr BASE  the same for an unattended pull request
 
 Exit 0 if every deleted or weakened guarded file has an approval line added in
 this change, every changed file under a frozen path (`frozen GLOB` lines of
 governance/guarded.txt: the bootstrap seed) has one too, the frozen paths did
 not grow in line count, and the approvals log only grew; otherwise print why
 and exit 1.
+
+With --pr (CI on pull requests, docs/dev/automation.md) approvals come only
+from the owner, so the change may not touch the approvals log at all, may
+only add lines to governance/guarded.txt, and may not change a path under an
+`owner GLOB` line (the gate, this checker, CI): such a change needs the owner.
 """
 import fnmatch, os, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = "governance/approvals.log"
+GUARDED = "governance/guarded.txt"
 
 
 def git(*args):
@@ -45,14 +52,27 @@ def frozen_growth(base, paths):
     return grew
 
 
+def rules_of(text):
+    return [l.strip() for l in (text or "").splitlines() if l.strip() and not l.startswith("#")]
+
+
 def main():
-    base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
-    rules = [l.strip() for l in open(os.path.join(ROOT, "governance", "guarded.txt")) if l.strip() and not l.startswith("#")]
+    args = sys.argv[1:]
+    pr = "--pr" in args
+    args = [a for a in args if a != "--pr"]
+    base = args[0] if args else "origin/main"
+    rules = rules_of(show("HEAD", GUARDED))
     frozen = [r[len("frozen "):].strip() for r in rules if r.startswith("frozen ")]
-    globs = [r for r in rules if not r.startswith("frozen ")]
+    owner = [r[len("owner "):].strip() for r in rules if r.startswith("owner ")]
+    globs = [r for r in rules if not r.startswith(("frozen ", "owner "))]
     problems = []
     old_log = show(base, LOG) or ""
     new_log = show("HEAD", LOG) or ""
+    if pr:
+        dropped = [r for r in rules_of(show(base, GUARDED)) if r not in rules]
+        problems += [f"{GUARDED}: rule {r!r} removed; an unattended change may only add rules" for r in dropped]
+        if new_log != old_log:
+            problems.append(f"{LOG}: changed; approvals are added by the owner, not in a pull request")
     if not new_log.startswith(old_log):
         problems.append(f"{LOG}: existing lines were changed or removed (the log is append-only)")
     added = new_log[len(old_log):] if new_log.startswith(old_log) else ""
@@ -67,6 +87,8 @@ def main():
     frozen_changed = []
     for row in changed:
         status, path = row.split("\t", 1)
+        if pr and any(fnmatch.fnmatch(path, g) for g in owner):
+            problems.append(f"{path}: changes need the owner (`owner` in {GUARDED}); not in a pull request")
         if any(fnmatch.fnmatch(path, g) for g in frozen):
             frozen_changed.append(path)
             # a frozen path: any change at all (added, changed or deleted) needs

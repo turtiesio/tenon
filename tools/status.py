@@ -10,13 +10,16 @@ milestones 1 and 2 (tenon.md §4, §5) from that data where a number decides it.
 tools/unmet.md holds only the prose that cannot be computed. A summary line
 of ./check that no longer parses is reported as an open regression, never
 silently skipped."""
-import glob, json, os, re, statistics, subprocess, sys, time, datetime
+import glob, json, os, re, shutil, statistics, subprocess, sys, time, datetime
 
 import corpus
 import study
 
 ROOT = corpus.ROOT
 EV = os.path.join(ROOT, ".evidence")
+# where ./check is timed; the 60 s budget is the development machine's ("local"),
+# the nightly workflow sets TENON_MACHINE (docs/dev/automation.md)
+MACHINE = os.environ.get("TENON_MACHINE", "local")
 
 
 def sh(cmd):
@@ -54,6 +57,62 @@ PATTERNS = {
 }
 
 
+def excerpt(tool, needle, n=6):
+    """The lines of TOOL's last output (.evidence/NAME.log, tools/evidence.sh) from the first one naming NEEDLE."""
+    name = {"tools/asan.sh": "asan", "tools/tsan.sh": "tsan", "tools/interp_diff.py": "interp_diff",
+            "tools/checkfuzz.py": "checkfuzz"}[tool]
+    p = os.path.join(EV, name + ".log")
+    out = open(p, errors="replace").read().splitlines() if os.path.exists(p) else []
+    i = next((i for i, l in enumerate(out) if needle in l), None)
+    return "\n".join(out[i:i + n])[:3000] if i is not None else f"(not in .evidence/{name}.log)"
+
+
+def findings():
+    """Opened and fixed findings: GitHub issues per label (when gh can read them; the queue since 2026-10-28)
+    and the findings tables of tests/redteam/FINDINGS*.md (rows whose status says FIXED)."""
+    rows = []
+    for label in ["redteam", "regression"] if shutil.which("gh") else []:
+        r = subprocess.run(["gh", "issue", "list", "--label", label, "--state", "all", "--limit", "1000", "--json", "state"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            states = [i["state"] for i in json.loads(r.stdout)]
+            rows.append((f"GitHub issues labeled `{label}`", len(states), states.count("CLOSED")))
+    for p in sorted(glob.glob(os.path.join(ROOT, "tests", "redteam", "FINDINGS*.md"))):
+        fixed = {}  # finding number -> fixed, from every table that has a row for it (a later status table wins)
+        for l in open(p):
+            m = re.match(r"\| *(\d+) *\|(.*)", l)
+            if m:
+                tail = " ".join(m.group(2).rstrip().rstrip("|").split("|")[-2:]).lower()
+                fixed[m.group(1)] = fixed.get(m.group(1), False) or bool(re.search(r"\b(fixed|documented)\b", tail))
+        rows.append((os.path.relpath(p, ROOT), len(fixed), sum(fixed.values())))
+    return rows
+
+
+def trends(w, row):
+    """Append ROW to .evidence/history.jsonl (one line per run) and write the correctness trends."""
+    path = os.path.join(EV, "history.jsonl")
+    with open(path, "a") as f:
+        f.write(json.dumps(row, sort_keys=True) + "\n")
+    by_date = {}
+    for line in open(path):
+        r = json.loads(line)
+        by_date[(r["date"], r["machine"])] = r  # the last run of each day
+    w("## Correctness over time\n")
+    w("Findings opened and fixed (closed):\n")
+    w("| Source | Opened | Fixed | Open |\n|---|---|---|---|")
+    for src, n, fixed in findings():
+        w(f"| {src} | {n} | {fixed} | {n - fixed} |")
+    w("\nEvidence per day (the last run of each day; `.evidence/history.jsonl`):\n")
+    cols = [("check_s", "check s"), ("fuzz_disagreements", "fuzz disagreements"), ("fuzz_programs", "of programs"),
+            ("asan_failed", "ASan failed"), ("tsan_failed", "TSan failed"), ("mutation_score", "mutation score"),
+            ("mutants_survived_last", "new survivors"), ("checkfuzz_disagreements", "checkfuzz"),
+            ("interp_diff", "interp_diff"), ("regressions", "open regressions")]
+    w("| Date | Machine | Commit | " + " | ".join(c for _, c in cols) + " |\n|---|---|---|" + "---|" * len(cols))
+    for (d, m), r in sorted(by_date.items())[-14:]:
+        w(f"| {d} | {m} | `{r['commit']}` | " + " | ".join("-" if r.get(k) is None else str(r[k]) for k, _ in cols) + " |")
+    w("")
+
+
 def best_of(cmd, n=3):
     ts = []
     for _ in range(n):
@@ -87,18 +146,32 @@ def main():
     out = r.stdout
     got = {k: re.search(p, out, re.M) for k, p in PATTERNS.items()}
     regressions = []
+
+    def reg(key, title, body="", agent_ok=True):
+        """One open regression: KEY is stable across runs (the nightly workflow keeps one issue per key)."""
+        regressions.append({"key": key, "title": title, "body": body,
+                            "labels": ["regression"] + (["agent-ok"] if agent_ok else [])})
+
     if not passed:
-        regressions.append(f"`./check` fails at commit `{commit}`: " + (re.findall(r"FAILED at: (.*)", out) or ["see its output"])[-1])
+        reg("check:fails", f"`./check` fails at commit `{commit}`: " + (re.findall(r"FAILED at: (.*)", out) or ["see its output"])[-1],
+            "\n".join(out.splitlines()[-30:]))
     for k, m in got.items():
         if m is None and passed:
-            regressions.append(f"tools/status.py cannot read the `{k}` summary line of ./check (the line changed)")
+            reg(f"status:{k}", f"tools/status.py cannot read the `{k}` summary line of ./check (the line changed)")
     g = lambda k, i, d="?": got[k].group(i) if got[k] else d
     steps = re.findall(r"^\s+([\d.]+)  (.+)$", out.split("check: seconds per step")[-1], re.M) if "check: seconds per step" in out else []
     loops = load("loops.json")
+    lkey = "check_fast" if MACHINE == "local" else f"check_fast@{MACHINE}"
+    before = [v for d, v in sorted(loops.get(lkey, {}).items()) if d != today][-7:]
     if passed:  # a failed run measures nothing
-        loops.setdefault("check_fast", {})[today] = round(total, 1)
+        loops.setdefault(lkey, {})[today] = round(total, 1)
         json.dump(loops, open(os.path.join(EV, "loops.json"), "w"), indent=1, sort_keys=True)
-    hist = sorted(loops.get("check_fast", {}).items())
+        if MACHINE == "local" and total > 60:
+            reg("check:budget", f"`./check` took {total:.0f} s, over its 60 s budget", agent_ok=False)
+        elif MACHINE != "local" and len(before) >= 3 and total > 1.5 * statistics.median(before):
+            reg(f"check:time@{MACHINE}", f"`./check` took {total:.0f} s on {MACHINE}, over 1.5x its median of the"
+                f" last {len(before)} runs there ({statistics.median(before):.0f} s)", agent_ok=False)
+    hist = sorted(loops.get("check_fast", {}).items())  # the development machine's: what the 60 s budget is about
 
     trusted = corpus.trusted()
     groups = {k: [(p, code_lines(p)) for p in v] for k, v in trusted.items()}
@@ -120,15 +193,17 @@ def main():
 
     w("## Loops\n")
     w("| Loop | Budget | Measured | Reproduce |\n|---|---|---|---|")
-    w(f"| `check --fast` | 60 s | {total:.1f} s ({'PASS' if passed else 'FAIL'}) | `./check --fast` |")
+    w(f"| `check --fast` | 60 s (on the development machine) | {total:.1f} s on {MACHINE} ({'PASS' if passed else 'FAIL'}) | `./check --fast` |")
     w("| landing | 5 min | not measured here (`tools/land.sh` prints its time) | `tools/land.sh MSG` |")
     if steps:
         w("\nPer step (this run; ./check prints the same table):\n")
         w("| Step | Seconds |\n|---|---|")
         for sec, name in steps:
             w(f"| {name} | {sec} |")
-    if len(hist) > 1:
-        w("\nHistory (passing runs): " + ", ".join(f"{d}: {v} s" for d, v in hist[-7:]))
+    for k, v in sorted(loops.items()):
+        if k.startswith("check_fast") and len(v) > 1:
+            where = k.partition("@")[2] or "local"
+            w(f"\nHistory on {where} (passing runs): " + ", ".join(f"{d}: {s} s" for d, s in sorted(v.items())[-7:]))
 
     w("\n## Tests on main\n")
     w(f"- `tenon test tests tests/v2`: {g('tests', 1)} run programs, each executed by tenon's interpreter **and** its C backend"
@@ -150,7 +225,9 @@ def main():
           f" programs, {fuzz['disagreements']} disagreements, {fuzz['rejected']} rejected by the checker (generator imprecision);"
           f" last run {last.get('programs', '?')} programs, {when(fuzz)} (`tools/fuzz.py N`)")
         if last.get("disagreements"):
-            regressions.append(f"fuzzing: {last['disagreements']} disagreements in the last run (.evidence/fuzz-failures/)")
+            reg("fuzz", f"fuzzing: {last['disagreements']} disagreements in the last run",
+                "Generated programs on which the backends or the seed disagree (reproduce: `python3 tools/fuzz.py 1 SEED`;"
+                " the programs are in .evidence/fuzz-failures/):\n\n" + "\n".join(f"- {x}" for x in last.get("failures", [])))
     else:
         w("- differential fuzzing: not run yet (`tools/fuzz.py N`)")
     if mut:
@@ -159,6 +236,10 @@ def main():
           f" {mut['nobuild']} did not build; survivors become tests or are judged equivalent ({when(mut)}; `tools/mutate.py N`)")
         for s in mut["survived"]:
             w(f"  - survived: `{s['file']}:{s['line']}`: `{s['from']}` -> `{s['to']}`")
+        for s in mut.get("last", {}).get("survived", []):
+            reg(f"mutant:{s['file']}:{s['line']}", f"mutation survived at {s['file']}:{s['line']}: `{s['to'][:80]}`",
+                f"Changing `{s['from']}` to `{s['to']}` ({s['file']}:{s['line']}) builds and passes every test. Add a test"
+                " that fails on the mutant, or explain why the mutant is equivalent (`tools/mutate.py`).")
     else:
         w("- mutation testing: not run yet (`tools/mutate.py N`)")
     for name, d, tool, what in [("ASan+UBSan", asan, "tools/asan.sh", "run tests and programs"),
@@ -166,29 +247,33 @@ def main():
         if d:
             runs = f" ({d['runs']} runs)" if "runs" in d else ""
             w(f"- {name}: {d['programs']} {what}{runs}, {'all clean' if d['failed'] == 0 else '**%d FAILED**' % d['failed']} ({when(d)}; `{tool}`)")
-            if d["failed"]:
-                regressions.append(f"{name}: {d['failed']} failed ({tool})")
+            for f in d.get("failures", []) if d["failed"] else []:
+                prog = f.split(":")[0]
+                reg(f"{os.path.basename(tool)[:-3]}:{prog}", f"{name}: {f}", f"`{tool}` reports `{f}`:\n\n```\n{excerpt(tool, prog)}\n```")
         else:
             w(f"- {name}: not run yet (`{tool}`)")
     if idiff:
         w(f"- seed's interpreter vs tenon's on the corpus: {idiff['same']} of {idiff['files']} files the same, {idiff['diff']} differ,"
           f" {idiff['skipped']} skipped ({when(idiff)}; `tools/interp_diff.py`)")
-        if idiff["diff"]:
-            regressions.append(f"interp_diff: {idiff['diff']} corpus files differ between `tenon-seed run` and `tenon run`")
+        for f in idiff.get("differ", []):
+            reg(f"interp_diff:{f}", f"interp_diff: `tenon-seed run` and `tenon run` differ on {f}",
+                f"```\n{excerpt('tools/interp_diff.py', f)}\n```")
     else:
         w("- seed's interpreter vs tenon's: not run yet (`tools/interp_diff.py`)")
     if cfuzz:
         w(f"- seed's checker and emitter vs tenon's on {cfuzz['mutants']} mutated corpus programs: {cfuzz['disagreements']} disagreements"
           f" ({when(cfuzz)}; `tools/checkfuzz.py N`)")
         if cfuzz["disagreements"]:
-            regressions.append(f"checkfuzz: {cfuzz['disagreements']} disagreements (.evidence/checkfuzz/)")
+            reg("checkfuzz", f"checkfuzz: {cfuzz['disagreements']} disagreements between the seed's checker and tenon's",
+                f"Seed {cfuzz.get('seed')} (`python3 tools/checkfuzz.py {cfuzz['mutants']} {cfuzz.get('seed')}`):\n\n"
+                f"```\n{excerpt('tools/checkfuzz.py', 'DISAGREE', 40)}\n```")
     else:
         w("- seed's checker vs tenon's on mutated programs: not run yet (`tools/checkfuzz.py N`)")
     if seedt:
         w(f"- the seed's own suite (`tenon-seed test tests`): {seedt['summary']} ({when(seedt)})")
         m = re.search(r"(\d+) failed", seedt["summary"])
         if not m or m.group(1) != "0":
-            regressions.append(f"the seed's own test suite: {seedt['summary']}")
+            reg("seed_test", f"the seed's own test suite: {seedt['summary']}")
 
     w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`, Tenon built by tenon -O2)\n")
     worst = None
@@ -200,6 +285,10 @@ def main():
             opt = lambda key: f"{v[key]:.3f} s" if key in v else "-"
             w(f"| {k} | {v['tenon']:.3f} s | {v['c']:.3f} s | {opt('rust')} | {v['python']:.3f} s | {opt('typescript')} | {v['tenon_vs_c']}x | {v['size_tenon'] // 1024} KB / {v['size_c'] // 1024} KB |")
         worst = max(v["tenon_vs_c"] for v in bench.values() if isinstance(v, dict))
+        for k, v in sorted(bench.items()):
+            if isinstance(v, dict) and v["tenon_vs_c"] > 1.5:
+                reg(f"bench:{k}", f"benchmark {k}: Tenon takes {v['tenon_vs_c']}x the time of C (target: within 1.5x)",
+                    f"`python3 tools/bench.py {k}`: Tenon {v['tenon']:.3f} s, C {v['c']:.3f} s.", agent_ok=False)
         w(f"\nTarget: within 1.5x of C. Worst: {worst}x — {'met' if worst <= 1.5 else '**not met**'}.")
     else:
         w("Not run yet.")
@@ -271,8 +360,8 @@ def main():
     row("Performance within 1.5x of C on the program benchmarks",
         verdict(worst <= 1.5, "worst %sx" % worst) if worst is not None else "not measured")
     row("`check --fast` <= 60 s and landing <= 5 min over a week",
-        verdict(loop_ok and days >= 7, "check %.1f s now; %d day(s) of history, a week needed; every day <= 60 s: %s; landing not measured here"
-                % (total, days, loop_ok)))
+        verdict(loop_ok and days >= 7, "check %.1f s now on %s; %d day(s) of history on the development machine, a week needed;"
+                " every day <= 60 s: %s; landing not measured here" % (total, MACHINE, days, loop_ok)))
     row("Self-hosted lexer, parser and checker agree with the bootstrap on the full corpus",
         verdict(sh_ok, "%s files, %s disagreements" % (g("selfhost", 1), g("selfhost", 6))))
     row("Approvals log and checker exist and refused a real weakening in a test",
@@ -307,9 +396,17 @@ def main():
         w("### Notes (hand-written, tools/unmet.md)\n")
         w(open(um).read().strip() + "\n")
 
+    trends(w, {"date": today, "commit": commit, "machine": MACHINE, "check_s": round(total, 1), "check_passed": passed,
+               "fuzz_programs": fuzz.get("last", {}).get("programs"), "fuzz_disagreements": fuzz.get("last", {}).get("disagreements"),
+               "asan_failed": asan.get("failed"), "tsan_failed": tsan.get("failed"), "mutation_score": mut.get("score"),
+               "mutants_survived_last": len(mut.get("last", {}).get("survived", [])) if mut else None,
+               "checkfuzz_disagreements": cfuzz.get("disagreements"), "interp_diff": idiff.get("diff"),
+               "regressions": len(regressions)})
     w("## Open regressions\n")
-    w("Computed from the results above (a failing check, evidence tool or unreadable summary line).\n")
-    w("\n".join(f"- {x}" for x in regressions) if regressions else "None.")
+    w("Computed from the results above (a failing check, evidence tool or unreadable summary line); the nightly"
+      " workflow keeps one GitHub issue per line, labeled `regression` (docs/dev/automation.md).\n")
+    w("\n".join(f"- {x['title']}" for x in regressions) if regressions else "None.")
+    json.dump(regressions, open(os.path.join(EV, "regressions.json"), "w"), indent=1)
     open(os.path.join(ROOT, "STATUS.md"), "w").write("\n".join(lines) + "\n")
     print(f"STATUS.md written (check --fast {total:.1f}s, {'PASS' if passed else 'FAIL'}; {len(regressions)} open regressions)")
 

@@ -1,0 +1,186 @@
+name: agent
+# One unattended agent run (docs/dev/automation.md), called by redteam.yml,
+# hygiene.yml and fixer.yml. The agent only edits the working tree and writes
+# its results to .agent/; this workflow, from the commit it started on, then
+# runs ./check, opens issues and the pull request (auto-merge when CI is
+# green), or hands the issue to the owner. Off when the repository variable
+# AGENTS_ENABLED is "false"; skipped, with a notice, when no secret fits.
+on:
+  workflow_call:
+    inputs:
+      role:
+        description: "the brief: .github/agents/ROLE.md (conformance, authority, hygiene, fixer)"
+        type: string
+        required: true
+      engine:
+        description: "codex, claude, or either (alternates by run number when both secrets exist)"
+        type: string
+        required: true
+    secrets:
+      OPENAI_API_KEY:
+        required: false
+      ANTHROPIC_API_KEY:
+        required: false
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+jobs:
+  run:
+    if: vars.AGENTS_ENABLED != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    # one agent at a time, whichever workflow started it; a waiting run is not cancelled
+    concurrency:
+      group: agents
+      cancel-in-progress: false
+    env:
+      ROLE: ${{ inputs.role }}
+      CODEX_MODEL: gpt-6.1-sol
+    steps:
+      - name: choose the model
+        id: gate
+        env:
+          ENGINE: ${{ inputs.engine }}
+          HAS_CODEX: ${{ secrets.OPENAI_API_KEY != '' }}
+          HAS_CLAUDE: ${{ secrets.ANTHROPIC_API_KEY != '' || secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          RUN: ${{ github.run_number }}
+        run: |
+          e=none
+          case "$ENGINE" in
+            codex) [ "$HAS_CODEX" = true ] && e=codex ;;
+            claude) [ "$HAS_CLAUDE" = true ] && e=claude ;;
+            either)
+              if [ "$HAS_CODEX" = true ] && [ "$HAS_CLAUDE" = true ]; then
+                if [ $((RUN % 2)) = 0 ]; then e=claude; else e=codex; fi
+              elif [ "$HAS_CODEX" = true ]; then e=codex
+              elif [ "$HAS_CLAUDE" = true ]; then e=claude; fi ;;
+          esac
+          if [ "$e" = none ]; then
+            echo "::notice::$ROLE: skipped: no secret for engine '$ENGINE' (OPENAI_API_KEY for codex; ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN for claude)"
+          else
+            echo "$ROLE: engine $e"
+          fi
+          echo "engine=$e" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.engine != 'none'
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: take an issue (fixer)
+        id: claim
+        if: steps.gate.outputs.engine != 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=none
+          if [ "$ROLE" = fixer ]; then
+            n=$(tools/gh.py claim)
+            [ -n "$n" ] || { n=none; echo "::notice::fixer: no open agent-ok issue; nothing to do"; }
+          fi
+          echo "issue=$n" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.gate.outputs.engine != 'none' && !(inputs.role == 'fixer' && steps.claim.outputs.issue == 'none')
+      - name: prepare (./check on main, the brief)
+        id: prep
+        if: steps.gate.outputs.engine != 'none' && !(inputs.role == 'fixer' && steps.claim.outputs.issue == 'none')
+        env:
+          ENGINE: ${{ steps.gate.outputs.engine }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ./check > "$RUNNER_TEMP/check-main.log" 2>&1 || echo "::warning::./check fails on main before the agent starts"
+          tail -20 "$RUNNER_TEMP/check-main.log"
+          mkdir -p .agent
+          { cat .github/agents/common.md; echo; cat ".github/agents/$ROLE.md"; echo
+            echo "## This run"; echo
+            echo "Date: $(date +%F). Commit: $(git rev-parse --short HEAD). Model: $ENGINE."
+            echo "./check on this commit before you started: $(tail -1 "$RUNNER_TEMP/check-main.log")"
+            echo; echo "Open issues already recorded (labeled regression, redteam or hygiene):"; echo
+            for l in regression redteam hygiene; do
+              gh issue list --label "$l" --state open --limit 200 --json number,title -q '.[] | "- #\(.number) \(.title)"'
+            done | sort -u
+            if [ -f .agent/issue.md ]; then echo; echo "## The issue to fix"; echo; cat .agent/issue.md; fi
+          } > .agent/prompt.md
+          echo "go=yes" >> "$GITHUB_OUTPUT"
+      - name: Claude
+        id: claude
+        if: steps.prep.outputs.go == 'yes' && steps.gate.outputs.engine == 'claude'
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: "Read .agent/prompt.md in the repository root and carry it out exactly."
+          claude_args: "--allowedTools Bash,Read,Edit,Write,Glob,Grep --max-turns 200"
+      - name: Codex
+        id: codex
+        if: steps.prep.outputs.go == 'yes' && steps.gate.outputs.engine == 'codex'
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .agent/prompt.md
+          model: ${{ env.CODEX_MODEL }}
+          effort: high
+          sandbox: workspace-write
+      - name: finish (check, issues, pull request)
+        if: always() && steps.prep.outputs.go == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ steps.claim.outputs.issue }}
+          OUTCOME: ${{ steps.gate.outputs.engine == 'claude' && steps.claude.outcome || steps.codex.outcome }}
+          ENGINE: ${{ steps.gate.outputs.engine }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # tools/gh.py as main has it: the agent could have changed the working copy
+          git show "$GITHUB_SHA:tools/gh.py" > .git/gh_main.py
+          gh auth setup-git
+          git reset -q --soft "$GITHUB_SHA"  # commits the agent made anyway become working-tree changes
+          model=$ENGINE; [ "$ENGINE" = codex ] && model="codex ($CODEX_MODEL)"
+          give_back() { # give_back REASON: the fixer's issue goes to the owner
+            [ "$ISSUE" = none ] && return 0
+            printf '%s\n\nModel: %s. Run: %s\n' "$1" "$model" "$RUN_URL" > "$RUNNER_TEMP/reason.md"
+            [ -f .agent/blocked.md ] && { echo; cat .agent/blocked.md; } >> "$RUNNER_TEMP/reason.md"
+            python3 .git/gh_main.py release "$ISSUE" "$RUNNER_TEMP/reason.md"
+          }
+          if [ "$OUTCOME" != success ]; then
+            # the run itself failed (rate limit, outage): the issue goes back to the queue
+            [ "$ISSUE" != none ] && gh issue edit "$ISSUE" --remove-label in-progress
+            echo "::error::$ROLE: the agent step did not succeed ($OUTCOME)"; exit 1
+          fi
+          [ -f .agent/issues.json ] && python3 .git/gh_main.py issues .agent/issues.json
+          if [ -f .agent/blocked.md ]; then give_back "The fixer could not fix this without the owner:"; exit 0; fi
+          if git diff --quiet HEAD && [ -z "$(git ls-files --others --exclude-standard)" ]; then
+            give_back "The fixer made no change."; echo "$ROLE: no change"; exit 0
+          fi
+          if [ "$ISSUE" != none ] && grep -Eq '^Labels:.*\b(regression|redteam)\b' .agent/issue.md \
+             && ! git diff HEAD -- governance/guarded.txt | grep -q '^+[^+]'; then
+            give_back "The fix adds no guarded regression test (governance/guarded.txt); a fix for a regression or red-team finding must."
+            exit 0
+          fi
+          if ! ./check > "$RUNNER_TEMP/check.log" 2>&1; then
+            tail -30 "$RUNNER_TEMP/check.log"
+            give_back "./check fails with the agent's change: $(tail -1 "$RUNNER_TEMP/check.log")"; exit 1
+          fi
+          title=$(head -1 .agent/pr.md 2>/dev/null | sed 's/^# *//'); [ -n "$title" ] || title="$ROLE: agent run $(date +%F)"
+          { tail -n +2 .agent/pr.md 2>/dev/null; echo
+            [ "$ISSUE" != none ] && echo "Fixes #$ISSUE."
+            echo; echo "Unattended run: role \`$ROLE\`, model $model, $RUN_URL. Merges itself when CI passes (docs/dev/automation.md)."
+          } > "$RUNNER_TEMP/body.md"
+          rm -rf .agent
+          only=""; case "$ROLE" in conformance|authority) only="tests/redteam/" ;; esac
+          set +e
+          python3 .git/gh_main.py pr "agent/$ROLE-$GITHUB_RUN_ID" "$title" "$RUNNER_TEMP/body.md" ${only:+--only "$only"} | tee "$RUNNER_TEMP/pr.log"
+          rc=${PIPESTATUS[0]}; set -e
+          if [ "$rc" = 3 ]; then
+            give_back "The change was refused before pushing: $(tail -2 "$RUNNER_TEMP/pr.log")"
+            [ "$ISSUE" != none ] && exit 0
+            echo "::error::$ROLE: the change was refused (see above); nothing pushed"; exit 1
+          fi
+          [ "$rc" = 0 ] || exit "$rc"
+          url=$(grep -o 'https://[^ ]*/pull/[0-9]*' "$RUNNER_TEMP/pr.log" | head -1)
+          [ "$ISSUE" != none ] && [ -n "$url" ] && gh issue comment "$ISSUE" --body "Pull request: $url (model: $model). It merges itself when CI passes."
+          exit 0

@@ -1,0 +1,22 @@
+name: fixer
+# Seven times a day (docs/dev/automation.md: with the weekly reviews, about 10
+# agent runs a day at most): take the oldest open issue labeled `agent-ok`,
+# fix it on a branch, open a pull request that merges itself when CI passes,
+# or hand it to the owner (`needs-owner`). A run with no such issue ends
+# before any model is called. Claude and Codex alternate when both secrets exist.
+on:
+  schedule:
+    - cron: "23 1,4,8,11,14,18,21 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+jobs:
+  fix:
+    uses: ./.github/workflows/agent.yml
+    with:
+      role: fixer
+      engine: either
+    secrets: inherit

@@ -1,0 +1,29 @@
+name: redteam
+# The weekly correctness review (docs/dev/automation.md), in two parts run one
+# after the other: conformance (Codex, docs versus behaviour) and authority
+# (Claude, capabilities, isolation, obligations, memory safety). Findings go
+# to tests/redteam/ through a pull request and to issues labeled `redteam`.
+on:
+  schedule:
+    - cron: "0 18 * * 0" # Monday 03:00 in Seoul
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+jobs:
+  conformance:
+    uses: ./.github/workflows/agent.yml
+    with:
+      role: conformance
+      engine: codex
+    secrets: inherit
+  authority:
+    needs: conformance
+    if: ${{ !cancelled() }}
+    uses: ./.github/workflows/agent.yml
+    with:
+      role: authority
+      engine: claude
+    secrets: inherit
