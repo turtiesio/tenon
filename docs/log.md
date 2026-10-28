@@ -253,3 +253,29 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   runs to relative paths).
 - **Wave 4** launched: task set 4, hidden tests by Codex (study/hidden4),
   same Latin square, compiler frozen at 3487dd2.
+
+## 2026-10-28/29 — waves 4-6, time analysis, evidence fix
+
+- **Waves 4-6** (fresh task sets, hidden tests by Codex 250/250 each): lines at
+  or below Python every wave (869/913, 801/920, 910/978); Tenon time 1.69x, 1.47x,
+  1.47x Python; hidden tests 98%, 100%, 100%; compile errors fell to 0.
+  User decision after wave 5: the time target stays as written and is reported
+  unmet; no design change is made to chase it.
+- **Time analysis** (study/results/wave4/TIME_ANALYSIS.md, transcripts of matched
+  pairs): the gap was notes written on the clock (study-rule bias, fixed),
+  rebuild per run (build cache), no byte input (added), and more code to write,
+  partly because the reference's own regex example was broken (`{4}`
+  interpolated; fixed, pinned by a test). After those, wave 6's added library
+  features (format specifiers, max_by/group_by) did not move time: the rest
+  tracks tokens (explicit types, braces, let/var).
+- **Language from study notes**: byte I/O, raw strings, if-let/while-let, hex
+  literals, format specifiers with grouping, user items hide prelude items (change
+  safety), padding by code points, uniform "\r" stripping in read_line and
+  lines(), one-sided trims, retain, rev_range, Fs.truncate, binary_search, and
+  many doc fixes now pinned by doc-claim tests and tools/doctest.py.
+- **Silent evidence failure**: the build cache skipped writing the C file that
+  tools/asan.sh needs, so the sanitizer run failed to build every test, while
+  STATUS only described the tool. Fixed (cache bypassed under TENON_KEEP_C), and
+  STATUS now shows the sanitizer result itself (91 programs, all clean).
+- **Study ops**: a Claude API rate limit stopped six wave-6 authors mid-task;
+  their kits were set aside unscored and the authors rerun on fresh kits.
