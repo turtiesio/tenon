@@ -1,0 +1,426 @@
+// module
+// Calls, methods, struct literals and patterns in function bodies: the part of
+// the checker's inference (ckinfer.tn) that resolves a callee or a pattern.
+// Agrees with bootstrap/src/check_expr.rs and check.rs (patterns), decision
+// for decision and message for message.
+import ckast
+import cktypes
+import ckenv
+import ckinfer
+import parser
+
+pub fn pattern(ck: mut ckinfer.Ck, p: ckast.Pat, t: cktypes.Ty, mutable: Bool) -> Result[Unit, ckast.Diag] {
+    ck.record(p.id, t)
+    match p.k {
+        QWild => {}
+        QBind(n) => ck.bind(n, t, mutable, p.sp)?,
+        QInt(_) => ck.unify_at(p.sp, t, cktypes.t_int())?,
+        QStr(_) => ck.unify_at(p.sp, t, cktypes.t_str())?,
+        QBool(_) => ck.unify_at(p.sp, t, cktypes.t_bool())?,
+        QTuple(ps) => {
+            var ts: List[cktypes.Ty] = []
+            for _ in ps { ts.push(ck.sub.fresh()) }
+            ck.unify_at(p.sp, t, Tup(ts))?
+            for i in 0..ps.len() { pattern(mut ck, ps[i], ts[i], mutable)? }
+        }
+        QVariant(q, v, args) => {
+            let st = ck.known(t, p.sp, "the matched value")?
+            let cant = "pattern '" + v + "' cannot match a value of type " + ck.show(st)
+            let (tn, targs) = match st {
+                Con(n, a) => (n, a),
+                _ => return ckast.fail(p.sp, cant),
+            }
+            let ei = match ck.env.enum_idx(tn) {
+                Some(i) => i,
+                None => return ckast.fail(p.sp, cant),
+            }
+            match q {
+                Some(qn) => if ck.env.resolve_type(qn, p.sp)? != tn {
+                    return ckast.fail(p.sp, "pattern is for '" + qn + "' but the value has type " + tn)
+                },
+                None => {}
+            }
+            let en = ck.env.enums[ei]
+            var vi = -1
+            for i in 0..en.variants.len() {
+                if vi < 0 and en.variants[i].0 == v { vi = i }
+            }
+            if vi < 0 { return ckast.fail(p.sp, "'" + tn + "' has no variant '" + v + "'") }
+            let fts = en.variants[vi].1.map(fn(x) => x.subst(en.tparams, targs))
+            if fts.len() != args.len() {
+                return ckast.fail(p.sp, "variant '" + v + "' has {fts.len()} field(s), pattern has {args.len()}")
+            }
+            ck.pres[p.id] = RVariant(ei, vi, targs)
+            for i in 0..args.len() { pattern(mut ck, args[i], fts[i], mutable)? }
+        }
+        QOr(alts) => {
+            let last = ck.scopes.len() - 1
+            let before = ck.scopes[last].len()
+            pattern(mut ck, alts[0], t, mutable)?
+            let first = ck.scopes[last]
+            let names = first.slice(before, first.len()).map(fn(l) => l.name)
+            for ai in 1..alts.len() {
+                let a = alts[ai]
+                let tmp = ck.scopes[last]
+                ck.scopes[last] = tmp.slice(0, before)
+                pattern(mut ck, a, t, mutable)?
+                let now = ck.scopes[last]
+                let got = now.slice(before, now.len())
+                if got.map(fn(l) => l.name).sorted() != names.sorted() {
+                    return ckast.fail(a.sp, "every alternative of '|' must bind the same names")
+                }
+                let orig = tmp.slice(before, tmp.len())
+                for l in got {
+                    var ot = l.ty
+                    var found = false
+                    for o in orig {
+                        if not found and o.name == l.name {
+                            ot = o.ty
+                            found = true
+                        }
+                    }
+                    ck.unify_at(a.sp, ot, l.ty)?
+                }
+                ck.scopes[last] = tmp
+            }
+        }
+    }
+    Ok(())
+}
+
+fn call_args(ck: mut ckinfer.Ck, sp: ckast.Span, params: List[cktypes.Ty], args: List[ckast.Expr], what: Str) -> Result[Unit, ckast.Diag] {
+    call_args_mut(mut ck, sp, params, [], args, what, [])
+}
+
+// The variable a place expression is rooted at.
+fn place_root(e: ckast.Expr) -> Str {
+    match e.k {
+        XField(b, _) => place_root(b),
+        XTField(b, _) => place_root(b),
+        XIndex(b, _) => place_root(b),
+        XName(n) => n,
+        _ => "",
+    }
+}
+
+// `muts[i]`: parameter i is `mut`, so its argument must be `mut place`.
+fn call_args_mut(ck: mut ckinfer.Ck, sp: ckast.Span, params: List[cktypes.Ty], muts: List[Bool], args: List[ckast.Expr], what: Str, roots0: List[Str]) -> Result[Unit, ckast.Diag] {
+    if params.len() != args.len() {
+        return ckast.fail(sp, what + " expects {params.len()} argument(s), found {args.len()}")
+    }
+    var roots = roots0
+    for i in 0..args.len() {
+        let a = args[i]
+        let want_mut = i < muts.len() and muts[i]
+        match a.k {
+            XMutArg(inner) => {
+                if not want_mut { return ckast.fail(a.sp, "this parameter is not 'mut'; pass the value without 'mut'") }
+                let _ = ck.expr(inner, params[i])?
+                ck.place(inner, false)?
+                ck.record(a.id, params[i])
+                let root = place_root(inner)
+                if roots.contains(root) { return ckast.fail(a.sp, "two 'mut' arguments refer to '" + root + "'; they would alias") }
+                roots.push(root)
+            }
+            _ => {
+                if want_mut {
+                    return ckast.fail(a.sp, "this parameter is 'mut': pass a variable as 'mut x' so the change is visible at the call")
+                }
+                let _ = ck.expr(a, params[i])?
+            }
+        }
+    }
+    Ok(())
+}
+
+pub fn variant_by_name(ck: ckinfer.Ck, v: Str, sp: ckast.Span) -> Result[Option[(Int, Int)], ckast.Diag] {
+    var found: List[(Int, Int)] = []
+    for c in ck.env.variant_ix.get(v).unwrap_or([]) {
+        let e = ck.env.enums[c.0]
+        if e.file == ck.env.cur or e.file == 0 or (e.public and ck.env.imported(ck.env.modules[e.file])) {
+            found.push(c)
+        }
+    }
+    // Variants of the file's own and imported enums hide the prelude's.
+    if found.any(fn(c) => ck.env.enums[c.0].file != 0) {
+        found = found.filter(fn(c) => ck.env.enums[c.0].file != 0)
+    }
+    if found.is_empty() { return Ok(None) }
+    if found.len() == 1 { return Ok(Some(found[0])) }
+    let names = found.map(fn(c) => ck.env.enums[c.0].name)
+    ckast.fail(sp, "variant '" + v + "' is ambiguous (" + names.join(", ") + "); qualify it, e.g. " + names[0] + "." + v)
+}
+
+pub fn variant_pos(ck: ckinfer.Ck, ei: Int, m: Str) -> Option[Int] {
+    let vs = ck.env.enums[ei].variants
+    for i in 0..vs.len() {
+        if vs[i].0 == m { return Some(i) }
+    }
+    None
+}
+
+pub fn variant_value(ck: mut ckinfer.Ck, sp: ckast.Span, callee: Int, ei: Int, vi: Int, args: Option[List[ckast.Expr]]) -> Result[cktypes.Ty, ckast.Diag] {
+    let en = ck.env.enums[ei]
+    var targs: List[cktypes.Ty] = []
+    for _ in en.tparams { targs.push(ck.sub.fresh()) }
+    let vname = en.variants[vi].0
+    let fts = en.variants[vi].1.map(fn(x) => x.subst(en.tparams, targs))
+    let ety = Con(en.name, targs)
+    ck.pres[callee] = RVariant(ei, vi, targs)
+    match args {
+        None => if fts.is_empty() { Ok(ety) } else { Ok(Fun(fts, ety)) },
+        Some(xs) => {
+            if fts.is_empty() { return ckast.fail(sp, "variant '" + vname + "' takes no arguments") }
+            call_args(mut ck, sp, fts, xs, "variant '" + vname + "'")?
+            Ok(ety)
+        }
+    }
+}
+
+pub fn call(ck: mut ckinfer.Ck, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr], exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
+    // Variant constructors get their arguments checked directly.
+    var variant: Option[(Int, Int)] = None
+    match callee.k {
+        XName(n) if ckast.upper(n) and ck.lookup(n).is_none() and ck.env.lookup_fn(n).is_none() => {
+            variant = variant_by_name(ck, n, callee.sp)?
+        }
+        XPath(t, m) if not t.starts_with("@") => match ck.env.resolve_type(t, callee.sp) {
+            Ok(tn) => match ck.env.enum_idx(tn) {
+                Some(ei) => match variant_pos(ck, ei, m) {
+                    Some(vi) => variant = Some((ei, vi)),
+                    None => {}
+                },
+                None => {}
+            },
+            Err(_) => {}
+        },
+        _ => {}
+    }
+    match variant {
+        Some((ei, vi)) => {
+            let t = variant_value(mut ck, e.sp, callee.id, ei, vi, Some(args))?
+            ck.record(callee.id, t)
+            return Ok(t)
+        }
+        None => {}
+    }
+    let ct0 = ck.sub.fresh()
+    let saved = ck.in_callee
+    ck.in_callee = true
+    let checked = ck.expr(callee, ct0)
+    ck.in_callee = saved
+    let ct1 = checked?
+    let ct = ck.known(ct1, callee.sp, "the called value")?
+    match ct {
+        Fun(ps, r) => {
+            let named = match callee.k {
+                XName(_) | XPath(_, _) => true,
+                _ => false,
+            }
+            // Calling a local or a constant calls the function value it holds.
+            let local = match ck.pres.get(callee.id) {
+                Some(RLocal(_)) | Some(RConst(_)) => true,
+                _ => false,
+            }
+            if not named or local { ck.pres[e.id] = RCallValue }
+            let muts = match ck.pres.get(callee.id) {
+                Some(RFn(fi, _)) => ck.env.fns[fi].muts,
+                _ => [],
+            }
+            call_args_mut(mut ck, e.sp, ps, muts, args, "this function", [])?
+            Ok(r)
+        }
+        _ => ckast.fail(callee.sp, "cannot call a value of type " + ck.show(ct)),
+    }
+}
+
+pub fn struct_lit(ck: mut ckinfer.Ck, e: ckast.Expr, name0: Str, fields: List[(Str, ckast.Expr)], base: Option[ckast.Expr], exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
+    let name = ck.env.resolve_type(name0, e.sp)?
+    let si = match ck.env.struct_idx(name) {
+        Some(i) => i,
+        None => return ckast.fail(e.sp, "'" + name0 + "' is not a struct"),
+    }
+    let sd = ck.env.structs[si]
+    if sd.file != ck.env.cur and sd.pub_fields.any(fn(p) => not p) {
+        return ckast.fail(e.sp, "'" + name0 + "' has private fields; it can only be built inside its module")
+    }
+    ck.pres[e.id] = RStruct(si)
+    let targs = match ck.sub.shallow(exp) {
+        Con(n, a) if n == name => a,
+        _ => ck.fresh_list(sd.tparams.len()),
+    }
+    let st = Con(name, targs)
+    let decl = ck.env.struct_fields(st).unwrap()
+    for i in 0..fields.len() {
+        let (f, v) = fields[i]
+        var ft: Option[cktypes.Ty] = None
+        for d in decl {
+            if ft.is_none() and d.0 == f { ft = Some(d.1) }
+        }
+        let fty = match ft {
+            Some(x) => x,
+            None => return ckast.fail(v.sp, "struct '" + name + "' has no field '" + f + "'"),
+        }
+        if fields.slice(0, i).any(fn(g) => g.0 == f) { return ckast.fail(v.sp, "field '" + f + "' is given twice") }
+        let _ = ck.expr(v, fty)?
+    }
+    match base {
+        Some(b) => {
+            let _ = ck.expr(b, st)?
+        }
+        None => {
+            for d in decl {
+                if not fields.any(fn(g) => g.0 == d.0) {
+                    return ckast.fail(e.sp, "missing field '" + d.0 + "' in '" + name + "'")
+                }
+            }
+        }
+    }
+    Ok(st)
+}
+
+pub fn method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast.Expr]) -> Result[cktypes.Ty, ckast.Diag] {
+    let rt0 = ck.sub.fresh()
+    let rt1 = ck.expr(recv, rt0)?
+    let rt = ck.known(rt1, recv.sp, "the receiver")?
+    if m == "to_str" and args.is_empty() {
+        ck.comparable(rt, e.sp)?
+        ck.pres[e.id] = RToStr
+        return Ok(cktypes.t_str())
+    }
+    match rt {
+        Par(p) => {
+            let bs = ck.bmap.get(p).unwrap_or([])
+            if bs.is_empty() { return ckast.fail(e.sp, "no methods are available on generic type '" + p + "'") }
+            return trait_call(mut ck, e, recv, rt, bs, m, args, "type parameter '" + p + "'")
+        }
+        _ => {}
+    }
+    match ck.env.dyn_trait(rt) {
+        Some(tr) => return trait_call(mut ck, e, recv, rt, [tr], m, args, rt.show()),
+        None => {}
+    }
+    let owner = match rt {
+        Con(n, _) => n,
+        _ => "",
+    }
+    let found = if owner == "" { None } else { ck.env.find_fn(owner + "." + m) }
+    let fi = match found {
+        Some(i) => i,
+        None => {
+            match impl_method(mut ck, e, recv, rt, m)? {
+                Some(i) => return method_call(mut ck, e, recv, m, args, i.0, i.1, owner),
+                None => {}
+            }
+            if owner == "" { return ckast.fail(e.sp, "type " + ck.show(rt) + " has no method '" + m + "'") }
+            let hint = match ck.env.struct_fields(rt) {
+                Some(fs) if fs.any(fn(f) => f.0 == m) => "; to call the field, write (x." + m + ")(...)",
+                _ => "",
+            }
+            return ckast.fail(e.sp, "type " + ck.show(rt) + " has no method '" + m + "'" + hint)
+        }
+    }
+    ck.env.visible(fi, e.sp)?
+    let f = ck.env.fns[fi]
+    if f.self_kind == NoSelf {
+        return ckast.fail(e.sp, "'" + owner + "." + m + "' is not a method; call it as " + owner + "." + m + "(...)")
+    }
+    let targs = ck.instantiate(fi)
+    method_call(mut ck, e, recv, m, args, fi, targs, owner)
+}
+
+// A method call resolved to function fi with type arguments targs.
+fn method_call(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast.Expr], fi: Int, targs: List[cktypes.Ty], owner: Str) -> Result[cktypes.Ty, ckast.Diag] {
+    let rt = ck.sub.shallow(ck.ptypes.get(recv.id).unwrap_or(cktypes.t_unit()))
+    let f = ck.env.fns[fi]
+    ck.need_bounds(fi, targs, e.sp)
+    let own = f.owner.unwrap().subst(f.tparams, targs)
+    let params = f.params.slice(1, f.params.len()).map(fn(p) => p.1.subst(f.tparams, targs))
+    let ret = f.ret.subst(f.tparams, targs)
+    if not ck.sub.unify(own, rt) {
+        return ckast.fail(e.sp, "method '" + m + "' requires " + ck.show(own) + ", found " + ck.show(rt))
+    }
+    if f.self_kind == MutSelf {
+        match ck.place(recv, false) {
+            Ok(_) => {}
+            Err(d) => return ckast.fail(d.sp, "'" + m + "' mutates its receiver: " + d.msg),
+        }
+    }
+    ck.pres[e.id] = RMethod(fi, targs)
+    let roots0 = if f.self_kind == MutSelf { [place_root(recv)] } else { [] }
+    call_args_mut(mut ck, e.sp, params, f.muts, args, "method '" + m + "'", roots0)?
+    Ok(ret)
+}
+
+// A method of a trait implemented for the receiver's type: the function and
+// its type arguments, if exactly one impl provides `m`.
+fn impl_method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, m: Str) -> Result[Option[(Int, List[cktypes.Ty])], ckast.Diag] {
+    var cands: List[(Int, Int)] = []
+    for ii in 0..ck.env.impls.len() {
+        let im = ck.env.impls[ii]
+        let ms = ck.env.traits[im.tr].methods
+        for mi in 0..ms.len() {
+            if ms[mi].name == m {
+                var trial = ck.sub
+                var vs: List[cktypes.Ty] = []
+                for _ in im.tparams { vs.push(trial.fresh()) }
+                if trial.unify(im.target.subst(im.tparams, vs), rt) { cands.push((ii, mi)) }
+            }
+        }
+    }
+    if cands.is_empty() { return Ok(None) }
+    if cands.len() > 1 {
+        let r = ck.sub.resolve(rt)
+        if r.any(fn(x) => ckinfer.is_var(x)) { return ckast.fail(recv.sp, "the type of the receiver must be known here; add a type annotation") }
+        let names = cands.map(fn(c) => ck.env.traits[ck.env.impls[c.0].tr].name)
+        return ckast.fail(e.sp, "method '" + m + "' of " + r.show() + " is ambiguous: it is in traits " + names.join(" and "))
+    }
+    let (ii, mi) = cands[0]
+    let im = ck.env.impls[ii]
+    let vs = ck.fresh_list(im.tparams.len())
+    let _ = ck.sub.unify(im.target.subst(im.tparams, vs), rt)
+    let fi = im.fns[mi]
+    let tm = ck.env.traits[im.tr].methods[mi]
+    let own = ck.fresh_list(tm.tparams.len())
+    let targs = match ck.env.fns[fi].origin {
+        ODefault(_, _) => [rt] + own,
+        _ => vs + own,
+    }
+    Ok(Some((fi, targs)))
+}
+
+// A call of a method of the traits `trs` on a type parameter (its bounds) or a `dyn` value.
+fn trait_call(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, trs: List[Int], m: Str, args: List[ckast.Expr], what: Str) -> Result[cktypes.Ty, ckast.Diag] {
+    var cands: List[(Int, Int)] = []
+    for tr in trs {
+        let ms = ck.env.traits[tr].methods
+        for mi in 0..ms.len() {
+            if ms[mi].name == m { cands.push((tr, mi)) }
+        }
+    }
+    if cands.is_empty() {
+        let names = trs.map(fn(t) => ck.env.traits[t].name).join(" + ")
+        return ckast.fail(e.sp, what + " has no method '" + m + "' (its traits: " + names + ")")
+    }
+    if cands.len() > 1 {
+        let names = cands.map(fn(c) => ck.env.traits[c.0].name)
+        return ckast.fail(e.sp, "method '" + m + "' of " + what + " is ambiguous: it is in traits " + names.join(" and "))
+    }
+    let (tr, mi) = cands[0]
+    let tm = ck.env.traits[tr].methods[mi]
+    let mtargs = ck.fresh_list(tm.tparams.len())
+    let ps = ["Self"] + tm.tparams
+    let ts = [rt] + mtargs
+    let params = tm.params.map(fn(p) => p.1.subst(ps, ts))
+    let ret = tm.ret.subst(ps, ts)
+    if tm.self_kind == MutSelf {
+        match ck.place(recv, false) {
+            Ok(_) => {}
+            Err(d) => return ckast.fail(d.sp, "'" + m + "' mutates its receiver: " + d.msg),
+        }
+    }
+    ck.pres[e.id] = RTrait(tr, mi, rt, mtargs)
+    let roots0 = if tm.self_kind == MutSelf { [place_root(recv)] } else { [] }
+    call_args_mut(mut ck, e.sp, params, tm.muts, args, "method '" + m + "'", roots0)?
+    Ok(ret)
+}
