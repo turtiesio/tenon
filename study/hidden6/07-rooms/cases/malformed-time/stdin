@@ -1,0 +1,6 @@
+BOOK r 9:00 10:00 x
+BOOK r 09:60 10:00 x
+BOOK r 24:01 24:00 x
+BOOK r 25:00 24:00 x
+BOOK r -1:00 10:00 x
+BOOK r 00:00 0:01 x

@@ -1,0 +1,12 @@
+T1
+T1 open abcdefghijkl - !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+T2
+T2 open a - A  B !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command
+OK
+T1 open abcdefghijkl 123456789012 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

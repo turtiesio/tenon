@@ -1,0 +1,21 @@
+OPEN a Title1
+OPEN a Title2
+OPEN a Title3
+OPEN a Title4
+OPEN a Title5
+OPEN a Title6
+OPEN a Title7
+OPEN a Title8
+OPEN a Title9
+OPEN a Title10
+OPEN a Title11
+OPEN a Title12
+ASSIGN T10 z
+ASSIGN T2 z
+ASSIGN T1 z
+QUEUE z
+CLOSE T2
+QUEUE z
+QUEUE -
+REOPEN T2
+QUEUE z

@@ -1,0 +1,17 @@
+OK
+OK B1
+B1 00:00-24:00 night
+NONE
+OK
+r1 08:00 08:01
+ERR bad time
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command
+ERR no such room
+ERR bad command
+(empty)
+OK B2
+B2 12:00-12:01 amy

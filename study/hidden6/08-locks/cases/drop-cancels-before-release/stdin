@@ -1,0 +1,9 @@
+LOCK p a X
+LOCK q a X
+LOCK q b X
+LOCK p b S
+LOCK z b S
+DROP p
+HELD p
+STATUS a
+STATUS b

@@ -1,0 +1,4 @@
+OPEN a Alpha
+OPEN b Beta
+ASSIGN T1 z
+CLOSE T1

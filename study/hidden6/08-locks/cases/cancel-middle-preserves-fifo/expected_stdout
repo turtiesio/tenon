@@ -1,0 +1,8 @@
+GRANTED
+WAITING
+WAITING
+WAITING
+OK released=0 cancelled=1
+r holders=a:X queue=b:X,d:S
+OK b:r:X
+OK d:r:S

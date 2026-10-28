@@ -1,0 +1,5 @@
+SHOW T1
+SHOW T2
+QUEUE z
+QUEUE -
+OPEN c Three

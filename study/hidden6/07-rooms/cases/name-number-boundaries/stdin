@@ -1,0 +1,4 @@
+ROOM abcdefghijkl 999
+BOOK abcdefghijkl 00:00 00:01 123456789012
+SCHEDULE abcdefghijkl
+FIND 999 600

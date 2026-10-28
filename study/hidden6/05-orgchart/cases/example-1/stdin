@@ -1,0 +1,8 @@
+id,name,manager,salary
+e1,Grace Hopper,,250000
+e2,Alan Turing,e1,180000
+e7,Ada Lovelace,e1,190000
+e3,Zoë Weiss,e7,95000
+e4,Ben Ng,e7,98000
+e9,Ben Ng,e2,1200
+e5,Émile Roux,e7,87500

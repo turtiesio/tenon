@@ -1,0 +1,8 @@
+T1
+OK
+UNCHANGED
+T1 open a z X
+T1
+ERR not closed
+ERR no such ticket
+ERR bad command

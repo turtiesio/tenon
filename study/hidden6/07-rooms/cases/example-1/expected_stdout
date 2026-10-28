@@ -1,0 +1,17 @@
+OK
+OK
+ERR room exists
+OK B1
+OK B2
+ERR conflict B1
+ERR conflict B1
+ERR bad time
+ERR no such room
+OK B3
+ERR bad command
+B1 09:00-10:30 ann, B2 10:30-11:00 bob
+B3 23:00-24:00 eve
+OK
+ERR no such booking
+B2 10:30-11:00 bob
+ERR bad command

@@ -1,0 +1,3 @@
+R [r] reports=2 cost=3
+  A [a] reports=0 cost=2
+  A [z] reports=0 cost=1

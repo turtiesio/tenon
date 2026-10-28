@@ -1,0 +1,6 @@
+id,name,manager,salary
+b2,Kim,,1000
+
+a1,Kim,,2000
+c3,Lee,a1,500
+c4,Al,c3,0

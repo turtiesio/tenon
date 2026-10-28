@@ -1,0 +1,3 @@
+SHOW T1
+ASSIGN T1 q
+OPEN b Unsent

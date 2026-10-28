@@ -1,0 +1,4 @@
+pancakes 6
+omelette 1
+salad 2
+pancakes 2

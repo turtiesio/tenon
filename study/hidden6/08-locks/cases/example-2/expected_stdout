@@ -1,0 +1,15 @@
+GRANTED
+GRANTED
+GRANTED
+WAITING
+WAITING
+WAITING
+WAITING
+a:X,b:S
+OK released=0 cancelled=2 dee:b:S
+b holders=ann:S,bob:S,dee:S queue=-
+OK released=2 cancelled=0 eve:a:S
+a holders=eve:S queue=-
+b holders=bob:S,dee:S queue=-
+a:S
+OK released=0 cancelled=0

@@ -1,0 +1,4 @@
+id,name,manager,salary
+a,A,b,1
+b,B,a,2
+c,C,,3

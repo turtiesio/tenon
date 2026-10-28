@@ -1,0 +1,15 @@
+GRANTED
+GRANTED
+WAITING
+WAITING
+WAITING
+WAITING
+OK released=2 cancelled=0 q:r1:X q:r2:S s:r2:S
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command
+ERR bad command
+r1 holders=q:X queue=t:S
+ERR not held
+OK t:r1:S

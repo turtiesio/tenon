@@ -1,0 +1,15 @@
+LOCK p r2 X
+LOCK p r1 X
+LOCK q r2 S
+LOCK s r2 S
+LOCK q r1 X
+LOCK t r1 S
+DROP p
+lock q r1 S
+LOCK q r1 W
+UNLOCK  q r1
+
+LOCK Q r1 S
+STATUS r1
+UNLOCK t r1
+UNLOCK q r1

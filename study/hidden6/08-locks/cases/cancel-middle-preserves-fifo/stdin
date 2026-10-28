@@ -1,0 +1,8 @@
+LOCK a r X
+LOCK b r X
+LOCK c r S
+LOCK d r S
+DROP c
+STATUS r
+UNLOCK a r
+UNLOCK b r
