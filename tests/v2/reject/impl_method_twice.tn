@@ -1,0 +1,16 @@
+// error: method 'speak' is defined twice in impl Speak for Dog
+// Mutation survivor #11 (compiler/ckdecl.tn impl_fns): an impl that gives one trait method twice.
+trait Speak {
+    fn speak(self) -> Str
+}
+
+struct Dog {}
+
+impl Speak for Dog {
+    fn speak(self) -> Str { "woof" }
+    fn speak(self) -> Str { "bark" }
+}
+
+fn main(sys: Sys) {
+    sys.console.println(Dog {}.speak())
+}
