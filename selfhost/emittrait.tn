@@ -167,11 +167,13 @@ pub fn show_trait(env: ckenv.Env) -> Int {
 }
 
 // When a declared type gets its C name: the instance of its Show impl's
-// `to_str`, if it has one (its formatter calls it, see emitlayout.helpers_for).
+// `to_str`, if one applies (ckenv.show_impl: its bounds hold for t; the
+// interpreter chooses the same, icode.Fmt), which its formatter calls (see
+// emitlayout.helpers_for).
 pub fn note_type(m: mut emit.Em, t: cktypes.Ty) {
     if m.show_tr < 0 { return }
     match t {
-        Con(n, _) if m.c.env.type_decl(n).is_some() => match m.c.env.method_for(m.show_tr, 0, t, []) {
+        Con(n, _) if m.c.env.type_decl(n).is_some() and m.c.env.show_impl(t, [:]).is_some() => match m.c.env.method_for(m.show_tr, 0, t, []) {
             Some((fi, targs)) => {
                 let f = emitbody.fn_inst(mut m, fi, targs)
                 m.show_ovs[t] = f

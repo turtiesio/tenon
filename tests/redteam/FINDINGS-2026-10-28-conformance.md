@@ -78,6 +78,8 @@ map keys on the struct/enum declaration ID, losing its type arguments
 (`ival.Names.ovs`, `ieval.render`), whereas native dispatch retains them.
 That explanation is an inference; the program above is the evidence.
 
+Fixed in 01e9677, tests tests/v2/run/trait_show_specialized.tn, trait_show_specialized_main.tn, trait_show_specialized_place.tn, trait_show_specialized_expect.tn (under tests/v2/run).
+
 ## 2. Implicit Show dispatch does not enforce the impl's bounds
 
 ```tenon

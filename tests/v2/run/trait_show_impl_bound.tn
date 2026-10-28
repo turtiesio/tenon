@@ -1,0 +1,33 @@
+// A generic Show impl applies only where its bounds hold; elsewhere the
+// type keeps the derived text (conformance 2026-10-28 #2), in interpolation,
+// to_str, nested values, generic code and dyn values, on both backends. The
+// impl's body may rely on its bounds (here: T as a map key).
+struct Box[T] { x: T }
+
+struct Named[T] { name: Str, v: T }
+
+impl[T: Hash] Show for Box[T] {
+    fn to_str(self) -> Str {
+        let m: Map[T, Int] = [self.x: 1]
+        "hashable {m.len()}"
+    }
+}
+
+impl[T: Show] Show for Named[T] {
+    fn to_str(self) -> Str { self.name + "=" + self.v.to_str() }
+}
+
+fn plain[T](x: T) -> Str { "<{x}> <{Box { x }}>" }
+
+fn inc(n: Int) -> Int { n + 1 }
+
+fn main(sys: Sys) {
+    let c = sys.console
+    c.println("{Box { x: 1 }} {Box { x: 1.5 }} {Box { x: 1.5 }.to_str()} {Box { x: "s" }.to_str()}")
+    c.println("{Box { x: [1.5] }} {Box { x: Box { x: 2 } }} {Box { x: Box { x: 2.5 } }} {[Box { x: (1, 2.5) }]}")
+    c.println("{plain(3)} {plain(3.5)} {plain(Box { x: 0.5 })}")
+    c.println("{[dyn Show(Box { x: 1 }), dyn Show(Box { x: 1.5 })]}")
+    c.println("{Named { name: "n", v: 1 }} {Named { name: "c", v: sys.console }}")
+    let f = Box { x: inc }
+    c.println("{f} {Named { name: "f", v: inc }} {Some(Box { x: 0.25 })}")
+}

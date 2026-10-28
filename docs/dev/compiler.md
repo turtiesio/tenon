@@ -274,8 +274,10 @@ v1 corpus stays byte-identical to the bootstrap's (tools/selfhost.sh).
   are not in tables) that calls the impl's instance on the boxed value. The
   per-type helpers of a dyn type retain/release the box, format through the
   table, and stub eq/cmp/hash/dec (the checker forbids them).
-- **Show impls**: when a declared type gets its C name (`Em.cty`), its Show
-  impl's `to_str` instance is queued (`note_type`); the type's formatter
+- **Show impls**: when a declared type gets its C name (`Em.cty`), the
+  `to_str` instance of the Show impl that applies to it (`ckenv.show_impl`:
+  the target matches and the impl's bounds hold, so `impl[T: Hash] Show for
+  Box[T]` leaves `Box[Float]` structural) is queued (`note_type`); the type's formatter
   starts with `if (!(mode & TN_FULL))` calling it, so every place that
   formats (interpolation, lists, maps, traps, `main`'s error) uses it and
   `encode` (TN_FULL) does not. Its prototype goes with the helper
