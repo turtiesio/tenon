@@ -1,0 +1,13 @@
+// main's error is formatted with the Show impl of its own instantiation
+// only (conformance 2026-10-28 #1).
+struct Box[T] { x: T }
+
+impl Show for Box[Int] {
+    fn to_str(self) -> Str { "int {self.x}" }
+}
+
+fn main(sys: Sys) -> Result[Unit, Box[Int]] {
+    let r: Result[Int, Box[Str]] = Err(Box { x: "s" })
+    sys.console.println("{r} {r.unwrap_or(0)}")
+    Err(Box { x: 5 })
+}

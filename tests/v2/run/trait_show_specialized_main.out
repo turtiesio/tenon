@@ -1,0 +1,3 @@
+Err(Box { x: "s" }) 0
+exit: 1
+stderr: error: int 5

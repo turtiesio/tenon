@@ -596,7 +596,7 @@ fn Env.unshowable_walk(self, t: cktypes.Ty, pb: Map[Str, List[Int]], seen0: List
 }
 
 // Is t nested deeper than n?
-fn deeper(t: cktypes.Ty, n: Int) -> Bool {
+pub fn deeper(t: cktypes.Ty, n: Int) -> Bool {
     if n < 0 { return true }
     match t {
         Con(_, a) | Tup(a) => a.any(fn(x) => deeper(x, n - 1)),

@@ -21,6 +21,14 @@ tests/v2/reject/bound_show_capability_field.tn
 tests/v2/reject/dyn_show_function_payload.tn
 tests/v2/run/show_bound_fields.tn
 tests/v2/run/show_bound_fields.out
+tests/v2/run/trait_show_specialized.tn
+tests/v2/run/trait_show_specialized.out
+tests/v2/run/trait_show_specialized_main.tn
+tests/v2/run/trait_show_specialized_main.out
+tests/v2/run/trait_show_specialized_place.tn
+tests/v2/run/trait_show_specialized_place.out
+tests/v2/run/trait_show_specialized_expect.tn
+tests/v2/run/trait_show_specialized_expect.out
 # The bootstrap is a frozen seed (tenon.md §5): any change to it needs an
 # approval line, and its line count may only shrink (tools/approvals.py).
 frozen bootstrap/*

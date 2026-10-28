@@ -1,0 +1,13 @@
+int 1 Box { x: "a" } int 1 Box { x: "a" }
+Box { x: int 1 } Box { x: Box { x: "a" } } [int 1] [Box { x: "a" }] Some(Box { x: "a" })
+#s Tagged(2) Untagged Box { x: #s }
+<int 1> <Box { x: "a" }> <[#s]> <[Tagged(2)]>
+int 3 [Tagged(3)] Box { x: "b" } [#b] Box { x: true } [Tagged(true)]
+(int 4, Box { x: [5] }) (Box { x: "p" }, Box { x: ["q"] })
+[int 1, Box { x: "a" }, Tagged(2), #s]
+Err(Box { x: "a" }) Err(int 1)
+[int 1: Box { x: "a" }]
+int 6 Box { x: "6" } <int 6>
+exit: 70
+stderr: trap: key not found: int 9
+stderr:   at trait_show_specialized.tn:51:18

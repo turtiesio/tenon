@@ -228,7 +228,11 @@ pub struct Names {
     pub snames: List[Str], pub shown: List[List[Option[Str]]], pub full: List[List[Option[Str]]],
     pub vnames: List[List[Str]],
     pub ovs: Map[(Int, Int), Int], // (0, struct) or (1, enum) with a Show impl: its `to_str`
+    pub typed: Bool,               // Show impls that depend on type arguments: formatted by type (icode.Fmt), `ovs` is empty
 }
+
+// Does the program have Show impls (formatting goes through ieval.prerender)?
+pub fn Names.shows(self) -> Bool { self.typed or not self.ovs.is_empty() }
 
 fn cap_name(i: Int) -> Str {
     ["<Console>", "<Fs>", "<Clock>", "<Net>", "<Proc>", "<Listener>", "<Conn>", "<Poller>", "<Workers>", "<Sender>", "<Receiver>", "<Worker>"][i]

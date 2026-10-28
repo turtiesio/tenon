@@ -1,0 +1,16 @@
+// A missing key reached through a place (`m[k] += 1`) is shown with the
+// Show impl of the key's instantiation (conformance 2026-10-28 #1).
+struct Box[T] { x: T }
+
+impl Show for Box[Int] {
+    fn to_str(self) -> Str { "int {self.x}" }
+}
+
+fn main(sys: Sys) {
+    var s: Map[Box[Str], Int] = [:]
+    s[Box { x: "a" }] = 1
+    s[Box { x: "a" }] += 1
+    sys.console.println("{s}")
+    var m: Map[Box[Int], Int] = [:]
+    m[Box { x: 9 }] += 1
+}

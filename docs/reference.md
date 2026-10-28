@@ -819,6 +819,8 @@ would call it again). `impl Eq`, `Ord` and `Hash` are refused in this
 version: equality, map keys and sorting stay structural, so the interpreter
 and the C backend cannot disagree about them. An impl of Show may bound its
 type parameters only by derived traits (`impl[T: Show] Show for Box[T]`).
+An impl for one instantiation formats only that one: with `impl Show for
+Box[Int]`, a `Box[Str]` keeps the derived text, also in generic code.
 
 **Coherence.** A type implements a trait at most once: a second impl, or a
 generic impl overlapping another (`impl[T] Shape for List[T]` and

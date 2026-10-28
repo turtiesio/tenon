@@ -1,0 +1,4 @@
+[Box { x: "a" }: 2]
+exit: 70
+stderr: trap: key not found: int 9
+stderr:   at trait_show_specialized_place.tn:15:6

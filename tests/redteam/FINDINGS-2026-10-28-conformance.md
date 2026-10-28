@@ -193,6 +193,8 @@ and prints `<fn>` for it. This finding concerns eligibility for an explicit
 `T: Show` bound; it does not claim that directly interpolating capabilities
 must be prohibited or that formatting grants authority.
 
+Fixed in f2291e4, tests tests/v2/reject/bound_show_capability_field.tn, tests/v2/reject/dyn_show_function_payload.tn, tests/v2/run/show_bound_fields.tn.
+
 ## 6. LSP go-to-definition locates a comment, not the field declaration
 
 ```tenon

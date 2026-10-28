@@ -352,6 +352,20 @@ other function is lowered once. A `dyn` value is `K_DYN` (the value and a
 vtable of `Code.vts`: per trait method the function to call). Show impls:
 ieval.prerender replaces each part of a value whose type has one by its
 text (`K_RAW`) before formatting; a program without Show impls skips it.
+When every impl's target is a type without type arguments (`impl Show for
+Money`), the value says which impl applies (`Names.ovs`, by declaration).
+When one has type arguments (`impl Show for Box[Int]`, `impl[T: Show] Show
+for Tagged[T]`), the value alone cannot say (`Box[Int]` and `Box[Str]` are
+both a `K_STRUCT` of Box), so the program is lowered typed
+(`icode.typed_shows`, `Names.typed`): every generic function per
+instantiation, and every place that formats (interpolation, `to_str`, the
+key of a missing-key trap, `Result.unwrap`/`expect`, `main`'s error) carries
+the type it formats, an index into `Code.fmts` (`icode.Fmt`: the instance of
+the Show impl that applies, by `ckenv.show_impl` as the C backend chooses
+it, else the types of the parts); a `dyn` value's type is its vtable's
+(`Code.vt_tys`). Polymorphic recursion, which the C backend refuses, gets
+one generic copy past type depth 48, in which formatting a type parameter
+applies no impl (tests/v2/run/trait_show_specialized*.tn).
 
 A missing map key reached through a place (`m[k] += 1`) is shown with
 the key type's Show impl, as `m[k]` read as a value and C everywhere

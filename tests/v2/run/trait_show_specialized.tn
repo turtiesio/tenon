@@ -1,0 +1,52 @@
+// A Show impl for one instantiation of a generic type formats only that
+// instantiation; the others stay structural (conformance 2026-10-28 #1), in
+// interpolation, to_str, nested values, unbounded generic code, dyn values,
+// Err payloads, workers and the key-not-found trap, on both backends.
+struct Box[T] { x: T }
+
+enum Tag[T] { Tagged(T), Untagged }
+
+impl Show for Box[Int] {
+    fn to_str(self) -> Str { "int {self.x}" }
+}
+
+impl Show for Tag[Str] {
+    fn to_str(self) -> Str {
+        match self {
+            Tagged(s) => "#" + s,
+            Untagged => "#",
+        }
+    }
+}
+
+fn plain[T](x: T) -> Str { "<{x}>" }
+
+fn boxed[T](x: T) -> Str { "{Box { x }} {[Tagged(x)]}" }
+
+fn pair[A, B](a: A, b: B) -> Str { "{(Box { x: a }, Box { x: [b] })}" }
+
+fn main(sys: Sys) {
+    let c = sys.console
+    let bi = Box { x: 1 }
+    let bs = Box { x: "a" }
+    c.println("{bi} {bs} {bi.to_str()} {bs.to_str()}")
+    c.println("{Box { x: bi }} {Box { x: bs }} {[bi]} {[bs]} {Some(bs)}")
+    let ts: Tag[Str] = Tagged("s")
+    let ti: Tag[Int] = Tagged(2)
+    let tn: Tag[Int] = Untagged
+    c.println("{ts} {ti} {tn} {Box { x: ts }}")
+    c.println("{plain(bi)} {plain(bs)} {plain([ts])} {plain([ti])}")
+    c.println("{boxed(3)} {boxed("b")} {boxed(true)}")
+    c.println("{pair(4, 5)} {pair("p", "q")}")
+    c.println("{[dyn Show(bi), dyn Show(bs), dyn Show(ti), dyn Show(ts)]}")
+    let r: Result[Int, Box[Str]] = Err(bs)
+    let e: Result[Int, Box[Int]] = Err(bi)
+    c.println("{r} {e}")
+    var m: Map[Box[Int], Box[Str]] = [:]
+    m[bi] = bs
+    c.println("{m}")
+    let w = sys.workers()
+    let job = w.spawn(fn(n: Int) => "{Box { x: n }} {Box { x: "{n}" }} {plain(Box { x: n })}", 6)
+    c.println(job.join())
+    c.println("{m[Box { x: 9 }]}")
+}

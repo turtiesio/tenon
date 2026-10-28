@@ -25,12 +25,12 @@ pub enum Node {
     NDecode(cktypes.Ty, List[Node], ckast.Span, Bool),
     NCtor(Int, Int, List[Node]),
     NApply(Node, List[Node], ckast.Span),
-    NToStr(Node),
+    NToStr(Node, Int), // the value, its type (Code.fmts; -1 unless Names.typed)
     NMutSelf(Int, Place, List[Arg], ckast.Span, Bool),
     NExtMut(Int, Place, List[Node], ckast.Span, Bool),
     NMethodMut(Int, Node, List[Arg], ckast.Span, Bool),
     NField(Node, Int),
-    NIndex(Node, Node, ckast.Span),
+    NIndex(Node, Node, ckast.Span, Int), // ..., the key's type (Code.fmts) for the key-not-found trap
     NNeg(Node, ckast.Span),
     NNot(Node),
     NBin(Int, Node, Node, ckast.Span),
@@ -49,11 +49,11 @@ pub enum Node {
     NDynCall(Int, Node, List[Arg], ckast.Span), // method of the receiver's vtable
 }
 
-pub enum Seg { GLit(Str), GShow(Node), GFmt(Node, parser.Spec) }
+pub enum Seg { GLit(Str), GShow(Node, Int), GFmt(Node, parser.Spec) } // GShow: the value's type (Code.fmts)
 
 pub enum Arg { AVal(Node), AMut(Place) }
 
-pub enum PStep { PathField(Int), PathIndex(Node) }
+pub enum PStep { PathField(Int), PathIndex(Node, Int) } // PathIndex: the key's type (Code.fmts)
 // A place: a frame slot and a path into it; `sp` is where navigation traps.
 pub struct Place { pub root: Int, pub steps: List[PStep], pub sp: ckast.Span }
 
@@ -103,12 +103,26 @@ pub fn op_id(op: Str) -> Int {
     }
 }
 
-// A function: `ext` is the builtin number of an `extern fn` (-1 otherwise).
-pub struct FnRt { pub name: Str, pub ext: Int, pub nparams: Int, pub nslots: Int, pub body: List[Stm] }
+// A function: `ext` is the builtin number of an `extern fn` (-1 otherwise);
+// `fty`: an extern instance's first parameter type (Code.fmts), for the
+// builtins that format it (Result.unwrap and expect), else -1.
+pub struct FnRt { pub name: Str, pub ext: Int, pub nparams: Int, pub nslots: Int, pub body: List[Stm], pub fty: Int }
 pub struct LamRt { pub nslots: Int, pub body: Node }
 
 // `vts`: the vtables of `dyn` values, a function per trait method.
-pub struct Code { pub fns: List[FnRt], pub lams: List[LamRt], pub vts: List[List[Int]] }
+// `fmts`, `vt_tys`, `main_ty`: Show impls by type (Names.typed only, else empty and -1).
+pub struct Code {
+    pub fns: List[FnRt], pub lams: List[LamRt], pub vts: List[List[Int]], pub fmts: List[Fmt], pub vt_tys: List[Int], pub main_ty: Int,
+}
+
+// How to format a value of one type when Show impls depend on type
+// arguments (`impl Show for Box[Int]`, `impl[T: Hash] Show for Box[T]`: the
+// value alone does not say which applies, Names.typed): `show`, the function
+// of its Show impl that applies (ckenv.show_impl) or -1; `kids`, the types of
+// its parts (struct fields; enum payloads per variant; a list's element; a
+// map's key and value; tuple elements); `plain`, no Show impl applies to it
+// or to any part (formatted as it is).
+pub struct Fmt { pub show: Int, pub kids: List[List[Int]], pub plain: Bool }
 
 // Functions that need their type arguments (bounded by a trait other than
 // the derived Eq, Ord, Hash and Show, or a trait's default method) are
@@ -118,6 +132,17 @@ struct Cx {
     c: checker.Checked, scope: Map[Str, Int], n: Int, lams: List[LamRt], exts: Map[Str, Int], mexts: Map[Str, Int],
     tps: List[Str], tas: List[cktypes.Ty], needs: List[Bool], insts: Map[(Int, List[cktypes.Ty]), Int],
     queue: List[(Int, List[cktypes.Ty], Int)], out: List[FnRt], vts: List[List[Int]], vt_ix: Map[(Int, cktypes.Ty), Int],
+    typed: Bool, fmts: List[Fmt], fmt_ix: Map[cktypes.Ty, Int], vt_tys: List[Int],
+}
+
+// Show impls whose use depends on type arguments (a target with type
+// arguments): then every generic function is lowered per instantiation, so
+// that each place that formats knows the type it formats (Code.fmts).
+pub fn typed_shows(env: ckenv.Env) -> Bool {
+    env.impls.any(fn(im) => env.is_show(im.tr) and match im.target {
+        Con(_, args) => not args.is_empty(),
+        _ => false,
+    })
 }
 
 fn needs_types(env: ckenv.Env, fi: Int) -> Bool {
@@ -133,12 +158,14 @@ fn needs_types(env: ckenv.Env, fi: Int) -> Bool {
 // receiver by value, `mexts` the `mut self` ones (selfhost/ibuiltin.tn).
 pub fn lower(c: checker.Checked, exts: Map[Str, Int], mexts: Map[Str, Int]) -> Code {
     let n = c.prog.fns.len()
+    let typed = typed_shows(c.env)
     var needs: List[Bool] = []
-    for fi in 0..n { needs.push(needs_types(c.env, fi)) }
+    for fi in 0..n { needs.push(needs_types(c.env, fi) or (typed and not c.env.fns[fi].tparams.is_empty())) }
     var cx = Cx {
         c, scope: [:], n: 0, lams: [], exts, mexts, tps: [], tas: [], needs, insts: [:], queue: [], out: [], vts: [],
-        vt_ix: [:],
+        vt_ix: [:], typed, fmts: [], fmt_ix: [:], vt_tys: [],
     }
+    let main_ty = if typed { cx.fmt_ty(c.env.fns[c.main].ret) } else { -1 }
     for fi in 0..n { cx.out.push(cx.stub(fi)) }
     for fi in 0..n {
         if not cx.needs[fi] { cx.out[fi] = cx.function(fi) }
@@ -148,12 +175,75 @@ pub fn lower(c: checker.Checked, exts: Map[Str, Int], mexts: Map[Str, Int]) -> C
         cx.tas = job.1
         cx.out[job.2] = cx.function(job.0)
     }
-    Code { fns: cx.out, lams: cx.lams, vts: cx.vts }
+    if typed { cx.mark_plain() }
+    Code { fns: cx.out, lams: cx.lams, vts: cx.vts, fmts: cx.fmts, vt_tys: cx.vt_tys, main_ty }
+}
+
+// The format plan (Code.fmts) of type t as written in the code being lowered; -1 unless typed.
+fn Cx.fmt_ty(mut self, t0: cktypes.Ty) -> Int {
+    if not self.typed { return -1 }
+    let t = self.st(t0)
+    match self.fmt_ix.get(t) {
+        Some(i) => return i,
+        None => {}
+    }
+    let i = self.fmts.len()
+    self.fmts.push(Fmt { show: -1, kids: [], plain: true })
+    self.fmt_ix[t] = i
+    let env = self.c.env
+    if env.dyn_trait(t).is_some() {
+        // the value inside has its own type (Code.vt_tys)
+        self.fmts[i] = Fmt { show: -1, kids: [], plain: false }
+        return i
+    }
+    match env.show_impl(t, [:]) {
+        Some((ii, ts)) => {
+            let f = self.target(env.impls[ii].fns[0], ts)
+            self.fmts[i] = Fmt { show: f, kids: [], plain: false }
+            return i
+        }
+        None => {}
+    }
+    var parts: List[List[cktypes.Ty]] = []
+    match t {
+        Tup(ts) => parts = [ts],
+        Con(n, args) => match env.struct_fields(t) {
+            Some(fs) => parts = [fs.map(fn(f) => f.1)],
+            None => match env.enum_variants(t) {
+                Some(vs) => parts = vs.map(fn(v) => v.1),
+                None => if n == "List" or n == "Map" { parts = [args] },
+            },
+        },
+        _ => {}
+    }
+    var kids: List[List[Int]] = []
+    for ps in parts {
+        var ks: List[Int] = []
+        for p in ps { ks.push(self.fmt_ty(p)) }
+        kids.push(ks)
+    }
+    self.fmts[i] = Fmt { show: -1, kids, plain: true }
+    i
+}
+
+// A plan is plain when no part has a Show impl (to the fixpoint: recursive types).
+fn Cx.mark_plain(mut self) {
+    var changed = true
+    while changed {
+        changed = false
+        for i in 0..self.fmts.len() {
+            let f = self.fmts[i]
+            if f.plain and f.kids.any(fn(ks) => ks.any(fn(k) => not self.fmts[k].plain)) {
+                self.fmts[i] = Fmt { plain: false, ..f }
+                changed = true
+            }
+        }
+    }
 }
 
 fn Cx.stub(self, fi: Int) -> FnRt {
     let info = self.c.env.fns[fi]
-    FnRt { name: info.name, ext: -1, nparams: info.params.len(), nslots: info.params.len(), body: [] }
+    FnRt { name: info.name, ext: -1, nparams: info.params.len(), nslots: info.params.len(), body: [], fty: -1 }
 }
 
 fn Cx.st(self, t: cktypes.Ty) -> cktypes.Ty { t.subst(self.tps, self.tas) }
@@ -162,6 +252,22 @@ fn Cx.st(self, t: cktypes.Ty) -> cktypes.Ty { t.subst(self.tps, self.tas) }
 fn Cx.target(mut self, fi: Int, targs: List[cktypes.Ty]) -> Int {
     if not self.needs[fi] { return fi }
     let ts = targs.map(fn(t) => self.st(t))
+    let open = ts.any(fn(t) => ckenv.deeper(t, 48) or t.any(fn(x) => match x {
+        Par(_) => true,
+        _ => false,
+    }))
+    if self.typed and open and not needs_types(self.c.env, fi) {
+        // polymorphic recursion in a function lowered per instantiation only
+        // for Show (the C backend refuses to build it): one generic copy, as
+        // without typed Show impls, where formatting a type parameter applies
+        // no impl; calls from it (type arguments with parameters) stay in it
+        let ps = self.c.env.fns[fi].tparams.map(fn(p) => cktypes.Ty.Par(p))
+        if not self.insts.contains((fi, ps)) {
+            self.insts[(fi, ps)] = fi
+            self.queue.push((fi, ps, fi))
+        }
+        return fi
+    }
     match self.insts.get((fi, ts)) {
         Some(i) => return i,
         None => {}
@@ -190,6 +296,8 @@ fn Cx.vtable(mut self, tr: Int, v: cktypes.Ty) -> Int {
     }
     let i = self.vts.len()
     self.vts.push(fs)
+    let vty = self.fmt_ty(v)
+    self.vt_tys.push(vty)
     self.vt_ix[(tr, v)] = i
     i
 }
@@ -198,7 +306,8 @@ fn Cx.function(mut self, fi: Int) -> FnRt {
     let info = self.c.env.fns[fi]
     let np = info.params.len()
     if info.is_extern {
-        return FnRt { name: info.name, ext: self.exts.get(info.name).unwrap_or(-2), nparams: np, nslots: np, body: [] }
+        let fty = if np > 0 and (info.name == "Result.unwrap" or info.name == "Result.expect") { self.fmt_ty(info.params[0].1) } else { -1 }
+        return FnRt { name: info.name, ext: self.exts.get(info.name).unwrap_or(-2), nparams: np, nslots: np, body: [], fty }
     }
     self.scope = [:]
     self.n = 0
@@ -207,7 +316,7 @@ fn Cx.function(mut self, fi: Int) -> FnRt {
         Some(b) => self.block(b),
         None => [],
     }
-    FnRt { name: info.name, ext: -1, nparams: np, nslots: self.n, body }
+    FnRt { name: info.name, ext: -1, nparams: np, nslots: self.n, body, fty: -1 }
 }
 
 fn Cx.bind(mut self, n: Str) -> Int {
@@ -356,7 +465,8 @@ fn Cx.place(mut self, e: ckast.Expr) -> Place {
         XIndex(b, i) => {
             let base = self.place(b)
             let ix = self.expr(i)
-            Place { root: base.root, steps: base.steps + [PathIndex(ix)], sp: e.sp }
+            let kt = self.fmt_ty(self.c.types[i.id])
+            Place { root: base.root, steps: base.steps + [PathIndex(ix, kt)], sp: e.sp }
         }
         _ => panic("interp: not a place"),
     }
@@ -386,7 +496,8 @@ fn Cx.expr(mut self, e: ckast.Expr) -> Node {
         XTField(b, i) => NField(self.expr(b), i),
         XIndex(a, b) => {
             let x = self.expr(a)
-            NIndex(x, self.expr(b), e.sp)
+            let k = self.expr(b)
+            NIndex(x, k, e.sp, self.fmt_ty(self.c.types[b.id]))
         }
         XCall(callee, args) => self.call(e, callee, args),
         XMethod(recv, _, args) => self.method(e, recv, args),
@@ -447,7 +558,10 @@ fn Cx.str_node(mut self, e: ckast.Expr, xs: List[ckast.Expr], lits: List[Option[
                 all_lit = false
                 match xs[k].k {
                     XFmt(inner, f) => segs.push(GFmt(self.expr(inner), f)),
-                    _ => segs.push(GShow(self.expr(xs[k]))),
+                    _ => {
+                        let x = self.expr(xs[k])
+                        segs.push(GShow(x, self.fmt_ty(self.c.types[xs[k].id])))
+                    }
                 }
                 k += 1
             }
@@ -556,7 +670,10 @@ fn Cx.call(mut self, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr]) 
 
 fn Cx.method(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr]) -> Node {
     match self.c.res.get(e.id) {
-        Some(RToStr) => NToStr(self.expr(recv)),
+        Some(RToStr) => {
+            let r = self.expr(recv)
+            NToStr(r, self.fmt_ty(self.c.types[recv.id]))
+        }
         Some(RMethod(fi, targs)) => self.method_fn(e, recv, args, fi, targs),
         Some(RTrait(tr, mi, rt0, mt)) => {
             let rt = self.st(rt0)

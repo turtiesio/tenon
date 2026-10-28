@@ -125,6 +125,7 @@ fn opt_int(ix: ieval.Ix, o: Option[Int]) -> ival.Val {
 pub fn call(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
     if id < 0 { panic("interp: missing builtin {it.fns[fi].name}") }
     let b = it.bis[id]
+    it.fty = it.fns[fi].fty
     if it.wk.cur >= 0 and b.effect() { return iwork.logged(mut it, b, a, sp) }
     call_raw(mut it, b, a, sp)
 }
@@ -206,13 +207,13 @@ fn core_op(it: mut ieval.Interp, op: CoreOp, a: List[ival.Val], sp: ckast.Span) 
         BxOptExpect => if a[0].j == 0 { Ok(a[0].xs[0]) } else { ieval.trap(a[1].s, sp) },
         BxResUnwrap => {
             if a[0].j == 0 { return Ok(a[0].xs[0]) }
-            let p = ieval.prerender(mut it, a[0])?
+            let p = ieval.prerender(mut it, a[0], it.fty)?
             ieval.trap("unwrap on " + ival.show_nested(p, it.names), sp)
         }
         BxResExpect => {
             if a[0].j == 0 { return Ok(a[0].xs[0]) }
-            let p = ieval.prerender(mut it, a[0].xs[0])?
-            ieval.trap(a[1].s + ": " + ival.show_nested(p, it.names), sp)
+            let p = ieval.prerender(mut it, a[0], it.fty)?
+            ieval.trap(a[1].s + ": " + ival.show_nested(p.xs[0], it.names), sp)
         }
     }
 }

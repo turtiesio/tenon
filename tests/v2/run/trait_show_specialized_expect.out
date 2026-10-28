@@ -1,0 +1,4 @@
+1
+exit: 70
+stderr: trap: no number: Box { x: "s" }
+stderr:   at trait_show_specialized_expect.tn:9:42

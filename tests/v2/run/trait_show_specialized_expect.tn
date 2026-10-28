@@ -1,0 +1,16 @@
+// Result.expect's trap shows the error with the Show impl of its
+// instantiation only (conformance 2026-10-28 #1).
+struct Box[T] { x: T }
+
+impl Show for Box[Int] {
+    fn to_str(self) -> Str { "int {self.x}" }
+}
+
+fn first[T](r: Result[Int, T]) -> Int { r.expect("no number") }
+
+fn main(sys: Sys) {
+    let ok: Result[Int, Box[Str]] = Ok(1)
+    sys.console.println("{first(ok)}")
+    let bad: Result[Int, Box[Str]] = Err(Box { x: "s" })
+    sys.console.println("{first(bad)}")
+}

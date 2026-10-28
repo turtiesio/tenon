@@ -22,7 +22,7 @@ pub const EXIT_OUTPUT: Int = 74
 // CNoKey: a missing map key in a place (nav), turned into the trap by nk
 // with the key type's Show impl applied. CBlock: a worker would wait; it is
 // suspended (selfhost/iwork.tn).
-pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int), CNoKey(ival.Val, ckast.Span), CBlock }
+pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int), CNoKey(ival.Val, Int, ckast.Span), CBlock }
 
 // Enum numbers the interpreter builds values of.
 pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
@@ -31,6 +31,7 @@ pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
 // sockets live in (selfhost/icap.tn), so it is unique.
 pub unique struct Interp {
     pub fns: List[icode.FnRt], pub lams: List[icode.LamRt], pub vts: List[List[Int]], pub names: ival.Names, pub ix: Ix,
+    pub fmts: List[icode.Fmt], pub vt_tys: List[Int], pub fty: Int, // Show by type (icode.Code); the extern being called's FnRt.fty
     pub files: List[Str], pub site: ckast.Span, pub depth: Int,
     pub checked: checker.Checked,
     pub con: Console, pub clock: Clock, pub net: Net, pub proc: Proc, pub fss: List[Fs],
@@ -111,9 +112,38 @@ pub fn apply(it: mut Interp, f: ival.Val, args: List[ival.Val], sp: ckast.Span) 
 
 // v with every part whose type has a Show impl replaced by that impl's text
 // (K_RAW), for formatting; the identity when the program has no Show impls.
-pub fn prerender(it: mut Interp, v: ival.Val) -> Result[ival.Val, Ctl] {
+// `ty`: v's type (icode.Code.fmts) when the impls depend on type arguments
+// (Names.typed), else -1: then the impls are found by declaration.
+pub fn prerender(it: mut Interp, v: ival.Val, ty: Int) -> Result[ival.Val, Ctl] {
+    if it.names.typed { return if ty < 0 { Ok(v) } else { render_typed(mut it, v, ty) } }
     if it.names.ovs.is_empty() { return Ok(v) }
     render(mut it, v)
+}
+
+fn render_typed(it: mut Interp, v: ival.Val, ty: Int) -> Result[ival.Val, Ctl] {
+    let f = it.fmts[ty]
+    if f.plain { return Ok(v) }
+    if f.show >= 0 {
+        var av = [v]
+        let s = call_fn(mut it, f.show, mut av, ckast.Span { file: 0, line: 0, col: 0 })?
+        return Ok(ival.Val { k: ival.K_RAW, s: s.s, ..ival.unit() })
+    }
+    let k = v.k
+    if k == ival.K_DYN { return render_typed(mut it, v.xs[0], it.vt_tys[v.i]) }
+    if k == ival.K_MAP {
+        if v.m.len() == 0 { return Ok(v) }
+        var xs: List[ival.Val] = []
+        for (key, x) in v.m {
+            xs.push(render_typed(mut it, ival.from_key(key), f.kids[0][0])?)
+            xs.push(render_typed(mut it, x, f.kids[0][1])?)
+        }
+        return Ok(ival.Val { k: ival.K_MAPV, xs, ..ival.unit() })
+    }
+    if v.xs.is_empty() or not (k == ival.K_STRUCT or k == ival.K_ENUM or k == ival.K_LIST or k == ival.K_TUPLE) { return Ok(v) }
+    let ks = if k == ival.K_ENUM { f.kids[v.j] } else { f.kids[0] }
+    var out: List[ival.Val] = []
+    for i in 0..v.xs.len() { out.push(render_typed(mut it, v.xs[i], if k == ival.K_LIST { ks[0] } else { ks[i] })?) }
+    Ok(ival.Val { xs: out, ..v })
 }
 
 fn render_all(it: mut Interp, xs: List[ival.Val]) -> Result[List[ival.Val], Ctl] {
@@ -177,7 +207,7 @@ fn put_back(it: mut Interp, fr: mut List[ival.Val], taken: List[Taken], finals: 
 
 // ---- places ----
 
-pub enum RStep { RsField(Int), RsIdx(ival.Val) }
+pub enum RStep { RsField(Int), RsIdx(ival.Val, Int) } // RsIdx: the key, its type (icode.PathIndex)
 
 // What to do at the end of a path.
 pub enum MOp {
@@ -194,7 +224,7 @@ fn eval_steps(it: mut Interp, fr: mut List[ival.Val], steps: List[icode.PStep]) 
     for s in steps {
         match s {
             PathField(f) => out.push(RsField(f)),
-            PathIndex(e) => out.push(RsIdx(ev(mut it, mut fr, e)?)),
+            PathIndex(e, kt) => out.push(RsIdx(ev(mut it, mut fr, e)?, kt)),
         }
     }
     Ok(out)
@@ -203,8 +233,8 @@ fn eval_steps(it: mut Interp, fr: mut List[ival.Val], steps: List[icode.PStep]) 
 // A missing key from nav, shown with the key type's Show impl (as C does).
 fn nk[T](it: mut Interp, r: Result[T, Ctl]) -> Result[T, Ctl] {
     match r {
-        Err(CNoKey(k, at)) => {
-            let shown = prerender(mut it, k)?
+        Err(CNoKey(k, kt, at)) => {
+            let shown = prerender(mut it, k, kt)?
             trap("key not found: " + ival.show_nested(shown, it.names), at)
         }
         _ => r,
@@ -217,7 +247,7 @@ pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, s
     if i == steps.len() { return leaf(mut v, op, sp, names, ix) }
     match steps[i] {
         RsField(f) => nav(mut v.xs[f], steps, i + 1, create, op, sp, names, ix),
-        RsIdx(k) => {
+        RsIdx(k, kt) => {
             if v.k == ival.K_LIST {
                 let n = v.xs.len()
                 if k.i < 0 or k.i >= n { return trap_oob(k.i, n, sp) }
@@ -226,7 +256,7 @@ pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, s
             let key = ival.to_key(k)
             if not v.m.contains(key) {
                 if not (create and i + 1 == steps.len()) {
-                    if not names.ovs.is_empty() { return Err(CNoKey(k, sp)) }
+                    if names.shows() { return Err(CNoKey(k, kt, sp)) }
                     return trap("key not found: " + ival.show_nested(k, names), sp)
                 }
                 v.m[key] = ival.unit()
@@ -440,12 +470,12 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
                 }
             }
         }
-        NIndex(b, i, sp) => {
+        NIndex(b, i, sp, kt) => {
             let bv = ev(mut it, mut fr, b)?
             let iv = ev(mut it, mut fr, i)?
             match index(bv, iv, sp, it.names) {
-                Err(CTrap(m, at)) if m.starts_with("key not found: ") and not it.names.ovs.is_empty() => {
-                    let shown = prerender(mut it, iv)?
+                Err(CTrap(m, at)) if m.starts_with("key not found: ") and it.names.shows() => {
+                    let shown = prerender(mut it, iv, kt)?
                     trap("key not found: " + ival.show_nested(shown, it.names), at)
                 }
                 r => r,
@@ -486,9 +516,9 @@ fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival
             for g in segs {
                 match g {
                     GLit(l) => s += l,
-                    GShow(x) => {
+                    GShow(x, t) => {
                         let v0 = ev(mut it, mut fr, x)?
-                        let v = prerender(mut it, v0)?
+                        let v = prerender(mut it, v0, t)?
                         ival.show(mut s, v, true, it.names, false)
                     }
                     GFmt(x, f) => {
@@ -558,9 +588,9 @@ fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival
             for a in args { av.push(ev(mut it, mut fr, a)?) }
             apply(mut it, fv, av, sp)
         }
-        NToStr(x) => {
+        NToStr(x, t) => {
             let v0 = ev(mut it, mut fr, x)?
-            let v = prerender(mut it, v0)?
+            let v = prerender(mut it, v0, t)?
             Ok(ival.vstr(ival.show_top(v, it.names)))
         }
         NDyn(x, vt) => {
