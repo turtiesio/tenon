@@ -233,6 +233,8 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
 
 ### D6. Long functions (tenon.md: none over ~80 lines without a stated reason). M, low risk.
 
+Done in 871964a (emitbi by receiver), 1ffd071 (ckcall.tn; ckinfer 1239 -> 846), 3a16ca9 (parsexpr.tn; parser 1154 -> 745), 83d9048 and a2d7f8e (the other functions split at their arms or seams), d009308 (ckdecl.tn; ckenv, which the splits had grown to 1062, -> 564). Emitted C, trees and messages unchanged (the seed cross-check and the fixpoint). Still over 80 lines, each with its reason: `ieval.ev_more` (107), `Walk.expr`, `Ck.expr_inner` (89), `ival.show`, `Conv.expr` (87), all dispatch matches. No selfhost file is over 1000 lines (emitbody.tn 994 is the largest). `trap_oob` and a new `trap_slice` live in ieval.tn; the trap strings stay copied between the interpreter and runtime/tenon.h: sharing them would mean generating tenon.h or a new extern (the frozen bootstrap), as for the format specs.
+
 - **The outlier:** `emitbi.tn:29` `extern_call`, 326 lines, which becomes 5727 lines of C. Split it by receiver (Str/List/Map/Option/Fs/Net/…) to mirror `ibuiltin`'s `str_op` and `icap`'s `fs_op`/`net_op`.
 - **Others:**
 
