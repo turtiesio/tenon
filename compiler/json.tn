@@ -5,7 +5,7 @@
 // text is UTF-8 (a Tenon Str always is). Numbers without a fraction or an
 // exponent that fit in an Int are `JInt`, all others `JFloat`. Objects keep
 // their members in order (duplicates too; `get` finds the first).
-// Tests: selfhost/jsontest.tn.
+// Tests: compiler/jsontest.tn.
 import lexer
 
 pub enum Json { JNull, JBool(Bool), JInt(Int), JFloat(Float), JStr(Str), JArr(List[Json]), JObj(List[(Str, Json)]) }

@@ -1,5 +1,5 @@
 // module
-// Capability builtins (bootstrap/src/builtins.rs `fs_op`, `net_op`,
+// Capability builtins (seed/src/builtins.rs `fs_op`, `net_op`,
 // `poller_op`, `proc_run`, ...), done with the interpreter's own capabilities:
 //
 // - An interpreted `Fs` is one of the host's `Fs` values (Interp.fss, indexed

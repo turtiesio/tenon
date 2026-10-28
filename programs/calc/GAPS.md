@@ -1,7 +1,7 @@
 # Language gaps found while writing calc
 
 Each entry: what I wanted, what I did instead, a minimal snippet. No interpreter/native
-disagreements and no compiler crashes were found (`tools/programs.sh` transcripts match on
+disagreements and no compiler crashes were found (`ops/gates/programs.sh` transcripts match on
 both backends).
 
 ## 1. No top-level constants

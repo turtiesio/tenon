@@ -3,7 +3,6 @@
 /bench/out
 /.evidence
 /bench/*/input.txt
-.check.log
 .claude/
 __pycache__/
 /.agent

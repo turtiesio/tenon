@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# The command line (selfhost/tenon.tn, docs/tools.md) through $TENON (default
+# The command line (compiler/tenon.tn, docs/tools.md) through $TENON (default
 # target/tenon): usage and exit statuses, flags in any position, unknown
 # flags and extra arguments refused, `run` passing its program's flags
-# through; and tools/install.sh into a scratch prefix, whose `tenon` (found
+# through; and ops/repo/install.sh into a scratch prefix, whose `tenon` (found
 # on PATH, run elsewhere, without $TENON_ROOT) finds its root from its own
 # path and runs `tenon test` on a small suite (it runs itself).
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 REPO=$PWD
 C=${TENON:-$REPO/target/tenon}
 case $C in /*) ;; *) C=$REPO/$C ;; esac
@@ -58,7 +58,7 @@ expect 0 "" "$C" fmt --check "$tmp/u.tn"
 expect 2 "formats standard input alone" "$C" fmt - "$tmp/u.tn"
 # installed: tenon on PATH, run from elsewhere, no TENON_ROOT
 unset TENON_ROOT
-tools/install.sh "$tmp/prefix" > "$tmp/install.log" 2>&1 || { echo "cli_test: FAIL: tools/install.sh"; cat "$tmp/install.log"; fail=1; }
+ops/repo/install.sh "$tmp/prefix" > "$tmp/install.log" 2>&1 || { echo "cli_test: FAIL: ops/repo/install.sh"; cat "$tmp/install.log"; fail=1; }
 mkdir -p "$tmp/suite/run" "$tmp/suite/reject" "$tmp/work"
 printf 'import regex\nfn main(sys: Sys) {\n    let ok = regex.compile("a+").is_ok()\n    sys.console.println("abab {ok}")\n}\n' > "$tmp/suite/run/hello.tn"
 printf 'abab true\nexit: 0\n' > "$tmp/suite/run/hello.out"

@@ -1,7 +1,7 @@
 // module
 // Calls, methods, struct literals and patterns in function bodies: the part of
 // the checker's inference (ckinfer.tn) that resolves a callee or a pattern.
-// Agrees with bootstrap/src/check_expr.rs and check.rs (patterns), decision
+// Agrees with seed/src/check_expr.rs and check.rs (patterns), decision
 // for decision and message for message.
 import ckast
 import cktypes

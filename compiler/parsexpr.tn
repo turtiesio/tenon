@@ -1,7 +1,7 @@
 // module
 // The parser's expressions (parser.tn has the tree, items, statements, types
 // and patterns): free functions on parser.Parser, agreeing with
-// bootstrap/src/parser.rs. `if let` and `while let` are desugared here.
+// seed/src/parser.rs. `if let` and `while let` are desugared here.
 
 import lexer
 import parser
@@ -375,7 +375,7 @@ pub fn if_expr(prs: mut parser.Parser) -> Result[parser.Expr, parser.ParseError]
     Ok(parser.Expr { at, kind: If(cond, then, els) })
 }
 
-// `if let` and `while let` are desugared by the parser, as bootstrap/src/parser.rs does
+// `if let` and `while let` are desugared by the parser, as seed/src/parser.rs does
 // (see its `if_let` for the reasons):
 //   if let P = E { A } else B    =>  match E { P => { A }, _ => B }
 //   if let P = E { A }           =>  match E { P => { A }, _ => () }

@@ -1,8 +1,8 @@
 // module
 // Function bodies: name resolution, type inference, statements and places
 // (calls, methods, struct literals and patterns: ckcall.tn). A port of
-// bootstrap/src/check.rs (functions, statements, places) and
-// bootstrap/src/check_expr.rs, decision for decision and message for message.
+// seed/src/check.rs (functions, statements, places) and
+// seed/src/check_expr.rs, decision for decision and message for message.
 
 import ckast
 import ckcall
@@ -729,7 +729,7 @@ fn Ck.try_expr(mut self, e: ckast.Expr, x: ckast.Expr) -> Result[cktypes.Ty, cka
     }
 }
 
-// `{x:SPEC}`: which types a spec applies to (bootstrap/src/check.rs `fmt_spec`).
+// `{x:SPEC}`: which types a spec applies to (seed/src/check.rs `fmt_spec`).
 fn Ck.fmt_spec(self, x: ckast.Expr, t0: cktypes.Ty, f: parser.Spec) -> Result[Unit, ckast.Diag] {
     let t = self.known(t0, x.sp, "a formatted value")?
     let n = match t {

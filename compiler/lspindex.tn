@@ -1,5 +1,5 @@
 // module
-// Finding things in the checker's tree (selfhost/ckast.tn) by source
+// Finding things in the checker's tree (compiler/ckast.tn) by source
 // position: every node of a file, the extent of blocks (the tree keeps only
 // start positions, so a block ends at the `}` matching its `{`), and the
 // local names visible at a position. Positions are (line, col) as the

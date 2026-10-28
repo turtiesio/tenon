@@ -1,4 +1,4 @@
-Only what tools/status.py cannot compute; the verdicts above come from data.
+Only what ops/repo/status.py cannot compute; the verdicts above come from data.
 
 - **Usability, time.** User decision: the time target stays as written and is
   reported unmet; no design change is made to chase it. Tenon's minutes over
@@ -7,7 +7,7 @@ Only what tools/status.py cannot compute; the verdicts above come from data.
   so library additions (wave 6: format specifiers, collection helpers) no
   longer move it. Lines: closing-brace lines are about a fifth of Tenon's
   lines; without them Tenon has fewer lines than Python. Per-wave notes:
-  study/results/waveN/SUMMARY.md and docs/log.md.
+  evidence/study/results/waveN/SUMMARY.md and docs/log.md.
 - **Performance.** The real-program benchmarks (calc, mdhtml) match the
   structure of their C and Rust counterparts: one output buffer passed down
   (`mut out: Str`), call parameters in parallel lists. The earlier
@@ -16,5 +16,5 @@ Only what tools/status.py cannot compute; the verdicts above come from data.
 - **Concurrency.** A single-threaded event loop per thread (programs/chat) and
   isolated workers with channels on every core (not in the seed:
   docs/reference.md §18, programs/v2/scan, bench/v2).
-- **Landing time** is printed by tools/land.sh on each landing but not
+- **Landing time** is printed by ops/repo/land.sh on each landing but not
   collected anywhere, so the "landing <= 5 min" goals are not measured here.

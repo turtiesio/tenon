@@ -10,7 +10,7 @@
 #   conflict, a cycle, a std-name collision, a module-name collision and a
 #   malformed manifest.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 REPO=$PWD
 TC=${TENON:-$REPO/target/tenon}
 case $TC in /*) ;; *) TC=$REPO/$TC ;; esac

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Differential evidence for the self-hosted interpreter (selfhost/interp.tn).
+"""Differential evidence for the self-hosted interpreter (compiler/interp.tn).
 
-    tools/interp_diff.py [TENON]
+    ops/evidence/interp_diff.py [TENON]
 
-Runs every .tn file of the corpus (tools/corpus.py, without v2/: the seed
+Runs every .tn file of the corpus (ops/corpus.py, without v2/: the seed
 cannot read those) with `tenon-seed run` (the seed's interpreter) and `tenon run`
-(tools/evidence.sh), from the file's directory, with its
+(ops/evidence/evidence.sh), from the file's directory, with its
 `// stdin:` and `// args:` directives (as the test runner gives them), and
 compares standard output, standard error and the exit status byte for byte.
 Files the bootstrap rejects are compared too (the diagnostic must be the
@@ -20,9 +20,10 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
 import corpus
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 T = corpus.SEED
 C = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else corpus.TENON
 TIMEOUT = 20

@@ -1,8 +1,8 @@
 // module
 // Self-hosted C backend, part 1: the emitter state, C names of types, and the
-// scope and temporary helpers. A port of bootstrap/src/emit_c.rs (driver,
-// types) and the helpers of bootstrap/src/emit_body.rs; `tenon emit FILE`
-// must print exactly what `tenon-seed emit FILE` prints (tools/selfhost.sh).
+// scope and temporary helpers. A port of seed/src/emit_c.rs (driver,
+// types) and the helpers of seed/src/emit_body.rs; `tenon emit FILE`
+// must print exactly what `tenon-seed emit FILE` prints (ops/gates/selfhost.sh).
 //
 //   emit        state, C type names, scopes and temporaries, the driver
 //   emitlayout  type definitions, per-type helpers, decoders, `main`, assembly
@@ -221,7 +221,7 @@ pub fn float_lit(f: Float) -> Str {
     sign + digits.slice(0, 1) + frac + "e{e}"
 }
 
-// The name a type is shown by (bootstrap/src/interp.rs `display`): without its module.
+// The name a type is shown by (seed/src/interp.rs `display`): without its module.
 pub fn display(n: Str) -> Str {
     match n.rfind(".") {
         Some(i) => n.slice(i + 1, n.len()),

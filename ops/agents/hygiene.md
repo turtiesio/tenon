@@ -13,15 +13,15 @@ and the repository as a whole for drift:
 - duplicated code (DRY); needless complexity or dead code (KISS); modules
   mixing responsibilities;
 - docs that no longer match behaviour or name paths that do not exist;
-  a stale STATUS.md or tools/unmet.md;
+  a stale STATUS.md or ops/repo/unmet.md;
 - scripts still using the frozen seed where the self-hosted compiler is
   meant;
 - tools that could now be written in Tenon (dogfooding);
 - files and functions over the size limits without a stated reason.
 
 Fix what is small and safe directly, all in this run's one pull request
-(`.agent/pr.md` lists each fix with its reason). Never edit `bootstrap/`
-(frozen) or `study/` (published evidence). Record larger items in
+(`.agent/pr.md` lists each fix with its reason). Never edit `seed/`
+(frozen) or `evidence/study/` (published evidence). Record larger items in
 `.agent/issues.json`, key `hygiene:<short-name>`, label `hygiene`, plus
 `agent-ok` when the change is mechanical and has a clear acceptance test, or
 `needs-owner` when it needs a product decision. Give each issue the files

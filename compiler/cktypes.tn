@@ -1,5 +1,5 @@
 // module
-// Semantic types, substitution and unification: a port of bootstrap/src/types.rs.
+// Semantic types, substitution and unification: a port of seed/src/types.rs.
 // Unification binds variables as it goes and never rolls back, exactly like
 // the bootstrap, because error messages print the partially unified types.
 

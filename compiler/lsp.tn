@@ -4,7 +4,7 @@
 //   tenon lsp [--root DIR]
 //
 // The root is the toolchain root holding lib/prelude.tn and lib/std/, found
-// as for every command (selfhost/tenon.tn, docs/tools.md). Features: diagnostics (the
+// as for every command (compiler/tenon.tn, docs/tools.md). Features: diagnostics (the
 // checker's first diagnostic, parse errors included, on open, change and
 // save), hover (the type of the name under the cursor; signatures for
 // functions), go to definition (locals, functions, types, fields, variants,
@@ -15,7 +15,7 @@
 // treated as a module: "program has no 'fn main'" is not reported. A file
 // inside a package (a tenon.toml above it) resolves `import` to the
 // dependencies in its tenon.lock, as `tenon check` does (docs/packages.md).
-// Tests: tools/lsp_test.py.
+// Tests: ops/gates/lsp_test.py.
 import front
 import json
 import lspquery

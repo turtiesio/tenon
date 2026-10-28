@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Language server test: drives `tenon lsp` ($TENON, default target/tenon) over stdio.
 
-    tools/lsp_test.py [-v]
+    ops/gates/lsp_test.py [-v]
 
 Scripted sessions against the fixtures in tests/lsp/ assert exact responses:
 the lifecycle (initialize, shutdown, exit status), protocol errors,
@@ -12,16 +12,16 @@ the start of a statement), and a file in a package (docs/packages.md):
 imports resolved through tenon.lock, a missing lock as the diagnostic; traits
 (tests/lsp/fields.tn: declarations found by name skip comments; tests/v2/lsp/traits.tn: hover and definition of traits and of trait methods
 called on a type parameter, a dyn value and a concrete type, which goes to
-the impl; lib/v2/prelude.tn; completion). Also runs the JSON tests (selfhost/jsontest.tn)
+the impl; lib/v2/prelude.tn; completion). Also runs the JSON tests (compiler/jsontest.tn)
 and the VS Code client (editors/vscode/extension.js: `node --check`, then
-tools/lsp_client_test.js against the server; skipped without node), and
-reports how long the server takes to check selfhost/tenon.tn.
+ops/gates/lsp_client_test.js against the server; skipped without node), and
+reports how long the server takes to check compiler/tenon.tn.
 Exit status 1 on the first failure.
 """
 import json, os, shutil, subprocess, sys, tempfile, threading, time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "tools"))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "ops"))
 import corpus  # noqa: E402
 TENON = corpus.TENON
 LSP = os.path.join(ROOT, "tests", "lsp")
@@ -468,11 +468,11 @@ def packages(srv, tmp):
 
 
 def latency(srv):
-    path = os.path.join(ROOT, "selfhost", "tenon.tn")
+    path = os.path.join(ROOT, "compiler", "tenon.tn")
     doc = Doc(path)
     t = time.time()
     srv.notify("textDocument/didOpen", {"textDocument": {"uri": doc.uri, "languageId": "tenon", "version": 1, "text": doc.text}})
-    expect("diagnostics of selfhost/tenon.tn", srv.diagnostics(doc.uri), [])
+    expect("diagnostics of compiler/tenon.tn", srv.diagnostics(doc.uri), [])
     open_ms = (time.time() - t) * 1000
     t = time.time()
     r = srv.request("textDocument/hover", {"textDocument": {"uri": doc.uri}, "position": doc.pos("front.load_in(sys.fs", "load_in")})
@@ -486,7 +486,7 @@ def main():
     t0 = time.time()
     tmp = tempfile.mkdtemp()
     exe = TENON
-    r = subprocess.run([TENON, "run", "selfhost/jsontest.tn"], cwd=ROOT, capture_output=True, text=True)
+    r = subprocess.run([TENON, "run", "compiler/jsontest.tn"], cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
         fail(r.stdout + r.stderr)
     json_result = r.stdout.strip()
@@ -511,13 +511,13 @@ def main():
     expect("exit status", srv.close(), 0)
     client = "vscode client: skipped (no node)"
     if shutil.which("node"):
-        for cmd in (["node", "--check", "editors/vscode/extension.js"], ["node", "tools/lsp_client_test.js", ROOT, exe]):
+        for cmd in (["node", "--check", "editors/vscode/extension.js"], ["node", "ops/gates/lsp_client_test.js", ROOT, exe]):
             r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=30)
             if r.returncode != 0:
                 fail(" ".join(cmd[:2]) + ":\n" + r.stdout + r.stderr)
         client = r.stdout.strip()
     shutil.rmtree(tmp)
-    print("lsp: ok (%s; %s; check of selfhost/tenon.tn through the server %.0f ms, hover %.0f ms; %.1fs)"
+    print("lsp: ok (%s; %s; check of compiler/tenon.tn through the server %.0f ms, hover %.0f ms; %.1fs)"
           % (json_result, client, open_ms, hover_ms, time.time() - t0))
 
 

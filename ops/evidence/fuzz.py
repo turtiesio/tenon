@@ -5,12 +5,13 @@ reference interpreter (`tenon run`) and its C backend (`tenon build -O0`),
 and by the seed's interpreter ($SEED run) as a third opinion;
 both checkers must give the same verdict. Any difference in stdout, stderr or
 exit code is a bug in one of them (or in the checker, if a program is
-rejected). Usage: tools/fuzz.py [COUNT] [SEED]. Failing programs are kept in
+rejected). Usage: ops/evidence/fuzz.py [COUNT] [SEED]. Failing programs are kept in
 .evidence/fuzz-failures/. Adds to .evidence/fuzz.json."""
 import json, os, random, subprocess, sys, tempfile, concurrent.futures as cf
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
 import corpus
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SEED = corpus.SEED
 TENON = corpus.TENON
 os.environ.setdefault("TENON_ROOT", ROOT)

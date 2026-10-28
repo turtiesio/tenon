@@ -6,7 +6,7 @@
 # the golden file. Built by `tenon` ($TENON, default target/tenon) with the
 # runtime's normal allocator (free lists on), as programs run.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 C=${TENON:-$PWD/target/tenon}
 RUNS=${RUNS:-3}
 export TENON_ROOT=$PWD
@@ -39,7 +39,7 @@ for tn in tests/v2/run/*.tn; do
   check "$name" tests/v2/run "$name.tn" "${want:-0}" "$stdin" "$args"
 done
 # programs with workers: their scenario (programs/NAME/test.sh) is run by
-# tools/programs.sh; here the main file with the inputs its sanitizer.args names
+# ops/gates/programs.sh; here the main file with the inputs its sanitizer.args names
 for d in programs/*/ programs/v2/*/; do
   p=$(basename "$d")
   [ -f "$d/sanitizer.args" ] || continue

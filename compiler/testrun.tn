@@ -1,6 +1,6 @@
 // module
 // `tenon test DIR... [--bless]`: the test runner, a port of
-// bootstrap/src/testrun.rs. The contract a landing must pass:
+// seed/src/testrun.rs. The contract a landing must pass:
 //
 //   DIR/run/NAME.tn      run with the interpreter AND the C backend; both must
 //                        match NAME.out (stdout + "exit: N" + stderr lines)
@@ -8,10 +8,10 @@
 //                        names a substring of the expected diagnostic
 //
 //   DIR/lex/NAME.tn      under a v2/ directory (syntax only `tenon` reads, which
-//   DIR/parse/NAME.tn    the seed cannot cross-check: tools/selfhost.sh skips
+//   DIR/parse/NAME.tn    the seed cannot cross-check: ops/gates/selfhost.sh skips
 //                        v2/): `tenon tokens` / `tenon ast` must print
 //                        NAME.tokens / NAME.ast (--bless writes them). The
-//                        other lex/parse directories are tools/selfhost.sh's.
+//                        other lex/parse directories are ops/gates/selfhost.sh's.
 //
 // Optional first-line directives in run tests: `// stdin: TEXT` (\n escapes,
 // and \xHH for any byte, so stdin can be invalid UTF-8) and `// args: A B C`.
@@ -21,7 +21,7 @@
 // shared among 8 workers (this program again, `test --worker I/N`, started
 // together by one `sh`); each writes its failures and counts to a file.
 // The runner invokes itself: `exe` is the running executable's path
-// (selfhost/tenon.tn finds it), passed on to the workers as `--exe`.
+// (compiler/tenon.tn finds it), passed on to the workers as `--exe`.
 import lexer
 
 const TIMEOUT_MS: Int = 20000

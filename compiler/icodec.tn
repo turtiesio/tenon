@@ -1,5 +1,5 @@
 // module
-// The strict decoder of the derived codec: a port of bootstrap/src/codec.rs.
+// The strict decoder of the derived codec: a port of seed/src/codec.rs.
 // A value is accepted only in its canonical form (what `encode` prints), and
 // a failure reports the same byte offset as the bootstrap and the C backend.
 import ckenv

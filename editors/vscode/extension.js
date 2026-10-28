@@ -1,5 +1,5 @@
 // Tenon language-server client for VS Code. No dependencies: only the `vscode`
-// API and Node built-ins. It starts `tenon lsp` (selfhost/lsp.tn), speaks
+// API and Node built-ins. It starts `tenon lsp` (compiler/lsp.tn), speaks
 // JSON-RPC 2.0 with Content-Length framing over the server's stdio, keeps the
 // server's view of open .tn buffers in sync (full text on every change), and
 // forwards diagnostics, hover, go to definition and completion.
@@ -70,7 +70,7 @@ class Client {
 
   failed(exe, e) {
     const msg = e && e.code === "ENOENT"
-      ? `Tenon: cannot start the language server '${exe}'. Install 'tenon' (tools/install.sh; see the extension's README) or set "tenon.serverPath".`
+      ? `Tenon: cannot start the language server '${exe}'. Install 'tenon' (ops/repo/install.sh; see the extension's README) or set "tenon.serverPath".`
       : `Tenon: language server error: ${e && e.message}`;
     this.output.appendLine(msg);
     this.restarts = MAX_RESTARTS; // do not retry a server that cannot start

@@ -1,8 +1,8 @@
 // module
 // Self-hosted type checker: a second, independent implementation of
-// bootstrap/src/check.rs, bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs and bootstrap/src/linear.rs.
+// seed/src/check.rs, seed/src/check_expr.rs, seed/src/exhaust.rs and seed/src/linear.rs.
 // `check FILE` must report the same first diagnostic as `tenon-seed check FILE`
-// for every file in the corpus (tools/selfhost.sh).
+// for every file in the corpus (ops/gates/selfhost.sh).
 //
 //   ckast    syntax tree with ids, conversion from the parser, fix_paths
 //   cktypes  types, substitution, unification
@@ -20,7 +20,7 @@ import ckinfer
 import cklin
 import cktypes
 
-// What the backend needs (bootstrap/src/check.rs `Checked`): the program, the
+// What the backend needs (seed/src/check.rs `Checked`): the program, the
 // declarations, and the side tables keyed by node id.
 pub struct Checked {
     pub prog: ckast.Program,

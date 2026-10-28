@@ -2,18 +2,19 @@
 """Differential mutation testing of the self-hosted checker: corpus programs
 are mutated at the token level (deleted/duplicated/swapped tokens, renamed
 identifiers and types, flipped let/var, mut/ref, literals ...) and both
-`tenon-seed check` and `tenon check` (selfhost/tenon.tn) must report the same
+`tenon-seed check` and `tenon check` (compiler/tenon.tn) must report the same
 first line; when both accept a mutant, `tenon-seed emit` and `tenon emit` must
 print the same C (and exit with the same status).
 
-Usage: tools/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
-The binaries are $SEED and $TENON (tools/corpus.py; ./check and tools/evidence.sh build them).
+Usage: ops/evidence/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
+The binaries are $SEED and $TENON (ops/corpus.py; ./check and ops/evidence/evidence.sh build them).
 Disagreements are kept in .evidence/checkfuzz/ (mutant + both outputs);
 the totals go to .evidence/checkfuzz.json."""
 import os, random, re, shutil, subprocess, sys, tempfile, concurrent.futures as cf
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
 import corpus as corpus_
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SEED = corpus_.SEED
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|->|=>|==|!=|<=|>=|\+=|-=|\.\.|\S')
 TYPES = ["Int", "Str", "Bool", "Float", "Unit", "List[Int]", "Map[Str, Int]", "Option[Int]", "Result[Int, Str]",

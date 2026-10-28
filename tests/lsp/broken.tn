@@ -1,4 +1,4 @@
-// Fixture of tools/lsp_test.py: the server reports what `tenon check` reports.
+// Fixture of ops/gates/lsp_test.py: the server reports what `tenon check` reports.
 fn label(n: Int) -> Str { "n = {n}" }
 
 fn main(sys: Sys) {

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Mutation testing (evidence, not a gate; governance/README.md).
+"""Mutation testing (evidence, not a gate; ops/governance/README.md).
 
-    tools/mutate.py [COUNT] [SEED]
+    ops/evidence/mutate.py [COUNT] [SEED]
 
 Mutates the compiler actually used: the self-hosted compile path and the C
-runtime (corpus.trusted(): selfhost/{lexer,parser,front,checker,ck*,emit*,...}.tn,
+runtime (corpus.trusted(): compiler/{lexer,parser,front,checker,ck*,emit*,...}.tn,
 runtime/tenon.h). Copies the repository to a scratch directory, then for
 each mutant: applies one small change (flip a comparison, swap +/-, negate a
 boolean, swap and/or, ...), builds `tenon` from the mutated source as
@@ -16,9 +16,10 @@ every test "survived": the tests do not notice that change. Survivors are
 added to .evidence/mutation.json as tasks.
 """
 import json, os, random, re, shutil, subprocess, sys, tempfile, time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
 import corpus
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SEED = corpus.SEED
 TARGETS = corpus.trusted()["compiler"] + ["runtime/tenon.h"]
 KIND = "tenonc"  # what .evidence/mutation.json counts: the self-hosted compiler's tag (it was called tenonc; totals of an older kind are not carried over)
@@ -49,9 +50,9 @@ def run(cmd, cwd, timeout, env=None):
 def verdict(work, env):
     """nobuild, killed or survived, for the source tree in work."""
     s0, s1 = os.path.join(work, "tenon0"), os.path.join(work, "tenon")
-    if run([SEED, "build", "selfhost/tenon.tn", "-o", s0, "-O0"], work, 600, env) != 0:
+    if run([SEED, "build", "compiler/tenon.tn", "-o", s0, "-O0"], work, 600, env) != 0:
         return "nobuild"
-    if run([s0, "build", "selfhost/tenon.tn", "-o", s1], work, 600, env) != 0:
+    if run([s0, "build", "compiler/tenon.tn", "-o", s1], work, 600, env) != 0:
         return "killed"
     return "killed" if run([s1, "test", "tests", "tests/v2"], work, 900, env) != 0 else "SURVIVED"
 
@@ -63,7 +64,7 @@ def main():
     # the seed's build cache is shared; tenon's (the mutants' C) stays in the scratch directory
     env = dict(os.environ, TENON_ROOT=work, TENON_CACHE=os.path.join(work, ".cache"))
     try:
-        for d in ["selfhost", "runtime", "lib", "tests"]:
+        for d in ["compiler", "runtime", "lib", "tests"]:
             shutil.copytree(os.path.join(ROOT, d), os.path.join(work, d), symlinks=True)
         if verdict(work, env) != "SURVIVED":
             raise SystemExit("mutate: the unmutated tree does not build or pass its tests")

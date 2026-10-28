@@ -6,9 +6,9 @@ dependencies, fetches git packages into a cache and pins everything in
 `tenon.lock`. Builds then work offline from the lock and the cache. There is
 no registry.
 
-Implementation: `selfhost/pkg.tn` (manifest, lock, resolution, cache, content
-hash) and `selfhost/pkgtoml.tn` (the TOML subset). `selfhost/front.tn`
-`load_in` does the import resolution. Test: `tools/pkg_test.sh`, which is
+Implementation: `compiler/pkg.tn` (manifest, lock, resolution, cache, content
+hash) and `compiler/pkgtoml.tn` (the TOML subset). `compiler/front.tn`
+`load_in` does the import resolution. Test: `ops/gates/pkg_test.sh`, which is
 part of `./check`.
 
 ## Layout

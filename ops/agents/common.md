@@ -34,19 +34,19 @@ when CI passes. You only edit the working tree and write these files in
 ## Rules your change must keep (CI refuses it otherwise)
 
 - `./check` passes. Run it before you finish; if it fails, fix or undo.
-- Never edit `bootstrap/` (the frozen seed), `study/` (published evidence),
-  `governance/approvals.log` (approvals come only from the owner), or a path
-  under an `owner` line of `governance/guarded.txt` (`check`, `tools/land.sh`,
-  `tools/approvals.py`, `tools/approvals_test.sh`, `governance/README.md`,
-  `.github/`). If such a change is needed, describe it in an issue labeled
+- Never edit `seed/` (the frozen seed), `evidence/study/` (published evidence),
+  `ops/governance/approvals.log` (approvals come only from the owner), or a path
+  under an `owner` line of `ops/governance/guarded.txt` (`check`, `ops/repo/land.sh`,
+  `ops/repo/approvals.py`, `ops/gates/approvals_test.sh`, `ops/governance/README.md`,
+  `ops/agents/`, `.github/`). If such a change is needed, describe it in an issue labeled
   `needs-owner` instead.
 - Never delete a guarded test or change what it expects (its `// error:` line
-  or its golden output; `governance/guarded.txt`). You may add tests and add
-  lines to `governance/guarded.txt`, never remove one.
+  or its golden output; `ops/governance/guarded.txt`). You may add tests and add
+  lines to `ops/governance/guarded.txt`, never remove one.
 - One concern per run, the smallest sufficient change, and the docs that
   describe the behaviour updated in the same change.
-- Run only targeted evidence (`tools/asan.sh`, `python3 tools/fuzz.py 20`,
-  `python3 tools/mutate.py 1`), not `tools/evidence.sh`.
+- Run only targeted evidence (`ops/evidence/asan.sh`, `python3 ops/evidence/fuzz.py 20`,
+  `python3 ops/evidence/mutate.py 1`), not `ops/evidence/evidence.sh`.
 - No AI credit lines anywhere (owner rule, docs/log.md): never write a
   `Co-Authored-By:` trailer or a "Generated with ..." line naming Claude,
   Anthropic, OpenAI, Codex or GPT in `.agent/pr.md`, a commit message or an

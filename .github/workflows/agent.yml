@@ -9,7 +9,7 @@ on:
   workflow_call:
     inputs:
       role:
-        description: "the brief: .github/agents/ROLE.md (conformance, authority, hygiene, fixer)"
+        description: "the brief: ops/agents/ROLE.md (conformance, authority, hygiene, fixer)"
         type: string
         required: true
       engine:
@@ -79,7 +79,7 @@ jobs:
         run: |
           n=none
           if [ "$ROLE" = fixer ]; then
-            n=$(tools/gh.py claim)
+            n=$(ops/repo/gh.py claim)
             [ -n "$n" ] || { n=none; echo "::notice::fixer: no open agent-ok issue; nothing to do"; }
           fi
           echo "issue=$n" >> "$GITHUB_OUTPUT"
@@ -95,7 +95,7 @@ jobs:
           ./check > "$RUNNER_TEMP/check-main.log" 2>&1 || echo "::warning::./check fails on main before the agent starts"
           tail -20 "$RUNNER_TEMP/check-main.log"
           mkdir -p .agent
-          { cat .github/agents/common.md; echo; cat ".github/agents/$ROLE.md"; echo
+          { cat ops/agents/common.md; echo; cat "ops/agents/$ROLE.md"; echo
             echo "## This run"; echo
             echo "Date: $(date +%F). Commit: $(git rev-parse --short HEAD). Model: $ENGINE."
             echo "./check on this commit before you started: $(tail -1 "$RUNNER_TEMP/check-main.log")"
@@ -135,8 +135,8 @@ jobs:
           ENGINE: ${{ steps.gate.outputs.engine }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          # tools/gh.py as main has it: the agent could have changed the working copy
-          git show "$GITHUB_SHA:tools/gh.py" > .git/gh_main.py
+          # ops/repo/gh.py as main has it: the agent could have changed the working copy
+          git show "$GITHUB_SHA:ops/repo/gh.py" > .git/gh_main.py
           gh auth setup-git
           git reset -q --soft "$GITHUB_SHA"  # commits the agent made anyway become working-tree changes
           model=$ENGINE; [ "$ENGINE" = codex ] && model="codex ($CODEX_MODEL)"
@@ -157,8 +157,8 @@ jobs:
             give_back "The fixer made no change."; echo "$ROLE: no change"; exit 0
           fi
           if [ "$ISSUE" != none ] && grep -Eq '^Labels:.*\b(regression|redteam)\b' .agent/issue.md \
-             && ! git diff HEAD -- governance/guarded.txt | grep -q '^+[^+]'; then
-            give_back "The fix adds no guarded regression test (governance/guarded.txt); a fix for a regression or red-team finding must."
+             && ! git diff HEAD -- ops/governance/guarded.txt | grep -q '^+[^+]'; then
+            give_back "The fix adds no guarded regression test (ops/governance/guarded.txt); a fix for a regression or red-team finding must."
             exit 0
           fi
           if ! ./check > "$RUNNER_TEMP/check.log" 2>&1; then

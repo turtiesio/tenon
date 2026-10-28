@@ -1,6 +1,6 @@
 // module
-// The evaluator: a port of bootstrap/src/interp.rs over the lowered code of
-// selfhost/icode.tn. Every rule that is visible to a program follows the
+// The evaluator: a port of seed/src/interp.rs over the lowered code of
+// compiler/icode.tn. Every rule that is visible to a program follows the
 // bootstrap: evaluation order, `mut` arguments taken out of their places and
 // written back after the call, where traps are reported (the last call from
 // user code into the prelude, for traps inside the prelude), the depth limit.
@@ -21,14 +21,14 @@ pub const EXIT_OUTPUT: Int = 74
 // How evaluation leaves an expression early.
 // CNoKey: a missing map key in a place (nav), turned into the trap by nk
 // with the key type's Show impl applied. CBlock: a worker would wait; it is
-// suspended (selfhost/iwork.tn).
+// suspended (compiler/iwork.tn).
 pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int), CNoKey(ival.Val, Int, ckast.Span), CBlock }
 
 // Enum numbers the interpreter builds values of.
 pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
 
 // The interpreter's state. It owns the event-loop handles the program's
-// sockets live in (selfhost/icap.tn), so it is unique.
+// sockets live in (compiler/icap.tn), so it is unique.
 pub unique struct Interp {
     pub fns: List[icode.FnRt], pub lams: List[icode.LamRt], pub vts: List[List[Int]], pub names: ival.Names, pub ix: Ix,
     pub fmts: List[icode.Fmt], pub vt_tys: List[Int], pub fty: Int, // Show by type (icode.Code); the extern being called's FnRt.fty
@@ -241,7 +241,7 @@ fn nk[T](it: mut Interp, r: Result[T, Ctl]) -> Result[T, Ctl] {
     }
 }
 
-// Follow `steps` from v (bootstrap/src/interp.rs `navigate`); `create`: a
+// Follow `steps` from v (seed/src/interp.rs `navigate`); `create`: a
 // missing map key at the end of the path is inserted (assignment `m[k] = v`).
 pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, sp: ckast.Span, names: ival.Names, ix: Ix) -> Result[ival.Val, Ctl] {
     if i == steps.len() { return leaf(mut v, op, sp, names, ix) }

@@ -7,7 +7,7 @@
   literals, raw strings `r"..."`, and strings with escapes (`\{`) and
   interpolations `{expr}` / `{expr:SPEC}` whose expressions are highlighted as
   code and whose format spec is highlighted separately.
-- A client for the Tenon language server, `tenon lsp` (selfhost/lsp.tn):
+- A client for the Tenon language server, `tenon lsp` (compiler/lsp.tn):
   - diagnostics: the checker's first diagnostic (parse errors too), exactly as
     `tenon check` reports it, updated as you type (unsaved text is checked;
     imported modules are read from disk, and every open file is checked again
@@ -37,7 +37,7 @@ Install `tenon`, which holds the language server (`tenon lsp`), on your
 PATH, from the repository root (docs/tools.md):
 
 ```sh
-tools/install.sh        # ~/.local/bin/tenon; put ~/.local/bin on PATH
+ops/repo/install.sh        # ~/.local/bin/tenon; put ~/.local/bin on PATH
 ```
 
 Then link (or copy) this folder into VS Code's extension directory and
@@ -69,14 +69,14 @@ the same way: it speaks LSP over stdin and stdout.
 
 ## Checking
 
-- `python3 tools/vscode_grammar_check.py` (run by `./check`) needs only Python 3.
+- `python3 ops/gates/vscode_grammar_check.py` (run by `./check`) needs only Python 3.
   It checks the JSON, that the grammar's keywords are exactly the lexer's, that
   every regex compiles, a few pinned token scopes, and that no string,
   interpolation or raw string scope leaks past the end of a line in any `.tn`
   file of the repository. Keep regexes to the subset that Oniguruma and Python's
   `re` share (no `\G`, `\K`, `\p{...}`); the checker translates `\h` and
   `(?<name>...)` and rejects the rest.
-- `python3 tools/lsp_test.py` (run by `./check`) drives `target/tenon lsp`
+- `python3 ops/gates/lsp_test.py` (run by `./check`) drives `target/tenon lsp`
   through scripted sessions on `tests/lsp/`, asserting exact responses; it
-  also runs `node --check extension.js` and `tools/lsp_client_test.js`, which
+  also runs `node --check extension.js` and `ops/gates/lsp_client_test.js`, which
   loads this client with a stand-in `vscode` module against the real server.

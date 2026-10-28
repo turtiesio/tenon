@@ -1,6 +1,6 @@
 // module
 // Declarations: the tables of structs, enums, traits and functions, type
-// resolution across modules, and bootstrap/src/check.rs `check_main` (the
+// resolution across modules, and seed/src/check.rs `check_main` (the
 // declaration phase that fills the tables: ckdecl.tn).
 
 import ckast
@@ -39,7 +39,7 @@ pub struct ImplInfo {
     pub fns: List[Int], pub sp: ckast.Span,
 }
 
-// What a name, call or pattern resolved to (bootstrap/src/check.rs `Res`).
+// What a name, call or pattern resolved to (seed/src/check.rs `Res`).
 pub enum Res {
     RLocal(Str),
     RFn(Int, List[cktypes.Ty]),           // function index, type args (all tparams)
@@ -298,7 +298,7 @@ fn Env.unsendable_walk(self, t: cktypes.Ty, seen0: List[cktypes.Ty]) -> (Option[
 
 // The first part of t that derived equality cannot handle exactly: functions
 // and capabilities (and, for map keys, Float, since NaN != NaN). Looks through
-// struct fields and enum payloads (bootstrap/src/check_expr.rs `incomparable_part`).
+// struct fields and enum payloads (seed/src/check_expr.rs `incomparable_part`).
 pub fn Env.incomparable_part(self, t: cktypes.Ty, key: Bool) -> Option[Str] {
     self.incomparable_walk(t, key, []).0
 }

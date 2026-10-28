@@ -2,7 +2,7 @@ name: ci
 # The gate on Linux and macOS for every push to main and every pull request;
 # for pull requests also the approvals guard (docs/dev/automation.md).
 # GitHub holds the pull_request run of a pull request opened by the workflows'
-# own token until it is approved; tools/gh.py approves it (workflow_dispatch:
+# own token until it is approved; ops/repo/gh.py approves it (workflow_dispatch:
 # its fallback, and by hand).
 on:
   push:
@@ -38,7 +38,7 @@ jobs:
             echo "a commit carries an AI Co-Authored-By trailer"; exit 1
           fi
   approvals:
-    # A pull request is unattended work: tools/approvals.py --pr, run as the
+    # A pull request is unattended work: ops/repo/approvals.py --pr, run as the
     # base has it (the branch's copy could be changed), refuses approval lines,
     # removed guard rules, owner paths and frozen-seed changes.
     if: github.event_name != 'push'
@@ -48,9 +48,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: tools/approvals.py --pr (the base's)
+      - name: ops/repo/approvals.py --pr (the base's)
         run: |
           git fetch -q origin main
           base=$(git merge-base origin/main HEAD)
-          git show "$base:tools/approvals.py" > .git/approvals_base.py
+          git show "$base:ops/repo/approvals.py" > .git/approvals_base.py
           python3 .git/approvals_base.py --pr "$base"

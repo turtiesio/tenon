@@ -2,7 +2,7 @@
 // with a stand-in for the `vscode` module: activation starts the server,
 // open buffers are sent, and diagnostics, hover, definition and completion
 // come back through the registered providers; deactivation shuts it down.
-// Run by tools/lsp_test.py: node tools/lsp_client_test.js ROOT SERVER
+// Run by ops/gates/lsp_test.py: node ops/gates/lsp_client_test.js ROOT SERVER
 "use strict";
 const Module = require("module");
 const assert = require("assert");

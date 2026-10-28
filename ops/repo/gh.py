@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 """The GitHub side of the unattended runs (docs/dev/automation.md), through `gh`.
 
-    tools/gh.py issues FILE            open or update one issue per entry of FILE
-    tools/gh.py pr BRANCH TITLE BODY_FILE [--only PREFIX]
+    ops/repo/gh.py issues FILE            open or update one issue per entry of FILE
+    ops/repo/gh.py pr BRANCH TITLE BODY_FILE [--only PREFIX]
                                        commit the working tree to BRANCH, open its
                                        pull request with auto-merge, run CI on it
-    tools/gh.py claim                  the oldest open `agent-ok` issue: label it
+    ops/repo/gh.py claim                  the oldest open `agent-ok` issue: label it
                                        `in-progress`, write .agent/issue.md, print its number
-    tools/gh.py release N REASON_FILE  give issue N back: `needs-owner`, with the reason
+    ops/repo/gh.py release N REASON_FILE  give issue N back: `needs-owner`, with the reason
 
-FILE is a JSON list of {"key", "title", "body", "labels"} (tools/status.py writes
+FILE is a JSON list of {"key", "title", "body", "labels"} (ops/repo/status.py writes
 .evidence/regressions.json; the review agents write .agent/issues.json). The
 key is stable across runs and leads the title in brackets, so a problem seen
 again updates its issue (reopens it if it was fixed) instead of opening another.
 Exit status 3 from `pr`: the change was refused (outside PREFIX, or
-tools/approvals.py --pr); nothing was pushed.
+ops/repo/approvals.py --pr); nothing was pushed.
 """
 import json, os, re, subprocess, sys, time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 AI_CREDIT = re.compile(r"^\s*co-authored-by:.*(claude|anthropic|openai|codex|gpt)|generated with .*(claude|codex)", re.I)
-LABELS = {"regression", "redteam", "hygiene", "agent-ok", "needs-owner", "in-progress"}  # tools/gh_labels.sh
+LABELS = {"regression", "redteam", "hygiene", "agent-ok", "needs-owner", "in-progress"}  # ops/repo/gh_labels.sh
 TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}  # whose issues an agent may take as instructions
 BOT = "github-actions[bot]"
 
@@ -47,7 +47,7 @@ def issues(path):
     for i in sorted(known, key=lambda i: i["number"]):
         if i["title"].startswith("["):
             by_key.setdefault(i["title"][1:].split("]")[0], i)  # the oldest issue with a key owns it
-    stamp = f"\n\n---\nSeen by `{os.environ.get('GITHUB_WORKFLOW', 'tools/gh.py')}` at `{run('git', 'rev-parse', '--short', 'HEAD').stdout.strip()}`" \
+    stamp = f"\n\n---\nSeen by `{os.environ.get('GITHUB_WORKFLOW', 'ops/repo/gh.py')}` at `{run('git', 'rev-parse', '--short', 'HEAD').stdout.strip()}`" \
             + (f" ({os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']})"
                if os.environ.get("GITHUB_RUN_ID") else "") + "."
     for e in entries:
@@ -89,11 +89,11 @@ def pr(branch, title, body_file, only=None):
     # the base's checker, not this branch's (the branch may not change it, but it could)
     base = run("git", "merge-base", "origin/main", "HEAD").stdout.strip()
     checker = os.path.join(ROOT, ".git", "approvals_base.py")
-    open(checker, "w").write(run("git", "show", f"{base}:tools/approvals.py").stdout)
+    open(checker, "w").write(run("git", "show", f"{base}:ops/repo/approvals.py").stdout)
     r = run(sys.executable, checker, "--pr", base, check=False)
     print(r.stdout, end="")
     if r.returncode != 0:
-        print("gh.py: refused by tools/approvals.py --pr; nothing pushed")
+        print("gh.py: refused by ops/repo/approvals.py --pr; nothing pushed")
         return 3
     run("git", "push", "-q", "-f", "origin", f"HEAD:refs/heads/{branch}")
     open_prs = gh_json("pr", "list", "--head", branch, "--state", "open", "--json", "number")

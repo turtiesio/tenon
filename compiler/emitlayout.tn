@@ -2,7 +2,7 @@
 // Self-hosted C backend, part 2: type definitions in dependency order, the
 // per-type helpers (retain, release, eq, cmp, hash, show, constructors), the
 // strict decoders, the `main` wrapper and the assembly of the C file.
-// A port of the corresponding parts of bootstrap/src/emit_c.rs.
+// A port of the corresponding parts of seed/src/emit_c.rs.
 
 import cktypes
 import emit
@@ -164,7 +164,7 @@ fn define_value(m: mut emit.Em, t: cktypes.Ty, done: mut Map[cktypes.Ty, Bool], 
     out += s
 }
 
-// bootstrap/src/interp.rs `shown_fields`: the fields formatting shows, up to
+// seed/src/interp.rs `shown_fields`: the fields formatting shows, up to
 // the first one private to another module.
 fn shown_count(m: mut emit.Em, t: cktypes.Ty) -> Int {
     match t {
@@ -418,7 +418,7 @@ fn rel_fields(m: mut emit.Em, fs: List[(Str, cktypes.Ty)], upto: Int) -> Str {
     s
 }
 
-// Strict decoder, step for step the same as bootstrap/src/codec.rs (so failure offsets agree).
+// Strict decoder, step for step the same as seed/src/codec.rs (so failure offsets agree).
 fn decoder_for(m: mut emit.Em, t: cktypes.Ty, n: Str, b: mut Str) {
     var body = ""
     match m.enum_variants(t) {

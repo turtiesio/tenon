@@ -5,7 +5,7 @@ Find places where the compiler's behaviour differs from its documentation.
 The documentation is README.md, docs/quickstart.md, docs/reference.md,
 docs/library.md, docs/tools.md, lib/prelude.tn and lib/v2/prelude.tn. Read
 every tests/redteam/FINDINGS*.md first and do not report an item already
-there. The compiler under test is `target/tenon`; the seed (`bootstrap/`) is
+there. The compiler under test is `target/tenon`; the seed (`seed/`) is
 frozen and only a reference.
 
 Look for:
@@ -23,7 +23,7 @@ Look for:
 - `target/tenon fmt` changing a program's meaning;
 - `target/tenon lsp` giving wrong answers;
 - undefined-behaviour reports when a program is compiled the way
-  tools/asan.sh compiles it.
+  ops/evidence/asan.sh compiles it.
 
 Make each reproduction the smallest program that shows the difference.
 Write the findings to `tests/redteam/FINDINGS-<date>-conformance.md` (the

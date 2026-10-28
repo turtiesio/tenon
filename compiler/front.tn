@@ -1,5 +1,5 @@
 // module
-// Loading and checking a program: a port of bootstrap/src/main.rs `front`.
+// Loading and checking a program: a port of seed/src/main.rs `front`.
 // The prelude and the standard library are read from ROOT (the repository:
 // ROOT/lib/prelude.tn, ROOT/lib/std/NAME.tn) instead of being embedded.
 import parser
@@ -8,7 +8,7 @@ import checker
 import pkg
 
 // A loaded program: every source file (name, text) in load order, as
-// bootstrap/src/diag.rs `SourceMap` (file 0 is the prelude, 1 the main file).
+// seed/src/diag.rs `SourceMap` (file 0 is the prelude, 1 the main file).
 pub struct Front { pub files: List[(Str, Str)], pub checked: checker.Checked }
 
 // Why loading or checking failed. `fatal`: an I/O problem (exit status 2),
@@ -25,7 +25,7 @@ fn diag(files: List[(Str, Str)], fi: Int, line: Int, col: Int, msg: Str) -> Fail
 // The one-line form `PATH:LINE:COL: error: MESSAGE`.
 pub fn Failure.line_text(self) -> Str { "{self.file}:{self.line}:{self.col}: error: {self.msg}" }
 
-// The bootstrap's rendering (bootstrap/src/diag.rs `render`): the message, the
+// The bootstrap's rendering (seed/src/diag.rs `render`): the message, the
 // source line and a caret under the column.
 pub fn Failure.render(self) -> Str {
     let lines = self.text.lines()
@@ -53,7 +53,7 @@ pub fn load_in(fs: Fs, root: Str, path: Str, pk: Option[pkg.Ctx]) -> Result[Fron
     }
 }
 
-// An editor buffer, analysed for the language server (selfhost/lsp.tn):
+// An editor buffer, analysed for the language server (compiler/lsp.tn):
 // as `load`, but the main file's text is `src` (imported modules are read
 // from disk), and `checked` holds the side tables of every function that
 // could be checked even when `failure` (the diagnostic `load` reports) is

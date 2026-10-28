@@ -10,7 +10,7 @@ to write real programs. Every signature of the builtin API is in the prelude
 is ordinary Tenon source.
 
 Every claim here is checked by a test in `tests/` (run `./check`; the
-doc programs themselves: `python3 tools/doctest.py`).
+doc programs themselves: `python3 ops/gates/doctest.py`).
 
 ## 1. A first program
 
@@ -986,7 +986,7 @@ the same results as `tenon build` for every program whose output does not
 depend on scheduling, but slower (docs/tools.md, `tenon run`). Use
 `tenon build` for speed.
 
-**Costs** (C backend, Apple M4 Max; selfhost/iwork.tn and runtime/tenon.h for
+**Costs** (C backend, Apple M4 Max; compiler/iwork.tn and runtime/tenon.h for
 the implementation):
 
 - Copying a value to another worker costs about its size: 0.6 ns per `Int`
@@ -1001,7 +1001,7 @@ the implementation):
   is thread-local and its output locked. Single-threaded code in such a
   program runs at most a few percent slower (bench/trees 5%, bench/v2/pwords
   3%, bench/v2/mandel 0%); programs without workers are unchanged.
-- Speedups over the same function on one thread (`python3 tools/bench.py
+- Speedups over the same function on one thread (`python3 ops/evidence/bench.py
   --parallel`; 16 cores): bench/v2/mandel (floating point) 1.96x on 2
   workers, 3.62x on 4, 6.9x on 8; bench/v2/pwords (strings and maps,
   allocating; maps copied back) 1.92x, 3.51x, 6.2x.

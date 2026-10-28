@@ -1,16 +1,16 @@
 # The self-hosted compiler
 
-Contributor notes on `tenon` (`selfhost/*.tn`), the one self-hosted
+Contributor notes on `tenon` (`compiler/*.tn`), the one self-hosted
 executable (tenon.md §5, "Fully self-hosted compiler"). Its user reference
 is [docs/tools.md](../tools.md); how it is tested, built in stages and
 cross-checked is in [testing.md](testing.md). This page records how each
 part is built and which rules keep it identical to the frozen seed
-(`bootstrap/`, `target/release/tenon-seed`, governance/README.md), which only
+(`seed/`, `target/release/tenon-seed`, ops/governance/README.md), which only
 builds stage 0.
 
 ## Commands and modules
 
-`selfhost/tenon.tn` is the driver. It has every subcommand of the seed, and
+`compiler/tenon.tn` is the driver. It has every subcommand of the seed, and
 more:
 
 | tenon | = tenon-seed | Implementation |
@@ -24,6 +24,13 @@ more:
 | `fmt [--check] FILE...`, `fmt -` | (none) | fmtcmd.tn, fmt.tn, fmtlayout.tn, fmtlex.tn |
 | `lsp` | (none) | lsp.tn, lspquery.tn, lspindex.tn, lsppos.tn, json.tn |
 | `fetch [DIR]` | (none) | pkg.tn, pkgtoml.tn ([docs/packages.md](../packages.md)) |
+
+All of them are in one flat directory, `compiler/`, grouped by name prefix
+rather than by subdirectory: `import name` resolves next to the importing
+file, then in packages, then in the standard library, and the seed, which
+builds stage 0 from `compiler/tenon.tn`, knows only the first and the last.
+Subdirectories per stage would need a package manifest the seed cannot read
+or a new lookup rule in the language.
 
 Each prints and exits with what the seed's subcommand does; the driver's own
 messages (unreadable files, a failing C compiler, usage errors) start with
@@ -46,16 +53,16 @@ tests/v2, programs/v2, bench/v2), which the cross-checks skip.
 
 ## The checker
 
-`tenon check FILE` (selfhost/tenon.tn) runs a second, independent
+`tenon check FILE` (compiler/tenon.tn) runs a second, independent
 implementation of the bootstrap's front end after parsing: module loading
-(bootstrap/src/main.rs `front`), bootstrap/src/check.rs,
-bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs,
-bootstrap/src/linear.rs and the Subst/unify code of bootstrap/src/types.rs.
+(seed/src/main.rs `front`), seed/src/check.rs,
+seed/src/check_expr.rs, seed/src/exhaust.rs,
+seed/src/linear.rs and the Subst/unify code of seed/src/types.rs.
 It is silent on success and prints the first diagnostic as
-`PATH:LINE:COL: error: MESSAGE`. `tools/selfhost.sh` compares it with
+`PATH:LINE:COL: error: MESSAGE`. `ops/gates/selfhost.sh` compares it with
 `tenon-seed check` on every `.tn` file of the corpus outside `v2/`. `checker.check` returns the
 side tables the C backend uses (`Checked`; see "The C backend" below).
-`checker.check_lenient` (used by the language server, selfhost/lsp.tn,
+`checker.check_lenient` (used by the language server, compiler/lsp.tn,
 through `front.analyze_in`) reports the same first diagnostic but goes on
 checking the other functions after one fails, so the side tables cover the
 whole program while it is being edited.
@@ -129,7 +136,7 @@ expressions, declarations, variants, parameters and imports.
 
 ### Known disagreements
 
-None on the corpus. Files skipped by `tools/selfhost.sh` would be listed here
+None on the corpus. Files skipped by `ops/gates/selfhost.sh` would be listed here
 with a minimal reproduction.
 
 ### Traits (v2)
@@ -193,7 +200,7 @@ bounds, `Workers.par_map` in Tenon).
 ## The C backend
 
 `tenon emit` and `tenon build` use a second, independent implementation of
-bootstrap/src/emit_c.rs, emit_body.rs, emit_ctl.rs and emit_builtins.rs,
+seed/src/emit_c.rs, emit_body.rs, emit_ctl.rs and emit_builtins.rs,
 working from the self-hosted checker's results (`checker.Checked`: the
 program, the declarations and the type, resolution and capture side tables).
 
@@ -257,10 +264,10 @@ C text.
 - Calling a constant (`const F: fn(Int) -> Int`, `F(3)`) is a call through a
   function value (`RCallValue`), as in the bootstrap (tests/run/const_shadows_variant.tn).
 
-### Traits (v2, selfhost/emittrait.tn)
+### Traits (v2, compiler/emittrait.tn)
 
 None of this code runs for a program without traits, so the C of the whole
-v1 corpus stays byte-identical to the bootstrap's (tools/selfhost.sh).
+v1 corpus stays byte-identical to the bootstrap's (ops/gates/selfhost.sh).
 
 - **Bounds** are monomorphized: an `RTrait` call is resolved in each
   function instance by substituting the receiver's type
@@ -309,7 +316,7 @@ other program, so the v1 corpus stays byte-identical to the bootstrap's.
 
 ## The interpreter
 
-A port of bootstrap/src/interp.rs, builtins.rs, value.rs and codec.rs:
+A port of seed/src/interp.rs, builtins.rs, value.rs and codec.rs:
 
 | Module | Ports | Contents |
 |---|---|---|
@@ -387,7 +394,7 @@ From `tenon-seed run` (none is exercised by the corpus):
 
 ### Workers and channels (v2)
 
-selfhost/iwork.tn, docs/reference.md §18. The interpreter's own code must
+compiler/iwork.tn, docs/reference.md §18. The interpreter's own code must
 be accepted by the seed (which builds stage 0), so it cannot use workers: workers run under a deterministic
 cooperative scheduler. A spawned worker runs when `main` waits (recv, join,
 try_recv), round robin, until it finishes or would wait; a waiting worker is
@@ -410,7 +417,7 @@ vs 17.0 s, bench/trees 33.7 s vs 43.3 s, tests/run/std_regex.tn 2.4 s vs
 
 ## The test runner
 
-`tenon test` (testrun.tn) ports bootstrap/src/testrun.rs: the same jobs,
+`tenon test` (testrun.tn) ports seed/src/testrun.rs: the same jobs,
 directives (`// stdin:` with `\n` and `\xHH`, `// args:`, `// error:`),
 rendering, golden files and `--bless`, and the same 20 s timeout per command
 (`Proc.run_with`, which captures output and kills on timeout). Tests run in
@@ -427,7 +434,7 @@ hashes: the prelude has no hash function); a hit requires the
 cached source to equal the new one exactly. `$TENON_CACHE` (default
 `$TMPDIR/tenon-cache`), `off`, and `$TENON_KEEP_C` behave as in the
 bootstrap; tenon's entries are named `t...` and never collide with the
-bootstrap's. tools/cache_test.sh (in ./check).
+bootstrap's. ops/gates/cache_test.sh (in ./check).
 
 ## Prelude API added for the tools
 

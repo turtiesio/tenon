@@ -13,7 +13,7 @@ Conventions for doc authors:
 A fence may be indented (inside a list item); the indentation is removed.
 
 Reports each failing block with its line number in the doc; exit status 1 if
-any block fails. Usage: tools/doctest.py [DOC...]
+any block fails. Usage: ops/gates/doctest.py [DOC...]
 """
 import glob
 import os
@@ -23,9 +23,10 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
 import corpus
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TENON = corpus.TENON
 DOCS = ["README.md"] + sorted(os.path.relpath(p, ROOT) for p in glob.glob(os.path.join(ROOT, "docs", "*.md")))
 FENCE = re.compile(r"^(\s*)```(\S*)\s*$")

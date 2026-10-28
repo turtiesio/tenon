@@ -3,7 +3,7 @@
 
 1. The extension's JSON files parse; package.json points at files that exist.
 2. The grammar's keyword rules (repository.keywords, each `\\b(a|b|...)\\b`)
-   name exactly the self-hosted lexer's keywords (selfhost/lexer.tn
+   name exactly the self-hosted lexer's keywords (compiler/lexer.tn
    `keywords()`; the bootstrap's list lacks the v2 ones such as `trait`):
    none missing, none invented.
 3. Every regex compiles with Python's `re`. The grammar is kept to the subset
@@ -12,7 +12,7 @@
    Oniguruma-only constructs with no equivalent are rejected (FORBIDDEN).
 4. A small TextMate interpreter (match, begin/end, include, captures; earliest
    match wins, ties go to the end pattern and then to pattern order, as in
-   vscode-textmate) tokenizes every .tn file of the corpus (tools/corpus.py) line by line.
+   vscode-textmate) tokenizes every .tn file of the corpus (ops/corpus.py) line by line.
    Tenon strings, raw strings and interpolations cannot span lines, so the
    grammar closes them at the end of a line as a fallback. A scope still open
    at the end of a line is a leak; a scope closed only by that fallback means
@@ -20,7 +20,7 @@
    real lexer (`tenon tokens`, $TENON) rejects the file on that line.
    A few pinned lines (SAMPLES) also check the scopes given to tricky tokens.
 
-Usage: tools/vscode_grammar_check.py [FILE.tn...]   (default: the corpus)
+Usage: ops/gates/vscode_grammar_check.py [FILE.tn...]   (default: the corpus)
 Exit status 1 on any finding.
 """
 import json
@@ -29,13 +29,14 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
 import corpus as corpus_
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 EXT = os.path.join(ROOT, "editors", "vscode")
 GRAMMAR = os.path.join(EXT, "syntaxes", "tenon.tmLanguage.json")
 TENON = corpus_.TENON
-LEXERS = ["selfhost/lexer.tn"]
+LEXERS = ["compiler/lexer.tn"]
 
 # Oniguruma spelling -> Python spelling.
 TRANSLATE = [

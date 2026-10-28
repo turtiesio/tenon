@@ -43,7 +43,7 @@
         "tenon.serverPath": {
           "type": "string",
           "default": "tenon",
-          "description": "The tenon executable (tools/install.sh), started as `tenon lsp`; a name is looked up on PATH."
+          "description": "The tenon executable (ops/repo/install.sh), started as `tenon lsp`; a name is looked up on PATH."
         },
         "tenon.root": {
           "type": "string",

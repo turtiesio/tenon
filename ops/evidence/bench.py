@@ -11,10 +11,10 @@ to change); the speedup is over the serial run of the same binary. Writes
 .evidence/bench_parallel.json. `bench.py --parallel` runs only these.
 
 Tenon programs are built (-O2) by `tenon`, the compiler in use: $TENON,
-default target/tenon (./check and tools/evidence.sh build it)."""
+default target/tenon (./check and ops/evidence/evidence.sh build it)."""
 import json, os, statistics, subprocess, sys, time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenon")
 os.environ.setdefault("TENON_ROOT", ROOT)
 OUT = os.path.join(ROOT, "bench", "out")

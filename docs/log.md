@@ -680,3 +680,39 @@ four later "2026-10-28" entries because those were landed after it.
   for `github-actions[bot]` as a first-time contributor, was approved; a
   `workflow_dispatch` run of the same commit did not count for branch
   protection, so tools/gh.py now approves the held run instead.
+
+## 26. 2026-10-28 — repository layout: one purpose per directory
+
+Housekeeping (owner request), no behaviour change: every move is a `git mv`,
+so history follows; tests, programs, bench, editors, lib, runtime and docs
+stay where they were. Earlier entries keep the old paths.
+
+- `selfhost/` -> `compiler/`, one flat directory. Subdirectories per stage
+  (front, emit, interp, fmt, lsp, pkg) would break `import name` between
+  them: it resolves next to the importing file, then packages, then std, and
+  the seed, which builds stage 0 from compiler/tenon.tn, has no packages. A
+  manifest per stage or a new lookup rule would be a language change.
+- `bootstrap/` -> `seed/`, byte for byte, approved in
+  ops/governance/approvals.log (`bootstrap/*` and `seed/*`); the rule is
+  `frozen seed/*`. The root Cargo.toml stays (members = ["seed"]) with its
+  Cargo.lock: without a workspace root, cargo looks for one in the parent
+  directories, and a checkout inside another workspace (an agent's worktree
+  inside the owner's checkout) fails to build; the alternative, `[workspace]`
+  in seed/Cargo.toml, would change the frozen seed.
+- `tools/`, `governance/` and `.github/agents/` -> `ops/`: `ops/gates/` (the
+  steps of ./check, with fmt_skip.txt and doclinks_ignore.txt), `ops/evidence/`
+  (evidence.sh and what it runs), `ops/repo/` (land.sh, approvals.py,
+  status.py with unmet.md, install.sh, gh.py, gh_labels.sh), `ops/study/`
+  (study.py), `ops/governance/`, `ops/agents/` (an `owner` path, as under
+  .github/), and ops/corpus.py shared by all. `study/` -> `evidence/study/`.
+  The land log is target/check.log.
+- ops/repo/approvals.py now applies the base's rules together with HEAD's (a
+  rule a change rewrites still holds for it, so a rename of a frozen path
+  needs approvals for both sides and its line count is compared across the
+  rename), reads a base's governance files at their old place, and treats a
+  guarded test moved unchanged to a guarded path as no weakening; five new
+  scenarios in ops/gates/approvals_test.sh (19 in all).
+- ops/evidence/evidence.sh updates its dedicated clone before handing over to
+  it, so a clone at an older layout runs main's script. The local scheduled
+  tasks name the old paths (`tools/evidence.sh`, `tools/land.sh`); their
+  prompts are the owner's to update.

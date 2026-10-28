@@ -1,4 +1,4 @@
-# Exceptions for tools/doclinks.tn (run by ./check): `doc PATH` is a document
+# Exceptions for ops/gates/doclinks.tn (run by ./check): `doc PATH` is a document
 # that is not read, `path GLOB` a path (relative to the repository root) that
 # is not checked. Each with its reason.
 
@@ -7,7 +7,7 @@
 doc docs/log.md
 doc docs/dev/cleanup_plan.md
 
-# Paths inside a study kit (tools/study.py), not in the repository.
+# Paths inside a study kit (ops/study/study.py), not in the repository.
 path docs/prelude.tn
 path docs/std-*.tn
 

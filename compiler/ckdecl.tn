@@ -1,6 +1,6 @@
 // module
-// The declaration phase of the checker (bootstrap/src/check.rs `declare`,
-// `check_recursion` and bootstrap/src/linear.rs `check_decls`): builds the
+// The declaration phase of the checker (seed/src/check.rs `declare`,
+// `check_recursion` and seed/src/linear.rs `check_decls`): builds the
 // ckenv.Env of a program, its structs, enums, traits, functions and impls,
 // with their checks. Free functions on ckenv.Env.
 import ckast

@@ -69,7 +69,7 @@ tenon fmt stock.tn                                   # rewrite it in the canonic
 A test is a program in a `run/` directory with the expected output next to
 it: `t/run/stock.tn` starting with `// stdin: add a 1\nlist`, then
 `tenon test t --bless` writes `t/run/stock.out` and `tenon test t` compares
-both backends with it. `tenon` comes from `tools/install.sh` (or
+both backends with it. `tenon` comes from `ops/repo/install.sh` (or
 `target/tenon` in the repository, built by `./check`); every command is in
 [docs/tools.md](tools.md).
 

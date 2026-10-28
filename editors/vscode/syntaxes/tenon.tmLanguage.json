@@ -3,7 +3,7 @@
   "name": "Tenon",
   "scopeName": "source.tenon",
   "fileTypes": ["tn"],
-  "comment": "Tenon strings, raw strings and interpolations cannot span lines, so every begin/end rule also ends at the end of the line. Regexes stay within the subset that Oniguruma and Python's re agree on (checked by tools/vscode_grammar_check.py).",
+  "comment": "Tenon strings, raw strings and interpolations cannot span lines, so every begin/end rule also ends at the end of the line. Regexes stay within the subset that Oniguruma and Python's re agree on (checked by ops/gates/vscode_grammar_check.py).",
   "patterns": [
     { "include": "#import" },
     { "include": "#expression" }
@@ -46,7 +46,7 @@
       ]
     },
     "keywords": {
-      "comment": "The union of these alternations must equal the self-hosted lexer's keywords() (selfhost/lexer.tn; checked).",
+      "comment": "The union of these alternations must equal the self-hosted lexer's keywords() (compiler/lexer.tn; checked).",
       "patterns": [
         { "name": "keyword.control.tenon", "match": "\\b(if|else|while|for|in|match|return|break|continue)\\b" },
         { "name": "keyword.operator.logical.tenon", "match": "\\b(and|or|not)\\b" },

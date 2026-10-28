@@ -1,12 +1,12 @@
 // `tenon fmt`: the formatter's command (the layout rules: docs/tools.md,
-// "Formatting"; the formatter itself: selfhost/fmt.tn).
+// "Formatting"; the formatter itself: compiler/fmt.tn).
 //   tenon fmt FILE...           rewrite each file in its canonical layout (atomically)
 //   tenon fmt --check FILE...   list the files that are not in canonical layout; exit 1 if any
 //   tenon fmt -                 format standard input to standard output
 // Exit status 2 if a file cannot be read, parsed or written.
 import fmt
 
-// files: the FILE arguments, at least one (selfhost/tenon.tn checks);
+// files: the FILE arguments, at least one (compiler/tenon.tn checks);
 // check: --check was given.
 pub fn main(sys: Sys, files: List[Str], check: Bool) -> Int {
     let con = sys.console

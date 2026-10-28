@@ -3,17 +3,17 @@
 One executable, `tenon`, holds the whole toolchain: the interpreter, the
 compiler to native code (through C), the checker, the test runner, the
 formatter, the language server and the package fetcher. It is written in
-Tenon (`selfhost/tenon.tn`). This page is the reference for its commands,
+Tenon (`compiler/tenon.tn`). This page is the reference for its commands,
 flags, environment variables and exit statuses.
 
 ## Installing
 
 ```sh
-tools/install.sh              # into ~/.local: ~/.local/bin/tenon, ~/.local/lib/tenon/
-tools/install.sh /opt/tenon   # into another PREFIX
+ops/repo/install.sh              # into ~/.local: ~/.local/bin/tenon, ~/.local/lib/tenon/
+ops/repo/install.sh /opt/tenon   # into another PREFIX
 ```
 
-`tools/install.sh [PREFIX]` needs `cargo` and a C compiler. It builds the
+`ops/repo/install.sh [PREFIX]` needs `cargo` and a C compiler. It builds the
 toolchain the way `./check` does, then copies:
 
 | Path | What |
@@ -27,7 +27,7 @@ PREFIX defaults to `~/.local`. Put `PREFIX/bin` on `PATH`. The installed
 (see "The toolchain root" below). Running the script again replaces the
 installed files.
 
-The build has three stages. The frozen seed (`bootstrap/`, a Rust program
+The build has three stages. The frozen seed (`seed/`, a Rust program
 built to `target/release/tenon-seed`) builds stage 0 (`target/tenon0`, C at
 `-O0`). Stage 0 builds stage 1 (`target/tenon`, `-O2`), which is the `tenon`
 that gets installed. In the repository, `./check` builds all three, so
@@ -92,7 +92,7 @@ compile time. The root is the first of these:
 2. `$TENON_ROOT`;
 3. a directory found from the path of the running `tenon`, EXE. With X the
    directory above EXE's directory (`X/bin/tenon`, `X/target/tenon`), the
-   candidates are `X/lib/tenon` (the layout that `tools/install.sh` makes)
+   candidates are `X/lib/tenon` (the layout that `ops/repo/install.sh` makes)
    and then `X` itself (the repository, for `target/tenon`). The first that
    contains `lib/prelude.tn` wins. EXE is
    read from `/proc` on Linux. Elsewhere it is the name the process was
@@ -114,7 +114,7 @@ is rejected, `tenon run` prints the diagnostic and exits with status 1.
 
 Workers (reference §18) run on one thread under a deterministic scheduler,
 with the same results as `tenon build` for every program whose output does
-not depend on scheduling (selfhost/iwork.tn). A worker runs when `main`
+not depend on scheduling (compiler/iwork.tn). A worker runs when `main`
 waits (`recv`, `join`, `try_recv`), until it finishes or waits itself. A
 waiting worker is resumed by running it again from the start, with every
 effect it already had (output, files, channels) replayed from a log instead
@@ -199,7 +199,7 @@ The details are in [docs/packages.md](packages.md).
 ### `tenon tokens FILE.tn`, `tenon ast FILE.tn`
 
 Print the lexer's tokens, or the parser's syntax tree, of FILE (or the first
-lexer or parser error). The test runner and `tools/selfhost.sh` compare
+lexer or parser error). The test runner and `ops/gates/selfhost.sh` compare
 these dumps.
 
 ## Formatting
@@ -238,9 +238,9 @@ The layout that `tenon fmt` writes (reference §16):
 
 The formatter checks its own output before writing it: the formatted text
 must lex to the same tokens as the original (up to a `,` or `;` before a
-closing bracket) and must parse. `tools/fmt_check.sh` (run by `./check`)
+closing bracket) and must parse. `ops/gates/fmt_check.sh` (run by `./check`)
 also checks that every file in the repository except those listed in
-`tools/fmt_skip.txt` is formatted, that formatting is idempotent, and that
+`ops/gates/fmt_skip.txt` is formatted, that formatting is idempotent, and that
 `tenon ast` of each file it changes is unchanged except positions.
 
 ## Environment variables
@@ -277,9 +277,9 @@ program it runs, whatever it is, and so does a native executable.
 
 ## The seed
 
-`target/release/tenon-seed` is the frozen Rust bootstrap (`bootstrap/`,
-governance/README.md). Its only job is to build stage 0 of `tenon`. It
+`target/release/tenon-seed` is the frozen Rust bootstrap (`seed/`,
+ops/governance/README.md). Its only job is to build stage 0 of `tenon`. It
 has the older command set (`run build emit check test tokens ast`) and none
 of the newer language features (traits, workers: code under `v2/`
-directories). `tools/selfhost.sh` cross-checks `tenon` against it on the
+directories). `ops/gates/selfhost.sh` cross-checks `tenon` against it on the
 corpus ([docs/dev/compiler.md](dev/compiler.md)). It is not installed.

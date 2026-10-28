@@ -14,13 +14,13 @@ sufficient change, on main's rules (the common rules above).
    or `redteam` adds a test that fails before the fix and passes after it
    (`tests/run/NAME.tn` with its `.out`, `tests/reject/NAME.tn`, or the `v2/`
    counterpart; docs/dev/testing.md, "Adding a test"), and adds the test's
-   path(s) to `governance/guarded.txt`, so that weakening it later needs the
+   path(s) to `ops/governance/guarded.txt`, so that weakening it later needs the
    owner's approval. Show both runs in `.agent/pr.md`: the test failing on
    the unfixed compiler and passing on the fixed one. For a surviving
    mutant (`mutation survived at FILE:LINE`) the test is one that fails with
    the mutant applied: apply it, show the failure, undo it. The workflow
    refuses a fix for such an issue that adds no line to
-   `governance/guarded.txt`.
+   `ops/governance/guarded.txt`.
 4. `./check` passes. Update the docs the fix makes stale.
 5. Write `.agent/pr.md`: the title `Fix #N: <what>`, then what was wrong,
    the fix, the regression test by path (name it explicitly), and the

@@ -1,6 +1,6 @@
 // module
 // `tenon run`: the reference interpreter in Tenon, a port of
-// bootstrap/src/interp.rs `run` (with ieval, ibuiltin, icap, icodec, icode
+// seed/src/interp.rs `run` (with ieval, ibuiltin, icap, icodec, icode
 // and ival). It runs the checked program and gives the exit status
 // `tenon-seed run` gives, after printing what it prints.
 import ckast

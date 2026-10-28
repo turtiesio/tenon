@@ -7,7 +7,7 @@
 # directory) is compiled by `tenon` ($TENON, default target/tenon), the
 # compiler in use.
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 C=${TENON:-$PWD/target/tenon}
 export TENON_ROOT=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT

@@ -5,7 +5,7 @@ docs promise (README.md, docs/reference.md, docs/library.md, docs/tools.md,
 lib/prelude.tn, lib/v2/prelude.tn; tenon.md §1.2). Read every
 tests/redteam/FINDINGS*.md first and do not report an item already there.
 The compiler under test is `target/tenon` (run and native build); the seed
-(`bootstrap/`) is frozen.
+(`seed/`) is frozen.
 
 Probe:
 
@@ -22,7 +22,7 @@ Probe:
   another package's private items, a lockfile or cache that resolves to
   the wrong source;
 - memory safety of the generated C under AddressSanitizer, UBSan and
-  ThreadSanitizer (tools/asan.sh and tools/tsan.sh show how to build).
+  ThreadSanitizer (ops/evidence/asan.sh and ops/evidence/tsan.sh show how to build).
 
 Make each reproduction the smallest program. Write the findings to
 `tests/redteam/FINDINGS-<date>-authority.md` (the date of this run): one

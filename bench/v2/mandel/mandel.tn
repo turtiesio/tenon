@@ -1,7 +1,7 @@
 // Parallel benchmark (v2: workers): the Mandelbrot set, row by row.
 // `mandel N` computes the rows with N workers (Workers.par_map_n); `mandel 0`
 // with the same function on one thread (List.map): the same algorithm, so
-// the times compare the scheduling only. tools/bench.py --parallel.
+// the times compare the scheduling only. ops/evidence/bench.py --parallel.
 const WIDTH: Int = 1600
 const HEIGHT: Int = 1200
 const MAX_ITER: Int = 1000

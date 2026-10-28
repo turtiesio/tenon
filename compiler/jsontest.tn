@@ -1,4 +1,4 @@
-// Tests of selfhost/json.tn (run by tools/lsp_test.py): prints `json: N ok`
+// Tests of compiler/json.tn (run by ops/gates/lsp_test.py): prints `json: N ok`
 // or the first failing case and exits 1.
 import json
 

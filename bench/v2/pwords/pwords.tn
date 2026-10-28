@@ -3,7 +3,7 @@
 // (strings built and hashed: allocation-heavy) and counts them in a map;
 // the maps (up to 4,096 entries each) are copied back to main and merged.
 // `pwords N` uses N workers (Workers.par_map_n), `pwords 0` the same
-// function on one thread. tools/bench.py --parallel.
+// function on one thread. ops/evidence/bench.py --parallel.
 const CHUNKS: Int = 64
 const WORDS: Int = 200000
 const SYLLABLES: Str = "kabadafagahajakalamanapasatavawa"

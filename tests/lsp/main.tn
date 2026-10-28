@@ -1,4 +1,4 @@
-// Fixture of tools/lsp_test.py (hover, definition, completion): positions
+// Fixture of ops/gates/lsp_test.py (hover, definition, completion): positions
 // in the test refer to this text, so edit both together.
 import shapes
 

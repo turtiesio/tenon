@@ -4,7 +4,7 @@
 // frame holds its parameters, then one slot per name bound in its body; a
 // lambda frame holds its captures, its parameters, then its locals), calls
 // know their target, and builtins are numbered. The meaning of each node is
-// bootstrap/src/interp.rs on the node it was lowered from; selfhost/ieval.tn
+// seed/src/interp.rs on the node it was lowered from; compiler/ieval.tn
 // evaluates it in the same order.
 import ckast
 import ckenv
@@ -155,7 +155,7 @@ fn needs_types(env: ckenv.Env, fi: Int) -> Bool {
 }
 
 // Lower the whole program. `exts` numbers the builtins that take their
-// receiver by value, `mexts` the `mut self` ones (selfhost/ibuiltin.tn).
+// receiver by value, `mexts` the `mut self` ones (compiler/ibuiltin.tn).
 pub fn lower(c: checker.Checked, exts: Map[Str, Int], mexts: Map[Str, Int]) -> Code {
     let n = c.prog.fns.len()
     let typed = typed_shows(c.env)
@@ -472,7 +472,7 @@ fn Cx.place(mut self, e: ckast.Expr) -> Place {
     }
 }
 
-// The prelude call site rule (bootstrap/src/interp.rs `user_site`): a call
+// The prelude call site rule (seed/src/interp.rs `user_site`): a call
 // from user code into a prelude function records where it was made.
 fn Cx.into_prelude(self, fi: Int, sp: ckast.Span) -> Bool { self.c.env.fns[fi].sp.file == 0 and sp.file != 0 }
 

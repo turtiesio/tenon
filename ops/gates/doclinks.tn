@@ -1,18 +1,18 @@
 // The docs name only paths that exist (tenon.md §6, "No staleness").
 //
-//     tenon run tools/doclinks.tn        (from the repository root; ./check runs it)
+//     tenon run ops/gates/doclinks.tn        (from the repository root; ./check runs it)
 //
 // Reads README.md and every docs/**/*.md, outside fenced code blocks, and
 // checks two kinds of path:
 //   - a relative link `[text](path)`, relative to the document's directory;
 //   - a repository path: a word, in backticks or not, with a `/` and whose
 //     first component is a top-level entry of the repository
-//     (`selfhost/tenon.tn`, `tests/run/`, `lib/prelude.tn:26`).
+//     (`compiler/tenon.tn`, `tests/run/`, `lib/prelude.tn:26`).
 // Each must name a file or directory that exists. A path with `*` must match
 // at least one; so must one with a placeholder (NAME, DIR, FILE, N, ...:
-// `tests/run/NAME.tn`, `study/results/waveN/`) that does not exist as
+// `tests/run/NAME.tn`, `evidence/study/results/waveN/`) that does not exist as
 // written. Words with `{`, `$`, `<` or `=` are not paths. The exceptions are
-// listed, with their reasons, in tools/doclinks_ignore.txt: `doc PATH` (a
+// listed, with their reasons, in ops/gates/doclinks_ignore.txt: `doc PATH` (a
 // document that is not read) and `path GLOB` (a path that is not checked).
 // Prints each missing path as DOC:LINE; exit status 1 if there is one.
 
@@ -22,7 +22,7 @@ const PLACEHOLDERS: List[Str] = ["NAME", "DIR", "FILE", "OUT", "PREFIX", "TAG", 
 
 fn load_ignore(fs: Fs) -> Ignore {
     var ig = Ignore { docs: [], paths: [] }
-    let Ok(text) = fs.read("tools/doclinks_ignore.txt") else { return ig }
+    let Ok(text) = fs.read("ops/gates/doclinks_ignore.txt") else { return ig }
     for line in text.lines() {
         let w = line.words()
         if w.len() < 2 or w[0].starts_with("#") { continue }

@@ -5,7 +5,7 @@
 # Each scenario runs against the interpreter AND the native build; both
 # transcripts must equal programs/NAME/expected.txt. `--bless` rewrites it.
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 C=${TENON:-$PWD/target/tenon}
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 fail=0; n=0

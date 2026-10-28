@@ -1,6 +1,6 @@
 // module
 // Self-hosted C backend, part 4: matches and patterns, `?`, closures and
-// function values. A port of bootstrap/src/emit_ctl.rs.
+// function values. A port of seed/src/emit_ctl.rs.
 
 import ckast
 import cktypes

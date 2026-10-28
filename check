@@ -2,9 +2,9 @@
 # The gate (budget: 60 s, tenon.md §2.1): builds the seed, stage0 and stage1
 # (target/tenon), then runs every step below with stage1 and ends with the
 # time of each. What each step checks: docs/dev/testing.md. `--fast` is
-# accepted and means the same (tools/land.sh passes it); slower evidence is
-# tools/evidence.sh. The tools take the binaries from $TENON, $TENON0 and
-# $SEED (tools/corpus.py).
+# accepted and means the same (ops/repo/land.sh passes it); slower evidence is
+# ops/evidence/evidence.sh. The tools take the binaries from $TENON, $TENON0 and
+# $SEED (ops/corpus.py).
 set -euo pipefail
 cd "$(dirname "$0")"
 export SEED=$PWD/target/release/tenon-seed TENON0=$PWD/target/tenon0 TENON=$PWD/target/tenon TENON_ROOT=$PWD
@@ -21,18 +21,18 @@ report() {
   printf 'check: seconds per step\n%s%7.1f  total (budget 60)%s\n' "$table" "$(awk "BEGIN { print $last - $start }")" "${1:+; $1}"
 }
 step "seed (cargo build)" cargo build --release --quiet
-step "stage0 (seed builds tenon, -O0)" "$SEED" build selfhost/tenon.tn -o "$TENON0" -O0
-step "stage1 (stage0 builds tenon)" "$TENON0" build selfhost/tenon.tn -o "$TENON"
+step "stage0 (seed builds tenon, -O0)" "$SEED" build compiler/tenon.tn -o "$TENON0" -O0
+step "stage1 (stage0 builds tenon)" "$TENON0" build compiler/tenon.tn -o "$TENON"
 step "tenon test tests tests/v2" "$TENON" test tests tests/v2
-step "cli_test" tools/cli_test.sh
-step "doctest" python3 tools/doctest.py
-step "doclinks" "$TENON" run tools/doclinks.tn
-step "vscode grammar" python3 tools/vscode_grammar_check.py
-step "programs" tools/programs.sh
-step "cache_test" tools/cache_test.sh
-step "pkg_test" tools/pkg_test.sh
-step "selfhost (seed cross-check, fixpoint)" tools/selfhost.sh
-step "fmt_check" tools/fmt_check.sh
-step "lsp_test" python3 tools/lsp_test.py
-step "approvals_test" tools/approvals_test.sh
+step "cli_test" ops/gates/cli_test.sh
+step "doctest" python3 ops/gates/doctest.py
+step "doclinks" "$TENON" run ops/gates/doclinks.tn
+step "vscode grammar" python3 ops/gates/vscode_grammar_check.py
+step "programs" ops/gates/programs.sh
+step "cache_test" ops/gates/cache_test.sh
+step "pkg_test" ops/gates/pkg_test.sh
+step "selfhost (seed cross-check, fixpoint)" ops/gates/selfhost.sh
+step "fmt_check" ops/gates/fmt_check.sh
+step "lsp_test" python3 ops/gates/lsp_test.py
+step "approvals_test" ops/gates/approvals_test.sh
 report

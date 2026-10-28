@@ -1,5 +1,5 @@
 // module
-// Match exhaustiveness and reachability: a port of bootstrap/src/exhaust.rs
+// Match exhaustiveness and reachability: a port of seed/src/exhaust.rs
 // (usefulness algorithm, Maranget 2007).
 
 import ckast

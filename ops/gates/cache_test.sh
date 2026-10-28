@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# The build cache of `tenon build` (selfhost/tenon.tn): a hit reuses the
+# The build cache of `tenon build` (compiler/tenon.tn): a hit reuses the
 # cached executable only when the cached C text is exactly the new one;
 # TENON_CACHE=off and TENON_KEEP_C bypass it. Uses $TENON (default target/tenon).
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 C=${TENON:-$PWD/target/tenon}
 export TENON_ROOT=$PWD TENON_CACHE=$tmp/cache

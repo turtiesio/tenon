@@ -1,6 +1,6 @@
 // module
-// Interpreter values: a port of bootstrap/src/value.rs (derived equality,
-// ordering and formatting) for `tenon run` (selfhost/interp.tn).
+// Interpreter values: a port of seed/src/value.rs (derived equality,
+// ordering and formatting) for `tenon run` (compiler/interp.tn).
 //
 // A value is one struct whose fields are used according to its kind `k`, so
 // that a part deep inside a value can be changed in place through a `mut`
@@ -56,7 +56,7 @@ pub const CAP_LISTENER: Int = 5
 pub const CAP_CONN: Int = 6
 pub const CAP_POLLER: Int = 7
 pub const CAP_WORKERS: Int = 8
-pub const CAP_SENDER: Int = 9 // j: the channel (selfhost/iwork.tn)
+pub const CAP_SENDER: Int = 9 // j: the channel (compiler/iwork.tn)
 pub const CAP_RECEIVER: Int = 10
 pub const CAP_WORKER: Int = 11 // j: the worker
 
@@ -157,7 +157,7 @@ pub fn map_items(m: Map[Key, Val]) -> List[Val] {
     out
 }
 
-// ---- equality and ordering (bootstrap/src/value.rs PartialEq, cmp) ----
+// ---- equality and ordering (seed/src/value.rs PartialEq, cmp) ----
 
 pub fn eq(a: Val, b: Val) -> Bool {
     let k = a.k
@@ -219,7 +219,7 @@ pub fn cmp(a: Val, b: Val) -> Result[Int, Str] {
     Ok(0)
 }
 
-// ---- formatting (bootstrap/src/value.rs show) ----
+// ---- formatting (seed/src/value.rs show) ----
 
 // Struct names and fields as formatting shows them (`shown`: a module's
 // private fields are None, shown as `..`; `full`: every field, for encode),
@@ -347,7 +347,7 @@ pub fn show_nested(v: Val, n: Names) -> Str {
     s
 }
 
-// ---- format specs (bootstrap/src/ast.rs FmtSpec::pad, radix_digits) ----
+// ---- format specs (seed/src/ast.rs FmtSpec::pad, radix_digits) ----
 
 fn group_digits(f: parser.Spec, body: Str) -> Str {
     let neg = body.starts_with("-")

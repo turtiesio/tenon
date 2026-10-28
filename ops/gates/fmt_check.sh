@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# The formatter (`tenon fmt`: selfhost/fmtcmd.tn and fmt.tn, rules in
+# The formatter (`tenon fmt`: compiler/fmtcmd.tn and fmt.tn, rules in
 # docs/tools.md "Formatting") on the whole corpus, through $TENON
 # (default target/tenon):
-#   1. every .tn file not listed in tools/fmt_skip.txt is in canonical layout
+#   1. every .tn file not listed in ops/gates/fmt_skip.txt is in canonical layout
 #      (`tenon fmt --check`);
 #   2. formatting preserves meaning, on every .tn file it changes (skipped
 #      ones included; with --all on every file): `tenon ast` of the original
@@ -14,7 +14,7 @@
 #      parse it; files that do not parse are exempt from 1;
 #   5. tests/fmt/NAME.in.tn formats to tests/fmt/NAME.out.tn (and tests/v2/fmt).
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 A=${TENON:-target/tenon}
 python3 - "$A" "$tmp" "$@" <<'EOF'
@@ -23,10 +23,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 T, tmp, every = os.path.abspath(sys.argv[1]), sys.argv[2], "--all" in sys.argv
 F = [T, "fmt"]
-sys.path.insert(0, "tools")
+sys.path.insert(0, "ops")
 import corpus
 files = corpus.files()
-skip_globs = [l.split("#")[0].strip() for l in open("tools/fmt_skip.txt")]
+skip_globs = [l.split("#")[0].strip() for l in open("ops/gates/fmt_skip.txt")]
 skip_globs = [g for g in skip_globs if g]
 skipped = [f for f in files if any(fnmatch.fnmatch(f, g) for g in skip_globs)]
 problems = []
@@ -104,7 +104,7 @@ for name in pairs:
 for p in problems:
     print("FAIL", p)
 canonical = [f for f in files if f not in skipped and f not in refused and f not in changed]
-print(f"fmt: {len(canonical)} files in canonical layout ({len(skipped)} skipped by tools/fmt_skip.txt,",
+print(f"fmt: {len(canonical)} files in canonical layout ({len(skipped)} skipped by ops/gates/fmt_skip.txt,",
       f"{len([f for f in refused if f not in skipped])} more do not parse); idempotent on {len(files) - len(refused)};",
       f"meaning preserved on {len(files) - len(refused) if every else len(changed)} formatted{'' if every else ' (the ones it changes)'};",
       f"{len(pairs)} golden tests; {len(problems)} problems")

@@ -1,6 +1,6 @@
 // module
 // Self-hosted C backend, part 5: the `extern fn`s of lib/prelude.tn, lowered
-// to runtime calls (runtime/tenon.h). A port of bootstrap/src/emit_builtins.rs.
+// to runtime calls (runtime/tenon.h). A port of seed/src/emit_builtins.rs.
 
 import ckast
 import cktypes

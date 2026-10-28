@@ -1,6 +1,6 @@
 // module
 // Builtins: the prelude's `extern fn`s on numbers, strings, lists, maps,
-// Option/Result and the console (bootstrap/src/builtins.rs `call_extern`,
+// Option/Result and the console (seed/src/builtins.rs `call_extern`,
 // `extern_mut`). The host's own builtins do the work (they are the C
 // runtime's, which agrees with the bootstrap); every precondition whose
 // failure is a trap is checked first, so the trap is the interpreted

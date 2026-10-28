@@ -226,7 +226,7 @@ Scope chosen by the user after milestone 1 (decisions in docs/log.md). Order of
 construction: repository layout, then self-hosting, so that every later feature
 is built once, in Tenon, not mirrored in two front ends.
 
-- **Fully self-hosted compiler.** The Tenon compiler (selfhost/) checks and
+- **Fully self-hosted compiler.** The Tenon compiler (compiler/) checks and
   compiles itself to C. Fixpoint: the compiler built by stage 1 and the one built
   by stage 2 emit byte-identical C for themselves and the full corpus. Every test
   and program passes on the self-hosted compiler on both backends. The Rust

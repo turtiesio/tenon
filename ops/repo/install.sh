@@ -7,15 +7,15 @@
 # PREFIX defaults to ~/.local (put ~/.local/bin on PATH). `tenon` finds its
 # root (PREFIX/lib/tenon) from its own path, so TENON_ROOT is not needed.
 # Reinstalling replaces the previous files. Needs cargo and a C compiler.
-# Usage: tools/install.sh [PREFIX]
+# Usage: ops/repo/install.sh [PREFIX]
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 prefix=${1:-$HOME/.local}
 case $prefix in /*) ;; *) prefix=$PWD/$prefix ;; esac
 cargo build --release --quiet
 export TENON_ROOT=$PWD
-target/release/tenon-seed build selfhost/tenon.tn -o target/tenon0 -O0
-target/tenon0 build selfhost/tenon.tn -o target/tenon
+target/release/tenon-seed build compiler/tenon.tn -o target/tenon0 -O0
+target/tenon0 build compiler/tenon.tn -o target/tenon
 mkdir -p "$prefix/bin" "$prefix/lib/tenon"
 rm -rf "$prefix/lib/tenon/lib" "$prefix/lib/tenon/runtime"
 cp -R lib "$prefix/lib/tenon/lib"

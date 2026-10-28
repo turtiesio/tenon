@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Usability study tooling (protocol: study/README.md).
+"""Usability study tooling (protocol: evidence/study/README.md).
 
-  tools/study.py kit LANG AUTHOR      create an author's isolated kit in $STUDY_ROOT
-  tools/study.py eval                 score every kit: hidden tests, size, time, errors
-                                      -> .evidence/study.json and study/results/
+  ops/study/study.py kit LANG AUTHOR      create an author's isolated kit in $STUDY_ROOT
+  ops/study/study.py eval                 score every kit: hidden tests, size, time, errors
+                                      -> .evidence/study.json and evidence/study/results/
 
 LANG is tenon, python or typescript. Kits live outside the repository
 (default /tmp/tenon-study) so authors see only the task specifications and,
@@ -12,10 +12,10 @@ kit's try.sh, which timestamps attempts in attempts.jsonl.
 """
 import glob, json, os, re, shutil, statistics, subprocess, sys, time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 STUDY_ROOT = os.environ.get("STUDY_ROOT", "/tmp/tenon-study")
 # Authors use a frozen copy of `tenon` (STUDY_ROOT/bin/tenon, installed by
-# tools/install.sh with its lib/ and runtime/ in STUDY_ROOT/lib/tenon), made when
+# ops/repo/install.sh with its lib/ and runtime/ in STUDY_ROOT/lib/tenon), made when
 # the first Tenon kit is created, so changes to the repo cannot affect a study.
 TENON = os.path.join(STUDY_ROOT, "bin", "tenon")
 EXT = {"tenon": "tn", "python": "py", "typescript": "ts"}
@@ -71,7 +71,7 @@ def kit(lang, author):
         raise SystemExit(f"{d} exists")
     os.makedirs(os.path.join(d, "tasks"))
     os.makedirs(os.path.join(d, ".specs"))
-    tasks_dir = os.environ.get("STUDY_TASKS", os.path.join(ROOT, "study", "tasks"))
+    tasks_dir = os.environ.get("STUDY_TASKS", os.path.join(ROOT, "evidence", "study", "tasks"))
     names = []
     for t in sorted(glob.glob(os.path.join(tasks_dir, "*.md"))):
         shutil.copy(t, os.path.join(d, ".specs"))
@@ -82,7 +82,7 @@ def kit(lang, author):
     if lang == "tenon":
         if not os.path.exists(TENON):
             # the self-hosted tenon with its lib/ and runtime/ (STUDY_ROOT/lib/tenon), as installed
-            subprocess.run([os.path.join(ROOT, "tools", "install.sh"), STUDY_ROOT], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run([os.path.join(ROOT, "ops", "repo", "install.sh"), STUDY_ROOT], check=True, stdout=subprocess.DEVNULL)
         os.makedirs(os.path.join(d, "docs"))
         # the user docs a study author needs (not packages.md, not docs/dev/)
         for doc in STUDY_DOCS:
@@ -153,7 +153,7 @@ def evaluate():
                 else:
                     cmd = ["python3", src] if lang == "python" else ["node", src]
                 out = os.path.join(d, f".hidden-{t}.json")
-                runner = os.environ.get("STUDY_RUNNER", os.path.join(ROOT, "study", "harness.py"))
+                runner = os.environ.get("STUDY_RUNNER", os.path.join(ROOT, "evidence", "study", "harness.py"))
                 subprocess.run([sys.executable, runner, t, "--json", out, "--"] + cmd,
                                capture_output=True, cwd=ROOT)
                 res = json.load(open(out)) if os.path.exists(out) else {}
@@ -163,14 +163,14 @@ def evaluate():
     text, summary = summarize(rows)
     os.makedirs(os.path.join(ROOT, ".evidence"), exist_ok=True)
     json.dump({"summary": text, "per_language": summary}, open(os.path.join(ROOT, ".evidence", "study.json"), "w"), indent=1)
-    os.makedirs(os.path.join(ROOT, "study", "results"), exist_ok=True)
-    json.dump(rows, open(os.path.join(ROOT, "study", "results", "rows.json"), "w"), indent=1)
+    os.makedirs(os.path.join(ROOT, "evidence", "study", "results"), exist_ok=True)
+    json.dump(rows, open(os.path.join(ROOT, "evidence", "study", "results", "rows.json"), "w"), indent=1)
     print(text)
 
 
 def summarize(rows):
     """Medians over authors per language, as (a Markdown table, {lang: medians});
-    tools/status.py reads the published rows (study/results/waveN/rows.json)."""
+    ops/repo/status.py reads the published rows (evidence/study/results/waveN/rows.json)."""
     summary = {}
     for lang in EXT:
         rs = [r for r in rows if r["lang"] == lang and r["exists"]]
@@ -201,7 +201,7 @@ def summarize(rows):
     for lang, s in summary.items():
         rate = f"{s['hidden_pass_rate'] * 100:.0f}%" if s["hidden_pass_rate"] is not None else "-"
         lines.append(f"| {lang} | {s['authors']} | {rate} | {s['code_lines']} | {s['lines']} | {s['tokens']} | {s['minutes_total']} | {s['errors']} |")
-    text = "Medians over authors (protocol: study/README.md; per-solution data: study/results/).\n\n" + "\n".join(lines)
+    text = "Medians over authors (protocol: evidence/study/README.md; per-solution data: evidence/study/results/).\n\n" + "\n".join(lines)
     return text, summary
 
 

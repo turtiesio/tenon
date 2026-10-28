@@ -1,7 +1,7 @@
 // tenon: the Tenon command line, self-hosted: compiler, interpreter, test
 // runner, formatter, language server and package fetcher in one executable
 // (the reference: docs/tools.md; the usage text: `usage_text` below). The
-// frozen seed (bootstrap/, target/release/tenon-seed) only builds stage 0 of
+// frozen seed (seed/, target/release/tenon-seed) only builds stage 0 of
 // this file, which builds stage 1, target/tenon (./check).
 //
 // Flags may come in any position after the command, before or after the
@@ -13,13 +13,13 @@
 // Inside a package (a tenon.toml in the file's directory or above it),
 // run/build/emit/check/test (and the language server) also resolve `import`
 // to the dependencies pinned in tenon.lock, offline, from the cache
-// (docs/packages.md, selfhost/pkg.tn).
+// (docs/packages.md, compiler/pkg.tn).
 //
 // The toolchain ROOT holds the prelude, the standard library and the C
 // runtime (ROOT/lib/prelude.tn, ROOT/lib/std/, ROOT/runtime/tenon.h), read at
 // compile time. It is `--root DIR`, else $TENON_ROOT, else found from this
 // executable's own path EXE (`self_exe`): the first of EXE/../../lib/tenon
-// (the layout tools/install.sh makes: PREFIX/bin/tenon and PREFIX/lib/tenon)
+// (the layout ops/repo/install.sh makes: PREFIX/bin/tenon and PREFIX/lib/tenon)
 // and EXE/../.. (the repository, for target/tenon) that has lib/prelude.tn;
 // else the current directory.
 //
@@ -391,7 +391,7 @@ fn run(sys: Sys, o: Opts) -> Int {
     }
 }
 
-// test DIR...: the test runner (selfhost/testrun.tn) runs this executable.
+// test DIR...: the test runner (compiler/testrun.tn) runs this executable.
 fn test(sys: Sys, o: Opts) -> Int {
     let exe = match o.val("--exe") {
         Some(e) => e,
