@@ -256,66 +256,49 @@ is built once, in Tenon, not mirrored in two front ends.
 
 ## 6. Third milestone: definition of done
 
-Scope chosen by the user after milestone 2's plan (decisions in docs/log.md):
-ready for real users, deeper correctness by construction, and scale. AI models
-count as real users. No Windows or WebAssembly target in this milestone.
+Scope chosen by the user after milestone 2's plan (decisions in docs/log.md); the
+original scope was split by dependency: this milestone builds the foundations, and
+§7 builds on them. AI models count as real users. No Windows or WebAssembly target.
 
-- **Ready for real users.**
+- **Gaps carried over:** user Eq/Ord/Hash impls, trait type parameters and
+  supertraits, channels the event loop can wait on, all diagnostics in the
+  language server, and the small language gaps the studies found.
+- **Standard library and packages for real use.**
   - Standard library breadth: HTTP client and server, JSON, time and dates,
     hashing and cryptographic primitives, subprocesses on top of `Proc`, with
     explicit authority for everything that touches the outside world.
   - Packages: per-package module namespaces; a cryptographic content hash in the
     lockfile.
-  - Debugging: source-level stack traces on traps, `tenon run --trace`, and a
-    profiler that attributes time to Tenon functions.
-  - Usability by real users: a study wave in which model authors (Claude, Codex
-    and others; at least two families) build three larger outside-style programs
-    (a web service, a CLI tool, a data pipeline) from specifications and maintain
-    them through two rounds of changed requirements; time, defects and change
-    effort reported per language as in §2.6.
-- **Correctness by construction, deeper.**
-  - Contracts: `requires` / `ensures` / invariants, proved at compile time where a
-    simple decision procedure can, checked at run time otherwise, never silently
-    dropped.
-  - Effects beyond capabilities: a function's effects (I/O, nondeterminism,
-    traps) visible in its signature or inferred and checkable at boundaries.
   - Property-based testing in the standard library, used by the corpus.
-  - Evidence: bugs prevented, measured on the corpus and the red team's findings.
-- **Scale.**
-  - Distributed execution: workers on other machines with the same isolation
-    and `Send` rules as local workers, and failures surfaced, never hidden.
-  - Macros or compile-time code generation, hygienic, with the generated code
-    visible to the formatter, the language server and the checker.
-  - Each added only with measurements showing it pays for itself (§4).
-- **Gaps carried over:** user Eq/Ord/Hash impls, trait type parameters and
-  supertraits, channels the event loop can wait on, all diagnostics in the
-  language server, and the small language gaps the studies found.
-- **Self-governing infrastructure in Tenon.** The whole flow is defined in Tenon
-  and only realized by a host. The definition (gates, landing, approvals,
-  guarded and frozen paths, schedules, roles and briefs, budgets, the kill switch,
-  the queue and what counts as a regression) is Tenon code and data in this
-  repository, run as `tenon ops ...`. A host such as GitHub Actions only executes
-  it: its workflow files are thin shims generated from the definition (a check
-  fails if they drift), and the same definition runs unchanged on another host
-  (the local scheduler, a self-hosted machine, several runners). Concretely:
+- **Debugging:** source-level stack traces on traps, `tenon run --trace`, and a
+  profiler that attributes time to Tenon functions.
+- **Self-governing infrastructure in Tenon, centralized.** The whole flow is
+  defined in Tenon and only realized by a host. The definition (gates, landing,
+  approvals, guarded and frozen paths, schedules, roles and briefs, budgets, the
+  kill switch, the queue and what counts as a regression) is Tenon code and data
+  in this repository, run as `tenon ops ...`. A host such as GitHub Actions only
+  executes it: its workflow files are thin shims generated from the definition (a
+  check fails if they drift), and the same definition runs unchanged on another
+  host (the local scheduler, a self-hosted machine). Concretely:
   - One Tenon system (`tenon ops` or similar) owns the task queue, governance
     (approvals, frozen paths, guarded tests), the evidence record and the agent
     harness (starting Codex, Claude or other agents through `Proc`, with their
     briefs, budgets, kill switch and audit log). Its state is durable and
     versioned in the repository or a store it controls.
-  - It runs centralized (one machine) or distributed (several runners, using the
-    milestone's distributed workers), with the same rules either way.
+  - It runs centralized on one machine at a time in this milestone.
   - GitHub Actions, the local T3 scheduler or any other host is only an adapter
     that runs it and reports to it; replacing the host changes no rule. GitHub
     issues, if used, mirror the queue rather than define it.
   - Agents authenticate with their providers' supported sign-in (Codex through
-    OpenAI's OAuth login, model gpt-6.1-sol;
-    Claude through its own login), never with credentials in the repository.
-- **Console.** An operations console, served by a Tenon program: STATUS and
-  correctness trends, the task queue, running and past agent runs with their
-  logs and diffs, budgets, approvals waiting for the owner, and the kill switch.
-  It reads the same state the Tenon system owns; it is not a second source of
-  truth.
+    OpenAI's OAuth login, model gpt-6.1-sol; Claude through its own login), never
+    with credentials in the repository.
+  - The repository's own tools move from Python and shell to Tenon where Tenon can
+    do the job (dogfooding), starting with the gate, landing, approvals and status.
+- **Console.** An operations console, served by a Tenon program (on the new HTTP
+  library): STATUS and correctness trends, the task queue, running and past agent
+  runs with their logs and diffs, budgets, approvals waiting for the owner, and
+  the kill switch. It reads the same state the Tenon system owns; it is not a
+  second source of truth.
 - **No staleness.** The repository stays clean as it grows, by mechanism:
   - `./check` fails on: a doc claim without a test or command behind it, a path in
     the docs that does not exist, a file over ~1000 lines or a function over ~80
@@ -323,7 +306,34 @@ count as real users. No Windows or WebAssembly target in this milestone.
     the last evidence run.
   - The evidence loop reports dead code (unused functions, modules, tools) and
     duplicated code, as tasks.
-  - A weekly hygiene review, alongside the weekly red team, audits for drift
-    (KISS, DRY, single responsibility, docs versus behaviour) and lands fixes.
-  - Dogfooding: the repository's own tools move from Python and shell to Tenon
-    where Tenon can do the job, so the language is used for its own maintenance.
+  - A weekly hygiene review, alongside the weekly correctness review, audits for
+    drift (KISS, DRY, single responsibility, docs versus behaviour) and lands fixes.
+- **Evidence:** benchmarks stay within 1.5x of C, `check --fast` within 60 s and
+  landing within 5 min; no regression in a usability wave on fresh tasks.
+
+## 7. Fourth milestone: definition of done
+
+Builds on §6 (scope chosen by the user; split from the original third milestone).
+
+- **Correctness by construction, deeper.**
+  - Contracts: `requires` / `ensures` / invariants, proved at compile time where a
+    simple decision procedure can, checked at run time otherwise, never silently
+    dropped.
+  - Effects beyond capabilities: a function's effects (I/O, nondeterminism,
+    traps) visible in its signature or inferred and checkable at boundaries.
+  - Evidence: bugs prevented, measured on the corpus and the correctness reviews'
+    findings.
+- **Scale.**
+  - Distributed execution: workers on other machines with the same isolation
+    and `Send` rules as local workers, and failures surfaced, never hidden.
+  - The Tenon-defined operations system (§6) runs distributed on several runners
+    with the same rules as centralized.
+  - Macros or compile-time code generation, hygienic, with the generated code
+    visible to the formatter, the language server and the checker.
+  - Each added only with measurements showing it pays for itself (§4).
+- **Usability by real users, at scale:** a study wave in which model authors
+  (Claude, Codex and others; at least two families) build three larger
+  outside-style programs (a web service, a CLI tool, a data pipeline) from
+  specifications and maintain them through two rounds of changed requirements;
+  time, defects and change effort reported per language as in §2.6.
+- **No staleness** (§6) keeps holding, measured over the milestone.

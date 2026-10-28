@@ -173,6 +173,13 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Milestone 3 split (owner request):** the large third milestone was split by
+  dependency. Milestone 3 (tenon.md §6): carried-over gaps, stdlib and packages for
+  real use, property tests, debugging, the Tenon-defined operations system
+  (centralized), the console, no-staleness gates. Milestone 4 (§7): contracts and
+  effects, distributed execution and distributed operations, macros, and the
+  larger-program usability study.
+
 - **Codex model:** stays gpt-6.1-sol (through OpenAI's OAuth sign-in); the earlier
   note naming gpt-6.1-terra and gpt-6-luna is superseded.
 
