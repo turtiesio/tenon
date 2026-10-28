@@ -1,0 +1,169 @@
+struct Booking { id: Int, start: Int, end: Int, who: Str }
+
+struct Room { name: Str, cap: Int, bookings: List[Booking] }
+
+struct Service {
+    rooms: Map[Str, Room],
+    owner: Map[Int, Str],   // booking id -> room name, current bookings only
+    next_id: Int,
+}
+
+fn valid_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+// [1-9][0-9]{0,max_len-1}
+fn parse_num(s: Str, max_len: Int) -> Option[Int] {
+    if not s.is_digits() or s.len() > max_len or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+// HH:MM from 00:00 to 24:00, in minutes
+fn parse_time(s: Str) -> Option[Int] {
+    if s.len() != 5 or s.byte(2) != ':' { return None }
+    let hh = s.slice(0, 2)
+    let mm = s.slice(3, 5)
+    if not hh.is_digits() or not mm.is_digits() { return None }
+    let h = hh.to_int()?
+    let m = mm.to_int()?
+    if h <= 23 and m <= 59 { return Some(h * 60 + m) }
+    if h == 24 and m == 0 { return Some(1440) }
+    None
+}
+
+fn parse_booking_id(s: Str) -> Option[Int] {
+    let rest = s.strip_prefix("B")?
+    parse_num(rest, 9)
+}
+
+fn fmt_time(t: Int) -> Str {
+    let h = t / 60
+    let m = t % 60
+    "{h:02}:{m:02}"
+}
+
+fn Room.sorted_bookings(self) -> List[Booking] {
+    var bs = self.bookings
+    bs.sort_by(fn(b) => b.start)
+    bs
+}
+
+// Earliest start >= 08:00 at which `minutes` fit before 18:00 without
+// overlapping a booking of this room.
+fn Room.earliest_slot(self, minutes: Int) -> Option[Int] {
+    var s = 480
+    for b in self.sorted_bookings() {
+        if b.start >= s + minutes { break }
+        if b.end > s { s = b.end }
+    }
+    if s + minutes <= 1080 { Some(s) } else { None }
+}
+
+fn Service.book(mut self, name: Str, start: Int, end: Int, who: Str) -> Str {
+    if start >= end { return "ERR bad time" }
+    let Some(room) = self.rooms.get(name) else { return "ERR no such room" }
+    var clash: Option[Booking] = None
+    for b in room.sorted_bookings() {
+        if start < b.end and b.start < end {
+            clash = Some(b)
+            break
+        }
+    }
+    if let Some(b) = clash { return "ERR conflict B{b.id}" }
+    let id = self.next_id
+    self.next_id += 1
+    self.rooms[name].bookings.push(Booking { id, start, end, who })
+    self.owner[id] = name
+    "OK B{id}"
+}
+
+fn Service.cancel(mut self, id: Int) -> Str {
+    let Some(name) = self.owner.remove(id) else { return "ERR no such booking" }
+    let Some(i) = self.rooms[name].bookings.index_of_id(id) else { return "ERR no such booking" }
+    let _ = self.rooms[name].bookings.remove(i)
+    "OK"
+}
+
+fn List[Booking].index_of_id(self, id: Int) -> Option[Int] {
+    for i in 0..self.len() {
+        if self[i].id == id { return Some(i) }
+    }
+    None
+}
+
+fn Service.schedule(self, name: Str) -> Str {
+    let Some(room) = self.rooms.get(name) else { return "ERR no such room" }
+    let bs = room.sorted_bookings()
+    if bs.is_empty() { return "(empty)" }
+    bs.map(fn(b) => "B{b.id} {fmt_time(b.start)}-{fmt_time(b.end)} {b.who}").join(", ")
+}
+
+fn Service.find(self, people: Int, minutes: Int) -> Str {
+    var best: Option[(Int, Int, Str)] = None   // (start, capacity, room)
+    for room in self.rooms.values() {
+        if room.cap < people { continue }
+        let Some(s) = room.earliest_slot(minutes) else { continue }
+        let cand = (s, room.cap, room.name)
+        match best {
+            Some(b) => if cand < b { best = Some(cand) },
+            None => best = Some(cand),
+        }
+    }
+    match best {
+        Some(b) => "{b.2} {fmt_time(b.0)} {fmt_time(b.0 + minutes)}",
+        None => "NONE",
+    }
+}
+
+fn Service.handle(mut self, line: Str) -> Str {
+    let t = line.split(" ")
+    for p in t {
+        if p.is_empty() { return "ERR bad command" }
+    }
+    let bad = "ERR bad command"
+    match t[0] {
+        "ROOM" => {
+            if t.len() != 3 or not valid_name(t[1]) { return bad }
+            let Some(cap) = parse_num(t[2], 3) else { return bad }
+            if self.rooms.contains(t[1]) { return "ERR room exists" }
+            self.rooms[t[1]] = Room { name: t[1], cap, bookings: [] }
+            "OK"
+        }
+        "BOOK" => {
+            if t.len() != 5 or not valid_name(t[1]) or not valid_name(t[4]) { return bad }
+            let Some(start) = parse_time(t[2]) else { return bad }
+            let Some(end) = parse_time(t[3]) else { return bad }
+            self.book(t[1], start, end, t[4])
+        }
+        "CANCEL" => {
+            if t.len() != 2 { return bad }
+            let Some(id) = parse_booking_id(t[1]) else { return bad }
+            self.cancel(id)
+        }
+        "SCHEDULE" => {
+            if t.len() != 2 or not valid_name(t[1]) { return bad }
+            self.schedule(t[1])
+        }
+        "FIND" => {
+            if t.len() != 3 { return bad }
+            let Some(people) = parse_num(t[1], 3) else { return bad }
+            let Some(minutes) = parse_num(t[2], 4) else { return bad }
+            self.find(people, minutes)
+        }
+        _ => bad,
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: rooms")
+        return 2
+    }
+    var svc = Service { rooms: [:], owner: [:], next_id: 1 }
+    while let Some(line) = con.read_line() {
+        con.println(svc.handle(line))
+        con.flush()
+    }
+    0
+}

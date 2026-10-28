@@ -1,0 +1,88 @@
+enum Command { Lock(Str, Str, Str), Unlock(Str, Str), Drop(Str), Status(Str), Held(Str) }
+struct Request { client: Str, mode: Str }
+struct Resource { holders: Map[Str, Str], queue: List[Request] }
+struct Service { resources: Map[Str, Resource] }
+fn name(s: Str) -> Bool { s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit()) }
+fn parse(line: Str) -> Option[Command] {
+    let p = line.split(" ")
+    if p.len() == 4 and p[0] == "LOCK" and name(p[1]) and name(p[2]) and (p[3] == "S" or p[3] == "X") { return Some(Lock(p[1], p[2], p[3])) }
+    if p.len() == 3 and p[0] == "UNLOCK" and name(p[1]) and name(p[2]) { return Some(Unlock(p[1], p[2])) }
+    if p.len() == 2 and name(p[1]) {
+        match p[0] { "DROP" => return Some(Drop(p[1])), "STATUS" => return Some(Status(p[1])), "HELD" => return Some(Held(p[1])), _ => {} }
+    }
+    None
+}
+fn compatible(holders: Map[Str, Str], mode: Str) -> Bool {
+    holders.is_empty() or (mode == "S" and holders.values().all(fn(m) => m == "S"))
+}
+fn Resource.pump(mut self, res: Str) -> Str {
+    var grants = ""
+    while not self.queue.is_empty() and compatible(self.holders, self.queue[0].mode) {
+        let request = self.queue.remove(0)
+        self.holders[request.client] = request.mode
+        grants += " {request.client}:{res}:{request.mode}"
+    }
+    grants
+}
+fn shown(items: List[Str]) -> Str { if items.is_empty() { "-" } else { items.join(",") } }
+fn Service.apply(mut self, cmd: Command) -> Str {
+    match cmd {
+        Lock(client, res, mode) => {
+            self.resources.or_insert(res, Resource { holders: [:], queue: [] })
+            if self.resources[res].holders.contains(client) { return "ERR already held" }
+            if self.resources[res].queue.any(fn(q) => q.client == client) { return "ERR already waiting" }
+            if self.resources[res].queue.is_empty() and compatible(self.resources[res].holders, mode) {
+                self.resources[res].holders[client] = mode
+                "GRANTED"
+            } else {
+                self.resources[res].queue.push(Request { client, mode })
+                "WAITING"
+            }
+        }
+        Unlock(client, res) => {
+            if not self.resources.contains(res) or not self.resources[res].holders.contains(client) { return "ERR not held" }
+            let _ = self.resources[res].holders.remove(client)
+            "OK" + self.resources[res].pump(res)
+        }
+        Drop(client) => {
+            var released = 0
+            var cancelled = 0
+            var affected: List[Str] = []
+            for res in self.resources.keys().sorted() {
+                let old_len = self.resources[res].queue.len()
+                self.resources[res].queue = self.resources[res].queue.filter(fn(q) => q.client != client)
+                let removed = old_len - self.resources[res].queue.len()
+                cancelled += removed
+                let had = self.resources[res].holders.remove(client).is_some()
+                if had { released += 1 }
+                if had or removed > 0 { affected.push(res) }
+            }
+            var response = "OK released={released} cancelled={cancelled}"
+            for res2 in affected { response += self.resources[res2].pump(res2) }
+            response
+        }
+        Status(res) => {
+            let r = self.resources.get_or(res, Resource { holders: [:], queue: [] })
+            let holders = r.holders.keys().sorted().map(fn(c) => "{c}:{r.holders[c]}")
+            let queue = r.queue.map(fn(q) => "{q.client}:{q.mode}")
+            "{res} holders={shown(holders)} queue={shown(queue)}"
+        }
+        Held(client) => {
+            var locks: List[Str] = []
+            for res in self.resources.keys().sorted() {
+                if let Some(mode) = self.resources[res].holders.get(client) { locks.push("{res}:{mode}") }
+            }
+            shown(locks)
+        }
+    }
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments expected"); return 2 }
+    var service = Service { resources: [:] }
+    while let Some(line) = sys.console.read_line() {
+        let response = match parse(line) { Some(cmd) => service.apply(cmd), None => "ERR bad command" }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

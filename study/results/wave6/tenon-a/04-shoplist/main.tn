@@ -1,0 +1,135 @@
+enum Kind { Mass, Volume, Count }
+
+struct Ingredient { name: Str, qty: Int, kind: Kind }   // qty in the base unit
+struct Recipe { serves: Int, items: List[Ingredient] }
+
+fn is_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 30 and s.byte(0).is_lower()
+        and s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_' or b == '-')
+}
+
+// [1-9][0-9]{0,max_rest}
+fn parse_num(s: Str, max_len: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > max_len or not s.is_digits() or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+// Content lines with their 1-based line numbers; blank, space-only and comment lines dropped.
+fn content_lines(text: Str) -> List[(Int, Str)] {
+    var out: List[(Int, Str)] = []
+    for (i, raw) in text.lines().enumerate() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.all_bytes(fn(b) => b == ' ') or line.starts_with("#") { continue }
+        out.push((i + 1, line))
+    }
+    out
+}
+
+fn parse_recipes(path: Str, text: Str) -> Result[Map[Str, Recipe], Str] {
+    var recipes: Map[Str, Recipe] = [:]
+    var current: Option[Str] = None
+    for (no, line) in content_lines(text) {
+        let toks = line.split(" ")
+        let at = "{path}:{no}"
+        if line.starts_with("[") {
+            if toks.len() != 2 { return Err("{at}: bad header") }
+            let Some(inner) = toks[0].strip_prefix("[").and_then(fn(t) => t.strip_suffix("]")) else {
+                return Err("{at}: bad header")
+            }
+            if not is_name(inner) { return Err("{at}: bad recipe name") }
+            let Some(serves) = parse_num(toks[1], 3) else { return Err("{at}: bad serves") }
+            if recipes.contains(inner) { return Err("{at}: recipe '{inner}' defined twice") }
+            recipes[inner] = Recipe { serves, items: [] }
+            current = Some(inner)
+        } else {
+            let Some(rname) = current else { return Err("{at}: ingredient before the first header") }
+            if toks.len() < 2 or toks.len() > 3 { return Err("{at}: bad ingredient line") }
+            let name = toks[0]
+            if not is_name(name) { return Err("{at}: bad ingredient name") }
+            let Some(q) = parse_num(toks[1], 6) else { return Err("{at}: bad quantity") }
+            let (qty, kind) = if toks.len() == 2 {
+                (q, Count)
+            } else {
+                match toks[2] {
+                    "g" => (q, Mass),
+                    "kg" => (q * 1000, Mass),
+                    "ml" => (q, Volume),
+                    "l" => (q * 1000, Volume),
+                    other => return Err("{at}: unknown unit '{other}'"),
+                }
+            }
+            if recipes[rname].items.any(fn(it) => it.name == name) {
+                return Err("{at}: ingredient '{name}' repeated in recipe '{rname}'")
+            }
+            recipes[rname].items.push(Ingredient { name, qty, kind })
+        }
+    }
+    Ok(recipes)
+}
+
+fn format_amount(total: Int, kind: Kind) -> Str {
+    let (small, big) = match kind {
+        Count => return "{total}",
+        Mass => ("g", "kg"),
+        Volume => ("ml", "l"),
+    }
+    if total < 1000 { return "{total} {small}" }
+    var out = "{total / 1000}"
+    let frac = total % 1000
+    if frac != 0 {
+        var digits = frac.to_str().pad_left(3, "0")
+        while digits.ends_with("0") { digits = digits.slice(0, digits.len() - 1) }
+        out += "." + digits
+    }
+    out + " " + big
+}
+
+fn run(sys: Sys, rpath: Str, ppath: Str) -> Result[Str, Str] {
+    let rtext = sys.fs.read(rpath).map_err(fn(e) => "cannot read {rpath}: {e}")?
+    let ptext = sys.fs.read(ppath).map_err(fn(e) => "cannot read {ppath}: {e}")?
+    let recipes = parse_recipes(rpath, rtext)?
+    var totals: Map[Str, (Kind, Int)] = [:]
+    for (no, line) in content_lines(ptext) {
+        let at = "{ppath}:{no}"
+        let toks = line.split(" ")
+        if toks.len() != 2 { return Err("{at}: bad plan line") }
+        let Some(recipe) = recipes.get(toks[0]) else { return Err("{at}: unknown recipe '{toks[0]}'") }
+        let Some(servings) = parse_num(toks[1], 3) else { return Err("{at}: bad servings") }
+        for it in recipe.items {
+            let amount = (it.qty * servings + recipe.serves - 1) / recipe.serves
+            match totals.get(it.name) {
+                Some((kind, sum)) => {
+                    if kind != it.kind { return Err("{at}: ingredient '{it.name}' used with two kinds") }
+                    totals[it.name] = (kind, sum + amount)
+                }
+                None => totals[it.name] = (it.kind, amount),
+            }
+        }
+    }
+    var names = totals.keys()
+    names.sort()
+    var out = ""
+    for name in names {
+        let (kind, total) = totals[name]
+        out += "{name} {format_amount(total, kind)}\n"
+    }
+    Ok(out)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 2 {
+        con.eprintln("usage: shoplist RECIPES PLAN")
+        return 2
+    }
+    match run(sys, sys.args[0], sys.args[1]) {
+        Ok(out) => {
+            con.print(out)
+            0
+        }
+        Err(msg) => {
+            con.eprintln("shoplist: {msg}")
+            1
+        }
+    }
+}

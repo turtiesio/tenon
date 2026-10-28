@@ -1,0 +1,143 @@
+enum Mode { S, X }
+
+struct Res { holders: Map[Str, Mode], queue: List[(Str, Mode)] }
+
+enum Cmd {
+    Lock(Str, Str, Mode),
+    Unlock(Str, Str),
+    Drop(Str),
+    Status(Str),
+    Held(Str),
+}
+
+fn is_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+fn name(s: Str) -> Option[Str] { if is_name(s) { Some(s) } else { None } }
+
+fn parse(line: Str) -> Option[Cmd] {
+    let t = line.split(" ")
+    match t[0] {
+        "LOCK" if t.len() == 4 => {
+            let mode = match t[3] {
+                "S" => S,
+                "X" => X,
+                _ => return None,
+            }
+            Some(Lock(name(t[1])?, name(t[2])?, mode))
+        }
+        "UNLOCK" if t.len() == 3 => Some(Unlock(name(t[1])?, name(t[2])?)),
+        "DROP" if t.len() == 2 => Some(Drop(name(t[1])?)),
+        "STATUS" if t.len() == 2 => Some(Status(name(t[1])?)),
+        "HELD" if t.len() == 2 => Some(Held(name(t[1])?)),
+        _ => None,
+    }
+}
+
+fn compatible(holders: Map[Str, Mode], m: Mode) -> Bool {
+    holders.is_empty() or (m == S and holders.values().all(fn(h) => h == S))
+}
+
+fn list_or_dash(items: List[Str], sep: Str) -> Str {
+    if items.is_empty() { "-" } else { items.join(sep) }
+}
+
+struct Manager { res: Map[Str, Res] }
+
+// Grant from the front of the queue while compatible; returns the grants.
+fn Manager.pump(mut self, r: Str) -> List[Str] {
+    var grants: List[Str] = []
+    if not self.res.contains(r) { return grants }
+    while not self.res[r].queue.is_empty() {
+        let (client, mode) = self.res[r].queue[0]
+        if not compatible(self.res[r].holders, mode) { break }
+        let _ = self.res[r].queue.remove(0)
+        self.res[r].holders[client] = mode
+        grants.push("{client}:{r}:{mode}")
+    }
+    grants
+}
+
+fn Manager.handle(mut self, cmd: Cmd) -> Str {
+    match cmd {
+        Lock(client, r, mode) => {
+            self.res.or_insert(r, Res { holders: [:], queue: [] })
+            let state = self.res[r]
+            if state.holders.contains(client) { return "ERR already held" }
+            if state.queue.any(fn(w) => w.0 == client) { return "ERR already waiting" }
+            if state.queue.is_empty() and compatible(state.holders, mode) {
+                self.res[r].holders[client] = mode
+                "GRANTED"
+            } else {
+                self.res[r].queue.push((client, mode))
+                "WAITING"
+            }
+        }
+        Unlock(client, r) => {
+            let held = self.res.get(r).map_or(false, fn(s) => s.holders.contains(client))
+            if not held { return "ERR not held" }
+            let _ = self.res[r].holders.remove(client)
+            let grants = self.pump(r)
+            (["OK"] + grants).join(" ")
+        }
+        Drop(client) => {
+            var touched: List[Str] = []
+            var cancelled = 0
+            var released = 0
+            for r in self.res.keys() {
+                let before = self.res[r].queue.len()
+                self.res[r].queue = self.res[r].queue.filter(fn(w) => w.0 != client)
+                let removed = before - self.res[r].queue.len()
+                if removed > 0 {
+                    cancelled += removed
+                    touched.push(r)
+                }
+            }
+            for r in self.res.keys() {
+                if self.res[r].holders.remove(client).is_some() {
+                    released += 1
+                    if not touched.contains(r) { touched.push(r) }
+                }
+            }
+            touched.sort()
+            var parts = ["OK released={released} cancelled={cancelled}"]
+            for r in touched { parts.extend(self.pump(r)) }
+            parts.join(" ")
+        }
+        Status(r) => {
+            let state = self.res.get(r).unwrap_or(Res { holders: [:], queue: [] })
+            var holders = state.holders.entries()
+            holders.sort_by(fn(e) => e.0)
+            let hs = holders.map(fn(e) => "{e.0}:{e.1}")
+            let qs = state.queue.map(fn(w) => "{w.0}:{w.1}")
+            "{r} holders={list_or_dash(hs, ",")} queue={list_or_dash(qs, ",")}"
+        }
+        Held(client) => {
+            var held: List[(Str, Mode)] = []
+            for (r, state) in self.res {
+                if let Some(m) = state.holders.get(client) { held.push((r, m)) }
+            }
+            held.sort_by(fn(e) => e.0)
+            list_or_dash(held.map(fn(e) => "{e.0}:{e.1}"), ",")
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: locks (no arguments)")
+        return 2
+    }
+    var mgr = Manager { res: [:] }
+    while let Some(line) = con.read_line() {
+        let reply = match parse(line) {
+            Some(cmd) => mgr.handle(cmd),
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

@@ -1,0 +1,201 @@
+struct Ticket { customer: Str, title: Str, agent: Option[Str], open: Bool }
+
+enum Cmd {
+    Open(Str, Str),            // customer, title
+    Assign(Int, Str),
+    Close(Int),
+    Reopen(Int),
+    Show(Int),
+    Queue(Option[Str]),
+}
+
+fn is_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+fn name(s: Str) -> Option[Str] { if is_name(s) { Some(s) } else { None } }
+
+fn is_title(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 60 and s.all_bytes(fn(b) => b >= 0x20 and b <= 0x7E)
+        and not s.starts_with(" ") and not s.ends_with(" ")
+}
+
+// T<n>, n matching [1-9][0-9]{0,8}
+fn ticket_no(s: Str) -> Option[Int] {
+    let digits = s.strip_prefix("T")?
+    if digits.len() < 1 or digits.len() > 9 or not digits.is_digits() or digits.byte(0) == '0' { return None }
+    digits.to_int()
+}
+
+// `OPEN <customer> <title>` -> (customer, title)
+fn parse_open_tail(rest: Str) -> Option[(Str, Str)] {
+    let (customer, title) = rest.split_once(" ")?
+    if is_name(customer) and is_title(title) { Some((customer, title)) } else { None }
+}
+
+fn parse(line: Str) -> Option[Cmd] {
+    if let Some(rest) = line.strip_prefix("OPEN ") {
+        let (customer, title) = parse_open_tail(rest)?
+        return Some(Open(customer, title))
+    }
+    let t = line.split(" ")
+    match t[0] {
+        "ASSIGN" if t.len() == 3 => Some(Assign(ticket_no(t[1])?, name(t[2])?)),
+        "CLOSE" if t.len() == 2 => Some(Close(ticket_no(t[1])?)),
+        "REOPEN" if t.len() == 2 => Some(Reopen(ticket_no(t[1])?)),
+        "SHOW" if t.len() == 2 => Some(Show(ticket_no(t[1])?)),
+        "QUEUE" if t.len() == 2 => if t[1] == "-" { Some(Queue(None)) } else { Some(Queue(Some(name(t[1])?))) },
+        _ => None,
+    }
+}
+
+// The outcome of a command: its response, and the journal record if it changed the state.
+struct Outcome { reply: Str, record: Option[Str] }
+
+fn reply(text: Str) -> Outcome { Outcome { reply: text, record: None } }
+
+struct Desk { tickets: List[Ticket], queues: Map[Str, List[Int]] }   // open tickets per agent ("-": none)
+
+fn queue_key(agent: Option[Str]) -> Str { agent.unwrap_or("-") }
+
+fn Desk.enqueue(mut self, n: Int) {
+    let key = queue_key(self.tickets[n - 1].agent)
+    self.queues.or_insert(key, [])
+    match self.queues[key].binary_search(n) {
+        Ok(_) => {}
+        Err(i) => self.queues[key].insert(i, n),
+    }
+}
+
+fn Desk.dequeue(mut self, n: Int) {
+    let key = queue_key(self.tickets[n - 1].agent)
+    if not self.queues.contains(key) { return }
+    if let Ok(i) = self.queues[key].binary_search(n) {
+        let _ = self.queues[key].remove(i)
+    }
+}
+
+// Validate and apply a command; `line` is the command text used as its record.
+fn Desk.run(mut self, cmd: Cmd, line: Str) -> Outcome {
+    match cmd {
+        Open(customer, title) => {
+            self.tickets.push(Ticket { customer, title, agent: None, open: true })
+            let n = self.tickets.len()
+            self.enqueue(n)
+            Outcome { reply: "T{n}", record: Some("OPEN T{n} {customer} {title}") }
+        }
+        Assign(n, agent) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            let t = self.tickets[n - 1]
+            if not t.open { return reply("ERR closed") }
+            if t.agent == Some(agent) { return reply("UNCHANGED") }
+            self.dequeue(n)
+            self.tickets[n - 1].agent = Some(agent)
+            self.enqueue(n)
+            Outcome { reply: "OK", record: Some(line) }
+        }
+        Close(n) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            if not self.tickets[n - 1].open { return reply("ERR closed") }
+            self.dequeue(n)
+            self.tickets[n - 1].open = false
+            Outcome { reply: "OK", record: Some(line) }
+        }
+        Reopen(n) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            if self.tickets[n - 1].open { return reply("ERR not closed") }
+            self.tickets[n - 1].open = true
+            self.enqueue(n)
+            Outcome { reply: "OK", record: Some(line) }
+        }
+        Show(n) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            let t = self.tickets[n - 1]
+            let state = if t.open { "open" } else { "closed" }
+            reply("T{n} {state} {t.customer} {queue_key(t.agent)} {t.title}")
+        }
+        Queue(agent) => {
+            let open = self.queues.get_or(queue_key(agent), [])
+            if open.is_empty() { reply("-") } else { reply(open.map(fn(n) => "T{n}").join(" ")) }
+        }
+    }
+}
+
+// Replay one journal line; Err if it is not a valid record at this point.
+fn Desk.replay(mut self, line: Str) -> Result[Unit, Str] {
+    if let Some(rest) = line.strip_prefix("OPEN ") {
+        let Some((num, tail)) = rest.split_once(" ") else { return Err("bad OPEN record") }
+        let Some(n) = ticket_no(num) else { return Err("bad ticket number '{num}'") }
+        if n != self.tickets.len() + 1 { return Err("expected T{self.tickets.len() + 1}, found T{n}") }
+        let Some((customer, title)) = parse_open_tail(tail) else { return Err("bad OPEN record") }
+        let _ = self.run(Open(customer, title), line)
+        return Ok(())
+    }
+    let Some(cmd) = parse(line) else { return Err("bad record") }
+    match cmd {
+        Assign(_, _) | Close(_) | Reopen(_) => {}
+        _ => return Err("not a state-changing record"),
+    }
+    let out = self.run(cmd, line)
+    if out.reply != "OK" { return Err("record answered '{out.reply}'") }
+    Ok(())
+}
+
+fn load(fs: Fs, path: Str) -> Result[Desk, Str] {
+    var desk = Desk { tickets: [], queues: [:] }
+    if not fs.exists(path) { return Ok(desk) }
+    let text = fs.read(path).map_err(fn(e) => "cannot read {path}: {e}")?
+    let complete = match text.rfind("\n") {
+        Some(i) => text.slice(0, i + 1),
+        None => "",
+    }
+    for (i, line) in complete.lines().enumerate() {
+        desk.replay(line).map_err(fn(e) => "{path}:{i + 1}: {e}")?
+    }
+    if complete.len() != text.len() {
+        fs.write(path, complete).map_err(fn(e) => "cannot truncate {path}: {e}")?
+    }
+    Ok(desk)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: helpdesk DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    let fs = sys.fs
+    if fs.exists(dir) {
+        if not fs.is_dir(dir) {
+            con.eprintln("helpdesk: {dir} is not a directory")
+            return 1
+        }
+    } else if let Err(e) = fs.mkdir_one(dir) {
+        con.eprintln("helpdesk: cannot create {dir}: {e}")
+        return 1
+    }
+    let path = path_join(dir, "tickets.log")
+    var desk = match load(fs, path) {
+        Ok(d) => d,
+        Err(msg) => {
+            con.eprintln("helpdesk: invalid journal: {msg}")
+            return 1
+        }
+    }
+    while let Some(line) = con.read_line() {
+        let out = match parse(line) {
+            Some(cmd) => desk.run(cmd, line),
+            None => reply("ERR bad command"),
+        }
+        if let Some(record) = out.record {
+            if let Err(e) = fs.append(path, record + "\n") {
+                con.eprintln("helpdesk: cannot write {path}: {e}")
+                return 1
+            }
+        }
+        con.println(out.reply)
+        con.flush()
+    }
+    0
+}

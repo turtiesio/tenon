@@ -1,0 +1,81 @@
+struct Employee { id: Str, name: Str, manager: Str, salary: Int }
+struct Stats { count: Int, cost: Int }
+fn valid_id(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 8 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+fn parse(text: Str) -> Option[Map[Str, Employee]] {
+    let lines = text.lines().map(fn(s) => s.strip_suffix("\r").unwrap_or(s))
+    if lines.is_empty() or lines[0] != "id,name,manager,salary" { return None }
+    var people: Map[Str, Employee] = [:]
+    for i in 1..lines.len() {
+        let line = lines[i]
+        if line.is_empty() { continue }
+        let fields = line.split(",")
+        if fields.len() != 4 { return None }
+        let id = fields[0]
+        let name = fields[1]
+        let manager = fields[2]
+        let salary = fields[3]
+        if not valid_id(id) or people.contains(id) { return None }
+        if name.is_empty() or name.starts_with(" ") or name.ends_with(" ") { return None }
+        if not manager.is_empty() and not valid_id(manager) { return None }
+        if salary.is_empty() or salary.len() > 9 or not salary.is_digits() { return None }
+        people[id] = Employee { id, name, manager, salary: salary.to_int()? }
+    }
+    Some(people)
+}
+fn stats(id: Str, people: Map[Str, Employee], children: Map[Str, List[Str]], marks: mut Map[Str, Int], totals: mut Map[Str, Stats]) -> Bool {
+    let mark = marks.get_or(id, 0)
+    if mark == 1 { return false }
+    if mark == 2 { return true }
+    marks[id] = 1
+    var count = 1
+    var cost = people[id].salary
+    for child in children.get_or(id, []) {
+        if not stats(child, people, children, mut marks, mut totals) { return false }
+        count += totals[child].count
+        cost += totals[child].cost
+    }
+    marks[id] = 2
+    totals[id] = Stats { count, cost }
+    true
+}
+fn commas(n: Int) -> Str {
+    let digits = n.to_str()
+    var out = ""
+    for i in 0..digits.len() {
+        if i > 0 and (digits.len() - i) % 3 == 0 { out += "," }
+        out += digits.slice(i, i + 1)
+    }
+    out
+}
+fn print_tree(con: Console, id: Str, depth: Int, people: Map[Str, Employee], children: Map[Str, List[Str]], totals: Map[Str, Stats]) {
+    let p = people[id]
+    let s = totals[id]
+    con.println("{"  ".repeat(depth)}{p.name} [{id}] reports={s.count - 1} cost={commas(s.cost)}")
+    for child in children.get_or(id, []) { print_tree(con, child, depth + 1, people, children, totals) }
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() > 1 { sys.console.eprintln("expected at most one ID"); return 2 }
+    let Some(people) = parse(sys.console.read_all()) else { sys.console.eprintln("invalid employee input"); return 1 }
+    var children: Map[Str, List[Str]] = [:]
+    for (_, employee) in people {
+        if not employee.manager.is_empty() and not people.contains(employee.manager) { sys.console.eprintln("unknown manager"); return 1 }
+        children.or_insert(employee.manager, [])
+        children[employee.manager].push(employee.id)
+    }
+    for key in children.keys() { children[key].sort_by(fn(id) => (people[id].name, id)) }
+    var marks: Map[Str, Int] = [:]
+    var totals: Map[Str, Stats] = [:]
+    for id in people.keys() {
+        if not stats(id, people, children, mut marks, mut totals) { sys.console.eprintln("cycle"); return 1 }
+    }
+    if sys.args.is_empty() {
+        for root in children.get_or("", []) { print_tree(sys.console, root, 0, people, children, totals) }
+    } else {
+        let selected = sys.args[0]
+        if not people.contains(selected) { sys.console.eprintln("unknown ID"); return 1 }
+        print_tree(sys.console, selected, 0, people, children, totals)
+    }
+    0
+}

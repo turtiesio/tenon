@@ -12,6 +12,9 @@ Milestone 1 (tenon.md §4), item by item:
   over waves: 1.7x, 1.46x, 1.69x, 1.47x Python. The remaining gap is mostly
   writing more tokens (1.36x Python; explicit types and braces) plus an
   outlier author whose own test harness hung. study/results/wave5/.
+  Wave 6 (task set 6, compiler 5b9158d with format specifiers and collection
+  helpers): hidden tests 100% everywhere; lines 910 / 978 / 950; minutes 5.0 /
+  3.4 / 3.7, again 1.47x Python, so library additions no longer move the time.
   User decision: the time target stays as written and is reported unmet; no
   design change is made to chase it.
   Earlier waves:

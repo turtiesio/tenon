@@ -1,0 +1,147 @@
+// kinds: 0 = count, 1 = mass (g), 2 = volume (ml)
+struct Ingredient { name: Str, qty: Int, kind: Int }
+
+struct Recipe { serves: Int, items: List[Ingredient] }
+
+fn valid_name(s: Str) -> Bool {
+    if s.is_empty() or s.len() > 30 { return false }
+    if not s.byte(0).is_lower() { return false }
+    s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_' or b == '-')
+}
+
+// [1-9][0-9]{0,max_len-1}
+fn parse_num(s: Str, max_len: Int) -> Option[Int] {
+    if not s.is_digits() or s.len() > max_len or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+// Content lines of a file: CR removed, blank and comment lines dropped.
+fn content_lines(text: Str) -> List[Str] {
+    var out: List[Str] = []
+    for raw in text.lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.trim_chars(" ").is_empty() or line.starts_with("#") { continue }
+        out.push(line)
+    }
+    out
+}
+
+// Tokens separated by exactly one space; None if any token is empty.
+fn tokens(line: Str) -> Option[List[Str]] {
+    let parts = line.split(" ")
+    for p in parts {
+        if p.is_empty() { return None }
+    }
+    Some(parts)
+}
+
+fn parse_recipes(text: Str) -> Result[Map[Str, Recipe], Str] {
+    var recipes: Map[Str, Recipe] = [:]
+    var current = ""
+    var have_current = false
+    for line in content_lines(text) {
+        let Some(t) = tokens(line) else { return Err("bad spacing in '{line}'") }
+        if t[0].starts_with("[") {
+            if t.len() != 2 { return Err("bad header '{line}'") }
+            let Some(name) = t[0].strip_prefix("[") else { return Err("bad header '{line}'") }
+            let Some(name2) = name.strip_suffix("]") else { return Err("bad header '{line}'") }
+            if not valid_name(name2) { return Err("bad recipe name in '{line}'") }
+            let Some(serves) = parse_num(t[1], 3) else { return Err("bad servings in '{line}'") }
+            if recipes.contains(name2) { return Err("duplicate recipe '{name2}'") }
+            recipes[name2] = Recipe { serves, items: [] }
+            current = name2
+            have_current = true
+        } else {
+            if not have_current { return Err("ingredient before first header: '{line}'") }
+            if t.len() != 2 and t.len() != 3 { return Err("bad ingredient '{line}'") }
+            if not valid_name(t[0]) { return Err("bad ingredient name in '{line}'") }
+            let Some(q) = parse_num(t[1], 6) else { return Err("bad quantity in '{line}'") }
+            var kind = 0
+            var qty = q
+            if t.len() == 3 {
+                match t[2] {
+                    "g" => kind = 1,
+                    "kg" => {
+                        kind = 1
+                        qty = q * 1000
+                    }
+                    "ml" => kind = 2,
+                    "l" => {
+                        kind = 2
+                        qty = q * 1000
+                    }
+                    other => return Err("unknown unit '{other}'"),
+                }
+            }
+            if recipes[current].items.any(fn(it) => it.name == t[0]) {
+                return Err("duplicate ingredient '{t[0]}' in '{current}'")
+            }
+            recipes[current].items.push(Ingredient { name: t[0], qty, kind })
+        }
+    }
+    Ok(recipes)
+}
+
+fn format_total(total: Int, kind: Int) -> Str {
+    if kind == 0 { return "{total}" }
+    let unit_small = if kind == 1 { "g" } else { "ml" }
+    let unit_big = if kind == 1 { "kg" } else { "l" }
+    if total < 1000 { return "{total} {unit_small}" }
+    var out = "{total / 1000}"
+    let frac = total % 1000
+    if frac != 0 {
+        let digits = frac.to_str().pad_left(3, "0")
+        var end = digits.len()
+        while digits.byte(end - 1) == '0' { end -= 1 }
+        out += "." + digits.slice(0, end)
+    }
+    out + " " + unit_big
+}
+
+fn plan_list(recipes: Map[Str, Recipe], plan_text: Str) -> Result[List[Str], Str] {
+    var totals: Map[Str, Int] = [:]
+    var kinds: Map[Str, Int] = [:]
+    for line in content_lines(plan_text) {
+        let Some(t) = tokens(line) else { return Err("bad spacing in '{line}'") }
+        if t.len() != 2 { return Err("bad plan line '{line}'") }
+        let Some(recipe) = recipes.get(t[0]) else { return Err("unknown recipe '{t[0]}'") }
+        let Some(servings) = parse_num(t[1], 3) else { return Err("bad servings in '{line}'") }
+        for it in recipe.items {
+            if kinds.get_or(it.name, it.kind) != it.kind {
+                return Err("ingredient '{it.name}' used with two kinds")
+            }
+            kinds[it.name] = it.kind
+            let amount = (it.qty * servings + recipe.serves - 1) / recipe.serves
+            totals[it.name] = totals.get_or(it.name, 0) + amount
+        }
+    }
+    var names = totals.keys()
+    names.sort()
+    Ok(names.map(fn(n) => "{n} {format_total(totals[n], kinds[n])}"))
+}
+
+fn run(sys: Sys) -> Result[List[Str], Str] {
+    if sys.args.len() != 2 { return Err("usage") }
+    let rtext = sys.fs.read(sys.args[0]).map_err(fn(e) => "cannot read recipes: {e}")?
+    let ptext = sys.fs.read(sys.args[1]).map_err(fn(e) => "cannot read plan: {e}")?
+    let recipes = parse_recipes(rtext)?
+    plan_list(recipes, ptext)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 2 {
+        con.eprintln("usage: shoplist RECIPES PLAN")
+        return 2
+    }
+    match run(sys) {
+        Ok(lines) => {
+            for l in lines { con.println(l) }
+            0
+        }
+        Err(msg) => {
+            con.eprintln("shoplist: {msg}")
+            1
+        }
+    }
+}

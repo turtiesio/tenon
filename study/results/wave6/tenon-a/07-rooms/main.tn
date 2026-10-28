@@ -1,0 +1,130 @@
+struct Booking { id: Int, start: Int, end: Int, who: Str }
+struct Room { cap: Int, bookings: List[Booking] }   // bookings kept sorted by start
+
+enum Cmd {
+    AddRoom(Str, Int),
+    Book(Str, Int, Int, Str),
+    Cancel(Int),
+    Schedule(Str),
+    Find(Int, Int),
+}
+
+const DAY_START: Int = 8 * 60
+const DAY_END: Int = 18 * 60
+
+fn is_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+// [1-9][0-9]{0,max_len-1}
+fn parse_pos(s: Str, max_len: Int) -> Option[Int] {
+    if s.len() < 1 or s.len() > max_len or not s.is_digits() or s.byte(0) == '0' { return None }
+    s.to_int()
+}
+
+fn parse_time(s: Str) -> Option[Int] {
+    if s.len() != 5 or s.byte(2) != ':' { return None }
+    let hh = s.slice(0, 2)
+    let mm = s.slice(3, 5)
+    if not hh.is_digits() or not mm.is_digits() { return None }
+    let h = hh.to_int()?
+    let m = mm.to_int()?
+    if (h <= 23 and m <= 59) or (h == 24 and m == 0) { Some(h * 60 + m) } else { None }
+}
+
+fn fmt_time(t: Int) -> Str { "{t / 60:02}:{t % 60:02}" }
+
+fn parse(line: Str) -> Option[Cmd] {
+    let t = line.split(" ")
+    match t[0] {
+        "ROOM" if t.len() == 3 => {
+            if not is_name(t[1]) { return None }
+            Some(AddRoom(t[1], parse_pos(t[2], 3)?))
+        }
+        "BOOK" if t.len() == 5 => {
+            if not is_name(t[1]) or not is_name(t[4]) { return None }
+            Some(Book(t[1], parse_time(t[2])?, parse_time(t[3])?, t[4]))
+        }
+        "CANCEL" if t.len() == 2 => Some(Cancel(parse_pos(t[1].strip_prefix("B")?, 9)?)),
+        "SCHEDULE" if t.len() == 2 => if is_name(t[1]) { Some(Schedule(t[1])) } else { None },
+        "FIND" if t.len() == 3 => Some(Find(parse_pos(t[1], 3)?, parse_pos(t[2], 4)?)),
+        _ => None,
+    }
+}
+
+// Earliest start s in working hours with [s, s + len) free, if any.
+fn earliest_free(room: Room, len: Int) -> Option[Int] {
+    var s = DAY_START
+    for b in room.bookings {
+        if s + len > DAY_END { return None }
+        if b.start < s + len and s < b.end { s = b.end }
+    }
+    if s + len <= DAY_END { Some(s) } else { None }
+}
+
+struct Service { rooms: Map[Str, Room], where_: Map[Int, Str], next_id: Int }
+
+fn Service.handle(mut self, cmd: Cmd) -> Str {
+    match cmd {
+        AddRoom(name, cap) => {
+            if self.rooms.contains(name) { return "ERR room exists" }
+            self.rooms[name] = Room { cap, bookings: [] }
+            "OK"
+        }
+        Book(name, start, end, who) => {
+            if start >= end { return "ERR bad time" }
+            let Some(room) = self.rooms.get(name) else { return "ERR no such room" }
+            for b in room.bookings {
+                if b.start < end and start < b.end { return "ERR conflict B{b.id}" }
+            }
+            let id = self.next_id
+            self.next_id += 1
+            let pos = room.bookings.count(fn(b) => b.start < start)
+            self.rooms[name].bookings.insert(pos, Booking { id, start, end, who })
+            self.where_[id] = name
+            "OK B{id}"
+        }
+        Cancel(id) => {
+            let Some(name) = self.where_.remove(id) else { return "ERR no such booking" }
+            let Some(i) = self.rooms[name].bookings.map(fn(b) => b.id).index_of(id) else { return "ERR no such booking" }
+            let _ = self.rooms[name].bookings.remove(i)
+            "OK"
+        }
+        Schedule(name) => {
+            let Some(room) = self.rooms.get(name) else { return "ERR no such room" }
+            if room.bookings.is_empty() { return "(empty)" }
+            room.bookings.map(fn(b) => "B{b.id} {fmt_time(b.start)}-{fmt_time(b.end)} {b.who}").join(", ")
+        }
+        Find(people, len) => {
+            var best: Option[(Int, Int, Str)] = None
+            for (name, room) in self.rooms {
+                if room.cap < people { continue }
+                let Some(s) = earliest_free(room, len) else { continue }
+                let cand = (s, room.cap, name)
+                if best.map_or(true, fn(b) => cand < b) { best = Some(cand) }
+            }
+            match best {
+                Some((s, _, name)) => "{name} {fmt_time(s)} {fmt_time(s + len)}",
+                None => "NONE",
+            }
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: rooms (no arguments)")
+        return 2
+    }
+    var svc = Service { rooms: [:], where_: [:], next_id: 1 }
+    while let Some(line) = con.read_line() {
+        let reply = match parse(line) {
+            Some(cmd) => svc.handle(cmd),
+            None => "ERR bad command",
+        }
+        con.println(reply)
+        con.flush()
+    }
+    0
+}

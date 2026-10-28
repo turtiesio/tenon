@@ -1,0 +1,139 @@
+const ALPHABET: Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+fn sextet(n: Int) -> Str {
+    ALPHABET.slice(n, n + 1)
+}
+
+fn encode_bytes(data: List[Int]) -> Str {
+    var out = ""
+    var i = 0
+    let n = data.len()
+    while i + 3 <= n {
+        let v = data[i] * 65536 + data[i + 1] * 256 + data[i + 2]
+        out += sextet(v / 262144)
+        out += sextet(v / 4096 % 64)
+        out += sextet(v / 64 % 64)
+        out += sextet(v % 64)
+        i += 3
+    }
+    let rest = n - i
+    if rest == 1 {
+        let v = data[i] * 16
+        out += sextet(v / 64)
+        out += sextet(v % 64)
+        out += "=="
+    } else if rest == 2 {
+        let v = data[i] * 1024 + data[i + 1] * 4
+        out += sextet(v / 4096)
+        out += sextet(v / 64 % 64)
+        out += sextet(v % 64)
+        out += "="
+    }
+    out
+}
+
+fn wrap(text: Str, width: Int) -> Str {
+    if text.is_empty() { return "" }
+    if width == 0 { return text + "\n" }
+    var out = ""
+    var i = 0
+    while i < text.len() {
+        let end = (i + width).min(text.len())
+        out += text.slice(i, end)
+        out += "\n"
+        i = end
+    }
+    out
+}
+
+// Value of an alphabet byte, or -1.
+fn value_of(b: Int) -> Int {
+    if b >= 'A' and b <= 'Z' { return b - 'A' }
+    if b >= 'a' and b <= 'z' { return b - 'a' + 26 }
+    if b >= '0' and b <= '9' { return b - '0' + 52 }
+    if b == '+' { return 62 }
+    if b == '/' { return 63 }
+    -1
+}
+
+fn decode_bytes(data: List[Int]) -> Option[List[Int]] {
+    var text: List[Int] = []
+    for b in data {
+        if b != '\n' and b != '\r' { text.push(b) }
+    }
+    let n = text.len()
+    if n % 4 != 0 { return None }
+    var out: List[Int] = []
+    var g = 0
+    while g < n {
+        let last = g + 4 == n
+        let pad = if text[g + 3] == '=' { if text[g + 2] == '=' { 2 } else { 1 } } else { 0 }
+        if pad > 0 and not last { return None }
+        // the first 4 - pad characters must be alphabet characters
+        var vals: List[Int] = []
+        for k in 0..(4 - pad) {
+            let v = value_of(text[g + k])
+            if v < 0 { return None }
+            vals.push(v)
+        }
+        if pad == 2 {
+            if vals[1] % 16 != 0 { return None }
+            out.push(vals[0] * 4 + vals[1] / 16)
+        } else if pad == 1 {
+            if vals[2] % 4 != 0 { return None }
+            let v = vals[0] * 4096 + vals[1] * 64 + vals[2]
+            out.push(v / 1024)
+            out.push(v / 4 % 256)
+        } else {
+            let v = vals[0] * 262144 + vals[1] * 4096 + vals[2] * 64 + vals[3]
+            out.push(v / 65536)
+            out.push(v / 256 % 256)
+            out.push(v % 256)
+        }
+        g += 4
+    }
+    Some(out)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var decoding = false
+    var width = 76
+    var i = 0
+    let args = sys.args
+    while i < args.len() {
+        let a = args[i]
+        if a == "-d" {
+            decoding = true
+        } else if a == "-w" {
+            if i + 1 >= args.len() {
+                con.eprintln("b64: -w needs a value")
+                return 2
+            }
+            i += 1
+            let w = args[i]
+            if not w.is_digits() or w.len() > 4 {
+                con.eprintln("b64: bad width '{w}'")
+                return 2
+            }
+            width = w.to_int().unwrap()
+        } else {
+            con.eprintln("b64: unexpected argument '{a}'")
+            return 2
+        }
+        i += 1
+    }
+    let data = con.read_all_bytes()
+    if decoding {
+        match decode_bytes(data) {
+            Some(bytes) => con.write_bytes(bytes),
+            None => {
+                con.eprintln("b64: invalid input")
+                return 1
+            }
+        }
+    } else {
+        con.print(wrap(encode_bytes(data), width))
+    }
+    0
+}

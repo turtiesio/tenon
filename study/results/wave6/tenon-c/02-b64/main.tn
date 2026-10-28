@@ -1,0 +1,84 @@
+const ALPHABET: Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+fn value(b: Int) -> Int {
+    for i in 0..64 { if ALPHABET.byte(i) == b { return i } }
+    -1
+}
+fn decode(input: List[Int]) -> Option[List[Int]] {
+    let data = input.filter(fn(b) => b != 10 and b != 13)
+    if data.len() % 4 != 0 { return None }
+    var out: List[Int] = []
+    var i = 0
+    while i < data.len() {
+        let a = value(data[i])
+        let b = value(data[i + 1])
+        let c = value(data[i + 2])
+        let d = value(data[i + 3])
+        if a < 0 or b < 0 { return None }
+        out.push(a * 4 + b / 16)
+        if data[i + 2] == '=' {
+            if data[i + 3] != '=' or i + 4 != data.len() or b % 16 != 0 { return None }
+        } else {
+            if c < 0 { return None }
+            out.push(b % 16 * 16 + c / 4)
+            if data[i + 3] == '=' {
+                if i + 4 != data.len() or c % 4 != 0 { return None }
+            } else {
+                if d < 0 { return None }
+                out.push(c % 4 * 64 + d)
+            }
+        }
+        i += 4
+    }
+    Some(out)
+}
+fn encode(data: List[Int]) -> Str {
+    var out = ""
+    var i = 0
+    while i < data.len() {
+        let a = data[i]
+        let b = data.get(i + 1).unwrap_or(0)
+        let c = data.get(i + 2).unwrap_or(0)
+        out += ALPHABET.slice(a / 4, a / 4 + 1)
+        let second = a % 4 * 16 + b / 16
+        out += ALPHABET.slice(second, second + 1)
+        let third = b % 16 * 4 + c / 64
+        out += if i + 1 < data.len() { ALPHABET.slice(third, third + 1) } else { "=" }
+        out += if i + 2 < data.len() { ALPHABET.slice(c % 64, c % 64 + 1) } else { "=" }
+        i += 3
+    }
+    out
+}
+fn main(sys: Sys) -> Int {
+    var decoding = false
+    var width = 76
+    var pos = 0
+    while pos < sys.args.len() {
+        let arg = sys.args[pos]
+        if arg == "-d" { decoding = true }
+        else if arg == "-w" {
+            pos += 1
+            if pos >= sys.args.len() { sys.console.eprintln("missing width"); return 2 }
+            let w = sys.args[pos]
+            if w.len() < 1 or w.len() > 4 or not w.is_digits() { sys.console.eprintln("invalid width"); return 2 }
+            width = w.to_int().unwrap()
+        } else { sys.console.eprintln("invalid argument: {arg}"); return 2 }
+        pos += 1
+    }
+    let input = sys.console.read_all_bytes()
+    if decoding {
+        match decode(input) {
+            Some(bytes) => sys.console.write_bytes(bytes),
+            None => { sys.console.eprintln("invalid Base64"); return 1 }
+        }
+    } else {
+        let text = encode(input)
+        var offset = 0
+        let step = if width == 0 { text.len().max(1) } else { width }
+        while offset < text.len() {
+            let end = (offset + step).min(text.len())
+            sys.console.println(text.slice(offset, end))
+            offset = end
+        }
+    }
+    0
+}

@@ -1,0 +1,95 @@
+const EMPTY: Int = '.'
+const GRAIN: Int = 'o'
+const SOURCE: Int = 'S'
+
+fn read_grid(con: Console) -> Result[List[List[Int]], Str] {
+    var grid: List[List[Int]] = []
+    while let Some(line) = con.read_line() {
+        let y = grid.len()
+        if y >= 30 { return Err("more than 30 rows") }
+        if line.is_empty() { return Err("row {y + 1} is empty") }
+        if line.len() > 30 { return Err("row {y + 1} is longer than 30 characters") }
+        if not line.all_bytes(fn(b) => b == '.' or b == '#' or b == 'o' or b == 'S') {
+            return Err("row {y + 1} has an invalid character")
+        }
+        if y > 0 and line.len() != grid[0].len() { return Err("row {y + 1} has a different length") }
+        grid.push(line.bytes())
+    }
+    if grid.is_empty() { return Err("no rows") }
+    Ok(grid)
+}
+
+struct Sim { grid: List[List[Int]], lost: Int }
+
+// One tick; returns whether anything changed.
+fn Sim.tick(mut self) -> Bool {
+    let h = self.grid.len()
+    let w = self.grid[0].len()
+    var changed = false
+    var y = h - 1
+    while y >= 0 {
+        for x in 0..w {
+            if self.grid[y][x] != GRAIN { continue }
+            if y == h - 1 {
+                self.grid[y][x] = EMPTY
+                self.lost += 1
+                changed = true
+                continue
+            }
+            for dx in [0, -1, 1] {
+                let nx = x + dx
+                if nx >= 0 and nx < w and self.grid[y + 1][nx] == EMPTY {
+                    self.grid[y][x] = EMPTY
+                    self.grid[y + 1][nx] = GRAIN
+                    changed = true
+                    break
+                }
+            }
+        }
+        y -= 1
+    }
+    for sy in 0..(h - 1) {
+        for x in 0..w {
+            if self.grid[sy][x] == SOURCE and self.grid[sy + 1][x] == EMPTY {
+                self.grid[sy + 1][x] = GRAIN
+                changed = true
+            }
+        }
+    }
+    changed
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 or sys.args[0].len() > 4 or not sys.args[0].is_digits() {
+        con.eprintln("usage: sand TICKS   (TICKS: 0 to 9999)")
+        return 2
+    }
+    let ticks = sys.args[0].to_int().unwrap()
+    let grid = match read_grid(con) {
+        Ok(g) => g,
+        Err(msg) => {
+            con.eprintln("sand: invalid grid: {msg}")
+            return 1
+        }
+    }
+    var sim = Sim { grid, lost: 0 }
+    var run = 0
+    var stable = false
+    while run < ticks {
+        run += 1
+        if not sim.tick() {
+            stable = true
+            break
+        }
+    }
+    var out = ""
+    var grains = 0
+    for row in sim.grid {
+        grains += row.count(fn(b) => b == GRAIN)
+        out += Str.from_utf8(row).unwrap() + "\n"
+    }
+    out += "ticks={run} grains={grains} lost={sim.lost} stable={if stable { "yes" } else { "no" }}\n"
+    con.print(out)
+    0
+}

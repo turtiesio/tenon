@@ -1,0 +1,67 @@
+fn parse(text: Str) -> Option[List[List[Int]]] {
+    let rows = text.lines().map(fn(s) => s.strip_suffix("\r").unwrap_or(s))
+    if rows.is_empty() or rows.len() > 30 { return None }
+    let width = rows[0].len()
+    if width < 1 or width > 30 { return None }
+    var grid: List[List[Int]] = []
+    for row in rows {
+        if row.len() != width or not row.all_bytes(fn(b) => b == '.' or b == '#' or b == 'o' or b == 'S') { return None }
+        grid.push(row.bytes())
+    }
+    Some(grid)
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 1 { sys.console.eprintln("expected TICKS"); return 2 }
+    let arg = sys.args[0]
+    if arg.is_empty() or arg.len() > 4 or not arg.is_digits() { sys.console.eprintln("invalid TICKS"); return 2 }
+    let limit = arg.to_int().unwrap()
+    let Some(initial) = parse(sys.console.read_all()) else { sys.console.eprintln("invalid grid"); return 1 }
+    var grid = initial
+    let height = grid.len()
+    let width = grid[0].len()
+    var lost = 0
+    var ticks = 0
+    var stable = false
+    while ticks < limit {
+        ticks += 1
+        var changed = false
+        var y = height - 1
+        while y >= 0 {
+            for x in 0..width {
+                if grid[y][x] != 'o' { continue }
+                if y == height - 1 {
+                    grid[y][x] = '.'
+                    lost += 1
+                    changed = true
+                } else {
+                    for target in [x, x - 1, x + 1] {
+                        if target >= 0 and target < width and grid[y + 1][target] == '.' {
+                            grid[y][x] = '.'
+                            grid[y + 1][target] = 'o'
+                            changed = true
+                            break
+                        }
+                    }
+                }
+            }
+            y -= 1
+        }
+        for sy in 0..(height - 1) {
+            for sx in 0..width {
+                if grid[sy][sx] == 'S' and grid[sy + 1][sx] == '.' {
+                    grid[sy + 1][sx] = 'o'
+                    changed = true
+                }
+            }
+        }
+        if not changed { stable = true; break }
+    }
+    var grains = 0
+    for row in grid {
+        grains += row.count(fn(c) => c == 'o')
+        sys.console.println(Str.from_utf8(row).unwrap())
+    }
+    let status = if stable { "yes" } else { "no" }
+    sys.console.println("ticks={ticks} grains={grains} lost={lost} stable={status}")
+    0
+}

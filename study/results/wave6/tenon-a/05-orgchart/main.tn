@@ -1,0 +1,126 @@
+struct Emp { id: Str, name: Str, manager: Str, salary: Int }
+
+struct Totals { reports: Int, cost: Int }
+
+fn is_id(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 8 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+fn parse_line(no: Int, line: Str) -> Result[Emp, Str] {
+    let f = line.split(",")
+    if f.len() != 4 { return Err("line {no}: expected 4 fields, got {f.len()}") }
+    let (id, name, manager, salary) = (f[0], f[1], f[2], f[3])
+    if not is_id(id) { return Err("line {no}: bad id '{id}'") }
+    if name.is_empty() or name.starts_with(" ") or name.ends_with(" ") { return Err("line {no}: bad name '{name}'") }
+    if not manager.is_empty() and not is_id(manager) { return Err("line {no}: bad manager '{manager}'") }
+    if salary.len() > 9 or not salary.is_digits() { return Err("line {no}: bad salary '{salary}'") }
+    Ok(Emp { id, name, manager, salary: salary.to_int().unwrap() })
+}
+
+fn with_commas(n: Int) -> Str {
+    let s = n.to_str()
+    var out = ""
+    for i in 0..s.len() {
+        if i > 0 and (s.len() - i) % 3 == 0 { out += "," }
+        out += s.slice(i, i + 1)
+    }
+    out
+}
+
+struct Org { emps: List[Emp], children: List[List[Int]], totals: List[Totals] }
+
+fn Org.compute(mut self, i: Int) -> Totals {
+    var t = Totals { reports: 0, cost: self.emps[i].salary }
+    for c in self.children[i] {
+        let ct = self.compute(c)
+        t.reports += 1 + ct.reports
+        t.cost += ct.cost
+    }
+    self.totals[i] = t
+    t
+}
+
+fn Org.print(self, out: mut Str, i: Int, depth: Int) {
+    let e = self.emps[i]
+    let t = self.totals[i]
+    out += "{"  ".repeat(depth)}{e.name} [{e.id}] reports={t.reports} cost={with_commas(t.cost)}\n"
+    for c in self.children[i] { self.print(mut out, c, depth + 1) }
+}
+
+fn build(con: Console) -> Result[(Org, List[Int], Map[Str, Int]), Str] {
+    let Some(header) = con.read_line() else { return Err("empty input") }
+    if header != "id,name,manager,salary" { return Err("bad header '{header}'") }
+    var emps: List[Emp] = []
+    var index: Map[Str, Int] = [:]
+    var no = 1
+    while let Some(line) = con.read_line() {
+        no += 1
+        if line.is_empty() { continue }
+        let e = parse_line(no, line)?
+        if index.contains(e.id) { return Err("line {no}: duplicate id '{e.id}'") }
+        index[e.id] = emps.len()
+        emps.push(e)
+    }
+    let n = emps.len()
+    var parent: List[Int] = List.filled(n, -1)
+    for i in 0..n {
+        let m = emps[i].manager
+        if m.is_empty() { continue }
+        let Some(p) = index.get(m) else { return Err("employee '{emps[i].id}': unknown manager '{m}'") }
+        parent[i] = p
+    }
+    // 0 = unknown, 1 = reaches a root, 2 = on the current walk
+    var state: List[Int] = List.filled(n, 0)
+    for start in 0..n {
+        var path: List[Int] = []
+        var cur = start
+        while cur != -1 and state[cur] == 0 {
+            state[cur] = 2
+            path.push(cur)
+            cur = parent[cur]
+        }
+        if cur != -1 and state[cur] == 2 {
+            return Err("employee '{emps[cur].id}' is on a management cycle")
+        }
+        for p in path { state[p] = 1 }
+    }
+    var children: List[List[Int]] = List.filled(n, [])
+    var roots: List[Int] = []
+    for i in 0..n {
+        if parent[i] == -1 { roots.push(i) } else { children[parent[i]].push(i) }
+    }
+    let key = fn(i: Int) -> (Str, Str) { (emps[i].name, emps[i].id) }
+    roots.sort_by(key)
+    for i in 0..n { children[i].sort_by(key) }
+    let totals = List.filled(n, Totals { reports: 0, cost: 0 })
+    Ok((Org { emps, children, totals }, roots, index))
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 1 {
+        con.eprintln("usage: orgchart [ID]")
+        return 2
+    }
+    let (org0, roots, index) = match build(con) {
+        Ok(r) => r,
+        Err(msg) => {
+            con.eprintln("orgchart: invalid input: {msg}")
+            return 1
+        }
+    }
+    var org = org0
+    for r in roots { let _ = org.compute(r) }
+    var out = ""
+    if sys.args.len() == 1 {
+        let Some(i) = index.get(sys.args[0]) else {
+            con.eprintln("orgchart: unknown id '{sys.args[0]}'")
+            return 1
+        }
+        org.print(mut out, i, 0)
+    } else {
+        for r in roots { org.print(mut out, r, 0) }
+    }
+    con.print(out)
+    0
+}

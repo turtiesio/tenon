@@ -1,0 +1,87 @@
+struct Amount { qty: Int, kind: Int }
+struct Recipe { serves: Int, items: Map[Str, Amount] }
+fn name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 30 and s.byte(0).is_lower()
+        and s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_' or b == '-')
+}
+fn positive(s: Str, digits: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > digits or s.byte(0) == '0' or not s.is_digits() { return None }
+    s.to_int()
+}
+fn ignored(s: Str) -> Bool { s.starts_with("#") or s.all_bytes(fn(b) => b == ' ') }
+fn recipes(text: Str) -> Option[Map[Str, Recipe]] {
+    var out: Map[Str, Recipe] = [:]
+    var current = ""
+    for raw in text.lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if ignored(line) { continue }
+        let parts = line.split(" ")
+        if parts.len() < 2 { return None }
+        if parts[0].starts_with("[") {
+            if parts.len() != 2 or not parts[0].ends_with("]") { return None }
+            let title = parts[0].slice(1, parts[0].len() - 1)
+            if not name(title) or out.contains(title) { return None }
+            let serves = positive(parts[1], 3)?
+            out[title] = Recipe { serves, items: [:] }
+            current = title
+        } else {
+            if current.is_empty() or parts.len() > 3 or not name(parts[0]) { return None }
+            if out[current].items.contains(parts[0]) { return None }
+            var qty = positive(parts[1], 6)?
+            var kind = 0
+            if parts.len() == 3 {
+                match parts[2] {
+                    "g" => kind = 1,
+                    "kg" => { kind = 1; qty *= 1000 }
+                    "ml" => kind = 2,
+                    "l" => { kind = 2; qty *= 1000 }
+                    _ => return None,
+                }
+            }
+            out[current].items[parts[0]] = Amount { qty, kind }
+        }
+    }
+    Some(out)
+}
+fn shopping(book: Map[Str, Recipe], text: Str) -> Option[Map[Str, Amount]] {
+    var totals: Map[Str, Amount] = [:]
+    for raw in text.lines() {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if ignored(line) { continue }
+        let parts = line.split(" ")
+        if parts.len() != 2 { return None }
+        let recipe = book.get(parts[0])?
+        let servings = positive(parts[1], 3)?
+        for (ingredient, amount) in recipe.items {
+            let scaled = (amount.qty * servings + recipe.serves - 1) / recipe.serves
+            let previous = totals.get_or(ingredient, Amount { qty: 0, kind: amount.kind })
+            if previous.kind != amount.kind { return None }
+            totals[ingredient] = Amount { qty: previous.qty + scaled, kind: amount.kind }
+        }
+    }
+    Some(totals)
+}
+fn format(amount: Amount) -> Str {
+    if amount.kind == 0 { return amount.qty.to_str() }
+    if amount.qty < 1000 {
+        let small = if amount.kind == 1 { "g" } else { "ml" }
+        return "{amount.qty} {small}"
+    }
+    let unit = if amount.kind == 1 { "kg" } else { "l" }
+    var fraction = ""
+    if amount.qty % 1000 != 0 {
+        fraction = (amount.qty % 1000).to_str().pad_left(3, "0")
+        while fraction.ends_with("0") { fraction = fraction.slice(0, fraction.len() - 1) }
+        fraction = "." + fraction
+    }
+    "{amount.qty / 1000}{fraction} {unit}"
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() != 2 { sys.console.eprintln("expected RECIPES PLAN"); return 2 }
+    let Ok(recipe_text) = sys.fs.read(sys.args[0]) else { sys.console.eprintln("cannot read recipes"); return 1 }
+    let Ok(plan_text) = sys.fs.read(sys.args[1]) else { sys.console.eprintln("cannot read plan"); return 1 }
+    let Some(book) = recipes(recipe_text) else { sys.console.eprintln("invalid recipes"); return 1 }
+    let Some(totals) = shopping(book, plan_text) else { sys.console.eprintln("invalid plan"); return 1 }
+    for ingredient in totals.keys().sorted() { sys.console.println("{ingredient} {format(totals[ingredient])}") }
+    0
+}

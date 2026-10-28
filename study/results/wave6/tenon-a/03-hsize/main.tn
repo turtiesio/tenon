@@ -1,0 +1,68 @@
+fn is_size(s: Str) -> Bool { s.len() >= 1 and s.len() <= 16 and s.is_digits() }
+
+fn human(v: Int, si: Bool, places: Int) -> Str {
+    let base = if si { 1000 } else { 1024 }
+    let units = if si { ["kB", "MB", "GB", "TB", "PB"] } else { ["KiB", "MiB", "GiB", "TiB", "PiB"] }
+    if v < base { return "{v} B" }
+    var k = 1
+    while k < 5 and v >= base.pow(k + 1) { k += 1 }
+    let s = 10.pow(places)
+    var r = 0
+    while true {
+        let bk = base.pow(k)
+        r = (2 * v * s + bk) / (2 * bk)
+        if r >= base * s and k < 5 { k += 1 } else { break }
+    }
+    var out = "{r / s}"
+    if places > 0 { out += "." + (r % s).to_str().pad_left(places, "0") }
+    out + " " + units[k - 1]
+}
+
+fn usage(con: Console, msg: Str) -> Int {
+    con.eprintln("hsize: {msg}")
+    con.eprintln("usage: hsize [-s] [-p N] [SIZE...]")
+    2
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    var si = false
+    var places = 1
+    var sizes: List[Int] = []
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-s" {
+            si = true
+        } else if a == "-p" {
+            if i + 1 >= args.len() { return usage(con, "-p needs a value") }
+            match args[i + 1] {
+                "0" => places = 0,
+                "1" => places = 1,
+                "2" => places = 2,
+                other => return usage(con, "invalid -p value '{other}'"),
+            }
+            i += 1
+        } else if is_size(a) {
+            sizes.push(a.to_int().unwrap())
+        } else {
+            return usage(con, "invalid argument '{a}'")
+        }
+        i += 1
+    }
+    if not sizes.is_empty() {
+        for v in sizes { con.println(human(v, si, places)) }
+        return 0
+    }
+    var status = 0
+    while let Some(line) = con.read_line() {
+        if is_size(line) {
+            con.println(human(line.to_int().unwrap(), si, places))
+        } else {
+            con.println("?")
+            status = 1
+        }
+    }
+    status
+}
