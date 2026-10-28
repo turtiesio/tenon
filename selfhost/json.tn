@@ -6,6 +6,7 @@
 // exponent that fit in an Int are `JInt`, all others `JFloat`. Objects keep
 // their members in order (duplicates too; `get` finds the first).
 // Tests: selfhost/jsontest.tn.
+import lexer
 
 pub enum Json { JNull, JBool(Bool), JInt(Int), JFloat(Float), JStr(Str), JArr(List[Json]), JObj(List[(Str, Json)]) }
 
@@ -167,8 +168,8 @@ fn hex4(s: Str, i: Int) -> Option[Int] {
     if i + 4 > s.len() { return None }
     var v = 0
     for k in i..i + 4 {
-        let c = s.byte(k)
-        let d = if c.is_digit() { c - '0' } else if c >= 'a' and c <= 'f' { c - 'a' + 10 } else if c >= 'A' and c <= 'F' { c - 'A' + 10 } else { return None }
+        let d = lexer.digit_value(s.byte(k))
+        if d >= 16 { return None }
         v = v * 16 + d
     }
     Some(v)

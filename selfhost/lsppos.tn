@@ -2,6 +2,7 @@
 // Positions in source text. The checker reports 1-based lines and 1-based
 // byte columns; the Language Server Protocol counts lines from 0 and
 // characters in UTF-16 code units. Also file URIs and identifier scanning.
+import lexer
 
 // Byte offset of the start of every line (line 1 is element 0).
 pub fn line_starts(text: Str) -> List[Int] {
@@ -135,10 +136,6 @@ pub fn line_col(starts: List[Int], off: Int) -> (Int, Int) {
 
 // ---- file URIs ----
 
-fn hex_val(c: Int) -> Int {
-    if c.is_digit() { c - '0' } else if c >= 'a' and c <= 'f' { c - 'a' + 10 } else if c >= 'A' and c <= 'F' { c - 'A' + 10 } else { -1 }
-}
-
 // The path of a `file:` URI (percent-decoded); None for other schemes.
 pub fn uri_path(uri: Str) -> Option[Str] {
     let rest = uri.strip_prefix("file://")?
@@ -146,8 +143,10 @@ pub fn uri_path(uri: Str) -> Option[Str] {
     var i = 0
     while i < rest.len() {
         let c = rest.byte(i)
-        if c == '%' and i + 2 < rest.len() and hex_val(rest.byte(i + 1)) >= 0 and hex_val(rest.byte(i + 2)) >= 0 {
-            bytes.push(hex_val(rest.byte(i + 1)) * 16 + hex_val(rest.byte(i + 2)))
+        let h = if i + 2 < rest.len() { lexer.digit_value(rest.byte(i + 1)) } else { 99 }
+        let l = if i + 2 < rest.len() { lexer.digit_value(rest.byte(i + 2)) } else { 99 }
+        if c == '%' and h < 16 and l < 16 {
+            bytes.push(h * 16 + l)
             i += 3
         } else {
             bytes.push(c)
