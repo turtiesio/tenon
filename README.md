@@ -4,6 +4,7 @@ A small, fast, capability-safe language whose programs compose only when their
 contracts fit. See [`tenon.md`](tenon.md) for the goals, [`docs/reference.md`](docs/reference.md)
 for the language, [`STATUS.md`](STATUS.md) for measured results, and
 [`docs/log.md`](docs/log.md) for decisions.
+Editor support: [`editors/vscode`](editors/vscode) (VS Code syntax highlighting).
 
 ```sh
 ./check --fast                 # build + full differential test corpus (budget: 60 s)

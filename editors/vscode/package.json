@@ -1,0 +1,37 @@
+{
+  "name": "tenon",
+  "displayName": "Tenon",
+  "description": "Syntax highlighting for the Tenon language (.tn)",
+  "version": "0.1.0",
+  "publisher": "tenon-local",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "tenon",
+        "aliases": [
+          "Tenon",
+          "tenon"
+        ],
+        "extensions": [
+          ".tn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "tenon",
+        "scopeName": "source.tenon",
+        "path": "./syntaxes/tenon.tmLanguage.json"
+      }
+    ]
+  }
+}
