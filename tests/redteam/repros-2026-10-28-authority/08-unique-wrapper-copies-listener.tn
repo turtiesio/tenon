@@ -1,0 +1,8 @@
+unique struct Hold { listener: Listener }
+
+fn Hold.dup(self) -> (Hold, Hold) { (self, self) }
+
+fn main(sys: Sys) {
+    let (a, b) = Hold { listener: sys.net.listen(0).unwrap() }.dup()
+    sys.console.println("{a.listener.port() == b.listener.port()}")
+}
