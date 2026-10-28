@@ -44,6 +44,46 @@ pub fn check(prog: ckast.Program) -> Result[Checked, ckast.Diag] {
     Ok(Checked { prog, env: ck.env, types: ck.types, res: ck.res, captures: ck.captures, main })
 }
 
+// `check` for tools (the language server): the same first diagnostic, but a
+// failing function does not stop the others from being checked, so the side
+// tables cover every function (the failing one up to its error). No tables if
+// the declarations fail.
+pub fn check_lenient(prog: ckast.Program) -> (Option[ckast.Diag], Option[Checked]) {
+    let env = match ckenv.declare(prog) {
+        Ok(e) => e,
+        Err(d) => return (Some(d), None),
+    }
+    var ck = ckinfer.new_ck(env)
+    var first: Option[ckast.Diag] = None
+    for i in 0..prog.fns.len() {
+        match ck.check_fn(prog.fns[i], i) {
+            Ok(_) => {}
+            Err(d) => {
+                ck.keep_pending()
+                if first.is_none() { first = Some(d) }
+            }
+        }
+    }
+    var main = -1
+    for i in 0..prog.fns.len() {
+        if main < 0 and prog.fns[i].name == "main" and prog.fns[i].owner.is_none() { main = i }
+    }
+    if first.is_none() {
+        let rest = if main < 0 {
+            ckast.fail(ckast.Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'")
+        } else {
+            ck.env.check_main(main)
+                .and_then(fn(_) => const_cycles(prog, ck.res))
+                .and_then(fn(_) => cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures))
+        }
+        match rest {
+            Ok(_) => {}
+            Err(d) => first = Some(d),
+        }
+    }
+    (first, Some(Checked { prog, env: ck.env, types: ck.types, res: ck.res, captures: ck.captures, main }))
+}
+
 // The constants referenced anywhere in an expression, in traversal order.
 fn const_refs(e: ckast.Expr, res: Map[Int, ckenv.Res]) -> List[Int] {
     var out: List[Int] = []

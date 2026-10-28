@@ -1,0 +1,637 @@
+// module (imported by the language server, selfhost/tenonlsp.tn)
+// Hover, go-to-definition and completion over one analysis of a buffer
+// (front.Analysis; the buffer is file 1, the main file), using the checker's
+// side tables: `types` (node id -> type) and `res` (node id -> what a name,
+// call or pattern resolved to). Results are protocol JSON values.
+
+import checker
+import ckast
+import ckenv
+import cktypes
+import json
+import lexer
+import lspindex
+import lsppos
+
+// One analysed buffer. `files`: every source file of the program (as
+// front.Analysis), `root`: where `<prelude>` and `<std>/` files live.
+pub struct Query {
+    pub c: checker.Checked, pub files: List[(Str, Str)], pub root: Str,
+    pub text: Str, pub starts: List[Int], pub br: Map[Int, (Int, Int)], pub nodes: List[(Int, lspindex.Node)],
+}
+
+pub fn new_q(c: checker.Checked, files: List[(Str, Str)], root: Str) -> Query {
+    let text = files[1].1
+    Query { c, files, root, text, starts: lsppos.line_starts(text), br: lspindex.braces(text), nodes: lspindex.nodes(c.prog, 1) }
+}
+
+// What the name under the cursor refers to.
+pub enum Target {
+    TLocal(Str, Int, (Int, Int)), // name, function, position of the use
+    TFunc(Int),
+    TVariant(Int, Int),
+    TField(Int, Int), // struct, field
+    TStruct(Int),
+    TEnum(Int),
+    TModule(Str),
+    TBuiltin(Str),
+}
+
+// `start`, `end`: the identifier's byte offsets in the buffer; `ty`: the type of the expression there, if known.
+pub struct Found { pub target: Target, pub ty: Option[cktypes.Ty], pub start: Int, pub end: Int }
+
+fn Query.off(self, sp: ckast.Span) -> Int { lsppos.offset(self.text, self.starts, sp.line, sp.col) }
+
+// Is the buffer text from `sp` to offset `b` exactly `full`?
+fn Query.spells(self, sp: ckast.Span, b: Int, full: Str) -> Bool {
+    let o = self.off(sp)
+    b - o == full.len() and self.text.slice(o, b) == full
+}
+
+fn plain(n: Str) -> Str { n.strip_prefix("<main>.").unwrap_or(n) }
+
+fn show(t: cktypes.Ty) -> Str {
+    match t {
+        Con(n, a) => if a.is_empty() { plain(n) } else { plain(n) + "[" + a.map(show).join(", ") + "]" },
+        Tup(a) => "(" + a.map(show).join(", ") + ")",
+        Fun(a, r) => "fn(" + a.map(show).join(", ") + ") -> " + show(r),
+        Par(p) => p,
+        TVar(_) => "_",
+    }
+}
+
+// A type name as written in the buffer, resolved as the checker resolves it there.
+fn Query.type_target(self, n: Str) -> Option[Target] {
+    if cktypes.is_builtin(n) { return Some(TBuiltin(n)) }
+    var env = self.c.env
+    env.cur = 1
+    let full = match env.resolve_type(n, ckast.Span { file: 1, line: 0, col: 0 }) {
+        Ok(x) => x,
+        Err(_) => return None,
+    }
+    match env.struct_idx(full) {
+        Some(i) => return Some(TStruct(i)),
+        None => {}
+    }
+    match env.enum_idx(full) {
+        Some(i) => Some(TEnum(i)),
+        None => None,
+    }
+}
+
+fn Query.res_target(self, id: Int, name: Str, fi: Int, use: (Int, Int)) -> Option[Target] {
+    match self.c.res.get(id) {
+        Some(RLocal(n)) => Some(TLocal(n, fi, use)),
+        Some(RFn(i, _)) | Some(RConst(i)) | Some(RMethod(i, _)) => Some(TFunc(i)),
+        Some(RVariant(e, v, _)) => Some(TVariant(e, v)),
+        Some(RStruct(i)) => Some(TStruct(i)),
+        Some(RToStr) => Some(TBuiltin("to_str")),
+        _ => if self.c.env.imports[1].contains(name) { Some(TModule(name)) } else { None },
+    }
+}
+
+fn Query.field_target(self, recv: ckast.Expr, id: Int) -> Option[Target] {
+    let Some(RField(k)) = self.c.res.get(id) else { return None }
+    match self.c.types.get(recv.id) {
+        Some(Con(n, _)) => match self.c.env.struct_idx(n) {
+            Some(si) => Some(TField(si, k)),
+            None => None,
+        },
+        _ => None,
+    }
+}
+
+// What the identifier at byte offset `at` of the buffer refers to.
+pub fn find(q: Query, at: Int) -> Option[Found] {
+    let (a, b) = lsppos.ident_at(q.text, at)?
+    let name = q.text.slice(a, b)
+    let start = lsppos.line_col(q.starts, a)
+    let dot = if a > 0 and q.text.byte(a - 1) == '.' { lsppos.line_col(q.starts, a - 1) } else { (-1, -1) }
+    for (fi, n) in q.nodes {
+        let hit = match n {
+            NExpr(e) => q.expr_hit(e, fi, name, b, start, dot),
+            NPat(p) => q.pat_hit(p, fi, name, b, start),
+            NType(t) => match t.k {
+                TNamed(tn, _) if q.spells(t.sp, b, tn) => q.type_target(tn).map(fn(x) => (x, None)),
+                TNamed(tn, _) if lspindex.at(t.sp) == start and tn.starts_with(name + ".") => Some((TModule(name), None)),
+                _ => None,
+            },
+        }
+        match hit {
+            Some((t, ty)) => return Some(Found { target: t, ty, start: a, end: b }),
+            None => {}
+        }
+    }
+    match q.decl_hit(name, a, start) {
+        Some((t, ty)) => Some(Found { target: t, ty, start: a, end: b }),
+        None => None,
+    }
+}
+
+fn Query.expr_hit(self, e: ckast.Expr, fi: Int, name: Str, b: Int, start: (Int, Int), dot: (Int, Int)) -> Option[(Target, Option[cktypes.Ty])] {
+    let here = lspindex.at(e.sp)
+    let ty = self.c.types.get(e.id)
+    match e.k {
+        XName(n) if n == name and here == start => Some((self.res_target(e.id, n, fi, start)?, ty)),
+        XField(r, f) if f == name and here == dot => Some((self.field_target(r, e.id)?, ty)),
+        XMethod(_, m, _) if m == name and here == dot => Some((self.res_target(e.id, m, fi, start)?, ty)),
+        XPath(t, m) => {
+            let shown = t.strip_prefix("@").unwrap_or(t)
+            if m == name and self.spells(e.sp, b, shown + "." + m) {
+                return Some((self.res_target(e.id, m, fi, start)?, ty))
+            }
+            if shown == name and here == start {
+                if t.starts_with("@") { return Some((TModule(shown), None)) }
+                return Some((self.type_target(shown)?, None))
+            }
+            None
+        }
+        XNew(n, _, _) if self.spells(e.sp, b, n) => Some((self.res_target(e.id, n, fi, start)?, ty)),
+        XNew(n, _, _) if here == start and n.starts_with(name + ".") => Some((TModule(name), None)),
+        _ => None,
+    }
+}
+
+fn Query.pat_hit(self, p: ckast.Pat, fi: Int, name: Str, b: Int, start: (Int, Int)) -> Option[(Target, Option[cktypes.Ty])] {
+    let here = lspindex.at(p.sp)
+    let ty = self.c.types.get(p.id)
+    match p.k {
+        QBind(n) if n == name and here == start => Some((TLocal(n, fi, start), ty)),
+        QVariant(q, v, _) => {
+            let qual = match q {
+                Some(x) => x + ".",
+                None => "",
+            }
+            if v == name and self.spells(p.sp, b, qual + v) { return Some((self.res_target(p.id, v, fi, start)?, ty)) }
+            if q == Some(name) and here == start { return Some((self.type_target(name)?, None)) }
+            None
+        }
+        _ => None,
+    }
+}
+
+// Names in declarations: functions, parameters, types, fields, variants, imports.
+fn Query.decl_hit(self, name: Str, a: Int, start: (Int, Int)) -> Option[(Target, Option[cktypes.Ty])] {
+    let prog = self.c.prog
+    for i in 0..prog.fns.len() {
+        let f = prog.fns[i]
+        if f.sp.file != 1 { continue }
+        if f.name == name and lsppos.find_word(self.text, name, self.off(f.sp) + 2) == Some(a) { return Some((TFunc(i), None)) }
+        for p in f.params {
+            if p.name == name and lspindex.at(p.sp) == start {
+                let ty = self.c.env.fns[i].params.filter(fn(x) => x.0 == name).map(fn(x) => x.1)
+                return Some((TLocal(name, i, start), ty.first()))
+            }
+        }
+    }
+    for i in 0..prog.structs.len() {
+        let s = prog.structs[i]
+        if s.sp.file != 1 { continue }
+        if s.name == name and lsppos.find_word(self.text, name, self.off(s.sp)) == Some(a) { return Some((TStruct(i), None)) }
+        for k in 0..s.fields.len() {
+            if s.fields[k].0 == name and self.field_off(i, k) == Some(a) {
+                return Some((TField(i, k), Some(self.c.env.structs[i].fields[k].1)))
+            }
+        }
+    }
+    for i in 0..prog.enums.len() {
+        let e = prog.enums[i]
+        if e.sp.file != 1 { continue }
+        if e.name == name and lsppos.find_word(self.text, name, self.off(e.sp)) == Some(a) { return Some((TEnum(i), None)) }
+        for v in 0..e.variants.len() {
+            if e.variants[v].name == name and lspindex.at(e.variants[v].sp) == start { return Some((TVariant(i, v), None)) }
+        }
+    }
+    for im in prog.imports {
+        if im.file == 1 and im.name == name and lsppos.find_word(self.text, name, self.off(im.sp) + 6) == Some(a) {
+            return Some((TModule(name), None))
+        }
+    }
+    None
+}
+
+// ---- where things are declared ----
+
+fn Query.file_text(self, fi: Int) -> Str { self.files[fi].1 }
+
+// The path of source file `fi` on disk.
+pub fn Query.file_path(self, fi: Int) -> Str {
+    let n = self.files[fi].0
+    if n == "<prelude>" { return join(self.root, "lib/prelude.tn") }
+    match n.strip_prefix("<std>/") {
+        Some(rest) => join(self.root, "lib/std/" + rest),
+        None => n,
+    }
+}
+
+fn join(dir: Str, name: Str) -> Str { if dir.ends_with("/") { dir + name } else { dir + "/" + name } }
+
+// The offset of word `w` after declaration position `sp` in its file.
+fn Query.word_after(self, sp: ckast.Span, w: Str) -> (Int, Int) {
+    let t = self.file_text(sp.file)
+    let st = lsppos.line_starts(t)
+    match lsppos.find_word(t, w, lsppos.offset(t, st, sp.line, sp.col)) {
+        Some(o) => lsppos.line_col(st, o),
+        None => (sp.line, sp.col),
+    }
+}
+
+// Offset in the buffer of field k's name of struct si (declared in the buffer).
+fn Query.field_off(self, si: Int, k: Int) -> Option[Int] {
+    let s = self.c.prog.structs[si]
+    let from = if k == 0 { self.off(s.sp) } else { self.off(s.fields[k - 1].1.sp) }
+    lsppos.find_word(self.text, s.fields[k].0, from)
+}
+
+// (file, line, col) of the declaration of a target.
+pub fn definition(q: Query, f: Found) -> Option[(Int, Int, Int)] {
+    let prog = q.c.prog
+    match f.target {
+        TLocal(n, fi, use) => {
+            let bs = lspindex.visible(prog.fns[fi], use, q.br, q.text).filter(fn(b) => b.name == n)
+            let b = bs.last()?
+            Some((1, b.at.0, b.at.1))
+        }
+        TFunc(i) => {
+            let d = prog.fns[i]
+            let p = q.word_after(ckast.Span { file: d.sp.file, line: d.sp.line, col: d.sp.col + 2 }, d.name)
+            Some((d.sp.file, p.0, p.1))
+        }
+        TVariant(e, v) => {
+            let sp = prog.enums[e].variants[v].sp
+            Some((sp.file, sp.line, sp.col))
+        }
+        TField(si, k) => {
+            let s = prog.structs[si]
+            let from = if k == 0 { s.sp } else { s.fields[k - 1].1.sp }
+            let p = q.word_after(from, s.fields[k].0)
+            Some((s.sp.file, p.0, p.1))
+        }
+        TStruct(i) => {
+            let s = prog.structs[i]
+            let p = q.word_after(s.sp, s.name)
+            Some((s.sp.file, p.0, p.1))
+        }
+        TEnum(i) => {
+            let e = prog.enums[i]
+            let p = q.word_after(e.sp, e.name)
+            Some((e.sp.file, p.0, p.1))
+        }
+        TModule(m) => {
+            let i = prog.modules.index_of(m)?
+            Some((i, 1, 1))
+        }
+        TBuiltin(_) => None,
+    }
+}
+
+// ---- hover ----
+
+// `fn Owner.name[T](params) -> Ret`, or `const NAME: T`.
+pub fn sig(q: Query, i: Int) -> Str {
+    let f = q.c.env.fns[i]
+    let d = q.c.prog.fns[i]
+    if f.is_const { return "const " + d.name + ": " + show(f.ret) }
+    let name = match f.owner {
+        Some(o) => show(o) + "." + d.name,
+        None => plain(f.name),
+    }
+    let tp = if d.tparams.is_empty() { "" } else { "[" + d.tparams.join(", ") + "]" }
+    var ps: List[Str] = []
+    var j = 0
+    for k in 0..f.params.len() {
+        let p = f.params[k]
+        if k == 0 and f.self_kind != NoSelf {
+            ps.push(if f.self_kind == MutSelf { "mut self" } else { "self" })
+            continue
+        }
+        let m = if j < f.muts.len() and f.muts[j] { "mut " } else { "" }
+        ps.push(p.0 + ": " + m + show(p.1))
+        j += 1
+    }
+    let ret = if f.ret.is("Unit") { "" } else { " -> " + show(f.ret) }
+    "fn " + name + tp + "(" + ps.join(", ") + ")" + ret
+}
+
+// The comment lines just above a declaration (and one at the end of its line).
+fn Query.doc_comment(self, sp: ckast.Span) -> Str {
+    let t = self.file_text(sp.file)
+    let st = lsppos.line_starts(t)
+    var lines: List[Str] = []
+    var l = sp.line - 1
+    while l >= 1 {
+        let s = lsppos.line_text(t, st, l).trim()
+        let Some(c) = s.strip_prefix("//") else { break }
+        lines.insert(0, c.trim())
+        l -= 1
+    }
+    if l == 0 { lines = [] } // the file's header comment, not this declaration's
+    let own = lsppos.line_text(t, st, sp.line)
+    match own.rfind(" // ") {
+        Some(k) if own.slice(0, k).find("\"").is_none() => lines.push(own.slice(k + 4, own.len()).trim()),
+        _ => {}
+    }
+    lines.join("\n")
+}
+
+fn Query.struct_text(self, i: Int) -> Str {
+    let s = self.c.env.structs[i]
+    let tp = if s.tparams.is_empty() { "" } else { "[" + s.tparams.join(", ") + "]" }
+    let fs = s.fields.map(fn(f) => f.0 + ": " + show(f.1))
+    "struct " + plain(s.name) + tp + " \{ " + fs.join(", ") + " }"
+}
+
+fn Query.variant_text(self, e: Int, v: Int) -> Str {
+    let x = self.c.env.enums[e].variants[v]
+    if x.1.is_empty() { x.0 } else { x.0 + "(" + x.1.map(show).join(", ") + ")" }
+}
+
+fn Query.enum_text(self, i: Int) -> Str {
+    let e = self.c.env.enums[i]
+    let tp = if e.tparams.is_empty() { "" } else { "[" + e.tparams.join(", ") + "]" }
+    var vs: List[Str] = []
+    for v in 0..e.variants.len() { vs.push(self.variant_text(i, v)) }
+    "enum " + plain(e.name) + tp + " \{ " + vs.join(", ") + " }"
+}
+
+fn code(s: Str) -> Str { "```tenon\n" + s + "\n```" }
+
+fn with_doc(s: Str, d: Str) -> Str { if d == "" { s } else { s + "\n\n" + d } }
+
+// The hover text (markdown) for a target.
+pub fn hover_text(q: Query, f: Found) -> Str {
+    let prog = q.c.prog
+    let ty = match f.ty {
+        Some(t) => show(t),
+        None => "",
+    }
+    match f.target {
+        TLocal(n, _, _) => code(n + ": " + if ty == "" { "_" } else { ty }),
+        TFunc(i) => with_doc(code(sig(q, i)), q.doc_comment(prog.fns[i].sp)),
+        TVariant(e, v) => {
+            let here = if ty == "" or ty.starts_with("fn(") { "" } else { "\n\nhere: `" + ty + "`" }
+            with_doc(code(q.variant_text(e, v) + "  // " + q.enum_text(e)) + here, q.doc_comment(prog.enums[e].sp))
+        }
+        TField(si, k) => {
+            let s = q.c.env.structs[si]
+            let t = if ty == "" { show(s.fields[k].1) } else { ty }
+            code(s.fields[k].0 + ": " + t + "  // field of " + plain(s.name))
+        }
+        TStruct(i) => with_doc(code(q.struct_text(i)), q.doc_comment(prog.structs[i].sp)),
+        TEnum(i) => with_doc(code(q.enum_text(i)), q.doc_comment(prog.enums[i].sp)),
+        TModule(m) => {
+            let path = match prog.modules.index_of(m) {
+                Some(i) => q.file_path(i),
+                None => "",
+            }
+            code("import " + m) + "\n\n" + path
+        }
+        TBuiltin(n) => if n == "to_str" { code("fn to_str(self) -> Str") } else { code(n) + "\n\nbuiltin type" },
+    }
+}
+
+// ---- completion ----
+
+// LSP CompletionItemKind numbers
+const K_METHOD: Int = 2
+const K_FUNCTION: Int = 3
+const K_FIELD: Int = 5
+const K_VARIABLE: Int = 6
+const K_CLASS: Int = 7
+const K_MODULE: Int = 9
+const K_ENUM: Int = 13
+const K_KEYWORD: Int = 14
+const K_MEMBER: Int = 20
+const K_CONSTANT: Int = 21
+const K_STRUCT: Int = 22
+
+fn item(label: Str, kind: Int, detail: Str) -> json.Json {
+    JObj([("label", JStr(label)), ("kind", JInt(kind)), ("detail", JStr(detail))])
+}
+
+fn add(out: mut List[json.Json], seen: mut Map[Str, Bool], label: Str, kind: Int, detail: Str) {
+    if seen.contains(label) { return }
+    seen[label] = true
+    out.push(item(label, kind, detail))
+}
+
+fn Query.fn_kind(self, i: Int) -> Int { if self.c.env.fns[i].is_const { K_CONSTANT } else { K_FUNCTION } }
+
+// Fields and methods of a value of type t.
+pub fn members_of(q: Query, t: cktypes.Ty) -> List[json.Json] {
+    var out: List[json.Json] = []
+    var seen: Map[Str, Bool] = [:]
+    let env = q.c.env
+    match t {
+        Con(n, args) => {
+            match env.struct_idx(n) {
+                Some(si) => {
+                    let s = env.structs[si]
+                    for k in 0..s.fields.len() {
+                        if s.file == 1 or s.pub_fields[k] {
+                            add(mut out, mut seen, s.fields[k].0, K_FIELD, show(s.fields[k].1.subst(s.tparams, args)))
+                        }
+                    }
+                }
+                None => {}
+            }
+            for i in 0..env.fns.len() {
+                let f = env.fns[i]
+                let mine = match f.owner {
+                    Some(Con(o, _)) => o == n,
+                    _ => false,
+                }
+                if mine and f.self_kind != NoSelf and q.can_see(i) {
+                    add(mut out, mut seen, q.c.prog.fns[i].name, K_METHOD, sig(q, i))
+                }
+            }
+        }
+        Tup(ts) => for k in 0..ts.len() { add(mut out, mut seen, k.to_str(), K_FIELD, show(ts[k])) },
+        _ => {}
+    }
+    add(mut out, mut seen, "to_str", K_METHOD, "fn to_str(self) -> Str")
+    out
+}
+
+fn Query.can_see(self, i: Int) -> Bool {
+    let f = self.c.env.fns[i]
+    f.sp.file == 1 or f.sp.file == 0 or f.public
+}
+
+// What can follow `Type.`: its functions (methods too) and, for an enum, its variants.
+pub fn type_members(q: Query, n: Str) -> List[json.Json] {
+    var out: List[json.Json] = []
+    var seen: Map[Str, Bool] = [:]
+    let env = q.c.env
+    let full = match q.type_target(n) {
+        Some(TStruct(i)) => env.structs[i].name,
+        Some(TEnum(i)) => {
+            for v in 0..env.enums[i].variants.len() {
+                add(mut out, mut seen, env.enums[i].variants[v].0, K_MEMBER, q.variant_text(i, v))
+            }
+            env.enums[i].name
+        }
+        Some(TBuiltin(b)) => b,
+        _ => return out,
+    }
+    for i in 0..env.fns.len() {
+        let f = env.fns[i]
+        let mine = match f.owner {
+            Some(Con(o, _)) => o == full,
+            _ => false,
+        }
+        if mine and q.can_see(i) { add(mut out, mut seen, q.c.prog.fns[i].name, if f.self_kind == NoSelf { K_FUNCTION } else { K_METHOD }, sig(q, i)) }
+    }
+    out
+}
+
+// What can follow `module.`: its public functions, constants and types.
+pub fn module_members(q: Query, m: Str) -> List[json.Json] {
+    var out: List[json.Json] = []
+    var seen: Map[Str, Bool] = [:]
+    let env = q.c.env
+    let pre = m + "."
+    for i in 0..env.fns.len() {
+        let f = env.fns[i]
+        match f.name.strip_prefix(pre) {
+            Some(rest) if f.owner.is_none() and f.public and rest.find(".").is_none() => add(mut out, mut seen, rest, q.fn_kind(i), sig(q, i)),
+            _ => {}
+        }
+    }
+    for s in env.structs {
+        match s.name.strip_prefix(pre) {
+            Some(rest) if s.public => add(mut out, mut seen, rest, K_STRUCT, "struct " + s.name),
+            _ => {}
+        }
+    }
+    for e in env.enums {
+        match e.name.strip_prefix(pre) {
+            Some(rest) if e.public => add(mut out, mut seen, rest, K_ENUM, "enum " + e.name),
+            _ => {}
+        }
+    }
+    out
+}
+
+// Completion after `r.` when `r` names an imported module or a type.
+fn named_receiver(q: Query, r: Str) -> Option[List[json.Json]] {
+    if q.c.env.imports[1].contains(r) { return Some(module_members(q, r)) }
+    if ckast.upper(r) and q.type_target(r).is_some() { return Some(type_members(q, r)) }
+    None
+}
+
+// The members of the type of the last use of local `r` before `at`.
+fn last_use(q: Query, r: Str, at: (Int, Int)) -> List[json.Json] {
+    var best: Option[cktypes.Ty] = None
+    for (_, n) in q.nodes {
+        match n {
+            NExpr(e) => match e.k {
+                XName(x) if x == r and lspindex.at(e.sp) < at => match q.c.types.get(e.id) {
+                    Some(t) => best = Some(t),
+                    None => {}
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    match best {
+        Some(t) => members_of(q, t),
+        None => [],
+    }
+}
+
+// Completion after the `.` at byte offset `dot` of the buffer.
+pub fn complete_member(q: Query, dot: Int) -> List[json.Json] {
+    let r = match lsppos.ident_at(q.text, dot) {
+        Some((a, b)) if b == dot and (a == 0 or q.text.byte(a - 1) != '.') => q.text.slice(a, b),
+        _ => "",
+    }
+    if r != "" {
+        match named_receiver(q, r) {
+            Some(items) => return items,
+            None => {}
+        }
+    }
+    // the receiver of `recv.member` written at this `.`
+    let at = lsppos.line_col(q.starts, dot)
+    for (_, n) in q.nodes {
+        match n {
+            NExpr(e) if lspindex.at(e.sp) == at => match e.k {
+                XField(x, _) | XMethod(x, _, _) => match q.c.types.get(x.id) {
+                    Some(t) => return members_of(q, t),
+                    None => {}
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    if r == "" { [] } else { last_use(q, r, at) }
+}
+
+// Completion after `r.` from an older analysis of the buffer (positions may have moved).
+pub fn complete_after_name(q: Query, r: Str) -> List[json.Json] {
+    match named_receiver(q, r) {
+        Some(items) => items,
+        None => last_use(q, r, (1_000_000_000, 0)),
+    }
+}
+
+// Completion of a name at byte offset `at`: locals in scope, functions,
+// constants, types, variants, imported modules and keywords.
+pub fn complete_name(q: Query, at: Int) -> List[json.Json] {
+    var out: List[json.Json] = []
+    var seen: Map[Str, Bool] = [:]
+    let env = q.c.env
+    let prog = q.c.prog
+    let pos = lsppos.line_col(q.starts, at)
+    match lspindex.fn_at(prog, 1, pos, q.br) {
+        Some(fi) => {
+            let bs = lspindex.visible(prog.fns[fi], pos, q.br, q.text)
+            var i = bs.len() - 1
+            while i >= 0 {
+                let b = bs[i]
+                let ty = if b.pat >= 0 {
+                    q.c.types.get(b.pat)
+                } else if b.param >= 0 {
+                    env.fns[fi].params.filter(fn(p) => p.0 == b.name).map(fn(p) => p.1).first()
+                } else {
+                    None
+                }
+                add(mut out, mut seen, b.name, K_VARIABLE, match ty {
+                    Some(t) => show(t),
+                    None => "",
+                })
+                i -= 1
+            }
+        }
+        None => {}
+    }
+    for i in 0..env.fns.len() {
+        let f = env.fns[i]
+        let file = f.sp.file
+        if f.owner.is_some() or not (file == 1 or file == 0) { continue }
+        if file == 0 and env.fn_ix.contains("<main>." + f.name) { continue }
+        add(mut out, mut seen, plain(f.name), q.fn_kind(i), sig(q, i))
+    }
+    for i in 0..env.structs.len() {
+        let s = env.structs[i]
+        if s.file == 1 or (s.file == 0 and not env.struct_ix.contains("<main>." + s.name)) { add(mut out, mut seen, plain(s.name), K_STRUCT, q.struct_text(i)) }
+    }
+    for i in 0..env.enums.len() {
+        let e = env.enums[i]
+        let mine = e.file == 1 or (e.file == 0 and not env.enum_ix.contains("<main>." + e.name))
+        if mine { add(mut out, mut seen, plain(e.name), K_ENUM, q.enum_text(i)) }
+        let imported = e.public and e.file < prog.modules.len() and env.imports[1].contains(prog.modules[e.file])
+        if mine or imported {
+            for v in 0..e.variants.len() { add(mut out, mut seen, e.variants[v].0, K_MEMBER, q.variant_text(i, v) + "  // " + plain(e.name)) }
+        }
+    }
+    for b in ["Int", "Float", "Bool", "Str", "Unit", "List", "Map", "Console", "Fs", "Clock", "Net", "Proc", "Listener", "Conn", "Poller"] {
+        add(mut out, mut seen, b, K_CLASS, "builtin type")
+    }
+    for m in env.imports[1] { add(mut out, mut seen, m, K_MODULE, "module") }
+    for k in lexer.keywords() { add(mut out, mut seen, k, K_KEYWORD, "keyword") }
+    out
+}

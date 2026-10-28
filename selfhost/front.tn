@@ -48,16 +48,50 @@ pub fn join(dir: Str, name: Str) -> Str {
     if dir == "" { name } else if dir.ends_with("/") { dir + name } else { dir + "/" + name }
 }
 
-// Load the program: prelude, the main file, then every imported module
-// (from the importing file's directory, else the standard library), and check it.
+// Load the program (the prelude, the main file, then every imported module)
+// and check it.
 pub fn load(fs: Fs, root: Str, path: Str) -> Result[Front, Failure] {
+    let (files, parsed, modules) = gather(fs, root, path, None)?
+    match checker.check(ckast.convert(parsed, modules)) {
+        Ok(c) => Ok(Front { files, checked: c }),
+        Err(d) => Err(diag(files, d.sp.file, d.sp.line, d.sp.col, d.msg)),
+    }
+}
+
+// An editor buffer, analysed for the language server (selfhost/tenonlsp.tn):
+// as `load`, but the main file's text is `src` (imported modules are read
+// from disk), and `checked` holds the side tables of every function that
+// could be checked even when `failure` (the diagnostic `load` reports) is
+// set; it is None only if the declarations themselves fail.
+pub struct Analysis { pub files: List[(Str, Str)], pub failure: Option[Failure], pub checked: Option[checker.Checked] }
+
+pub fn analyze(fs: Fs, root: Str, path: Str, src: Str) -> Analysis {
+    let (files, parsed, modules) = match gather(fs, root, path, Some(src)) {
+        Ok(x) => x,
+        Err(f) => return Analysis { files: [(path, src)], failure: Some(f), checked: None },
+    }
+    let (d, checked) = checker.check_lenient(ckast.convert(parsed, modules))
+    let failure = match d {
+        Some(x) => Some(diag(files, x.sp.file, x.sp.line, x.sp.col, x.msg)),
+        None => None,
+    }
+    Analysis { files, failure, checked }
+}
+
+// Read and parse the prelude, the main file (its text `src`, if given) and
+// every imported module (from the importing file's directory, else the
+// standard library): the files, their trees and the module name of each.
+fn gather(fs: Fs, root: Str, path: Str, given: Option[Str]) -> Result[(List[(Str, Str)], List[parser.Program], List[Str]), Failure] {
     let prelude = match fs.read(join(root, "lib/prelude.tn")) {
         Ok(s) => s,
         Err(e) => return Err(io_fail("cannot read the prelude: {e}")),
     }
-    let src = match fs.read(path) {
-        Ok(s) => s,
-        Err(e) => return Err(io_fail("cannot read {path}: {e}")),
+    let src = match given {
+        Some(t) => t,
+        None => match fs.read(path) {
+            Ok(s) => s,
+            Err(e) => return Err(io_fail("cannot read {path}: {e}")),
+        },
     }
     var files: List[(Str, Str)] = [("<prelude>", prelude), (path, src)]
     var modules = ["", ""]
@@ -95,8 +129,5 @@ pub fn load(fs: Fs, root: Str, path: Str) -> Result[Front, Failure] {
         }
         i += 1
     }
-    match checker.check(ckast.convert(parsed, modules)) {
-        Ok(c) => Ok(Front { files, checked: c }),
-        Err(d) => Err(diag(files, d.sp.file, d.sp.line, d.sp.col, d.msg)),
-    }
+    Ok((files, parsed, modules))
 }

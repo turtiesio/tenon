@@ -1,0 +1,124 @@
+// Tests of selfhost/json.tn (run by tools/lsp_test.py): prints `json: N ok`
+// or the first failing case and exits 1.
+import json
+
+fn ok_cases() -> List[(Str, Str)] {
+    [
+        ("null", "null"),
+        (" \t\r\n true \n", "true"),
+        ("false", "false"),
+        ("0", "0"),
+        ("-0", "0"),
+        ("123", "123"),
+        ("-9223372036854775808", "-9223372036854775808"),
+        ("9223372036854775808", "9.223372036854776e18"),
+        ("1.5", "1.5"),
+        ("-2.5e3", "-2500.0"),
+        ("1E2", "100.0"),
+        ("1e-7", "1e-7"),
+        ("\"\"", "\"\""),
+        ("\"a\\\"b\\\\c\\/d\"", "\"a\\\"b\\\\c/d\""),
+        ("\"\\b\\f\\n\\r\\t\"", "\"\\u0008\\u000c\\n\\r\\t\""),
+        ("\"\\u00e9\\u20AC\"", "\"é€\""),
+        ("\"\\ud83d\\ude00\"", "\"😀\""),
+        ("\"é😀\"", "\"é😀\""),
+        ("\"\\u0000\\u001f\"", "\"\\u0000\\u001f\""),
+        ("[]", "[]"),
+        ("[ 1 , [2, []], \"x\" ]", "[1,[2,[]],\"x\"]"),
+        ("\{}", "\{}"),
+        ("\{ \"a\" : 1, \"b\": \{\"c\": [null]} }", "\{\"a\":1,\"b\":\{\"c\":[null]}}"),
+        ("\{\"k\": 1, \"k\": 2}", "\{\"k\":1,\"k\":2}"),
+    ]
+}
+
+fn bad_cases() -> List[(Str, Int)] {
+    [
+        ("", 0),
+        ("   ", 3),
+        ("nul", 0),
+        ("True", 0),
+        ("01", 1),
+        ("-", 1),
+        ("+1", 0),
+        ("1.", 2),
+        (".5", 0),
+        ("1e", 2),
+        ("1e+", 3),
+        ("NaN", 0),
+        ("[1,]", 3),
+        ("[1 2]", 3),
+        ("\{\"a\":1,}", 7),
+        ("\{a:1}", 1),
+        ("\{\"a\" 1}", 5),
+        ("'a'", 0),
+        ("\"abc", 4),
+        ("\"a\nb\"", 2),
+        ("\"\\x\"", 2),
+        ("\"\\u12\"", 3),
+        ("\"\\ud83d\"", 7),
+        ("\"\\ud83dx\"", 7),
+        ("\"\\ude00\"", 7),
+        ("\"\\ud83d\\u0041\"", 7),
+        ("1 2", 2),
+        ("[1] x", 4),
+        ("// c\n1", 0),
+        ("[[[[[[[[[[", 10),
+    ]
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var n = 0
+    for (src, want) in ok_cases() {
+        match json.parse(src) {
+            Ok(v) => {
+                let got = json.encode(v)
+                if got != want {
+                    con.println("json: {src.to_str()} printed {got.to_str()}, want {want.to_str()}")
+                    return 1
+                }
+                // the printed form reads back as the same value
+                if json.parse(got) != Ok(v) {
+                    con.println("json: {got.to_str()} does not read back")
+                    return 1
+                }
+            }
+            Err(e) => {
+                con.println("json: {src.to_str()} rejected at {e.pos}: {e.msg}")
+                return 1
+            }
+        }
+        n += 1
+    }
+    for (src, at) in bad_cases() {
+        match json.parse(src) {
+            Ok(v) => {
+                con.println("json: {src.to_str()} accepted as {json.encode(v)}")
+                return 1
+            }
+            Err(e) if e.pos != at => {
+                con.println("json: {src.to_str()} rejected at {e.pos} ({e.msg}), want {at}")
+                return 1
+            }
+            Err(_) => {}
+        }
+        n += 1
+    }
+    // nesting is limited (no stack overflow on hostile input)
+    let deep = "[".repeat(600) + "]".repeat(600)
+    let Err(e) = json.parse(deep) else {
+        con.println("json: 600 nested arrays accepted")
+        return 1
+    }
+    if e.msg != "nested too deeply" { return 1 }
+    let ok = "[".repeat(400) + "]".repeat(400)
+    if json.parse(ok).is_err() { return 1 }
+    // access helpers
+    let Ok(v) = json.parse("\{\"a\": \{\"b\": [1, \"x\"]}, \"n\": -3}") else { return 1 }
+    if v.at(["a", "b"]).unwrap().items().len() != 2 or v.get("n").unwrap().int() != Some(-3) { return 1 }
+    if v.at(["a", "c"]).is_some() or v.get("n").unwrap().str().is_some() { return 1 }
+    if json.quote("a\tb\"\\") != "\"a\\tb\\\"\\\\\"" { return 1 }
+    n += 3
+    con.println("json: {n} ok")
+    0
+}

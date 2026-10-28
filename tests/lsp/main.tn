@@ -1,0 +1,25 @@
+// Fixture of tools/lsp_test.py (hover, definition, completion): positions
+// in the test refer to this text, so edit both together.
+import shapes
+
+struct Point { x: Int, y: Int }
+
+enum Dir { North, South }
+
+fn Point.norm1(self) -> Int { self.x.abs() + self.y.abs() }
+
+fn total(ps: List[Point]) -> Int {
+    var sum = 0
+    for p in ps { sum += p.norm1() }
+    sum
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let pt = Point { x: 3, y: -4 }
+    let area = shapes.area(Square(2))
+    let dir = North
+    con.println("{total([pt])} {area} {dir}")
+    let words = "a b".split(" ")
+    con.println(words.join(","))
+}

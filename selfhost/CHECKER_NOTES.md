@@ -8,6 +8,10 @@ as `PATH:LINE:COL: error: MESSAGE`; `tenonc check FILE [ROOT]`
 (selfhost/tenonc.tn) is the same. `tools/selfhost.sh` compares it with
 `tenon check` on every `.tn` file in the corpus. `checker.check` returns the
 side tables the C backend uses (`Checked`; see EMITTER_NOTES.md).
+`checker.check_lenient` (used by the language server, selfhost/tenonlsp.tn,
+through `front.analyze`) reports the same first diagnostic but goes on
+checking the other functions after one fails, so the side tables cover the
+whole program while it is being edited.
 
 ## Modules
 

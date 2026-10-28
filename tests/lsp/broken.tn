@@ -1,0 +1,7 @@
+// Fixture of tools/lsp_test.py: the server reports what `tenon check` reports.
+fn label(n: Int) -> Str { "n = {n}" }
+
+fn main(sys: Sys) {
+    let count: Int = label(2)
+    sys.console.println("{count}")
+}
