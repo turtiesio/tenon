@@ -173,6 +173,12 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **History rewritten (owner request):** every AI Co-Authored-By trailer was
+  removed from main's 181 commits; authors, dates and file contents are unchanged,
+  except that commit IDs cited in Markdown files and messages now point to the new
+  commits. governance/commit-map-2026-10-28.txt maps each old ID to its new one.
+  CI's required `trailers` check fails on any such trailer from now on.
+
 - **Authority belongs to Tenon, not the host (milestone 3):** GitHub Actions is
   only one mechanism that enforces the repository's safety rules; it is not the
   source of truth. A Tenon system will own the queue, governance, evidence and
