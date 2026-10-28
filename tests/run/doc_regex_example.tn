@@ -1,4 +1,4 @@
-// The regex example of docs/reference.md (§13), verbatim: it must match.
+// The regex example of docs/library.md ("Standard library"), verbatim: it must match.
 import regex
 fn main(sys: Sys) {
     let con = sys.console

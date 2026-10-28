@@ -1,6 +1,6 @@
 // std journal keeps its own line format (BODY #CHECKSUM, "\n"-terminated): a
 // record line that gained a "\r" no longer checks and is archived and dropped,
-// even though Str.lines() now removes a trailing "\r" (docs/reference.md §13).
+// even though Str.lines() now removes a trailing "\r" (docs/library.md).
 import journal
 
 fn main(sys: Sys) -> Result[Unit, IoError] {

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Doc-snippet check: every whole program in the docs must compile.
 
-Extracts each ```tenon block of docs/reference.md and docs/quickstart.md that
-contains `fn main`, writes it to a temporary file and runs `tenon check` on
+Extracts each ```tenon block of the user docs (README.md and docs/*.md:
+reference, quickstart, library, tools, packages) that contains `fn main`, writes it to a temporary file and runs `tenon check` on
 it ($TENON, default target/tenon: the self-hosted compiler, so the docs may
 show v2 features such as traits). Blocks without `fn main` are fragments and
 are skipped. Std modules (`import regex`) are found by the compiler as usual.
@@ -15,6 +15,7 @@ A fence may be indented (inside a list item); the indentation is removed.
 Reports each failing block with its line number in the doc; exit status 1 if
 any block fails. Usage: tools/doctest.py [DOC...]
 """
+import glob
 import os
 import re
 import subprocess
@@ -26,7 +27,7 @@ import corpus
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TENON = corpus.TENON
-DOCS = ["docs/reference.md", "docs/quickstart.md"]
+DOCS = ["README.md"] + sorted(os.path.relpath(p, ROOT) for p in glob.glob(os.path.join(ROOT, "docs", "*.md")))
 FENCE = re.compile(r"^(\s*)```(\S*)\s*$")
 
 
