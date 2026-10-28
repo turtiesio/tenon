@@ -1,7 +1,8 @@
 # Tenon quick start for Python and TypeScript programmers
 
 One page, to read before docs/reference.md. Every snippet comes from
-tests/run/quickstart.tn, which the test suite runs on both backends.
+tests/run/quickstart.tn (the trait rows from tests/v2/run/quickstart_traits.tn),
+which the test suite runs on both backends.
 
 ## A whole program
 
@@ -95,7 +96,11 @@ fn main(sys: Sys) -> Int {
 | `set()`, `heapq` | `var s: Set[Int] = Set.new()`, `Heap` |
 | `None` / `null` | `Option[T]`: `Some(x)` / `None` |
 | exceptions | `Result[T, E]`: `Ok(x)` / `Err(e)`; `expr?` returns the `Err` early |
-| `class P: ...` / `interface` | `struct P { x: Int }`; methods `fn P.norm(self) -> Int` |
+| `class P: ...` | `struct P { x: Int }`; methods `fn P.norm(self) -> Int` |
+| `class Shape(ABC)` with `@abstractmethod def area(self)`, `typing.Protocol` / `interface Shape { area(): number }` | `trait Shape { fn area(self) -> Int }`, then `impl Shape for Circle { fn area(self) -> Int { ... } }` (§17 of the reference) |
+| `def total(xs: list[T])` with `T` bound to Shape / `function total<T extends Shape>(xs: T[])` | `fn total[T: Shape](xs: List[T]) -> Int`; several bounds `T: Shape + Show` |
+| `list[Shape]` of different classes / `Shape[]` | `let shapes: List[dyn Shape] = [dyn Shape(c), dyn Shape(Circle { r: 2 })]` (the conversion is written) |
+| `__str__` / `toString()` | `impl Show for Pt { fn to_str(self) -> Str { "Pt({self.x})" } }`; used by `"{p}"` everywhere |
 | `P(x=x, y=0)` / `{ x, y: 0 }` | `P { x, y: 0 }` (`x` alone means `x: x`) |
 | method that mutates | `fn P.bump(mut self)`; call it on a `var` |
 | tagged union / `match` | `enum Cmd { Add(Str, Int), List }` and exhaustive `match` |

@@ -366,3 +366,34 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   own directory. The language server uses the same resolver.
 - tools/pkg_test.sh (47 checks, ~1.5 s, local `file://` repositories) in
   ./check.
+
+## 2026-10-28 — traits (tenon.md §5, milestone 2)
+
+- **Syntax** (chosen to match the existing generics): `trait Name { fn m(self, ...) -> T; fn d(self) -> T { default } }`,
+  `impl Name for Type { ... }`, `impl[T: Show] Name for List[T]` (impl type
+  parameters like `fn f[T]`), bounds `fn f[T: A + B](x: T)`, the type
+  `dyn Name` and the explicit conversion `dyn Name(x)` (a call-like form: no
+  new operator or precedence, and it reads as a constructor; `x as dyn Name`
+  was the alternative). docs/reference.md §17.
+- **Semantics:** bounds monomorphized in C and instantiated per type in the
+  interpreter (only functions bounded by a non-derived trait, and default
+  methods); `dyn` calls through a static vtable per (trait, type); object
+  safety (`self` by value, not generic, no `Self`); coherence (one impl per
+  trait and type, overlapping generic impls refused) and the orphan rule (in
+  the trait's or the type's module). Eq, Ord, Hash and Show are prelude
+  traits satisfied structurally, as before; only Show can be implemented (it
+  overrides formatting everywhere but `encode`); user Eq/Ord/Hash are refused
+  in v1 so that map keys and sorting cannot differ between the backends.
+  `dyn` cannot hold linear or unique values; an impl finishes a linear value
+  through `self` only in the type's module.
+- **The v2 split:** the bootstrap is frozen and cannot parse traits, so
+  tenonc-only files live under `v2/` directories: lib/v2/prelude.tn
+  (appended to the prelude by tenonc), tests/v2/{run,reject,lex,parse,fmt,lsp}.
+  tools/selfhost.sh, interp_diff.py and checkfuzz.py skip them; fixpoint.sh
+  includes them (stage1 = stage2); `tenonc test tests/v2` runs both
+  backends and checks lex/parse goldens; fmt_check compares `tenonc ast`;
+  the grammar check reads selfhost/lexer.tn's keywords; doctest uses tenonc.
+- **Tests:** tests/v2/run (10 programs: impls and defaults, bounds,
+  generic impls, dyn in lists/maps/structs/enums, Show overrides, modules,
+  linear and `mut`, corners), 38 reject tests (one per diagnostic), lex and
+  parse goldens, a formatter golden, LSP hover/definition/completion.

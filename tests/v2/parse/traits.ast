@@ -1,0 +1,4 @@
+(fn total[T: Shape + Eq] (xs List[T]) (d dyn Shape) -> List[dyn geo.Shape] (block (@20:5 expr (@20:5 list (@20:6 dyn Shape (@20:18 index (@20:16 name xs) (@20:19 int 0))) (@20:24 dyn geo.Shape (@20:38 new Circle (r (@20:50 int 1))))))))
+(trait pub Shape (fn area self -> Int) (fn scale mut-self (k Int)) (fn name self -> Str (block (@7:28 expr (@7:28 str "shape")))) (fn pair[U] self (u U) -> (Self, U)))
+(trait Empty)
+(impl[T: Show + geo.Shape, U] Shape for Pair[T, U] (fn area self -> Int (block (@14:28 expr (@14:28 int 0)))) (fn scale mut-self (k Int) (block)) (fn pair[V] self (v V) -> (Pair[T, U], V) (block (@16:49 expr (@16:49 tuple (@16:50 name self) (@16:56 name v))))))

@@ -1,0 +1,4 @@
+// impl methods are named without their type
+impl Shape for Circle {
+    fn Circle.area(self) -> Int { 0 }
+}

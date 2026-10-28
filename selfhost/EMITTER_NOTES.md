@@ -89,3 +89,27 @@ OUT.c -lm`, as the bootstrap does, with the same kind of build cache
 Stage A (this port) is complete. Stage B (the interpreter, the test runner,
 `tokens`/`ast`, the build cache, the gates switched to tenonc, the frozen
 bootstrap) is described in selfhost/SELFHOST.md.
+
+## Traits (v2: tenonc only; selfhost/emittrait.tn)
+
+None of this code runs for a program without traits, so the C of the whole
+v1 corpus stays byte-identical to the bootstrap's (tools/selfhost.sh).
+
+- **Bounds** are monomorphized: an `RTrait` call is resolved in each
+  function instance by substituting the receiver's type
+  (`ckenv.Env.method_for`: the impl's method, or the default with
+  `Self` = the type) and emitted as the direct call of that instance.
+- **`dyn T`** is `struct { tn_env *o; const void *vt; }`. `o` is a box
+  `struct dboxN { tn_env h; V v; }` (the closure environment header, so
+  `rc` and `drop` work as for closures), one box type per value type; `vt`
+  points to `static const struct tN_vt vtK`, one per (trait, type): the
+  box's formatter, then a wrapper per trait method (derived traits' methods
+  are not in tables) that calls the impl's instance on the boxed value. The
+  per-type helpers of a dyn type retain/release the box, format through the
+  table, and stub eq/cmp/hash/dec (the checker forbids them).
+- **Show impls**: when a declared type gets its C name (`Em.cty`), its Show
+  impl's `to_str` instance is queued (`note_type`); the type's formatter
+  starts with `if (!(mode & TN_FULL))` calling it, so every place that
+  formats (interpolation, lists, maps, traps, `main`'s error) uses it and
+  `encode` (TN_FULL) does not. Its prototype goes with the helper
+  prototypes, which come before the functions'.

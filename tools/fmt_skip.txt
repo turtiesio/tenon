@@ -6,6 +6,9 @@ tests/redteam/*    # repro cases kept byte for byte as reported
 tests/lex/*        # malformed inputs for the lexer cross-check
 tests/parse/*      # malformed inputs for the parser cross-check
 tests/fmt/*.in.tn  # formatter inputs, unformatted on purpose
+tests/v2/fmt/*.in.tn  # (the same, for v2 syntax)
+tests/v2/lex/*       # lexer golden tests (tenonc test tests/v2)
+tests/v2/parse/*     # parser golden tests, mostly malformed
 # guarded tests (governance/guarded.txt) whose whole text is the expectation:
 # reformatting them would need an approval (tools/approvals.py)
 tests/run/trap_*.tn

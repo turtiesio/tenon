@@ -1,0 +1,4 @@
+// only methods inside a trait
+trait Shape {
+    let x = 1
+}

@@ -2,14 +2,19 @@
 # Evidence (not part of check --fast): compile every run test and program with
 # AddressSanitizer + UndefinedBehaviorSanitizer and require the same output as
 # the golden file. Catches memory errors in generated C and the runtime.
+# tests/v2/run (traits: dyn boxes, vtables, Show impls) is compiled by tenonc
+# ($TENONC, default target/tenonc), the rest by the bootstrap.
 set -u
 cd "$(dirname "$0")/.."
-T=$PWD/target/release/tenon
+B=$PWD/target/release/tenon
+C=${TENONC:-$PWD/target/tenonc}
+export TENON_ROOT=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 n=0; fail=0
-for tn in tests/run/*.tn; do
+for tn in tests/run/*.tn tests/v2/run/*.tn; do
   head -1 "$tn" | grep -q '^// module' && continue
   name=$(basename "$tn" .tn); dir=$(dirname "$tn")
+  case "$tn" in */v2/*) T=$C ;; *) T=$B ;; esac
   n=$((n+1))
   ( cd "$dir" && TENON_KEEP_C=1 "$T" build "$name.tn" -o "$tmp/$name" -O0 ) > /dev/null 2>&1 || { echo "FAIL $name: build"; fail=$((fail+1)); continue; }
   mv "$tmp/$name.c" "$tmp/$name.c" 2>/dev/null || true

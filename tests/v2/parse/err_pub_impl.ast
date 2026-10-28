@@ -1,0 +1,1 @@
+error 2:5 an impl has no visibility: remove 'pub'

@@ -1,0 +1,1 @@
+error 3:8 a method of a trait or impl is named without a type: remove 'Circle.'

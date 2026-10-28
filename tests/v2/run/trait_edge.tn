@@ -1,0 +1,90 @@
+// Corners: trait calls inside closures of bounded functions, recursion
+// through bounded functions, a default method calling defaults and required
+// methods, bounded function values, dyn values in Option and enums and
+// captured by closures, dyn passed back through a generic function, impls
+// for tuples and functions, a method call on a field of a type parameter's
+// value, Self in an impl's body.
+trait Node {
+    fn value(self) -> Int
+    fn kids(self) -> List[dyn Node] { [] }
+    fn sum(self) -> Int {
+        var t = self.value()
+        for k in self.kids() { t += k.sum() }
+        t
+    }
+    fn depth(self) -> Int {
+        var d = 0
+        for k in self.kids() { d = d.max(k.depth()) }
+        d + 1
+    }
+}
+
+struct Leaf { v: Int }
+
+struct Branch { v: Int, children: List[dyn Node] }
+
+enum Holder { Empty, Has(dyn Node) }
+
+impl Node for Leaf {
+    fn value(self) -> Int { self.v }
+}
+
+impl Node for Branch {
+    fn value(self) -> Int { self.v }
+    fn kids(self) -> List[dyn Node] { self.children }
+}
+
+trait Score {
+    fn score(self) -> Int
+}
+
+impl Score for (Int, Int) {
+    fn score(self) -> Int { self.0 * 10 + self.1 }
+}
+
+impl Score for fn(Int) -> Int {
+    fn score(self) -> Int { self(4) }
+}
+
+impl Score for Int {
+    fn score(self) -> Int {
+        let me: Self = self
+        me * 2
+    }
+}
+
+fn scores[T: Score](xs: List[T]) -> List[Int] { xs.map(fn(x) => x.score()) }
+
+fn rec_sum[T: Score](xs: List[T], i: Int) -> Int { if i >= xs.len() { 0 } else { xs[i].score() + rec_sum(xs, i + 1) } }
+
+fn apply_all[T: Score](xs: List[T]) -> Int {
+    let f = rec_sum
+    f(xs, 0)
+}
+
+fn pick[T: Node](x: T) -> Option[dyn Node] { if x.value() > 0 { Some(dyn Node(x)) } else { None } }
+
+fn same[T](x: T) -> T { x }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let tree = Branch { v: 1, children: [dyn Node(Leaf { v: 2 }), dyn Node(Branch { v: 3, children: [dyn Node(Leaf { v: 4 })] })] }
+    con.println("{tree.sum()} {tree.depth()} {Leaf { v: 9 }.depth()}")
+    let d = dyn Node(tree)
+    let get = fn() => d.sum()
+    con.println("{get()} {same(d).value()}")
+    match pick(Leaf { v: 5 }) {
+        Some(n) => con.println("some {n.sum()}"),
+        None => con.println("none"),
+    }
+    con.println("{pick(Leaf { v: 0 }).is_none()}")
+    let h = Has(d)
+    match h {
+        Has(n) => con.println("has {n.depth()}"),
+        Empty => {}
+    }
+    let pairs = [(1, 2), (3, 4)]
+    con.println("{scores(pairs)} {rec_sum(pairs, 0)} {apply_all([5, 6])}")
+    let fs: List[fn(Int) -> Int] = [fn(x) => x * x, fn(x) => x + 1]
+    con.println("{scores(fs)}")
+}

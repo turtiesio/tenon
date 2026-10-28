@@ -1,0 +1,28 @@
+// Fixture of tools/lsp_test.py (traits: hover, definition, completion):
+// positions in the test refer to this text, so edit both together.
+
+// Things with an area.
+trait Shape {
+    // The area, rounded down.
+    fn area(self) -> Int
+    fn label(self) -> Str { "area {self.area()}" }
+}
+
+struct Circle { r: Int }
+
+impl Shape for Circle {
+    fn area(self) -> Int { 3 * self.r * self.r }
+}
+
+fn biggest[T: Shape + Show](xs: List[T]) -> Int {
+    var b = 0
+    for x in xs { b = b.max(x.area()) }
+    b
+}
+
+fn main(sys: Sys) {
+    let c = Circle { r: 2 }
+    let d = dyn Shape(c)
+    let all: List[dyn Shape] = [d]
+    sys.console.println("{c.area()} {d.area()} {c.label()} {biggest([c])} {all.len()}")
+}

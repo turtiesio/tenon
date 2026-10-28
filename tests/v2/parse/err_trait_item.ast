@@ -1,0 +1,1 @@
+error 3:5 expected 'fn' (a method of the trait), found 'let'

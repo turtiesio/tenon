@@ -1,0 +1,21 @@
+// Every trait form: a public trait with a default and a generic method, an
+// impl with bounded type parameters for a generic type, bounds with several
+// traits (one module-qualified), dyn types and dyn conversions.
+pub trait Shape {
+    fn area(self) -> Int
+    fn scale(mut self, k: Int)
+    fn name(self) -> Str { "shape" }
+    fn pair[U](self, u: U) -> (Self, U)
+}
+
+trait Empty {}
+
+impl[T: Show + geo.Shape, U] Shape for Pair[T, U] {
+    fn area(self) -> Int { 0 }
+    fn scale(mut self, k: Int) {}
+    fn pair[V](self, v: V) -> (Pair[T, U], V) { (self, v) }
+}
+
+fn total[T: Shape + Eq](xs: List[T], d: dyn Shape) -> List[dyn geo.Shape] {
+    [dyn Shape(xs[0]), dyn geo.Shape(Circle { r: 1 })]
+}

@@ -96,3 +96,39 @@ expressions, declarations, variants, parameters and imports.
 
 None on the corpus. Files skipped by `tools/selfhost.sh` would be listed here
 with a minimal reproduction.
+
+## Traits (v2: tenonc only)
+
+Traits exist only in the self-hosted compiler (docs/reference.md §17); the
+bootstrap cannot parse them, so they are tested by `tenonc test tests/v2`
+and never cross-checked (tools/selfhost.sh skips every `v2/` directory).
+
+- **Front end.** parser.tn: `trait`, `impl[..] T for Type`, bounds in
+  `[T: A + B]` (`FnDecl.bounds`), `dyn Name` types (a `Named("dyn Name")`)
+  and `dyn Name(x)` (`EDyn`). ckast.convert turns every impl method into a
+  function (`Origin` `OImpl(i)`: owner the impl's type, type parameters the
+  impl's then its own, bounds the impl's then its own) and every default
+  body into a function generic in `Self` bounded by its trait
+  (`ODefault(t, m)`), appended after the file's functions. lib/v2/prelude.tn
+  (Eq, Ord, Hash, Show) is appended to the prelude's text by front.gather.
+- **Declarations** (ckenv): traits are a namespace of their own
+  (`trait_ix`, internal names like types'), registered before the types (a
+  field may be `dyn T`), their methods' signatures lowered after them;
+  `declare_impls` checks each impl (the trait's methods and signatures,
+  missing and extra methods, the orphan rule, overlap with every earlier
+  impl by unifying the targets with their parameters renamed apart) and
+  records `ImplInfo.fns`: per trait method the function, the impl's or the
+  default. Impl and default functions are not in `fn_ix`, so they never
+  clash with a type's own methods (which win at a call).
+- **Bodies** (ckinfer): a method call on a type parameter looks in its
+  bounds, on a `dyn` value in its trait (`RTrait(trait, method, receiver
+  type, method type args)`: resolved per instance by the backends); on any
+  other type, when the type has no method of the name, in the impls whose
+  target unifies with the receiver (on a copy of the substitution: exactly
+  one may), giving an ordinary `RMethod` of the impl's function. Bounds are
+  checked after the body (`pbounds`), when the types are known:
+  `ckenv.implements` (a type parameter has the bounds it declares; derived
+  traits structurally; otherwise an impl whose target matches, and its
+  bounds recursively). `cklin`: a trait call with `self` consumes its
+  receiver; `dyn` cannot hold linear or unique values; an impl method's
+  `self` is exempt only in the type's own module.

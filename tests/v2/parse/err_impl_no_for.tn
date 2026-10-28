@@ -1,0 +1,2 @@
+// an impl names its trait, then `for`, then the type
+impl Show Point {}

@@ -60,6 +60,15 @@ Design:
   rules are the C runtime's, which agree with the bootstrap's. The program's
   exit status (also 70 and 72) is passed on with `Proc.exit`.
 
+Traits (v2, docs/reference.md §17): functions whose type parameters have a
+bound other than the derived traits, and traits' default methods, need their
+type arguments, so icode lowers them once per instantiation, as the C
+backend does (`Cx.target`, instances after the program's functions); every
+other function is lowered once. A `dyn` value is `K_DYN` (the value and a
+vtable of `Code.vts`: per trait method the function to call). Show impls:
+ieval.prerender replaces each part of a value whose type has one by its
+text (`K_RAW`) before formatting; a program without Show impls skips it.
+
 Known differences from `tenon run` (none is exercised by the corpus):
 
 - A dropped `Listener` or `Conn` is closed when the program ends, not when the
@@ -69,6 +78,9 @@ Known differences from `tenon run` (none is exercised by the corpus):
   U+FFFD.
 - At most 4 `Poller`s per program.
 - A map used as a key of another map loses its insertion order.
+- (v2) A missing map key reached through a place (`m[k] += 1`) is shown
+  without the key type's Show impl; `m[k]` as a value uses it, as C does
+  everywhere.
 
 Verification:
 

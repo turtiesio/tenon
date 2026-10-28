@@ -1,5 +1,6 @@
 # Tests that guard a language rule, a capability or a trap guarantee.
 tests/reject/*.tn
+tests/v2/reject/*.tn
 tests/run/trap_*.tn
 tests/run/trap_*.out
 tests/run/io_fs.tn

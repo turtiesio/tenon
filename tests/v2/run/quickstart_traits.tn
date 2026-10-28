@@ -1,0 +1,24 @@
+// The trait rows of docs/quickstart.md: every snippet there is taken from here.
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+struct Pt { x: Int }
+
+impl Shape for Circle {
+    fn area(self) -> Int { 3 * self.r * self.r }
+}
+
+impl Show for Pt {
+    fn to_str(self) -> Str { "Pt({self.x})" }
+}
+
+fn total[T: Shape](xs: List[T]) -> Int { xs.map(fn(x) => x.area()).sum() }
+
+fn main(sys: Sys) {
+    let c = Circle { r: 1 }
+    let shapes: List[dyn Shape] = [dyn Shape(c), dyn Shape(Circle { r: 2 })]
+    sys.console.println("{total([c])} {total(shapes)} {Pt { x: 1 }}")
+}

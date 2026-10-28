@@ -153,7 +153,8 @@ function such as `fn is_full(o: Option[Int]) -> Bool` instead). Details in §13.
   name, then qualify: `Shape.Circle(3)`.
 - Every type automatically supports `==`, `!=`, ordering (`<` ...; maps are
   not ordered), hashing (usable as a map key), and `to_str()`. Functions and
-  capabilities cannot be compared.
+  capabilities cannot be compared. These are the derived traits Eq, Ord,
+  Hash and Show (§17), usable as bounds; `impl Show` changes a type's text.
 - Derived ordering: numbers numerically; `false < true`; strings by bytes
   (so `"B" < "a"`); lists and tuples lexicographically, element by element;
   structs field by field in declaration order; enums by variant declaration
@@ -967,8 +968,142 @@ must lex to the same tokens as the original (up to a `,` or `;` before a
 closing bracket) and must parse. `tools/fmt_check.sh` (run by `./check`)
 also checks that every file in the repository except those listed in
 `tools/fmt_skip.txt` is formatted, that formatting is idempotent, and that
-`tenon ast` of each file it changes is unchanged except positions.
+`tenonc ast` of each file it changes is unchanged except positions.
 
-## 17. Not yet implemented
+## 17. Traits
+
+A trait names a set of methods; an `impl` gives them for one type. Traits
+are implemented by the self-hosted compiler (`tenonc run`, `tenonc build`);
+the bootstrap `tenon` does not know them.
+
+```tenon
+trait Shape {
+    fn area(self) -> Int
+    fn name(self) -> Str { "shape" }                       // a default method
+    fn describe(self) -> Str { self.name() + " of area {self.area()}" }
+}
+
+struct Square { side: Int }
+
+struct Rect { w: Int, h: Int }
+
+impl Shape for Square {
+    fn area(self) -> Int { self.side * self.side }
+    fn name(self) -> Str { "square" }                      // replaces the default
+}
+
+impl Shape for Rect {
+    fn area(self) -> Int { self.w * self.h }
+}
+
+// T: Shape is a bound: any type with an impl of Shape
+fn total[T: Shape](xs: List[T]) -> Int {
+    var t = 0
+    for x in xs { t += x.area() }
+    t
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    con.println(Square { side: 3 }.describe())             // square of area 9
+    con.println("{total([Rect { w: 2, h: 5 }, Rect { w: 1, h: 1 }])}")   // 11
+    let shapes: List[dyn Shape] = [dyn Shape(Square { side: 2 }), dyn Shape(Rect { w: 2, h: 3 })]
+    for s in shapes { con.println("{s.name()}: {s.area()}") }   // square: 4, shape: 6
+}
+```
+
+**Declaring.** `trait Name { ... }` lists methods; each takes `self` (or
+`mut self`) first and may have a default body, which can call the trait's
+other methods. Methods may be generic (`fn pair[U](self, u: U) -> (Self, U)`).
+`Self` in a trait or impl is the implementing type. A trait may be `pub`;
+traits have no type parameters of their own, no supertraits and no
+functions without `self` (yet).
+
+**Implementing.** `impl Trait for Type { ... }` gives every method that has
+no default, with exactly the trait's signature (`Self` replaced by the
+type); a missing method, an extra one or a different signature is an error.
+Generic types get generic impls, with bounds on their parameters:
+`impl[T: Show] Describe for List[T] { ... }` (the syntax of `fn f[T: Show]`);
+a specific instantiation also works (`impl Describe for Option[Int]`). Builtin
+types (`Int`, `Str`, `List[T]`, ...), tuples and function types can have impls.
+
+**Calling.** A method of a trait implemented for a type is called like the
+type's own methods: `sq.area()`, also from other modules. If the type has its
+own method of that name, that one wins; two traits giving one type the same
+method name make the call ambiguous (an error).
+
+**Bounds.** `fn f[T: A + B](x: T)` accepts any type implementing A and B, and
+inside f the methods of A and B can be called on `x`. A call of f with a type
+that lacks an impl is rejected at the call: `type Point does not implement
+Shape (needed by bound T: Shape of total)`. A type parameter has only the
+bounds it declares, so a generic function passing its `T` on to `total`
+needs `T: Shape` itself. Generic code is compiled once per type it is used
+with (monomorphization), so a call through a bound costs what a direct call
+costs; the interpreter does the same.
+
+**`dyn` values.** `dyn Shape(x)` converts a value of any type implementing
+Shape into a value of type `dyn Shape`, so different types can share a list,
+a map or a field. The conversion is always written; a `dyn Shape` passed to
+`dyn Shape(...)` again is unchanged. Methods called on a `dyn` value are
+found at run time through a table (in C, one static vtable per trait and
+type); a `dyn Shape` also satisfies the bound `T: Shape`. Formatting a `dyn`
+value formats the value inside (`dyn Show(x)` makes a list of anything
+printable). `dyn` values are values like any other (copying shares the
+value inside), but they cannot be compared, hashed (map keys) or encoded.
+Only an object-safe trait can be used with `dyn`: its methods take `self` by
+value, are not generic and do not mention `Self`; otherwise `trait Twin
+cannot be used with 'dyn': method 'twin' mentions Self`.
+
+**Derived traits.** `Eq`, `Ord`, `Hash` and `Show` are traits of the prelude
+(lib/v2/prelude.tn) that every type satisfies structurally, exactly as `==`,
+ordering, hashing and `to_str()` always worked (§4). As bounds they say what
+a type parameter is used for: `fn largest[T: Ord](xs: List[T]) -> T`,
+`fn count[K: Hash + Eq](xs: List[K]) -> Int`. Eq: no functions,
+capabilities or `dyn` values inside; Ord: Eq and no maps; Hash (usable as a
+map key): Eq and no Float; Show: no functions or capabilities. A type that
+contains a function does not satisfy Eq: `type fn(Int) -> Int does not
+implement Eq (needed by bound T: Eq of same)`. Only Show can be implemented,
+to replace the derived text:
+
+```tenon
+struct Money { cents: Int }
+
+impl Show for Money {
+    fn to_str(self) -> Str { "${self.cents / 100}.{(self.cents % 100).to_str().pad_left(2, "0")}" }
+}
+
+fn main(sys: Sys) {
+    let m = Money { cents: 1205 }
+    sys.console.println("{m} {[m, Money { cents: 7 }]}")   // $12.05 [$12.05, $0.07]
+}
+```
+
+The impl is used wherever a Money is formatted: interpolation, `to_str()`,
+inside lists, maps, tuples and other values, in generic code, `dyn` values,
+`unwrap` traps and `main`'s error; `encode` (§14) stays structural so that
+`decode` reads it back. Inside `to_str` format the fields, not `self` (that
+would call it again). `impl Eq`, `Ord` and `Hash` are refused in this
+version: equality, map keys and sorting stay structural, so the interpreter
+and the C backend cannot disagree about them. An impl of Show may bound its
+type parameters only by derived traits (`impl[T: Show] Show for Box[T]`).
+
+**Coherence.** A type implements a trait at most once: a second impl, or a
+generic impl overlapping another (`impl[T] Shape for List[T]` and
+`impl Shape for List[Int]`), is an error. An impl must be in the module that
+declares the trait or the one that declares the type (the orphan rule):
+`impl Show for Point` belongs with `Point`, and `impl geo.Shape for Tile`
+works in Tile's module. The builtin types have no module, so only a trait's
+own module can implement it for `Int` or `List[T]`, and Show (the prelude's)
+cannot be implemented for them.
+
+**Obligations (§12).** A bounded generic function takes linear and unique
+values like any generic function: calling a `self` method of the trait
+consumes the value. Only an impl in the type's own module finishes a linear
+value through `self`; an impl elsewhere must consume it like any other
+code. `dyn` values cannot hold linear or unique values (`a 'dyn' value
+cannot hold the linear type Job`): a table call could not tell whether the
+value was finished.
+
+## 18. Not yet implemented
 
 Multi-core parallelism; see `docs/log.md`.
