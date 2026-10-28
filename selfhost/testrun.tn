@@ -22,7 +22,6 @@
 // together by one `sh`); each writes its failures and counts to a file.
 // The runner invokes itself: `exe` is the running executable's path
 // (selfhost/tenon.tn finds it), passed on to the workers as `--exe`.
-import front
 
 const TIMEOUT_MS: Int = 20000
 const WORKERS: Int = 8
@@ -97,31 +96,24 @@ fn files(fs: Fs, dir: Str) -> List[Str] {
     }
     var out: List[Str] = []
     for n in names {
-        let p = front.join(dir, n)
+        let p = path_join(dir, n)
         if n.ends_with(".tn") and not fs.read(p).unwrap_or("").starts_with("// module") { out.push(p) }
     }
     out
 }
 
-// Where to run a test from (its directory) and the bare file name, so that
-// trap locations in golden files do not depend on where the suite runs.
-fn split_path(p: Str) -> (Str, Str) {
-    match p.rsplit_once("/") {
-        Some((d, n)) => (if d == "" { "/" } else { d }, n),
-        None => ("", p),
-    }
-}
-
+// Each test runs from its own directory (path_parent) under its bare name
+// (path_base), so trap locations in golden files do not depend on where the suite runs.
 struct Ctx { exe: Str, root: Str, tmp: Str, bless: Bool }
 
 fn check_run(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
     let src = sys.fs.read(tn).map_err(fn(e) => "{e}")?
     let stdin = hex_escapes(directive(src, "stdin").unwrap_or(""))
     let args = words(directive(src, "args").unwrap_or(""))
-    let (dir, name) = split_path(tn)
+    let (dir, name) = (path_parent(tn), path_base(tn))
     let p = sys.proc
     let interp = run_cmd(p, cx.exe, ["run", "--root", cx.root, name] + args, dir, stdin)
-    let bin = front.join(cx.tmp, name.slice(0, name.len() - 3))
+    let bin = path_join(cx.tmp, name.slice(0, name.len() - 3))
     let build = run_cmd(p, cx.exe, ["build", name, "-o", bin, "-O0", "--root", cx.root], dir, [])
     if build.code != 0 { return Err("C build failed:\n" + build.out + build.err) }
     let native = run_cmd(p, bin, args, dir, stdin)
@@ -140,7 +132,7 @@ fn check_run(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
 
 // A lexer or parser golden test: what `tenon CMD NAME.tn` prints is NAME.EXT.
 fn check_golden(sys: Sys, cx: Ctx, tn: Str, cmd: Str, ext: Str) -> Result[Unit, Str] {
-    let (dir, name) = split_path(tn)
+    let (dir, name) = (path_parent(tn), path_base(tn))
     let o = run_cmd(sys.proc, cx.exe, [cmd, name], dir, [])
     let got = o.out + o.err
     let golden = tn.slice(0, tn.len() - 3) + "." + ext
@@ -155,7 +147,7 @@ fn check_golden(sys: Sys, cx: Ctx, tn: Str, cmd: Str, ext: Str) -> Result[Unit, 
 fn check_reject(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
     let src = sys.fs.read(tn).map_err(fn(e) => "{e}")?
     let want = directive(src, "error").ok_or("reject test needs a first line `// error: TEXT`")?
-    let (dir, name) = split_path(tn)
+    let (dir, name) = (path_parent(tn), path_base(tn))
     let o = run_cmd(sys.proc, cx.exe, ["check", name, "--root", cx.root], dir, [])
     if o.code == 0 { return Err("compiled, but must be rejected") }
     if not o.err.contains(want) { return Err("expected an error containing " + encode(want) + ", got:\n" + o.err) }
@@ -188,11 +180,11 @@ pub fn main(sys: Sys, o: Opts) -> Int {
     // 0 run, 1 reject, 2 lex, 3 parse
     var jobs: List[(Int, Str)] = []
     for d in dirs {
-        for f in files(sys.fs, front.join(d, "run")) { jobs.push((0, f)) }
-        for f in files(sys.fs, front.join(d, "reject")) { jobs.push((1, f)) }
+        for f in files(sys.fs, path_join(d, "run")) { jobs.push((0, f)) }
+        for f in files(sys.fs, path_join(d, "reject")) { jobs.push((1, f)) }
         if d.split("/").contains("v2") {
-            for f in files(sys.fs, front.join(d, "lex")) { jobs.push((2, f)) }
-            for f in files(sys.fs, front.join(d, "parse")) { jobs.push((3, f)) }
+            for f in files(sys.fs, path_join(d, "lex")) { jobs.push((2, f)) }
+            for f in files(sys.fs, path_join(d, "parse")) { jobs.push((3, f)) }
         }
     }
     let runs = jobs.count(fn(j) => j.0 == 0)
@@ -235,14 +227,14 @@ pub fn main(sys: Sys, o: Opts) -> Int {
     var script = ""
     let common = (if bless { " --bless" } else { "" }) + " --root " + quote(root) + " --exe " + quote(exe) + " --tmp " + quote(dir) + dirs.map(fn(d) => " " + quote(d)).join("")
     for w in 0..WORKERS {
-        script += quote(exe) + " test --worker {w}/{WORKERS}" + common + " > " + quote(front.join(dir, "w{w}.txt")) + " 2>&1 &\n"
+        script += quote(exe) + " test --worker {w}/{WORKERS}" + common + " > " + quote(path_join(dir, "w{w}.txt")) + " 2>&1 &\n"
     }
     script += "wait\n"
     let _ = p.run_with("sh", ["-c", script], "", [], 0)
     var failed = 0
     var complete = true
     for w in 0..WORKERS {
-        let text = sys.fs.read(front.join(dir, "w{w}.txt")).unwrap_or("")
+        let text = sys.fs.read(path_join(dir, "w{w}.txt")).unwrap_or("")
         var seen = false
         for l in text.split("\n") {
             match l.strip_prefix("RESULT ") {

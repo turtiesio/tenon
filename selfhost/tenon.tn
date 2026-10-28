@@ -228,7 +228,7 @@ fn fetch(sys: Sys, o: Opts) -> Int {
 fn emit_c(sys: Sys, file: Str, root: Str) -> Result[emit.CParts, Int] {
     let con = sys.console
     let fr = load(sys, root, file)?
-    let runtime = match sys.fs.read(front.join(root, "runtime/tenon.h")) {
+    let runtime = match sys.fs.read(path_join(root, "runtime/tenon.h")) {
         Ok(s) => s,
         Err(e) => {
             con.eprintln("tenon: cannot read the C runtime: {e}")
