@@ -87,10 +87,27 @@ pub fn match_expr(m: mut emit.Em, e: ckast.Expr, s: ckast.Expr, arms: List[ckast
     let stable = cv.owned or (emit.is_ident(cv.code) and cv.code.starts_with("v_") and not m.st.muts.contains(cv.code))
     let sv = if cv.owned or emit.is_ident(cv.code) { cv.code } else { m.tmp_val(st, cv.code).code }
     let done = m.fresh("done")
-    for a in arms {
-        for alt in expand_or(a.pat) {
-            let test = pat_test(mut m, alt, sv, st)
-            m.line("if (" + test + ") \{")
+    // under `tenon build`, an Int match on constants is a switch (switch_arms)
+    let groups = if m.build and st.is("Int") { switch_arms(arms) } else { None }
+    let sw = groups.is_some()
+    let labels = fresh_labels(mut m, if sw { arms.len() } else { 0 })
+    var nomatch = "" // the trap's label when no final `_` arm catches the rest
+    match groups {
+        Some(gs) => {
+            if not gs[gs.len() - 1].is_empty() { nomatch = m.fresh("nomatch") }
+            dispatch(mut m, sv, gs, labels, if nomatch != "" { nomatch } else { labels[labels.len() - 1] })
+        }
+        None => {}
+    }
+    for ai in 0..arms.len() {
+        let a = arms[ai]
+        for alt in if sw { [a.pat] } else { expand_or(a.pat) } {
+            if sw {
+                m.line(labels[ai] + ": \{")
+            } else {
+                let test = pat_test(mut m, alt, sv, st)
+                m.line("if (" + test + ") \{")
+            }
             m.st.indent += 1
             m.push(SkBlock)
             bind(mut m, alt, sv, st, stable)
@@ -124,6 +141,7 @@ pub fn match_expr(m: mut emit.Em, e: ckast.Expr, s: ckast.Expr, arms: List[ckast
         }
     }
     let loc = m.loc(e.sp)
+    if nomatch != "" { m.line(nomatch + ":;") }
     m.line("tn_trap(\"no match arm (internal error)\", " + loc + ");")
     m.line(done + ":;")
     m.finish_result(res, t)
@@ -323,4 +341,169 @@ fn product(ps: List[ckast.Pat]) -> List[List[ckast.Pat]] {
         acc = next
     }
     acc
+}
+
+// ---- C switches (`tenon build` only) ----
+//
+// An if/else-if chain whose conditions compare one Int local with integer
+// constants (`b == 'a'`, `'a' == b`, such tests joined by `or`), and a match on
+// an Int whose arms are integer patterns without guards (then at most a final
+// `_` or binding), become a C `switch` that jumps to each branch's block: GCC
+// lowers a switch to a jump table or a balanced tree, an if/else chain to a
+// sequence of tests (bench/mdhtml `esc`). The branches are blocks after the
+// switch, reached by `goto`, so a `break` or `continue` in them still means
+// the enclosing loop. Only chains with at least SWITCH_MIN distinct constants
+// are converted; a repeated constant, any other condition (a guard that is not
+// such an equality, another variable) ends the chain there or keeps the
+// original form. `tenon emit` keeps the bootstrap's C (ops/gates/selfhost.sh).
+
+const SWITCH_MIN: Int = 3
+
+// The value of an integer literal (`3`, `-3`, `'a'`).
+fn int_const(e: ckast.Expr) -> Option[Int] {
+    match e.k {
+        XInt(i) => Some(i),
+        XUnary(op, x) => match x.k {
+            XInt(i) if op == "neg" and i > 0 => Some(0 - i),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+// The name of a local of type Int.
+fn int_local(m: emit.Em, e: ckast.Expr) -> Option[Str] {
+    let XName(n) = e.k else { return None }
+    match m.c.res.get(e.id) {
+        Some(RLocal(_)) if m.ety(e).is("Int") => Some(n),
+        _ => None,
+    }
+}
+
+// `n == K`, `K == n`, or such tests on one n joined by `or`: n and the Ks.
+fn int_test(m: emit.Em, c: ckast.Expr) -> Option[(Str, List[Int])] {
+    let XBinary(op, l, r) = c.k else { return None }
+    if op == "Or" {
+        let a = int_test(m, l)?
+        let b = int_test(m, r)?
+        return if a.0 == b.0 { Some((a.0, a.1 + b.1)) } else { None }
+    }
+    if op != "Eq" { return None }
+    match (int_local(m, l), int_const(r)) {
+        (Some(n), Some(k)) => return Some((n, [k])),
+        _ => {}
+    }
+    match (int_const(l), int_local(m, r)) {
+        (Some(k), Some(n)) => Some((n, [k])),
+        _ => None,
+    }
+}
+
+// Are the groups' constants distinct, and at least SWITCH_MIN of them?
+fn switchable(groups: List[List[Int]]) -> Bool {
+    var seen: Map[Int, Bool] = [:]
+    for g in groups {
+        for k in g {
+            if seen.contains(k) { return false }
+            seen[k] = true
+        }
+    }
+    seen.len() >= SWITCH_MIN
+}
+
+// `switch (v)` jumping to labels[i] for the constants of groups[i], else to `other`.
+fn dispatch(m: mut emit.Em, v: Str, groups: List[List[Int]], labels: List[Str], other: Str) {
+    m.line("switch (" + v + ") \{")
+    for i in 0..groups.len() {
+        if not groups[i].is_empty() {
+            m.line(groups[i].map(fn(k) => "case " + emit.int_lit(k) + ":").join(" ") + " goto " + labels[i] + ";")
+        }
+    }
+    m.line("default: goto " + other + ";")
+    m.line("}")
+}
+
+fn fresh_labels(m: mut emit.Em, n: Int) -> List[Str] {
+    var out: List[Str] = []
+    for _ in 0..n { out.push(m.fresh("case")) }
+    out
+}
+
+// The if/else-if chain starting with `if c then else els` as a switch, if it is one.
+pub fn switch_if(m: mut emit.Em, c: ckast.Expr, then: ckast.Block, els: Option[ckast.Expr], t: cktypes.Ty) -> Option[emit.CV] {
+    let (n, first) = int_test(m, c)?
+    var groups = [first]
+    var blocks = [then]
+    var rest = els
+    while let Some(x) = rest {
+        let XIf(c2, t2, e2) = x.k else { break }
+        let Some((n2, ks)) = int_test(m, c2) else { break }
+        if n2 != n { break }
+        groups.push(ks)
+        blocks.push(t2)
+        rest = e2
+    }
+    if not switchable(groups) { return None }
+    let res = m.result_var(t)
+    let labels = fresh_labels(mut m, groups.len())
+    let done = m.fresh("done")
+    let other = if rest.is_some() { m.fresh("other") } else { done }
+    dispatch(mut m, m.local_code(n), groups, labels, other)
+    for i in 0..blocks.len() {
+        m.line(labels[i] + ": \{")
+        m.st.indent += 1
+        emitbody.block_into(mut m, blocks[i], res, t)
+        m.line("goto " + done + ";")
+        m.st.indent -= 1
+        m.line("}")
+    }
+    match rest {
+        Some(x) => {
+            m.line(other + ": \{")
+            m.st.indent += 1
+            m.push(SkBlock)
+            let v = emitbody.expr(mut m, x)
+            match res {
+                Some(r) => {
+                    let code = m.own(v, t)
+                    m.line(r + " = " + code + ";")
+                }
+                None => {}
+            }
+            m.pop()
+            m.st.indent -= 1
+            m.line("}")
+        }
+        None => {}
+    }
+    m.line(done + ":;")
+    Some(m.finish_result(res, t))
+}
+
+// The constants of an integer pattern (`1`, `1 | 2`); None for any other.
+fn int_pat(p: ckast.Pat) -> Option[List[Int]] {
+    match p.k {
+        QInt(i) => Some([i]),
+        QOr(alts) => {
+            var ks: List[Int] = []
+            for a in alts { ks.extend(int_pat(a)?) }
+            Some(ks)
+        }
+        _ => None,
+    }
+}
+
+// For a match on an Int: the constants of each arm (empty for a final `_` or
+// binding), if the arms can be a switch.
+fn switch_arms(arms: List[ckast.Arm]) -> Option[List[List[Int]]] {
+    var groups: List[List[Int]] = []
+    for i in 0..arms.len() {
+        let a = arms[i]
+        if a.guard.is_some() { return None }
+        match a.pat.k {
+            QWild | QBind(_) if i + 1 == arms.len() => groups.push([]),
+            _ => groups.push(int_pat(a.pat)?),
+        }
+    }
+    if switchable(groups) { Some(groups) } else { None }
 }

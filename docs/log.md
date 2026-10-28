@@ -173,6 +173,14 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Benchmark references compute Tenon's defined result:** Tenon's integer
+  arithmetic traps on overflow, so the C references use overflow-checked
+  arithmetic (`bench/checked.h`, exit 70 like Tenon) instead of relying on
+  signed-overflow undefined behaviour (which let gcc turn fib into loops), Rust is
+  built with `-C overflow-checks=on`, Python (arbitrary precision) and TypeScript
+  (doubles) are noted. Same algorithm, same C compiler and flags as `tenon build`.
+  Rules in bench/README.md.
+
 - **Agents never wait for CI:** `./check` gates landing; CI and the nightly run
   report back on their own (blocked merges, regression issues). Added to
   ops/agents/common.md.

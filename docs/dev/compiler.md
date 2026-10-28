@@ -236,7 +236,7 @@ tenon.tn takes about 3 s instead of 13 s. `emit` and the cache still see one
 C text.
 
 The C that `build` compiles differs from what `emit` prints (the
-bootstrap's, ops/gates/selfhost.sh) in two places, for GCC (`emit.Em.build`;
+bootstrap's, ops/gates/selfhost.sh) in three places, two of them for GCC (`emit.Em.build`;
 runtime/tenon.h `TN_PAYLOADS`, `TN_RC_INLINE`, which leave clang's C as it
 was): the payloads of a by-value enum are side by side in a struct instead
 of a union, and retain/release helpers are `inline`. GCC copies a value that
@@ -245,6 +245,21 @@ copy, and at -O2 calls retain/release that clang inlines; with
 `-fno-tree-slp-vectorize` (GCC's SLP vectorizer reloads a struct passed in
 two registers as one vector, the same stall), bench/calc on Linux went from
 5x the time of C to 1.4x (macOS/clang: 1.4x before and after).
+
+A third difference is for every C compiler (emitctl.tn "C switches"): an
+if/else-if chain whose conditions compare one `Int` local with integer
+constants (`b == '&'`, `'&' == b`, such tests joined by `or`; at least three
+distinct constants), and a `match` on an `Int` whose arms are integer
+patterns without guards (then at most a final `_` or binding), become a
+`switch` that jumps with `goto` to each branch's block, which follows the
+switch (so `break` and `continue` in a branch still mean the enclosing
+loop). The chain ends at the first other condition (an inequality, `and`,
+another variable, a repeated constant), which with the rest becomes the
+default branch, compiled as before. GCC lowers a switch to a jump table or a
+balanced tree but an if/else chain to a sequence of tests: bench/mdhtml's
+`esc` (four byte values, the C reference's `switch`). tests/run/int_switch.tn
+runs such chains on both backends, and ops/gates/cli_test.sh checks which of
+its functions get a switch.
 
 ### Fidelity rules that matter for identical C
 

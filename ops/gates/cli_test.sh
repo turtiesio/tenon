@@ -56,6 +56,16 @@ expect 1 "$tmp/u.tn" "$C" fmt "$tmp/u.tn" --check
 expect 0 "" "$C" fmt "$tmp/u.tn"
 expect 0 "" "$C" fmt --check "$tmp/u.tn"
 expect 2 "formats standard input alone" "$C" fmt - "$tmp/u.tn"
+# `tenon build` turns Int if/else chains and matches on constants into C
+# switches, exactly in these functions of the test; `tenon emit` never does
+# (compiler/emitctl.tn "C switches")
+n=$((n + 1))
+TENON_KEEP_C=1 "$C" build -O0 tests/run/int_switch.tn -o "$tmp/sw" > /dev/null 2>&1
+got=$(awk '/^static [^(]* f_[A-Za-z_]*_[0-9]*\(.*\{$/ { f = $3; sub(/_[0-9]*\(.*/, "", f) } /^ *switch \(/ && f != "" { print f }' "$tmp/sw.c" | sort | tr '\n' ' ')
+want="f_bump f_class f_count f_digit f_esc f_guard f_name f_scan "
+[ "$got" = "$want" ] || { echo "cli_test: FAIL: switches in int_switch.tn's C: '$got', want '$want'"; fail=1; }
+n=$((n + 1))
+! "$C" emit tests/run/int_switch.tn | grep -q "goto case" || { echo "cli_test: FAIL: tenon emit wrote a switch"; fail=1; }
 # installed: tenon on PATH, run from elsewhere, no TENON_ROOT
 unset TENON_ROOT
 ops/repo/install.sh "$tmp/prefix" > "$tmp/install.log" 2>&1 || { echo "cli_test: FAIL: ops/repo/install.sh"; cat "$tmp/install.log"; fail=1; }

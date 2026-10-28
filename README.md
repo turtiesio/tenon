@@ -55,7 +55,7 @@ lib/          prelude.tn (the builtin API, in Tenon), std/ (standard modules), v
 runtime/      tenon.h, the C runtime every native build includes
 tests/        run/ reject/ (both backends), lex/ parse/ selfhost/ (against the seed), fmt/ lsp/ (tool fixtures), redteam/, v2/
 programs/     real programs with scenario tests (ops/gates/programs.sh); v2/ (scan, with workers)
-bench/        benchmarks against C, Rust, Python, TypeScript (ops/evidence/bench.py); v2/ parallel ones
+bench/        benchmarks against C, Rust, Python, TypeScript (ops/evidence/bench.py; rules: bench/README.md); v2/ parallel ones
 docs/         user docs (quickstart, reference, library, tools, packages), the decision log; dev/ for contributors
 formal/       the formal track in Lean 4 (formal/README.md): the core calculus, its evaluator, the proofs, the translator
 editors/      vscode/: syntax highlighting and a language-server client, no build step

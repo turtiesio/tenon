@@ -594,6 +594,12 @@ pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
 }
 
 fn if_value(m: mut emit.Em, e: ckast.Expr, c: ckast.Expr, then: ckast.Block, els: Option[ckast.Expr], t: cktypes.Ty) -> emit.CV {
+    if m.build {
+        match emitctl.switch_if(mut m, c, then, els, t) {
+            Some(cv) => return cv,
+            None => {}
+        }
+    }
     let res = m.result_var(t)
     let cv = expr(mut m, c)
     m.line("if (" + cv.code + ") \{")

@@ -24,6 +24,8 @@ RUNS = int(os.environ.get("BENCH_RUNS", "3"))
 # and flags on both sides.
 CC = os.environ.get("CC") or "cc"
 CFLAGS = ["-O2", "-w", "-std=gnu11", "-pthread", "-fno-tree-slp-vectorize"]
+# Every compiled baseline has Tenon's integer semantics (bench/README.md): the
+# C references use bench/checked.h, Rust is built with overflow checks on.
 
 
 def timed(cmd, stdin_path):
@@ -98,7 +100,7 @@ def main():
         rs = os.path.join(d, name + ".rs")
         if os.path.exists(rs):
             rs_bin = os.path.join(OUT, name + "_rs")
-            subprocess.run(["rustc", "-O", "-o", rs_bin, rs], check=True, capture_output=True)
+            subprocess.run(["rustc", "-O", "-C", "overflow-checks=on", "-o", rs_bin, rs], check=True, capture_output=True)
             impls.append(("rust", [rs_bin]))
         ts = os.path.join(d, name + ".ts")
         if os.path.exists(ts):

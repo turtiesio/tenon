@@ -3,14 +3,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-typedef struct { char *w; size_t n; long count; } E;
+#include "../checked.h"
+typedef struct { char *w; size_t n; int64_t count; } E;
 static E *tab; static size_t cap = 1 << 16, used;
 static uint64_t h(const char *s, size_t n) { uint64_t x = 1469598103934665603ULL; for (size_t i = 0; i < n; i++) x = (x ^ (unsigned char)s[i]) * 1099511628211ULL; return x; }
 static void grow(void);
 static void add(char *s, size_t n) {
     if (used * 4 > cap * 3) grow();
     size_t i = h(s, n) & (cap - 1);
-    while (tab[i].w) { if (tab[i].n == n && !memcmp(tab[i].w, s, n)) { tab[i].count++; return; } i = (i + 1) & (cap - 1); }
+    while (tab[i].w) { if (tab[i].n == n && !memcmp(tab[i].w, s, n)) { tab[i].count = ck_add(tab[i].count, 1); return; } i = (i + 1) & (cap - 1); }
     tab[i].w = s; tab[i].n = n; tab[i].count = 1; used++;
 }
 static void grow(void) {
@@ -39,6 +40,6 @@ int main(void) {
     E *all = malloc(used * sizeof(E)); size_t k = 0;
     for (size_t j = 0; j < cap; j++) if (tab[j].w) all[k++] = tab[j];
     qsort(all, k, sizeof(E), cmp);
-    for (size_t j = 0; j < 10 && j < k; j++) printf("%ld %.*s\n", all[j].count, (int)all[j].n, all[j].w);
+    for (size_t j = 0; j < 10 && j < k; j++) printf("%lld %.*s\n", (long long)all[j].count, (int)all[j].n, all[j].w);
     return 0;
 }
