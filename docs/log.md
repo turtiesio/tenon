@@ -173,6 +173,15 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Continuous improvement without the owner's laptop:** the repository was made
+  public (free GitHub Actions minutes; CI had silently stopped running because of
+  a failed payment on the private repo since 05:19 UTC). Unattended agents land
+  only through pull requests that auto-merge when CI is green and the approvals
+  checker finds no guarded change; budget about 10 agent runs a day; the weekly
+  red team runs on Codex gpt-6.1-sol, the weekly hygiene review on Claude.
+  Published as is: the owner's email remains in old commit metadata; new commits
+  use the GitHub noreply address.
+
 - **Milestone 3 scope (decided during milestone 2):** ready for real users (stdlib
   breadth, package namespaces, debugging and profiling, a study where model authors
   build and maintain larger programs; AI models count as real users), deeper
