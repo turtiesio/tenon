@@ -23,7 +23,7 @@ FILES = {
     "05": ["v2/05a-unique-moved-listener-stays-open.tn", "v2/05b-unique-moved-to-worker-still-readable.tn"],
     "06": ["v2/06-run-with-timeout-leaves-descendants.tn"],
     "07": ["07a-run-keeps-dropped-listener-open.tn", "07c-run-conn-drop-never-signals-peer.tn"],
-    "08": ["08-unique-wrapper-copies-listener.tn"],
+    "08": ["v2/08-unique-wrapper-copies-listener.tn"],
 }
 
 

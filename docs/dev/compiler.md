@@ -174,7 +174,8 @@ cross-checked (the seed cannot parse them).
   shown; otherwise an impl whose target matches, and its bounds
   recursively). `cklin`: a trait call with `self` consumes its
   receiver; `dyn` cannot hold linear or unique values; an impl method's
-  `self` is exempt only in the type's own module.
+  `self` may end unconsumed only in the type's own module (`Var.owned`:
+  still moved at most once; a `mut self` is never moved).
 
 ### Workers and channels (v2)
 

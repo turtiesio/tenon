@@ -1,0 +1,10 @@
+// error: 'self' is a 'ref' parameter: it can be inspected but not consumed
+// Authority finding 8 (2026-10-28, issue #14): a 'mut self' method of a declared unique wrapper
+// moved self out while the caller kept it, giving two owners of one Listener.
+unique struct Hold { listener: Listener }
+fn Hold.steal(mut self) -> Hold { self }
+fn main(sys: Sys) {
+    var h = Hold { listener: sys.net.listen(0).unwrap() }
+    let g = h.steal()
+    sys.console.println("{g.listener.port() == h.listener.port()}")
+}

@@ -10,12 +10,12 @@ struct Client { nick: Str, buf: Str }
 
 unique struct Server { p: Poller, clients: Map[Int, Client], running: Bool }
 
-fn Server.send(self, id: Int, line: Str) {
+fn Server.send(mut self, id: Int, line: Str) {
     // A failed send means the client is gone; its Closed event follows.
     let _ = self.p.send(id, line + "\n")
 }
 
-fn Server.broadcast(self, from: Int, line: Str) {
+fn Server.broadcast(mut self, from: Int, line: Str) {
     for (id, _) in self.clients {
         if id != from { self.send(id, line) }
     }

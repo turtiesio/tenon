@@ -23,7 +23,7 @@ comparison, deep-stack, path, wrapper and temporary findings; the weak package h
 | 5 | Medium | privacy is unforgeability (§13) | A module-private enum can be forged with `decode` (type inferred) and its private variants can be matched | `04` + `private_level.tn` |
 | 6 | Medium | a moved unique value "cannot be used" (§18); never copied (§12) | A consumed linear/unique value can still be inspected: fields, `ref` calls, handle methods, `==`, formatting | `05a`, `v2/05b` |
 | 7 | Low | "killed" on timeout (library, `Proc`); tenon.md §2.4 process groups | `run_with` kills only the direct child on timeout; its descendants live on | `06` |
-| 8 | **High** | unique values are never copied (§12) | A method of a declared `unique` wrapper can copy `self`, duplicating a contained `Listener` | `08` |
+| 8 | **High** | unique values are never copied (§12) | A method of a declared `unique` wrapper can copy `self`, duplicating a contained `Listener` | `v2/08` |
 
 Everything else in scope held (list at the end). All seven are fixed (each section names the commit
 and the regression test); the repros of findings whose fix the frozen seed does not share moved to
@@ -299,7 +299,7 @@ fn main(sys: Sys) {
 **Command:**
 
 ```sh
-R=tests/redteam/repros-2026-10-28-authority/08-unique-wrapper-copies-listener.tn
+R=tests/redteam/repros-2026-10-28-authority/v2/08-unique-wrapper-copies-listener.tn
 target/tenon check "$R"
 target/tenon run "$R"
 target/tenon build "$R" -o /tmp/tenon-authority-08 && /tmp/tenon-authority-08

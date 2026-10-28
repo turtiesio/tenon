@@ -1,0 +1,17 @@
+// error: 'self' was already used: a unique value cannot be copied
+// Authority finding 8 (2026-10-28, issue #14): a method of a declared unique enum moves self and
+// then matches on it.
+unique enum Slot { Open(Listener), Shut }
+fn keep(s: Slot) -> Slot { s }
+fn Slot.twice(self) -> (Slot, Bool) {
+    let s = keep(self)
+    let open = match self {
+        Open(_) => true,
+        Shut => false,
+    }
+    (s, open)
+}
+fn main(sys: Sys) {
+    let (s, open) = Open(sys.net.listen(0).unwrap()).twice()
+    sys.console.println("{open}")
+}

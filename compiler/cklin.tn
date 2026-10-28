@@ -6,7 +6,9 @@ import ckast
 import cktypes
 import ckenv
 
-struct Var { name: Str, kind: ckast.Kind, moved: Option[ckast.Span], borrowed: Bool }
+// `owned`: the `self` of a method of a declared linear/unique type, which may
+// end there (the type decides how its values end) but is still never copied.
+struct Var { name: Str, kind: ckast.Kind, moved: Option[ckast.Span], borrowed: Bool, owned: Bool }
 
 // State of a set of alternative paths run from the same starting point.
 struct Br { before: List[Var], outs: List[List[Var]], all_div: Bool }
@@ -76,7 +78,9 @@ fn Walk.walk_body(mut self, fi: Int, f: ckast.FnDecl, body: ckast.Block) -> Resu
     // Only a type declared linear/unique decides how its own values end; a plain
     // generic type (`struct Wrap[A]`) holding a linear A gets no exemption.
     // (An impl method is exempt only in the type's own module: an impl in the
-    // trait's module cannot finish another module's linear values.)
+    // trait's module cannot finish another module's linear values.) The exempt
+    // `self` may be dropped, but is tracked so that it is moved at most once
+    // (authority 2026-10-28 #8: `(self, self)` copied a contained Listener).
     let own_module = match self.env.fns[fi].owner {
         Some(Con(n, _)) => self.env.type_decl(n).map_or(false, fn(d) => d.0 == self.env.fns[fi].sp.file),
         _ => false,
@@ -93,8 +97,11 @@ fn Walk.walk_body(mut self, fi: Int, f: ckast.FnDecl, body: ckast.Block) -> Resu
     }
     for p in self.env.fns[fi].params {
         let k = self.kind_ty(p.1)
-        let by_ref = f.params.any(fn(q) => q.name == p.0 and (q.by_ref or q.by_mut))
-        if k != Plain and not (p.0 == "self" and self_exempt) { self.vars.push(Var { name: p.0, kind: k, moved: None, borrowed: by_ref }) }
+        // A `mut self` stays with the caller: it can be changed, not moved.
+        let by_ref = f.params.any(fn(q) => q.name == p.0 and (q.by_ref or q.by_mut)) or
+            (p.0 == "self" and self.env.fns[fi].self_kind == MutSelf)
+        let owned = p.0 == "self" and self_exempt
+        if k != Plain { self.vars.push(Var { name: p.0, kind: k, moved: None, borrowed: by_ref, owned }) }
     }
     self.block(body, true)?
     self.end_scope(0, body.sp)
@@ -150,7 +157,7 @@ fn Walk.live_check(self, from: Int, sp: ckast.Span, why: Str) -> Result[Unit, ck
     if self.diverged { return Ok(()) }
     for i in from..self.vars.len() {
         let v = self.vars[i]
-        if v.kind == Linear and v.moved.is_none() and not v.borrowed {
+        if v.kind == Linear and v.moved.is_none() and not v.borrowed and not v.owned {
             return ckast.fail(sp, "linear value '" + v.name + "' is never used: " + why + " would drop it")
         }
     }
@@ -196,7 +203,7 @@ fn Walk.br_finish(mut self, b: Br, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
                 None => none = true,
             }
         }
-        if self.vars[i].kind == Linear and some and none {
+        if self.vars[i].kind == Linear and not self.vars[i].owned and some and none {
             return ckast.fail(any.unwrap_or(sp), "linear value '" + self.vars[i].name + "' is consumed on some paths but not others; consume it on every path")
         }
         self.vars[i].moved = any
@@ -223,7 +230,7 @@ fn Walk.block(mut self, b: ckast.Block, consume: Bool) -> Result[Unit, ckast.Dia
 fn Walk.bind(mut self, p: ckast.Pat) -> Result[Unit, ckast.Diag] {
     let k = self.kind(p.id)
     match p.k {
-        QBind(n) if k != Plain => self.vars.push(Var { name: n, kind: k, moved: None, borrowed: false }),
+        QBind(n) if k != Plain => self.vars.push(Var { name: n, kind: k, moved: None, borrowed: false, owned: false }),
         QWild if k == Linear => return ckast.fail(p.sp, "'_' would drop a linear value; bind it and consume it"),
         QTuple(ps) | QVariant(_, _, ps) => {
             for q in ps { self.bind(q)? }
@@ -702,7 +709,7 @@ fn Walk.lambda(mut self, e: ckast.Expr, params: List[(Str, Option[ckast.TExpr])]
     var inner = self.fresh(self.assume)
     for i in 0..params.len().min(pts.len()) {
         let k = self.kind_ty(pts[i])
-        if k != Plain { inner.vars.push(Var { name: params[i].0, kind: k, moved: None, borrowed: false }) }
+        if k != Plain { inner.vars.push(Var { name: params[i].0, kind: k, moved: None, borrowed: false, owned: false }) }
     }
     let r = inner.lambda_body(body)
     self.safe = inner.safe

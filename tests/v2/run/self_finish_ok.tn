@@ -1,0 +1,32 @@
+// A method of a declared linear or unique type still decides how its own value ends (authority
+// finding 8, 2026-10-28, issue #14, tracks self as non-copyable rather than exempting it): it may
+// read self, move it once, match on it, finish it on some paths only, or let it drop.
+linear struct Claim { id: Int }
+fn Claim.new(id: Int) -> Claim { Claim { id } }
+fn Claim.fin(self) -> Int { self.id }
+fn Claim.bump(self) -> Claim { Claim { id: self.id + 1 } }
+fn Claim.pass(self) -> Claim { self }
+fn Claim.maybe(self, keep: Bool) -> Int {
+    if keep { return self.pass().fin() }
+    self.id * 10
+}
+unique struct Hold { listener: Listener, tag: Int }
+fn Hold.port_ok(self) -> Bool { self.listener.port() > 0 }
+fn keep(h: Hold) -> Hold { h }
+fn Hold.pass(self) -> Hold { keep(self) }
+fn Hold.tag(self) -> Int { self.tag }
+unique enum Slot { Open(Listener), Shut }
+fn Slot.is_open(self) -> Bool {
+    match self {
+        Open(_) => true,
+        Shut => false,
+    }
+}
+fn main(sys: Sys) {
+    sys.console.println("{Claim.new(1).fin()} {Claim.new(2).bump().pass().fin()}")
+    sys.console.println("{Claim.new(4).maybe(true)} {Claim.new(5).maybe(false)}")
+    let ok = Hold { listener: sys.net.listen(0).unwrap(), tag: 6 }.port_ok()
+    let h = Hold { listener: sys.net.listen(0).unwrap(), tag: 7 }.pass()
+    sys.console.println("{ok} {h.listener.port() > 0} {h.tag()}")
+    sys.console.println("{Open(sys.net.listen(0).unwrap()).is_open()} {Shut.is_open()}")
+}

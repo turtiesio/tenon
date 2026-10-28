@@ -1,0 +1,9 @@
+// error: 'self' was already used: a linear value cannot be copied
+// Authority finding 8 (2026-10-28, issue #14): the same copy in a method of a declared linear type.
+linear struct Claim { id: Int }
+fn Claim.dup(self) -> (Claim, Claim) { (self, self) }
+fn Claim.fin(self) -> Int { self.id }
+fn main(sys: Sys) {
+    let (a, b) = Claim { id: 7 }.dup()
+    sys.console.println("{a.fin() + b.fin()}")
+}

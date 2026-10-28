@@ -569,9 +569,11 @@ lock). The compiler rejects any program that copies one or loses one:
   evaluates it again, so each use would be a copy (write a function that
   returns a new value).
 
-Inside a method of the type itself, `self` is exempt: the type's own methods
-(`fn Claim.complete(self)`) decide how a value is finished, and only the type's
-module can define them (§13). A struct or enum
+Inside a method of the type itself, `self` need not be consumed: the type's
+own methods (`fn Claim.complete(self)`) decide how a value is finished, and
+only the type's module can define them (§13). It is still never copied: such
+a method may consume `self` at most once (`(self, self)` is rejected), and a
+`mut self` stays with the caller, so it cannot be consumed. A struct or enum
 that contains a linear value must itself be declared `linear` (generic
 wrappers such as `Option[Claim]` become linear automatically).
 

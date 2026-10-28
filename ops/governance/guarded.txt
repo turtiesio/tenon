@@ -54,6 +54,10 @@ tests/v2/run/linear_inflight_ok.tn
 tests/v2/run/linear_inflight_ok.out
 tests/run/net_drop_closes.tn
 tests/run/net_drop_closes.out
+tests/v2/reject/self_copy_*.tn
+tests/v2/reject/self_move_mut_unique.tn
+tests/v2/run/self_finish_ok.tn
+tests/v2/run/self_finish_ok.out
 # The guarantees as Lean theorems (tenon.md §6, formal/README.md): changing or
 # removing a theorem statement needs an approval line, like weakening a test.
 theorems formal/TenonCore/Theorems.lean
