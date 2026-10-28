@@ -173,7 +173,7 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
 - Move `selfhost/checkfuzz.py` to `tools/`, because `selfhost/` holds compiler sources.
 - About 45 `pub` functions are used only inside their own module; drop `pub` opportunistically.
 
-### C2. `STATUS.md` is stale and `tools/status.py` has drifted. M, low risk.
+### C2. `STATUS.md` is stale and `tools/status.py` has drifted. M, low risk. Done in e39dcfb (STATUS.md regenerated in the commit after it, from a reduced evidence run: fuzz 200, mutate 15, checkfuzz 200, BENCH_RUNS=3, ASan, TSan, interp_diff).
 
 - **Stale file:**
   - It was generated at `e466951`, 23 commits ago, and reports check at 11.8 s against about 131 s measured cold.
