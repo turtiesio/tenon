@@ -74,7 +74,7 @@ the grammar check, interp_diff, checkfuzz) all take it from there.
 | `tests/fmt/` | `NAME.in.tn` must format to `NAME.out.tn` |
 | `tests/lsp/` | fixtures of `ops/gates/lsp_test.py` |
 | `tests/redteam/` | red-team findings (`FINDINGS.md`) and their reproductions (`repros/`) |
-| `tests/v2/` | the same roles (`run`, `reject`, `lex`, `parse`, `fmt`, `lsp`) for what only `tenon` understands (traits, workers); `lex/NAME.tokens` and `parse/NAME.ast` are goldens of `tenon tokens` / `tenon ast` |
+| `tests/v2/` | the same roles (`run`, `reject`, `lex`, `parse`, `fmt`, `lsp`) for what only `tenon` understands (traits, workers) or where it deliberately differs from the frozen seed (a rule or a fix added after the seed froze, which the seed's checker or interpreter does not have: it would fail the cross-check or `ops/evidence/interp_diff.py`); `lex/NAME.tokens` and `parse/NAME.ast` are goldens of `tenon tokens` / `tenon ast` |
 | `programs/NAME/` | a real program `NAME.tn`, its scenario `test.sh` (runs `$RUN`) and `expected.txt`; `programs/v2/` for those with workers |
 | `bench/NAME/` | a benchmark in Tenon, C, Rust, Python and TypeScript (`ops/evidence/bench.py`); `bench/v2/` the parallel ones |
 
@@ -85,7 +85,7 @@ other tests and not run itself (docs/tools.md, `tenon test`).
 ## Adding a test
 
 1. Write the program: `tests/run/NAME.tn`, or `tests/v2/run/NAME.tn` if it
-   uses traits or workers.
+   uses traits or workers, or if the seed behaves differently (the table above).
 2. `target/tenon test tests --bless` (or `tests/v2`) writes the missing
    golden file `tests/run/NAME.out`. Read it: blessing records whatever the
    program printed.

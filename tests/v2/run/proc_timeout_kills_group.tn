@@ -1,0 +1,25 @@
+// Proc.run_with on timeout kills the command's whole process group, not only the command:
+// the background `sleep` the shell started is gone too (authority finding 7, 2026-10-28).
+// Under v2/ because the seed's interpreter (ops/evidence/interp_diff.py) kills only the command.
+fn alive(p: Proc, pid: Str) -> Bool {
+    match p.run_with("sh", ["-c", "kill -0 " + pid + " 2>/dev/null"], "", [], 0) {
+        Ok(o) => o.status == 0,
+        Err(_) => false,
+    }
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let r = sys.proc.run_with("sh", ["-c", "sleep 30 & echo $!; wait"], "", [], 300).unwrap()
+    let pid = Str.from_utf8_lossy(r.out).trim()
+    con.println("timed_out={r.timed_out} status={r.status} signal={r.signal} pid known: {pid.len() > 0}")
+    // A killed process may stay a zombie for a moment until it is reaped.
+    var tries = 0
+    while tries < 100 and alive(sys.proc, pid) {
+        sys.clock.sleep_ms(20)
+        tries += 1
+    }
+    let gone = not alive(sys.proc, pid)
+    con.println("background process killed with the command: {gone}")
+    if not gone { let _ = sys.proc.run("kill", [pid]) }
+}

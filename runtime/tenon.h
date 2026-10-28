@@ -2511,7 +2511,9 @@ static int64_t tn_ms_now(void) {
 }
 /* Proc.run_capture (Proc.run_with in the prelude): run cmd in dir with the
  * given standard input, capturing standard output and error; kill it
- * (SIGKILL) after timeout_ms > 0. The result is packed as
+ * (SIGKILL) after timeout_ms > 0, with every process it started: the command
+ * runs in a process group of its own, and the whole group is killed. The
+ * result is packed as
  * [status, signal, timed_out, len(out), out..., err...]; status is -1 when the
  * command was ended by a signal. */
 static TN_UNUSED int tn_proc_capture(tn_Str cmd, tn_List_Str args, tn_Str dir, tn_Str input, tn_Int timeout_ms, tn_List_Int *res, tn_Str *msg) {
@@ -2540,6 +2542,7 @@ static TN_UNUSED int tn_proc_capture(tn_Str cmd, tn_List_Str args, tn_Str dir, t
     fcntl(pex[1], F_SETFD, FD_CLOEXEC);
     pid_t pid = fork();
     if (pid == 0) {
+        setpgid(0, 0);
         dup2(pin[0], 0);
         dup2(pout[1], 1);
         dup2(perr[1], 2);
@@ -2552,6 +2555,7 @@ static TN_UNUSED int tn_proc_capture(tn_Str cmd, tn_List_Str args, tn_Str dir, t
         _exit(127);
     }
     int fe = pid < 0 ? errno : 0;
+    if (pid > 0) setpgid(pid, pid); /* also here: the group exists before any kill below */
     close(pin[0]); close(pout[1]); close(perr[1]); close(pex[1]);
     for (int64_t i = 0; i <= n; i++) tn_free(argv[i]);
     tn_free(argv);
@@ -2610,7 +2614,7 @@ static TN_UNUSED int tn_proc_capture(tn_Str cmd, tn_List_Str args, tn_Str dir, t
     }
     int st = 0;
     for (;;) {
-        if (timed_out) { kill(pid, SIGKILL); while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {} break; }
+        if (timed_out) { kill(-pid, SIGKILL); kill(pid, SIGKILL); while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {} break; }
         pid_t w = waitpid(pid, &st, deadline ? WNOHANG : 0);
         if (w == pid) break;
         if (w < 0 && errno != EINTR) break;

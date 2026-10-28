@@ -670,7 +670,8 @@ extern fn Proc.env(self, name: Str) -> Option[Str]
 // directory `dir` ("" = the current one; NotFound(dir) if it is not a
 // directory), with `input` (bytes, each 0..255, else a trap) as its standard
 // input, and captures its standard output and error as bytes. A command still
-// running after timeout_ms > 0 milliseconds is killed (SIGKILL) and
+// running after timeout_ms > 0 milliseconds is killed (SIGKILL) together with
+// every process it started (it runs in a process group of its own) and
 // `timed_out` is set; 0 or less waits for ever. `status` is the exit status,
 // or -1 when the command was ended by a signal (then `signal` is its number).
 pub struct ProcOut { pub status: Int, pub signal: Int, pub timed_out: Bool, pub out: List[Int], pub err: List[Int] }

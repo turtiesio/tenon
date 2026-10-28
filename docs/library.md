@@ -194,7 +194,9 @@ single source of the builtin API. Every claim here is checked by a test in
   its standard output and error: `ProcOut { status, signal, timed_out, out,
   err }` with `out` and `err` as bytes (`Str.from_utf8_lossy(o.out)` for
   text). A command still running after `timeout_ms > 0` milliseconds is
-  killed (SIGKILL) and `timed_out` is `true`; `0` waits for ever. `status` is
+  killed (SIGKILL) together with every process it started (the command runs
+  in a process group of its own, and the whole group is killed) and
+  `timed_out` is `true`; `0` waits for ever. `status` is
   the exit status, or `-1` when the command was ended by a signal (`signal`
   is then its number, else 0). `p.exit(status)` ends the program at once with
   `status` after flushing standard output: any value 0-255, including the

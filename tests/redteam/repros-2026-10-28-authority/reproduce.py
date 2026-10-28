@@ -5,7 +5,9 @@ Usage: python3 reproduce.py [NN ...] [--sanitize]   (NN = finding number, e.g. 0
 TENON selects another compiler. These programs expose bugs, so "accepted" and "backends
 agree" do not mean the property holds; compare with FINDINGS-2026-10-28-authority.md.
 Programs that may hang (07c) run under a timeout. --sanitize also builds the generated C
-with the flags of tools/asan.sh.
+with the flags of tools/asan.sh. Repros under v2/ are those the frozen seed does not read or whose
+behaviour it does not share after the fix (the seed's checker and interpreter keep the old rules), so
+the cross-checks against the seed skip them (docs/dev/testing.md).
 """
 import os, subprocess, sys, tempfile
 from pathlib import Path
@@ -19,7 +21,7 @@ FILES = {
     "03": ["03a-const-linear-copied.tn", "03b-const-unique-copied.tn"],
     "04": ["04-private-enum-forged.tn"],
     "05": ["05a-unique-moved-listener-stays-open.tn", "v2/05b-unique-moved-to-worker-still-readable.tn"],
-    "06": ["06-run-with-timeout-leaves-descendants.tn"],
+    "06": ["v2/06-run-with-timeout-leaves-descendants.tn"],
     "07": ["07a-run-keeps-dropped-listener-open.tn", "07c-run-conn-drop-never-signals-peer.tn"],
 }
 
