@@ -473,3 +473,32 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   over a directory tree, scenario on both backends); tools/tsan.sh
   (ThreadSanitizer, every v2 run test and scan, 3 runs each: clean),
   tools/asan.sh now covers programs/v2 (clean).
+
+## 2026-10-28 — cleanup batches A and C (docs/CLEANUP_PLAN.md)
+
+- **./check time** (16-core M4 Max, load ~3, measured with the per-step
+  table ./check now prints): 26.7 s -> 20.1 s on an unchanged tree,
+  42.6 s -> 25.3 s after an edit to selfhost/tenonc.tn. Causes: stage1 is
+  built in two stages, the seed building stage0 at -O0 (1.2 s) and stage0
+  building stage1 at -O2 as 8 translation units compiled in parallel
+  (2.9 s, was 14 s); selfhost.sh and fixpoint.sh are one pass (6.4 s, was
+  7.6 s; one tenonc build fewer); the seed's `tenon test tests` moved to
+  evidence (2.5 s); approvals_test.sh uses a 6-file fixture (1.1 s, was 4.9 s).
+  The split build changes no C: `emit` and the cache key are the single
+  file; the runtime's state is static in one file and defined once
+  (TN_STATE) across units. The suite runs as fast on the split stage1.
+- **Fixpoint:** stage0 (seed-built) and stage1 (stage0-built, the compiler
+  ./check uses) must emit the same C on every accepted file; with the seed
+  = stage1 comparison this is the old stage1 = stage2 = bootstrap check,
+  with the shipped compiler now the self-built one.
+- **Evidence on tenonc:** fuzz.py, bench.py, asan.sh and mutate.py now
+  exercise tenonc (mutants of the self-hosted compile path and the runtime,
+  oracle `tenonc test`); the seed stays only as a reference (its own suite,
+  interp_diff.py, checkfuzz.py, a third opinion in fuzz.py), all run by
+  tools/evidence.sh. tools/corpus.py is the one definition of the corpus,
+  the job count and the trusted base.
+- **STATUS.md:** status.py parses tenonc's summary lines (an unreadable
+  line is an open regression), counts the trusted base as compiler +
+  runtime with the seed apart, judges milestones 1 and 2 from data, shows
+  the per-step check time, and computes open regressions; tools/unmet.md
+  keeps only prose.

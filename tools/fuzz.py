@@ -302,7 +302,9 @@ def main():
     old["programs"] = old.get("programs", 0) + count
     old["disagreements"] = old.get("disagreements", 0) + stats.get("disagree", 0) + stats.get("build", 0)
     old["rejected"] = old.get("rejected", 0) + stats.get("rejected", 0)
-    json.dump(old, open(path, "w"), indent=1)
+    bad = stats.get("disagree", 0) + stats.get("build", 0)
+    old["last"] = {"programs": count, "seed": base, "disagreements": bad, "rejected": stats.get("rejected", 0)}
+    corpus.record("fuzz", old)
     return 0 if not (stats.get("disagree") or stats.get("build")) else 1
 
 

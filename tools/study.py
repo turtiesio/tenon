@@ -155,6 +155,17 @@ def evaluate():
                 row["hidden_pass"] = res.get("passed", 0)
                 row["hidden_total"] = res.get("total", 0)
             rows.append(row)
+    text, summary = summarize(rows)
+    os.makedirs(os.path.join(ROOT, ".evidence"), exist_ok=True)
+    json.dump({"summary": text, "per_language": summary}, open(os.path.join(ROOT, ".evidence", "study.json"), "w"), indent=1)
+    os.makedirs(os.path.join(ROOT, "study", "results"), exist_ok=True)
+    json.dump(rows, open(os.path.join(ROOT, "study", "results", "rows.json"), "w"), indent=1)
+    print(text)
+
+
+def summarize(rows):
+    """Medians over authors per language, as (a Markdown table, {lang: medians});
+    tools/status.py reads the published rows (study/results/waveN/rows.json)."""
     summary = {}
     for lang in EXT:
         rs = [r for r in rows if r["lang"] == lang and r["exists"]]
@@ -181,16 +192,12 @@ def evaluate():
             "minutes_total": med([sum(a["minutes"]) for a in per_author.values()]),
             "errors": med([a["errors"] for a in per_author.values()]),
         }
-    os.makedirs(os.path.join(ROOT, ".evidence"), exist_ok=True)
     lines = ["| Language | Authors | Hidden-test pass rate | Lines without closer-only lines (sum of 10) | All lines | Tokens | Minutes to visible | Errors |", "|---|---|---|---|---|---|---|---|"]
     for lang, s in summary.items():
         rate = f"{s['hidden_pass_rate'] * 100:.0f}%" if s["hidden_pass_rate"] is not None else "-"
         lines.append(f"| {lang} | {s['authors']} | {rate} | {s['code_lines']} | {s['lines']} | {s['tokens']} | {s['minutes_total']} | {s['errors']} |")
     text = "Medians over authors (protocol: study/README.md; per-solution data: study/results/).\n\n" + "\n".join(lines)
-    json.dump({"summary": text, "per_language": summary}, open(os.path.join(ROOT, ".evidence", "study.json"), "w"), indent=1)
-    os.makedirs(os.path.join(ROOT, "study", "results"), exist_ok=True)
-    json.dump(rows, open(os.path.join(ROOT, "study", "results", "rows.json"), "w"), indent=1)
-    print(text)
+    return text, summary
 
 
 if __name__ == "__main__":
