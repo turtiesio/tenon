@@ -55,11 +55,15 @@ pub fn fields_of(m: mut emit.Em, t: cktypes.Ty) -> List[(Str, cktypes.Ty)] {
 // store-to-load forward on every copy; bench/calc, whose evaluator returns a
 // Result[Int, Str] per node, took 4x as long as with clang (Linux, gcc 13).
 // The struct takes the sum of the payloads instead of the largest (the same
-// with one payload, as Option). Heap nodes of boxed enums keep the union.
+// with one payload, as Option), so only enums with at most two payloads (as
+// Result) get it: with all of them the interpreter's values grew enough that
+// `tenon test` took 40 s instead of 22 (Linux). Heap nodes of boxed enums
+// keep the union.
 fn union_def(m: mut emit.Em, vs: List[(Str, List[cktypes.Ty])], boxed: Bool) -> Str {
     var s = ""
-    if vs.any(fn(v) => not v.1.is_empty()) {
-        s += if boxed or not m.build { " union \{" } else { " TN_PAYLOADS \{" }
+    let payloads = vs.filter(fn(v) => not v.1.is_empty()).len()
+    if payloads > 0 {
+        s += if boxed or not m.build or payloads > 2 { " union \{" } else { " TN_PAYLOADS \{" }
         for i in 0..vs.len() {
             let fs = vs[i].1
             if fs.is_empty() { continue }
