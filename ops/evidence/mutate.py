@@ -14,7 +14,8 @@ ops/gates/pkg_test.sh, the only test of the package code) as the
 oracle. A mutant the seed cannot compile "did not build"; one whose stage0
 cannot build stage1 is killed (./check fails); one that builds and passes
 every test "survived": the tests do not notice that change. Survivors are
-added to .evidence/mutation.json as tasks.
+added to .evidence/mutation.json as tasks. A mutant listed in EQUIVALENT
+(judged equivalent, with its reason) is counted but not built.
 """
 import json, os, random, re, shutil, subprocess, sys, tempfile, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
@@ -27,6 +28,15 @@ KIND = "tenonc"  # what .evidence/mutation.json counts: the self-hosted compiler
 OPS = [(r" < ", " <= "), (r" <= ", " < "), (r" > ", " >= "), (r" >= ", " > "), (r" == ", " != "),
        (r" != ", " == "), (r" \+ 1", " - 1"), (r" - 1", " + 1"), (r"\btrue\b", "false"), (r"\bfalse\b", "true"),
        (r" && ", " || "), (r" \|\| ", " && "), (r" and ", " or "), (r" or ", " and ")]
+# Mutants judged equivalent: no program can tell them from the original. Keyed by
+# (file, line before, line after), stripped; each with its reason. They are counted
+# as "equivalent", neither killed nor survived. Add one only with the reason, in the
+# change that closes the survivor's issue.
+EQUIVALENT = {
+    ("runtime/tenon.h", "if (w <= 0) {", "if (w < 0) {"):
+        "issue #16: write(2) returns 0 only for a request of 0 bytes, and tn_write_fd asks for n > 0; on the"
+        " files, pipes, sockets and terminals a program can write to, a failure is -1 (the w < 0 branch)",
+}
 
 
 def candidates(text):
@@ -75,7 +85,7 @@ def main():
             shutil.copytree(os.path.join(ROOT, d), os.path.join(work, d), symlinks=True)
         if verdict(work, env) != "SURVIVED":
             raise SystemExit("mutate: the unmutated tree does not build or pass its tests")
-        results = {"killed": 0, "survived": [], "nobuild": 0}
+        results = {"killed": 0, "survived": [], "nobuild": 0, "equivalent": 0}
         for n in range(count):
             path = rnd.choice(TARGETS)
             full = os.path.join(work, path)
@@ -87,6 +97,10 @@ def main():
             lines = orig.splitlines(keepends=True)
             before = lines[li]
             lines[li] = before[:a] + rep + before[b:]
+            if (path, before.strip(), lines[li].strip()) in EQUIVALENT:
+                results["equivalent"] += 1
+                print(f"[{n + 1}/{count}] equivalent {path}:{li + 1}: {lines[li].strip()[:90]}", flush=True)
+                continue
             open(full, "w").write("".join(lines))
             try:
                 v = verdict(work, env)
@@ -110,7 +124,7 @@ def main():
         old["score"] = round(old["killed"] / t, 2) if t else None
         old["last"] = results
         corpus.record("mutation", old)
-        print(f"mutation: {results['killed']} killed, {len(results['survived'])} survived, {results['nobuild']} did not build")
+        print(f"mutation: {results['killed']} killed, {len(results['survived'])} survived, {results['nobuild']} did not build, {results['equivalent']} known equivalent")
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
