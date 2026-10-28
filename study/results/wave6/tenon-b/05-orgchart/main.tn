@@ -1,0 +1,124 @@
+struct Emp { id: Str, name: Str, manager: Str, salary: Int }
+
+struct Org {
+    emps: List[Emp],
+    kids: List[List[Int]],
+    reports: List[Int],
+    cost: List[Int],
+}
+
+fn valid_id(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 8 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+fn with_commas(n: Int) -> Str {
+    let digits = n.to_str()
+    var out = ""
+    for i in 0..digits.len() {
+        if i > 0 and (digits.len() - i) % 3 == 0 { out += "," }
+        out += digits.slice(i, i + 1)
+    }
+    out
+}
+
+fn parse_emp(line: Str) -> Result[Emp, Str] {
+    let f = line.split(",")
+    if f.len() != 4 { return Err("expected 4 fields: '{line}'") }
+    if not valid_id(f[0]) { return Err("bad id '{f[0]}'") }
+    let name = f[1]
+    if name.is_empty() or name.starts_with(" ") or name.ends_with(" ") {
+        return Err("bad name '{name}'")
+    }
+    if not f[2].is_empty() and not valid_id(f[2]) { return Err("bad manager '{f[2]}'") }
+    if f[3].len() < 1 or f[3].len() > 9 or not f[3].is_digits() { return Err("bad salary '{f[3]}'") }
+    Ok(Emp { id: f[0], name, manager: f[2], salary: f[3].to_int().unwrap() })
+}
+
+// Fills reports and cost for the subtree of i; returns the subtree size.
+fn tally(i: Int, kids: List[List[Int]], emps: List[Emp], reports: mut List[Int], cost: mut List[Int]) -> Int {
+    var size = 1
+    var total = emps[i].salary
+    for k in kids[i] {
+        size += tally(k, kids, emps, mut reports, mut cost)
+        total += cost[k]
+    }
+    reports[i] = size - 1
+    cost[i] = total
+    size
+}
+
+fn Org.emit(self, out: mut Str, i: Int, depth: Int) {
+    let e = self.emps[i]
+    out += "  ".repeat(depth)
+    out += "{e.name} [{e.id}] reports={self.reports[i]} cost={with_commas(self.cost[i])}\n"
+    for k in self.kids[i] { self.emit(mut out, k, depth + 1) }
+}
+
+fn build(text: Str, target: Option[Str]) -> Result[Str, Str] {
+    var lines: List[Str] = []
+    for raw in text.lines() { lines.push(raw.strip_suffix("\r").unwrap_or(raw)) }
+    if lines.is_empty() or lines[0] != "id,name,manager,salary" { return Err("bad header") }
+
+    var emps: List[Emp] = []
+    var index: Map[Str, Int] = [:]
+    for n in 1..lines.len() {
+        if lines[n].is_empty() { continue }
+        let e = parse_emp(lines[n])?
+        if index.contains(e.id) { return Err("duplicate id '{e.id}'") }
+        index[e.id] = emps.len()
+        emps.push(e)
+    }
+
+    var kids: List[List[Int]] = List.filled(emps.len(), [])
+    var roots: List[Int] = []
+    for i in 0..emps.len() {
+        let m = emps[i].manager
+        if m.is_empty() {
+            roots.push(i)
+        } else {
+            let Some(p) = index.get(m) else { return Err("unknown manager '{m}'") }
+            kids[p].push(i)
+        }
+    }
+    let order = fn(i: Int) => (emps[i].name, emps[i].id)
+    roots.sort_by(order)
+    for i in 0..emps.len() { kids[i].sort_by(order) }
+
+    var reports = List.filled(emps.len(), 0)
+    var cost = List.filled(emps.len(), 0)
+    var seen = 0
+    for r in roots { seen += tally(r, kids, emps, mut reports, mut cost) }
+    if seen != emps.len() { return Err("cycle in managers") }
+
+    let org = Org { emps, kids, reports, cost }
+    var out = ""
+    match target {
+        Some(id) => {
+            let Some(i) = index.get(id) else { return Err("unknown id '{id}'") }
+            org.emit(mut out, i, 0)
+        }
+        None => {
+            for r in roots { org.emit(mut out, r, 0) }
+        }
+    }
+    Ok(out)
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() > 1 {
+        con.eprintln("usage: orgchart [ID]")
+        return 2
+    }
+    let target = sys.args.first()
+    match build(con.read_all(), target) {
+        Ok(out) => {
+            con.print(out)
+            0
+        }
+        Err(msg) => {
+            con.eprintln("orgchart: {msg}")
+            1
+        }
+    }
+}

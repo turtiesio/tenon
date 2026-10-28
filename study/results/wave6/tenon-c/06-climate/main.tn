@@ -1,0 +1,70 @@
+struct Reading { station: Str, date: Str, temp: Int }
+struct Stats { days: Int, low: Int, high: Int, sum: Int }
+fn date_valid(s: Str) -> Bool {
+    let p = s.split("-")
+    if p.len() != 3 { return false }
+    if p[0].len() != 4 or p[1].len() != 2 or p[2].len() != 2 { return false }
+    if not p.all(fn(x) => x.is_digits()) { return false }
+    let year = p[0].to_int().unwrap()
+    let month = p[1].to_int().unwrap()
+    let day = p[2].to_int().unwrap()
+    if year < 1 or month < 1 or month > 12 or day < 1 { return false }
+    let leap = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    let lengths = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    day <= lengths[month - 1]
+}
+fn temperature(s: Str) -> Option[Int] {
+    let neg = s.starts_with("-")
+    let unsigned = if neg { s.slice(1, s.len()) } else { s }
+    let parts = unsigned.split(".")
+    if parts.len() != 2 { return None }
+    if parts[0].len() < 1 or parts[0].len() > 2 or parts[1].len() != 1 { return None }
+    if not parts[0].is_digits() or not parts[1].is_digits() { return None }
+    let n = parts[0].to_int()? * 10 + parts[1].to_int()?
+    Some(if neg { -n } else { n })
+}
+fn parse(line: Str) -> Option[Reading] {
+    let fields = line.split(";")
+    if fields.len() != 3 { return None }
+    let station = fields[0]
+    if station.char_count() < 1 or station.char_count() > 40 or station.starts_with(" ") or station.ends_with(" ") { return None }
+    if not date_valid(fields[1]) { return None }
+    Some(Reading { station, date: fields[1], temp: temperature(fields[2])? })
+}
+fn fmt(t: Int) -> Str {
+    let sign = if t < 0 { "-" } else { "" }
+    let a = t.abs()
+    "{sign}{a / 10}.{a % 10}"
+}
+fn main(sys: Sys) -> Int {
+    if sys.args.len() > 1 or (sys.args.len() == 1 and sys.args[0] != "-y") { sys.console.eprintln("expected optional -y"); return 2 }
+    let period_length = if sys.args.is_empty() { 7 } else { 4 }
+    var readings: Map[(Str, Str), Int] = [:]
+    var skipped = 0
+    var replaced = 0
+    while let Some(line) = sys.console.read_line() {
+        if line.is_empty() { continue }
+        match parse(line) {
+            Some(r) => {
+                let key = (r.station, r.date)
+                if readings.contains(key) { replaced += 1 }
+                readings[key] = r.temp
+            }
+            None => skipped += 1,
+        }
+    }
+    var groups: Map[(Str, Str), Stats] = [:]
+    for (key2, t) in readings {
+        let group = (key2.0, key2.1.slice(0, period_length))
+        let old = groups.get_or(group, Stats { days: 0, low: t, high: t, sum: 0 })
+        groups[group] = Stats { days: old.days + 1, low: old.low.min(t), high: old.high.max(t), sum: old.sum + t }
+    }
+    for key3 in groups.keys().sorted() {
+        let s = groups[key3]
+        let magnitude = (2 * s.sum.abs() + s.days) / (2 * s.days)
+        let mean = if s.sum < 0 { -magnitude } else { magnitude }
+        sys.console.println("{key3.0} {key3.1} days={s.days} min={fmt(s.low)} max={fmt(s.high)} mean={fmt(mean)}")
+    }
+    sys.console.println("readings={readings.len()} skipped={skipped} replaced={replaced}")
+    0
+}

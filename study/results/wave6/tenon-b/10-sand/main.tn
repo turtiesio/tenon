@@ -1,0 +1,104 @@
+const EMPTY: Int = '.'
+const ROCK: Int = '#'
+const GRAIN: Int = 'o'
+const SOURCE: Int = 'S'
+
+struct World {
+    cells: List[List[Int]],
+    lost: Int,
+}
+
+fn parse_grid(text: Str) -> Option[List[List[Int]]] {
+    let lines = text.lines()
+    if lines.is_empty() or lines.len() > 30 { return None }
+    var cells: List[List[Int]] = []
+    for raw in lines {
+        let line = raw.strip_suffix("\r").unwrap_or(raw)
+        if line.is_empty() or line.len() > 30 { return None }
+        if not line.all_bytes(fn(b) => b == EMPTY or b == ROCK or b == GRAIN or b == SOURCE) { return None }
+        if not cells.is_empty() and line.len() != cells[0].len() { return None }
+        cells.push(line.bytes())
+    }
+    Some(cells)
+}
+
+// Where a grain at (x, y) moves to: the column in row y + 1, if any.
+fn World.target(self, x: Int, y: Int) -> Option[Int] {
+    let w = self.cells[0].len()
+    let below = self.cells[y + 1]
+    if below[x] == EMPTY { return Some(x) }
+    if x > 0 and below[x - 1] == EMPTY { return Some(x - 1) }
+    if x + 1 < w and below[x + 1] == EMPTY { return Some(x + 1) }
+    None
+}
+
+// Runs one tick; returns true if anything changed.
+fn World.tick(mut self) -> Bool {
+    let h = self.cells.len()
+    let w = self.cells[0].len()
+    var changed = false
+    var y = h - 1
+    while y >= 0 {
+        for x in 0..w {
+            if self.cells[y][x] != GRAIN { continue }
+            if y == h - 1 {
+                self.cells[y][x] = EMPTY
+                self.lost += 1
+                changed = true
+            } else if let Some(tx) = self.target(x, y) {
+                self.cells[y][x] = EMPTY
+                self.cells[y + 1][tx] = GRAIN
+                changed = true
+            }
+        }
+        y -= 1
+    }
+    for sy in 0..(h - 1) {
+        for x in 0..w {
+            if self.cells[sy][x] == SOURCE and self.cells[sy + 1][x] == EMPTY {
+                self.cells[sy + 1][x] = GRAIN
+                changed = true
+            }
+        }
+    }
+    changed
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: sand TICKS")
+        return 2
+    }
+    let arg = sys.args[0]
+    if not arg.is_digits() or arg.len() > 4 {
+        con.eprintln("sand: bad tick count '{arg}'")
+        return 2
+    }
+    let ticks = arg.to_int().unwrap()
+
+    let Some(cells) = parse_grid(con.read_all()) else {
+        con.eprintln("sand: invalid grid")
+        return 1
+    }
+    var world = World { cells, lost: 0 }
+    var ran = 0
+    var stable = false
+    while ran < ticks {
+        let changed = world.tick()
+        ran += 1
+        if not changed {
+            stable = true
+            break
+        }
+    }
+
+    var grains = 0
+    for row in world.cells {
+        con.println(Str.from_utf8(row).unwrap())
+        grains += row.count(fn(c) => c == GRAIN)
+    }
+    let yes_no = if stable { "yes" } else { "no" }
+    con.println("ticks={ran} grains={grains} lost={world.lost} stable={yes_no}")
+    0
+}

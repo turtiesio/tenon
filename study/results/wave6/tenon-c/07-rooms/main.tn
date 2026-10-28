@@ -1,0 +1,93 @@
+enum Command { Room(Str, Int), Book(Str, Int, Int, Str), Cancel(Int), Schedule(Str), Find(Int, Int) }
+struct Booking { id: Int, start: Int, end: Int, who: Str }
+struct Service { rooms: Map[Str, Int], bookings: Map[Str, List[Booking]], next: Int }
+fn name(s: Str) -> Bool { s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit()) }
+fn positive(s: Str, digits: Int) -> Option[Int] {
+    if s.is_empty() or s.len() > digits or s.byte(0) == '0' or not s.is_digits() { return None }
+    s.to_int()
+}
+fn time(s: Str) -> Option[Int] {
+    if s.len() != 5 or s.byte(2) != ':' { return None }
+    let hh = s.slice(0, 2)
+    let mm = s.slice(3, 5)
+    if not hh.is_digits() or not mm.is_digits() { return None }
+    let h = hh.to_int()?
+    let m = mm.to_int()?
+    if h > 24 or m > 59 or (h == 24 and m != 0) { return None }
+    Some(h * 60 + m)
+}
+fn parse(line: Str) -> Option[Command] {
+    let p = line.split(" ")
+    if p.len() == 3 and p[0] == "ROOM" and name(p[1]) { return Some(Room(p[1], positive(p[2], 3)?)) }
+    if p.len() == 5 and p[0] == "BOOK" and name(p[1]) and name(p[4]) { return Some(Book(p[1], time(p[2])?, time(p[3])?, p[4])) }
+    if p.len() == 2 and p[0] == "CANCEL" { return Some(Cancel(positive(p[1].strip_prefix("B")?, 9)?)) }
+    if p.len() == 2 and p[0] == "SCHEDULE" and name(p[1]) { return Some(Schedule(p[1])) }
+    if p.len() == 3 and p[0] == "FIND" { return Some(Find(positive(p[1], 3)?, positive(p[2], 4)?)) }
+    None
+}
+fn fmt(t: Int) -> Str { "{t / 60:02}:{t % 60:02}" }
+fn Service.apply(mut self, cmd: Command) -> Str {
+    match cmd {
+        Room(room, cap) => {
+            if self.rooms.contains(room) { return "ERR room exists" }
+            self.rooms[room] = cap
+            self.bookings[room] = []
+            "OK"
+        }
+        Book(room, start, end, who) => {
+            if start >= end { return "ERR bad time" }
+            if not self.rooms.contains(room) { return "ERR no such room" }
+            for existing in self.bookings[room] {
+                if start < existing.end and existing.start < end { return "ERR conflict B{existing.id}" }
+            }
+            let id = self.next
+            self.next += 1
+            self.bookings[room].push(Booking { id, start, end, who })
+            self.bookings[room].sort_by(fn(b) => b.start)
+            "OK B{id}"
+        }
+        Cancel(id) => {
+            for room in self.rooms.keys() {
+                for (index, booking) in self.bookings[room].enumerate() {
+                    if booking.id == id {
+                        let _ = self.bookings[room].remove(index)
+                        return "OK"
+                    }
+                }
+            }
+            "ERR no such booking"
+        }
+        Schedule(room) => {
+            if not self.rooms.contains(room) { return "ERR no such room" }
+            if self.bookings[room].is_empty() { return "(empty)" }
+            self.bookings[room].map(fn(b) => "B{b.id} {fmt(b.start)}-{fmt(b.end)} {b.who}").join(", ")
+        }
+        Find(people, minutes) => {
+            var candidates: List[(Int, Int, Str)] = []
+            for (room, capacity) in self.rooms {
+                if capacity < people { continue }
+                var slot = 480
+                for booking in self.bookings[room] {
+                    if slot + minutes <= booking.start { break }
+                    if slot < booking.end { slot = booking.end }
+                }
+                if slot + minutes <= 1080 { candidates.push((slot, capacity, room)) }
+            }
+            candidates.sort()
+            if candidates.is_empty() { "NONE" } else {
+                let best = candidates[0]
+                "{best.2} {fmt(best.0)} {fmt(best.0 + minutes)}"
+            }
+        }
+    }
+}
+fn main(sys: Sys) -> Int {
+    if not sys.args.is_empty() { sys.console.eprintln("no arguments expected"); return 2 }
+    var service = Service { rooms: [:], bookings: [:], next: 1 }
+    while let Some(line) = sys.console.read_line() {
+        let response = match parse(line) { Some(cmd) => service.apply(cmd), None => "ERR bad command" }
+        sys.console.println(response)
+        sys.console.flush()
+    }
+    0
+}

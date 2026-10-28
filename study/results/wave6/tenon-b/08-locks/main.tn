@@ -1,0 +1,166 @@
+struct Req { client: Str, mode: Str }
+
+struct Resource { holders: List[Req], queue: List[Req] }
+
+struct Manager { resources: Map[Str, Resource] }
+
+fn valid_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+fn valid_mode(s: Str) -> Bool {
+    s == "S" or s == "X"
+}
+
+fn compatible(mode: Str, holders: List[Req]) -> Bool {
+    holders.is_empty() or (mode == "S" and holders.all(fn(h) => h.mode == "S"))
+}
+
+fn join_reqs(reqs: List[Req]) -> Str {
+    if reqs.is_empty() { return "-" }
+    reqs.map(fn(r) => "{r.client}:{r.mode}").join(",")
+}
+
+fn with_grants(head: Str, grants: List[Str]) -> Str {
+    var out = head
+    for g in grants { out += " " + g }
+    out
+}
+
+fn Resource.holder_index(self, client: Str) -> Option[Int] {
+    for i in 0..self.holders.len() {
+        if self.holders[i].client == client { return Some(i) }
+    }
+    None
+}
+
+fn Resource.waiter_index(self, client: Str) -> Option[Int] {
+    for i in 0..self.queue.len() {
+        if self.queue[i].client == client { return Some(i) }
+    }
+    None
+}
+
+// Grants requests from the front of the queue while they are compatible.
+fn Manager.pump(mut self, name: Str, grants: mut List[Str]) {
+    while not self.resources[name].queue.is_empty() {
+        let front = self.resources[name].queue[0]
+        if not compatible(front.mode, self.resources[name].holders) { break }
+        let _ = self.resources[name].queue.remove(0)
+        self.resources[name].holders.push(front)
+        grants.push("{front.client}:{name}:{front.mode}")
+    }
+}
+
+fn Manager.lock(mut self, client: Str, name: Str, mode: Str) -> Str {
+    self.resources.or_insert(name, Resource { holders: [], queue: [] })
+    let r = self.resources[name]
+    if r.holder_index(client).is_some() { return "ERR already held" }
+    if r.waiter_index(client).is_some() { return "ERR already waiting" }
+    let req = Req { client, mode }
+    if r.queue.is_empty() and compatible(mode, r.holders) {
+        self.resources[name].holders.push(req)
+        "GRANTED"
+    } else {
+        self.resources[name].queue.push(req)
+        "WAITING"
+    }
+}
+
+fn Manager.unlock(mut self, client: Str, name: Str) -> Str {
+    let Some(r) = self.resources.get(name) else { return "ERR not held" }
+    let Some(i) = r.holder_index(client) else { return "ERR not held" }
+    let _ = self.resources[name].holders.remove(i)
+    var grants: List[Str] = []
+    self.pump(name, mut grants)
+    with_grants("OK", grants)
+}
+
+fn Manager.drop(mut self, client: Str) -> Str {
+    var names = self.resources.keys()
+    names.sort()
+    var released = 0
+    var cancelled = 0
+    var touched: List[Str] = []
+    for name in names {
+        var changed = false
+        while true {
+            let Some(i) = self.resources[name].waiter_index(client) else { break }
+            let _ = self.resources[name].queue.remove(i)
+            cancelled += 1
+            changed = true
+        }
+        if let Some(i) = self.resources[name].holder_index(client) {
+            let _ = self.resources[name].holders.remove(i)
+            released += 1
+            changed = true
+        }
+        if changed { touched.push(name) }
+    }
+    var grants: List[Str] = []
+    for name in touched { self.pump(name, mut grants) }
+    with_grants("OK released={released} cancelled={cancelled}", grants)
+}
+
+fn Manager.status(self, name: Str) -> Str {
+    let Some(r) = self.resources.get(name) else { return "{name} holders=- queue=-" }
+    var holders = r.holders
+    holders.sort_by(fn(h) => h.client)
+    "{name} holders={join_reqs(holders)} queue={join_reqs(r.queue)}"
+}
+
+fn Manager.held(self, client: Str) -> Str {
+    var names = self.resources.keys()
+    names.sort()
+    var parts: List[Str] = []
+    for name in names {
+        let r = self.resources[name]
+        if let Some(i) = r.holder_index(client) {
+            parts.push("{name}:{r.holders[i].mode}")
+        }
+    }
+    if parts.is_empty() { "-" } else { parts.join(",") }
+}
+
+fn Manager.handle(mut self, line: Str) -> Str {
+    let t = line.split(" ")
+    let bad = "ERR bad command"
+    if t.any(fn(p) => p.is_empty()) { return bad }
+    match t[0] {
+        "LOCK" => {
+            if t.len() != 4 or not valid_name(t[1]) or not valid_name(t[2]) or not valid_mode(t[3]) { return bad }
+            self.lock(t[1], t[2], t[3])
+        }
+        "UNLOCK" => {
+            if t.len() != 3 or not valid_name(t[1]) or not valid_name(t[2]) { return bad }
+            self.unlock(t[1], t[2])
+        }
+        "DROP" => {
+            if t.len() != 2 or not valid_name(t[1]) { return bad }
+            self.drop(t[1])
+        }
+        "STATUS" => {
+            if t.len() != 2 or not valid_name(t[1]) { return bad }
+            self.status(t[1])
+        }
+        "HELD" => {
+            if t.len() != 2 or not valid_name(t[1]) { return bad }
+            self.held(t[1])
+        }
+        _ => bad,
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if not sys.args.is_empty() {
+        con.eprintln("usage: locks")
+        return 2
+    }
+    var mgr = Manager { resources: [:] }
+    while let Some(line) = con.read_line() {
+        con.println(mgr.handle(line))
+        con.flush()
+    }
+    0
+}

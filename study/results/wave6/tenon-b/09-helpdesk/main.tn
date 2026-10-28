@@ -1,0 +1,204 @@
+enum Cmd {
+    Open(Str, Str),
+    Assign(Int, Str),
+    Close(Int),
+    Reopen(Int),
+    Show(Int),
+    Queue(Str),
+}
+
+struct Ticket { customer: Str, title: Str, agent: Str, open: Bool }
+
+struct Desk { tickets: List[Ticket] }
+
+struct Reply { text: Str, record: Option[Str] }
+
+fn valid_name(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 12 and s.all_bytes(fn(b) => b.is_lower() or b.is_digit())
+}
+
+fn parse_ticket(s: Str) -> Option[Int] {
+    let rest = s.strip_prefix("T")?
+    if not rest.is_digits() or rest.len() > 9 or rest.byte(0) == '0' { return None }
+    rest.to_int()
+}
+
+fn valid_title(s: Str) -> Bool {
+    s.len() >= 1 and s.len() <= 60
+        and s.all_bytes(fn(b) => b >= 0x20 and b <= 0x7E)
+        and not s.starts_with(" ") and not s.ends_with(" ")
+}
+
+// "<customer> <title>" as found after "OPEN " (or after "OPEN T<n> ")
+fn parse_open_rest(rest: Str) -> Option[(Str, Str)] {
+    let (customer, title) = rest.split_once(" ")?
+    if valid_name(customer) and valid_title(title) { Some((customer, title)) } else { None }
+}
+
+fn parse_cmd(line: Str) -> Option[Cmd] {
+    if let Some(rest) = line.strip_prefix("OPEN ") {
+        let (customer, title) = parse_open_rest(rest)?
+        return Some(Open(customer, title))
+    }
+    let t = line.split(" ")
+    if t.any(fn(p) => p.is_empty()) { return None }
+    match t[0] {
+        "ASSIGN" => {
+            if t.len() != 3 or not valid_name(t[2]) { return None }
+            Some(Assign(parse_ticket(t[1])?, t[2]))
+        }
+        "CLOSE" => if t.len() == 2 { Some(Close(parse_ticket(t[1])?)) } else { None },
+        "REOPEN" => if t.len() == 2 { Some(Reopen(parse_ticket(t[1])?)) } else { None },
+        "SHOW" => if t.len() == 2 { Some(Show(parse_ticket(t[1])?)) } else { None },
+        "QUEUE" => {
+            if t.len() != 2 { return None }
+            if t[1] == "-" or valid_name(t[1]) { Some(Queue(t[1])) } else { None }
+        }
+        _ => None,
+    }
+}
+
+fn reply(text: Str) -> Reply {
+    Reply { text, record: None }
+}
+
+fn Desk.exec(mut self, cmd: Cmd) -> Reply {
+    match cmd {
+        Open(customer, title) => {
+            self.tickets.push(Ticket { customer, title, agent: "", open: true })
+            let n = self.tickets.len()
+            Reply { text: "T{n}", record: Some("OPEN T{n} {customer} {title}") }
+        }
+        Assign(n, agent) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            let t = self.tickets[n - 1]
+            if not t.open { return reply("ERR closed") }
+            if t.agent == agent { return reply("UNCHANGED") }
+            self.tickets[n - 1].agent = agent
+            Reply { text: "OK", record: Some("ASSIGN T{n} {agent}") }
+        }
+        Close(n) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            if not self.tickets[n - 1].open { return reply("ERR closed") }
+            self.tickets[n - 1].open = false
+            Reply { text: "OK", record: Some("CLOSE T{n}") }
+        }
+        Reopen(n) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            if self.tickets[n - 1].open { return reply("ERR not closed") }
+            self.tickets[n - 1].open = true
+            Reply { text: "OK", record: Some("REOPEN T{n}") }
+        }
+        Show(n) => {
+            if n > self.tickets.len() { return reply("ERR no such ticket") }
+            let t = self.tickets[n - 1]
+            let state = if t.open { "open" } else { "closed" }
+            let agent = if t.agent.is_empty() { "-" } else { t.agent }
+            reply("T{n} {state} {t.customer} {agent} {t.title}")
+        }
+        Queue(agent) => {
+            let want = if agent == "-" { "" } else { agent }
+            var found: List[Str] = []
+            for i in 0..self.tickets.len() {
+                let t = self.tickets[i]
+                if t.open and t.agent == want { found.push("T{i + 1}") }
+            }
+            reply(if found.is_empty() { "-" } else { found.join(" ") })
+        }
+    }
+}
+
+// Applies one journal record; Err if it is not a valid record at this point.
+fn Desk.replay(mut self, line: Str) -> Result[Unit, Str] {
+    if let Some(rest) = line.strip_prefix("OPEN ") {
+        let Some((tk, body)) = rest.split_once(" ") else { return Err("bad record '{line}'") }
+        let Some(n) = parse_ticket(tk) else { return Err("bad ticket in '{line}'") }
+        if n != self.tickets.len() + 1 { return Err("ticket out of sequence in '{line}'") }
+        let Some((customer, title)) = parse_open_rest(body) else { return Err("bad record '{line}'") }
+        let _ = self.exec(Open(customer, title))
+        return Ok(())
+    }
+    let Some(cmd) = parse_cmd(line) else { return Err("bad record '{line}'") }
+    match cmd {
+        Assign(_, _) | Close(_) | Reopen(_) => {
+            let r = self.exec(cmd)
+            if r.text != "OK" { return Err("record not applicable: '{line}'") }
+            Ok(())
+        }
+        _ => Err("not a record: '{line}'"),
+    }
+}
+
+fn load(fs: Fs, path: Str) -> Result[Desk, Str] {
+    let text = match fs.read(path) {
+        Ok(t) => t,
+        Err(NotFound(_)) => "",
+        Err(e) => return Err("cannot read journal: {e}"),
+    }
+    var complete = text
+    var torn = false
+    if text.ends_with("\n") or text.is_empty() {
+        torn = false
+    } else {
+        torn = true
+        complete = if let Some(i) = text.rfind("\n") { text.slice(0, i + 1) } else { "" }
+    }
+    var desk = Desk { tickets: [] }
+    for line in complete.lines() {
+        desk.replay(line)?
+    }
+    if torn {
+        fs.write(path, complete).map_err(fn(e) => "cannot truncate journal: {e}")?
+    }
+    Ok(desk)
+}
+
+fn serve(sys: Sys, desk: Desk, path: Str) -> Result[Unit, Str] {
+    let con = sys.console
+    var d = desk
+    while let Some(line) = con.read_line() {
+        let r = match parse_cmd(line) {
+            Some(cmd) => d.exec(cmd),
+            None => reply("ERR bad command"),
+        }
+        if let Some(rec) = r.record {
+            sys.fs.append(path, rec + "\n").map_err(fn(e) => "journal write failed: {e}")?
+        }
+        con.println(r.text)
+        con.flush()
+    }
+    Ok(())
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    if sys.args.len() != 1 {
+        con.eprintln("usage: helpdesk DIR")
+        return 2
+    }
+    let dir = sys.args[0]
+    if sys.fs.exists(dir) {
+        if not sys.fs.is_dir(dir) {
+            con.eprintln("helpdesk: {dir} is not a directory")
+            return 1
+        }
+    } else if let Err(e) = sys.fs.mkdir_one(dir) {
+        con.eprintln("helpdesk: cannot create {dir}: {e}")
+        return 1
+    }
+    let path = path_join(dir, "tickets.log")
+    let desk = match load(sys.fs, path) {
+        Ok(d) => d,
+        Err(msg) => {
+            con.eprintln("helpdesk: {msg}")
+            return 1
+        }
+    }
+    match serve(sys, desk, path) {
+        Ok(_) => 0,
+        Err(msg) => {
+            con.eprintln("helpdesk: {msg}")
+            1
+        }
+    }
+}

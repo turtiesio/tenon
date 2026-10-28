@@ -1,0 +1,100 @@
+struct Counts { lines: Int, words: Int, chars: Int, bytes: Int }
+
+fn count(data: List[Int]) -> Counts {
+    var lines = 0
+    var words = 0
+    var chars = 0
+    var in_word = false
+    for b in data {
+        if b == '\n' { lines += 1 }
+        // Code points: every byte that is not a UTF-8 continuation byte.
+        if b < 0x80 or b >= 0xC0 { chars += 1 }
+        let ws = b == ' ' or b == '\t' or b == '\n' or b == 0x0B or b == 0x0C or b == '\r'
+        if ws {
+            in_word = false
+        } else if not in_word {
+            in_word = true
+            words += 1
+        }
+    }
+    Counts { lines, words, chars, bytes: data.len() }
+}
+
+fn add(a: Counts, b: Counts) -> Counts {
+    Counts { lines: a.lines + b.lines, words: a.words + b.words, chars: a.chars + b.chars, bytes: a.bytes + b.bytes }
+}
+
+struct Sel { l: Bool, w: Bool, m: Bool, c: Bool }
+
+fn selected(s: Sel, c: Counts) -> List[Int] {
+    var out: List[Int] = []
+    if s.l { out.push(c.lines) }
+    if s.w { out.push(c.words) }
+    if s.m { out.push(c.chars) }
+    if s.c { out.push(c.bytes) }
+    out
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var sel = Sel { l: false, w: false, m: false, c: false }
+    var files: List[Str] = []
+    for a in sys.args {
+        match a {
+            "-l" => sel.l = true,
+            "-w" => sel.w = true,
+            "-m" => sel.m = true,
+            "-c" => sel.c = true,
+            _ => {
+                if a.starts_with("-") {
+                    con.eprintln("wcx: invalid option '{a}'")
+                    con.eprintln("usage: wcx [-l] [-w] [-m] [-c] [FILE...]")
+                    return 2
+                }
+                files.push(a)
+            }
+        }
+    }
+    if not (sel.l or sel.w or sel.m or sel.c) {
+        sel = Sel { l: true, w: true, m: false, c: true }
+    }
+
+    // Rows of (counts, label); label None for stdin.
+    var rows: List[(List[Int], Option[Str])] = []
+    var status = 0
+    if files.is_empty() {
+        rows.push((selected(sel, count(con.read_all_bytes())), None))
+    } else {
+        var total = Counts { lines: 0, words: 0, chars: 0, bytes: 0 }
+        for f in files {
+            if sys.fs.is_dir(f) {
+                con.eprintln("wcx: {f}: Is a directory")
+                status = 1
+                continue
+            }
+            match sys.fs.read_bytes(f) {
+                Ok(data) => {
+                    let c = count(data)
+                    total = add(total, c)
+                    rows.push((selected(sel, c), Some(f)))
+                }
+                Err(e) => {
+                    con.eprintln("wcx: {f}: {e}")
+                    status = 1
+                }
+            }
+        }
+        if files.len() >= 2 { rows.push((selected(sel, total), Some("total"))) }
+    }
+
+    var width = 1
+    for (nums, _) in rows {
+        for n in nums { width = width.max(n.to_str().len()) }
+    }
+    for (nums, label) in rows {
+        var line = nums.map(fn(n) => n.to_str().pad_left(width, " ")).join(" ")
+        if let Some(name) = label { line += " " + name }
+        con.println(line)
+    }
+    status
+}

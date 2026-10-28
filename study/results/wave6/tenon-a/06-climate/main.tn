@@ -1,0 +1,93 @@
+struct Reading { station: Str, date: Str, temp: Int }
+
+fn digits_value(s: Str) -> Option[Int] {
+    if s.is_digits() { s.to_int() } else { None }
+}
+
+fn is_leap(y: Int) -> Bool { (y % 4 == 0 and y % 100 != 0) or y % 400 == 0 }
+
+fn valid_date(d: Str) -> Bool {
+    if d.len() != 10 or d.byte(4) != '-' or d.byte(7) != '-' { return false }
+    let Some(y) = digits_value(d.slice(0, 4)) else { return false }
+    let Some(m) = digits_value(d.slice(5, 7)) else { return false }
+    let Some(day) = digits_value(d.slice(8, 10)) else { return false }
+    if y < 1 or m < 1 or m > 12 or day < 1 { return false }
+    let month_days = [31, if is_leap(y) { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    day <= month_days[m - 1]
+}
+
+// -?[0-9]{1,2}\.[0-9] as tenths
+fn parse_temp(t: Str) -> Option[Int] {
+    let neg = t.starts_with("-")
+    let body = if neg { t.slice(1, t.len()) } else { t }
+    let (whole, frac) = body.split_once(".")?
+    if whole.len() < 1 or whole.len() > 2 or frac.len() != 1 { return None }
+    let tenths = digits_value(whole)? * 10 + digits_value(frac)?
+    Some(if neg { -tenths } else { tenths })
+}
+
+fn parse_reading(line: Str) -> Option[Reading] {
+    let f = line.split(";")
+    if f.len() != 3 { return None }
+    let station = f[0]
+    let n = station.char_count()
+    if n < 1 or n > 40 or station.starts_with(" ") or station.ends_with(" ") { return None }
+    if not valid_date(f[1]) { return None }
+    let temp = parse_temp(f[2])?
+    Some(Reading { station, date: f[1], temp })
+}
+
+fn fmt_tenths(t: Int) -> Str {
+    let a = t.abs()
+    (if t < 0 { "-" } else { "" }) + "{a / 10}.{a % 10}"
+}
+
+// sum / days rounded to nearest, halves away from zero
+fn mean(sum: Int, days: Int) -> Int {
+    let q = (2 * sum.abs() + days) / (2 * days)
+    if sum < 0 { -q } else { q }
+}
+
+struct Stats { days: Int, min: Int, max: Int, sum: Int }
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var by_year = false
+    if sys.args.len() == 1 and sys.args[0] == "-y" {
+        by_year = true
+    } else if not sys.args.is_empty() {
+        con.eprintln("usage: climate [-y]")
+        return 2
+    }
+    var skipped = 0
+    var replaced = 0
+    var latest: Map[(Str, Str), Int] = [:]
+    while let Some(line) = con.read_line() {
+        if line.is_empty() { continue }
+        match parse_reading(line) {
+            Some(r) => {
+                let key = (r.station, r.date)
+                if latest.contains(key) { replaced += 1 }
+                latest[key] = r.temp
+            }
+            None => skipped += 1,
+        }
+    }
+    var groups: Map[(Str, Str), Stats] = [:]
+    for ((station, date), temp) in latest {
+        let period = if by_year { date.slice(0, 4) } else { date.slice(0, 7) }
+        let key = (station, period)
+        match groups.get(key) {
+            Some(s) => groups[key] = Stats { days: s.days + 1, min: s.min.min(temp), max: s.max.max(temp), sum: s.sum + temp },
+            None => groups[key] = Stats { days: 1, min: temp, max: temp, sum: temp },
+        }
+    }
+    var keys = groups.keys()
+    keys.sort()
+    for key in keys {
+        let s = groups[key]
+        con.println("{key.0} {key.1} days={s.days} min={fmt_tenths(s.min)} max={fmt_tenths(s.max)} mean={fmt_tenths(mean(s.sum, s.days))}")
+    }
+    con.println("readings={latest.len()} skipped={skipped} replaced={replaced}")
+    0
+}

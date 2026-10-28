@@ -1,0 +1,133 @@
+const ALPHABET: Str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+fn encode_b64(data: List[Int]) -> Str {
+    var out = ""
+    var i = 0
+    let n = data.len()
+    while i + 3 <= n {
+        let v = data[i] * 65536 + data[i + 1] * 256 + data[i + 2]
+        out += ALPHABET.slice(v / 262144, v / 262144 + 1)
+        out += ALPHABET.slice(v / 4096 % 64, v / 4096 % 64 + 1)
+        out += ALPHABET.slice(v / 64 % 64, v / 64 % 64 + 1)
+        out += ALPHABET.slice(v % 64, v % 64 + 1)
+        i += 3
+    }
+    let rest = n - i
+    if rest == 1 {
+        let v = data[i] * 16
+        out += ALPHABET.slice(v / 64, v / 64 + 1)
+        out += ALPHABET.slice(v % 64, v % 64 + 1)
+        out += "=="
+    } else if rest == 2 {
+        let v = (data[i] * 256 + data[i + 1]) * 4
+        out += ALPHABET.slice(v / 4096, v / 4096 + 1)
+        out += ALPHABET.slice(v / 64 % 64, v / 64 % 64 + 1)
+        out += ALPHABET.slice(v % 64, v % 64 + 1)
+        out += "="
+    }
+    out
+}
+
+fn wrap(text: Str, width: Int) -> Str {
+    if text.is_empty() { return "" }
+    if width == 0 { return text + "\n" }
+    var out = ""
+    var i = 0
+    while i < text.len() {
+        let end = (i + width).min(text.len())
+        out += text.slice(i, end)
+        out += "\n"
+        i = end
+    }
+    out
+}
+
+fn sextet(c: Int) -> Option[Int] {
+    if c.is_upper() { Some(c - 'A') }
+    else if c.is_lower() { Some(c - 'a' + 26) }
+    else if c.is_digit() { Some(c - '0' + 52) }
+    else if c == '+' { Some(62) }
+    else if c == '/' { Some(63) }
+    else { None }
+}
+
+fn decode_b64(input: List[Int]) -> Result[List[Int], Str] {
+    let text = input.filter(fn(b) => b != '\n' and b != '\r')
+    let n = text.len()
+    if n % 4 != 0 { return Err("length {n} is not a multiple of 4") }
+    var out: List[Int] = []
+    var g = 0
+    while g < n {
+        let last = g + 4 == n
+        // Number of '=' at the end of this group.
+        var pad = 0
+        if text[g + 3] == '=' { pad = 1 }
+        if pad == 1 and text[g + 2] == '=' { pad = 2 }
+        if pad > 0 and not last { return Err("padding before the last group") }
+        var vals: List[Int] = []
+        for k in 0..(4 - pad) {
+            let c = text[g + k]
+            if c == '=' { return Err("misplaced '=' at offset {g + k}") }
+            let Some(v) = sextet(c) else { return Err("invalid byte {c} at offset {g + k}") }
+            vals.push(v)
+        }
+        if pad == 0 {
+            let v = ((vals[0] * 64 + vals[1]) * 64 + vals[2]) * 64 + vals[3]
+            out.push(v / 65536)
+            out.push(v / 256 % 256)
+            out.push(v % 256)
+        } else if pad == 1 {
+            if vals[2] % 4 != 0 { return Err("non-zero padding bits") }
+            let v = (vals[0] * 64 + vals[1]) * 64 + vals[2]
+            out.push(v / 1024)
+            out.push(v / 4 % 256)
+        } else {
+            if vals[1] % 16 != 0 { return Err("non-zero padding bits") }
+            out.push(vals[0] * 4 + vals[1] / 16)
+        }
+        g += 4
+    }
+    Ok(out)
+}
+
+fn usage(con: Console, msg: Str) -> Int {
+    con.eprintln("b64: {msg}")
+    con.eprintln("usage: b64 [-d] [-w N]")
+    2
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var decode_mode = false
+    var width = 76
+    var i = 0
+    let args = sys.args
+    while i < args.len() {
+        let a = args[i]
+        if a == "-d" {
+            decode_mode = true
+        } else if a == "-w" {
+            if i + 1 >= args.len() { return usage(con, "-w needs a value") }
+            let v = args[i + 1]
+            if v.len() < 1 or v.len() > 4 or not v.is_digits() { return usage(con, "invalid width '{v}'") }
+            width = v.to_int().unwrap()
+            i += 1
+        } else {
+            return usage(con, "unexpected argument '{a}'")
+        }
+        i += 1
+    }
+    let input = con.read_all_bytes()
+    if decode_mode {
+        match decode_b64(input) {
+            Ok(bytes) => con.write_bytes(bytes),
+            Err(msg) => {
+                con.eprintln("b64: invalid input: {msg}")
+                return 1
+            }
+        }
+    } else {
+        con.print(wrap(encode_b64(input), width))
+    }
+    0
+}

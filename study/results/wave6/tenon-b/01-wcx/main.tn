@@ -1,0 +1,100 @@
+struct Counts { lines: Int, words: Int, chars: Int, bytes: Int }
+
+fn is_ws(b: Int) -> Bool {
+    b == ' ' or (b >= 9 and b <= 13)
+}
+
+fn count(data: List[Int]) -> Counts {
+    var c = Counts { lines: 0, words: 0, chars: 0, bytes: data.len() }
+    var in_word = false
+    for b in data {
+        if b == '\n' { c.lines += 1 }
+        if b < 128 or b >= 192 { c.chars += 1 }
+        if is_ws(b) {
+            in_word = false
+        } else if not in_word {
+            in_word = true
+            c.words += 1
+        }
+    }
+    c
+}
+
+fn Counts.add(mut self, o: Counts) {
+    self.lines += o.lines
+    self.words += o.words
+    self.chars += o.chars
+    self.bytes += o.bytes
+}
+
+fn Counts.largest(self) -> Int {
+    self.lines.max(self.words).max(self.chars).max(self.bytes)
+}
+
+struct Row { counts: Counts, label: Str }
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var show_l = false
+    var show_w = false
+    var show_m = false
+    var show_c = false
+    var files: List[Str] = []
+    for a in sys.args {
+        if a == "-l" {
+            show_l = true
+        } else if a == "-w" {
+            show_w = true
+        } else if a == "-m" {
+            show_m = true
+        } else if a == "-c" {
+            show_c = true
+        } else if a.starts_with("-") {
+            con.eprintln("wcx: invalid option '{a}'")
+            return 2
+        } else {
+            files.push(a)
+        }
+    }
+    if not (show_l or show_w or show_m or show_c) {
+        show_l = true
+        show_w = true
+        show_c = true
+    }
+
+    var rows: List[Row] = []
+    var failed = false
+    if files.is_empty() {
+        rows.push(Row { counts: count(con.read_all_bytes()), label: "" })
+    } else {
+        var total = Counts { lines: 0, words: 0, chars: 0, bytes: 0 }
+        for f in files {
+            match sys.fs.read_bytes(f) {
+                Ok(data) => {
+                    let c = count(data)
+                    total.add(c)
+                    rows.push(Row { counts: c, label: f })
+                }
+                Err(e) => {
+                    con.eprintln("wcx: {f}: {e}")
+                    failed = true
+                }
+            }
+        }
+        if files.len() >= 2 { rows.push(Row { counts: total, label: "total" }) }
+    }
+
+    var widest = 1
+    for r in rows { widest = widest.max(r.counts.largest().to_str().len()) }
+    for r in rows {
+        var fields: List[Str] = []
+        if show_l { fields.push(r.counts.lines.to_str().pad_left(widest, " ")) }
+        if show_w { fields.push(r.counts.words.to_str().pad_left(widest, " ")) }
+        if show_m { fields.push(r.counts.chars.to_str().pad_left(widest, " ")) }
+        if show_c { fields.push(r.counts.bytes.to_str().pad_left(widest, " ")) }
+        var line = fields.join(" ")
+        if not r.label.is_empty() { line += " " + r.label }
+        con.println(line)
+    }
+    if failed { 1 } else { 0 }
+}

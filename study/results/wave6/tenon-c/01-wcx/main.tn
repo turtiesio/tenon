@@ -1,0 +1,64 @@
+struct Row { counts: List[Int], name: Str }
+fn count(data: List[Int], chars: Bool) -> List[Int] {
+    var lines = 0
+    var words = 0
+    var inside = false
+    for b in data {
+        if b == 10 { lines += 1 }
+        let space = b == 32 or (b >= 9 and b <= 13)
+        if not space and not inside { words += 1 }
+        inside = not space
+    }
+    let nc = if chars { Str.from_utf8(data).unwrap().char_count() } else { 0 }
+    [lines, words, nc, data.len()]
+}
+fn main(sys: Sys) -> Int {
+    var selected = [false, false, false, false]
+    var files: List[Str] = []
+    for arg in sys.args {
+        match arg {
+            "-l" => selected[0] = true,
+            "-w" => selected[1] = true,
+            "-m" => selected[2] = true,
+            "-c" => selected[3] = true,
+            _ => {
+                if arg.starts_with("-") { sys.console.eprintln("invalid option: {arg}"); return 2 }
+                files.push(arg)
+            }
+        }
+    }
+    if not selected.any(fn(x) => x) { selected = [true, true, false, true] }
+    var rows: List[Row] = []
+    var totals = [0, 0, 0, 0]
+    var status = 0
+    if files.is_empty() {
+        rows.push(Row { counts: count(sys.console.read_all_bytes(), selected[2]), name: "" })
+    } else {
+        for file in files {
+            match sys.fs.read_bytes(file) {
+                Ok(data) => {
+                    let counts = count(data, selected[2])
+                    for i in 0..4 { totals[i] += counts[i] }
+                    rows.push(Row { counts, name: file })
+                }
+                Err(err) => { sys.console.eprintln("{file}: {err}"); status = 1 }
+            }
+        }
+        if files.len() >= 2 { rows.push(Row { counts: totals, name: "total" }) }
+    }
+    var width = 1
+    for row in rows {
+        for j in 0..4 {
+            if selected[j] { width = width.max(row.counts[j].to_str().len()) }
+        }
+    }
+    for row2 in rows {
+        var fields: List[Str] = []
+        for k in 0..4 {
+            if selected[k] { fields.push(row2.counts[k].to_str().pad_left(width, " ")) }
+        }
+        let suffix = if row2.name.is_empty() { "" } else { " " + row2.name }
+        sys.console.println(fields.join(" ") + suffix)
+    }
+    status
+}

@@ -1,0 +1,79 @@
+fn valid_size(s: Str) -> Bool {
+    s.is_digits() and s.len() <= 16
+}
+
+fn format_size(v: Int, base: Int, places: Int, units: List[Str]) -> Str {
+    if v < base { return "{v} B" }
+    var k = 1
+    var pk = base
+    while k < 5 and v >= pk * base {
+        pk *= base
+        k += 1
+    }
+    let scale = 10.pow(places)
+    var r = (2 * v * scale + pk) / (2 * pk)
+    while r >= base * scale and k < 5 {
+        k += 1
+        pk *= base
+        r = (2 * v * scale + pk) / (2 * pk)
+    }
+    var out = "{r / scale}"
+    if places > 0 {
+        out += "." + (r % scale).to_str().pad_left(places, "0")
+    }
+    out + " " + units[k - 1]
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var decimal = false
+    var places = 1
+    var sizes: List[Int] = []
+    let args = sys.args
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "-s" {
+            decimal = true
+        } else if a == "-p" {
+            if i + 1 >= args.len() {
+                con.eprintln("hsize: -p needs a value")
+                return 2
+            }
+            i += 1
+            match args[i] {
+                "0" => places = 0,
+                "1" => places = 1,
+                "2" => places = 2,
+                other => {
+                    con.eprintln("hsize: bad precision '{other}'")
+                    return 2
+                }
+            }
+        } else if valid_size(a) {
+            sizes.push(a.to_int().unwrap())
+        } else {
+            con.eprintln("hsize: bad argument '{a}'")
+            return 2
+        }
+        i += 1
+    }
+
+    let base = if decimal { 1000 } else { 1024 }
+    let units = if decimal { ["kB", "MB", "GB", "TB", "PB"] } else { ["KiB", "MiB", "GiB", "TiB", "PiB"] }
+
+    if not sizes.is_empty() {
+        for v in sizes { con.println(format_size(v, base, places, units)) }
+        return 0
+    }
+    var bad = false
+    while let Some(line) = con.read_line() {
+        if valid_size(line) {
+            con.println(format_size(line.to_int().unwrap(), base, places, units))
+        } else {
+            con.println("?")
+            bad = true
+        }
+    }
+    if bad { 1 } else { 0 }
+}
