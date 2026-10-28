@@ -30,6 +30,21 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
     let a = args.map(fn(v) => v.code)
     let loc = m.loc(sp)
     let tn = m.cty(t)
+    match name.split(".")[0] { // by receiver
+        "Str" => str_call(mut m, name, a, args, t, loc),
+        "List" | "Map" => coll_call(mut m, name, a, ptys, t, tn, loc),
+        "Option" | "Result" => unwrap_call(mut m, name, a, ptys, loc),
+        "Console" => con_call(mut m, name, a, t, loc),
+        "Fs" => fs_call(mut m, name, a, t, loc),
+        "Net" | "Listener" | "Conn" | "Poller" => net_call(mut m, name, a, t),
+        "Proc" | "Clock" => sys_call(mut m, name, a, t, loc),
+        "Sys" | "Workers" | "Worker" | "Sender" | "Receiver" | "channel" => worker_call(mut m, name, a, ptys, t, loc),
+        _ => core_call(mut m, name, a, ptys, t, tn, loc),
+    }
+}
+
+// The builtins of panic, assert, encode, decode, Int and Float.
+fn core_call(m: mut emit.Em, name: Str, a: List[Str], ptys: List[cktypes.Ty], t: cktypes.Ty, tn: Str, loc: Str) -> emit.CV {
     match name {
         "panic" => {
             m.line("tn_trap_str(" + a[0] + ", " + loc + ");")
@@ -77,6 +92,13 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
         "Float.to_int" => m.tmp_val(t, "tn_float_to_int(" + a[0] + ", " + loc + ")"),
         "Float.to_fixed" => m.tmp_owned(t, "tn_float_fixed(" + a[0] + ", " + a[1] + ")"),
         "Float.sqrt" | "Float.floor" | "Float.ceil" | "Float.round" => m.tmp_val(t, name.slice(6, name.len()) + "(" + a[0] + ")"),
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// The builtins of Str.
+fn str_call(m: mut emit.Em, name: Str, a: List[Str], args: List[emit.CV], t: cktypes.Ty, loc: Str) -> emit.CV {
+    match name {
         "Str.len" => m.tmp_val(t, "(" + a[0] + ").len"),
         "Str.char_count" => m.tmp_val(t, "tn_str_char_count(" + a[0] + ")"),
         "Str.byte" => m.tmp_val(t, "tn_str_byte(" + a[0] + ", " + a[1] + ", " + loc + ")"),
@@ -127,6 +149,13 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             some_none(mut m, t, ok, s)
         }
         "Str.from_utf8_lossy" => m.tmp_owned(t, "tn_str_from_utf8_lossy(" + a[0] + ", " + loc + ")"),
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// The builtins of List and Map.
+fn coll_call(m: mut emit.Em, name: Str, a: List[Str], ptys: List[cktypes.Ty], t: cktypes.Ty, tn: Str, loc: Str) -> emit.CV {
+    match name {
         "List.len" => {
             let ln = m.cty(ptys[0])
             m.tmp_val(t, ln + "_len(" + a[0] + ")")
@@ -160,6 +189,13 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             m.line("for (int64_t {i} = 0; {mp} && {i} < {mp}->n; {i}++) if ({mp}->e[{i}].live) {ln}_push(&{l.code}, {en}_retain({mp}->e[{i}].{f}));")
             l
         }
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// The builtins of Option and Result unwrap/expect.
+fn unwrap_call(m: mut emit.Em, name: Str, a: List[Str], ptys: List[cktypes.Ty], loc: Str) -> emit.CV {
+    match name {
         "Option.unwrap" | "Option.expect" | "Result.unwrap" | "Result.expect" => {
             let xt = ptys[0]
             let tag = m.tag(xt, a[0])
@@ -185,6 +221,13 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             m.line("}")
             emit.bor(m.payload(xt, a[0], 0, 0))
         }
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// The builtins of Console.
+fn con_call(m: mut emit.Em, name: Str, a: List[Str], t: cktypes.Ty, loc: Str) -> emit.CV {
+    match name {
         "Console.println" if m.mt => {
             // one locked write, so lines from different workers never mix
             m.line("tn_writeln((" + a[1] + ").p, (size_t)(" + a[1] + ").len);")
@@ -216,6 +259,13 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             m.line("tn_write_bytes(" + a[1] + ", " + loc + ");")
             emit.bor("0")
         }
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// The builtins of Fs.
+fn fs_call(m: mut emit.Em, name: Str, a: List[Str], t: cktypes.Ty, loc: Str) -> emit.CV {
+    match name {
         "Fs.read" | "Fs.list" | "Fs.read_bytes" => {
             let okt = t.args()[0]
             let on = m.cty(okt)
@@ -257,6 +307,13 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
         }
         "Fs.within" => m.tmp_owned(t, "tn_fs_within(" + a[0] + ", " + a[1] + ")"),
         "Fs.read_only" => m.tmp_owned(t, "tn_fs_make(tn_Str_retain((" + a[0] + ")->root), (" + a[0] + ")->att, false)"),
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// The builtins of Net, Listener, Conn and Poller.
+fn net_call(m: mut emit.Em, name: Str, a: List[Str], t: cktypes.Ty) -> emit.CV {
+    match name {
         "Net.listen" | "Net.connect" | "Listener.accept" | "Conn.read" | "Conn.write" => {
             let okt = t.args()[0]
             let on = m.cty(okt)
@@ -321,6 +378,13 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             m.line("tn_free(" + ev + ");")
             emit.bor(l)
         }
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// The builtins of Proc and Clock.
+fn sys_call(m: mut emit.Em, name: Str, a: List[Str], t: cktypes.Ty, loc: Str) -> emit.CV {
+    match name {
         "Proc.run" => {
             let r = m.fresh("r")
             let ms = m.fresh("m")
@@ -354,8 +418,6 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             m.line("tn_sleep_ms(" + a[1] + ");")
             emit.bor("0")
         }
-        "Sys.workers" | "Workers.cores" | "Workers.spawn" | "Worker.join" | "channel" | "Sender.send" | "Sender.close" |
-            "Receiver.recv" | "Receiver.try_recv" => worker_call(mut m, name, a, ptys, t, loc),
         _ => panic("emit: missing builtin " + name),
     }
 }
