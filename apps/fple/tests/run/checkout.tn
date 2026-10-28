@@ -1,0 +1,33 @@
+import fple
+import fixture
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    let _ = fixture.apply(mut domain, "seller", "coupon", IssueCoupon(fple.Coupon {
+        id: "coupon", shop: "shop", buyer: "buyer", source: Attendance,
+        discount: Percent(10, 5000), minimum: 1000, expires: 200, active: true,
+    }))
+    let request = fixture.checkout("order", 2, 1000, Some("coupon"))
+    let action = fple.allow(domain, "buyer", "checkout", request, 100).unwrap()
+    fixture.expect(fple.sku(domain, "buyer", "sku").unwrap().stock == 10, "planning changed stock")
+    let receipt = domain.commit(action, 100).unwrap()
+    let retry = domain.commit(action, 100).unwrap()
+    fixture.expect(receipt == retry, "idempotency receipt changed")
+    let order = fple.order(domain, "buyer", "order").unwrap()
+    fixture.expect(order.total == 21_000 and order.cash == 20_000 and order.points == 1000, "checkout money")
+    fixture.expect(order.lines[0].unit_price == 10_000, "sku zero did not inherit price")
+    fixture.expect(order.lines[0].point_basis == 1000 and order.lines[0].cash_basis == 17_000, "tender basis")
+    fixture.expect(fple.sku(domain, "buyer", "sku").unwrap().stock == 8, "stock not reserved")
+    fixture.expect(fple.customer(domain, "buyer", "shop", "buyer").unwrap().points == 0, "points not spent")
+    let _ = fixture.apply(mut domain, "buyer", "second", fixture.checkout("second", 3, 0, None))
+    fixture.expect(fple.allow(domain, "buyer", "over-limit", fixture.checkout("third", 1, 0, None), 100).is_err(), "split order bypassed limit")
+    fixture.expect(fple.allow(domain, "buyer", "reuse", fixture.checkout("reuse", 1, 0, Some("coupon")), 100).is_err(), "coupon reused")
+    let _ = fixture.apply(mut domain, "buyer", "cancel", CancelPending("order"))
+    fixture.expect(fple.customer(domain, "buyer", "shop", "buyer").unwrap().points == 1000, "points not restored")
+    fixture.expect(fple.sku(domain, "buyer", "sku").unwrap().stock == 7, "stock not restored")
+    let _ = fixture.apply(mut domain, "buyer", "reused", fixture.checkout("reused", 1, 0, Some("coupon")))
+    let replay = fple.allow(domain, "buyer", "checkout", request, 100).unwrap()
+    fixture.expect(domain.commit(replay, 100).unwrap() == receipt, "late retry reapplied checkout")
+    fixture.expect(fple.allow(domain, "buyer", "checkout", Follow("shop"), 100).is_err(), "key conflict accepted")
+    sys.console.println("checkout: snapshots, tender allocation, reservations, customer limits, coupon restoration, retries")
+}

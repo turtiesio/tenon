@@ -1,0 +1,25 @@
+import fple
+import fixture
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    let _ = fixture.apply(mut domain, "buyer", "order", fixture.checkout("order", 1, 0, None))
+    let prepared = fixture.apply(mut domain, "buyer", "prepare", PreparePayment("order", "attempt"))
+    fixture.expect(prepared.effects == [Charge("attempt", "order", 13_000)], "missing payment intent")
+    fixture.expect(fple.allow(domain, "buyer", "fake", ObserveAttempt("attempt", Approved("fake")), 100) == Err(Forbidden), "buyer forged evidence")
+    let _ = fixture.apply(mut domain, "service", "unknown", ObserveAttempt("attempt", Unknown))
+    fixture.expect(fple.allow(domain, "buyer", "retry", PreparePayment("order", "retry"), 100).is_err(), "unknown charge retried")
+    fixture.expect(fple.allow(domain, "buyer", "cancel", CancelPending("order"), 100).is_err(), "unknown charge canceled")
+    fixture.expect(fple.settlement(domain, "seller", "order").is_err(), "unknown counted as revenue")
+    let _ = fixture.apply(mut domain, "service", "decline", ObserveAttempt("attempt", Declined("decline")))
+    let _ = fixture.apply(mut domain, "buyer", "retry", PreparePayment("order", "retry"))
+    let _ = fixture.apply(mut domain, "service", "paid", ObserveAttempt("retry", Approved("tid")))
+    fixture.expect(fple.order(domain, "buyer", "order").unwrap().status == Paid, "order not marked paid")
+    fixture.expect(fple.allow(domain, "service", "contradiction", ObserveAttempt("retry", Declined("later")), 100).is_err(), "final evidence overwritten")
+    let totals = fple.settlement(domain, "seller", "order").unwrap()
+    fixture.expect(totals.gross == 13_000 and totals.processor_fee == 455 and totals.platform_fee == 260 and totals.net == 12_285, "settlement snapshot")
+    let _ = fixture.apply(mut domain, "buyer", "another", fixture.checkout("another", 1, 0, None))
+    let _ = fixture.apply(mut domain, "buyer", "another-prepare", PreparePayment("another", "another-attempt"))
+    fixture.expect(fple.allow(domain, "service", "duplicate-tid", ObserveAttempt("another-attempt", Approved("tid")), 100).is_err(), "provider evidence reused")
+    sys.console.println("payment: payment intents, unknown outcomes, definitive retry, immutable evidence, settlement")
+}

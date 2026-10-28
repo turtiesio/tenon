@@ -1,0 +1,828 @@
+// Host-neutral FPLE commerce domain. Only Action can cross the mutation boundary.
+import fple_math
+
+pub enum Error { Invalid(Str), Missing(Str), Conflict(Str), Forbidden, Unauthenticated, Stale }
+pub enum Role { Platform, Seller(Str), Buyer, Service }
+pub struct Principal { pub subject: Str, pub role: Role }
+pub enum Discount { Amount(Int), Percent(Int, Int) }
+pub enum Tender { Bank, Card }
+pub enum OrderStatus { PendingPayment, Paid, Canceled }
+pub enum ShipmentStatus { Unassigned, PendingShipment, Shipped, Delivered }
+pub enum ClaimKind { Cancel, Return, Exchange }
+pub enum ClaimStage { Requested, Processing, Received, Reshipping, Completed, Rejected, Withdrawn }
+pub enum Outcome { Unknown, Approved(Str), Declined(Str) }
+pub enum AttemptStatus { InFlight, Uncertain, Accepted(Str), Refused(Str) }
+pub enum BroadcastStatus { Draft, Scheduled, Live, Ended, BroadcastCanceled, Deleted }
+pub enum Grade { Basic, Vip, Vvip }
+pub enum CouponSource { Attendance, Campaign }
+pub enum UsageRole { Host, Audience }
+pub enum HoldKind { AuctionHold, FirstOrderHold }
+pub enum Effect { Charge(Str, Str, Int), AwaitDeposit(Str, Str, Int), Refund(Str, Str, Int), MediaAccess(Str, Str) }
+
+pub struct Shop {
+    pub id: Str, pub active: Bool, pub shipping: Int, pub free_above: Option[Int],
+    pub signup_points: Int, pub bank_enabled: Bool, pub card_enabled: Bool,
+}
+pub struct Product {
+    pub id: Str, pub shop: Str, pub active: Bool, pub price: Int,
+    pub discount: Discount, pub customer_limit: Option[Int], pub free_shipping: Bool,
+}
+pub struct Sku {
+    pub id: Str, pub product: Str, pub price: Int, pub stock: Int,
+    pub auction_hold: Int, pub first_order_hold: Int,
+}
+pub struct Customer { pub shop: Str, pub buyer: Str, pub active: Bool, pub points: Int, pub grade: Grade }
+pub struct Coupon {
+    pub id: Str, pub shop: Str, pub buyer: Str, pub source: CouponSource,
+    pub discount: Discount, pub minimum: Int, pub expires: Int, pub active: Bool,
+}
+pub struct Line { pub sku: Str, pub quantity: Int }
+pub struct Checkout {
+    pub id: Str, pub shop: Str, pub lines: List[Line], pub points: Int,
+    pub coupon: Option[Str], pub tender: Tender,
+}
+pub struct OrderLine {
+    pub sku: Str, pub product: Str, pub quantity: Int, pub unit_price: Int,
+    pub amount: Int, pub cash_basis: Int, pub point_basis: Int, pub removed: Int,
+}
+pub struct Order {
+    pub id: Str, pub shop: Str, pub buyer: Str, pub lines: List[OrderLine],
+    pub status: OrderStatus, pub tender: Tender, pub shipping: Int, pub total: Int,
+    pub points: Int, pub cash: Int, pub coupon: Option[Str], pub confirmed: Bool,
+    pub shipment: ShipmentStatus, pub packed: Bool, pub invoice: Option[Str],
+    pub direct: Bool, pub cash_refunded: Int, pub points_restored: Int,
+}
+pub struct ClaimInput {
+    pub id: Str, pub order: Str, pub sku: Str, pub kind: ClaimKind, pub quantity: Int,
+}
+pub struct Claim {
+    pub input: ClaimInput, pub stage: ClaimStage, pub cash: Int, pub points: Int,
+}
+pub struct Attempt {
+    pub id: Str, pub order: Str, pub claim: Option[Str], pub amount: Int,
+    pub status: AttemptStatus,
+}
+pub struct Admission {
+    pub secret: Bool, pub invited: List[Str], pub grades: List[Grade],
+    pub minimum_received: Option[Int], pub excluded: List[Str], pub excluded_grades: List[Grade],
+}
+pub struct Broadcast {
+    pub id: Str, pub shop: Str, pub status: BroadcastStatus, pub admission: Admission,
+}
+pub struct Usage {
+    pub id: Str, pub broadcast: Str, pub project: Str, pub channel: Str,
+    pub identity: Option[Str], pub role: UsageRole, pub start: Int, pub end: Int,
+}
+pub struct Settlement {
+    pub gross: Int, pub refunded: Int, pub processor_fee: Int, pub platform_fee: Int, pub net: Int,
+}
+
+// Requests are proposals, not authority. There is no execute(Request) API.
+pub enum Request {
+    OpenShop(Shop), SetShopActive(Str, Bool), Follow(Str), AdjustPoints(Str, Str, Int, Str),
+    SetCustomerBlocked(Str, Str, Bool), SetCustomerGrade(Str, Str, Grade),
+    AddProduct(Product), AddSku(Sku), AdjustStock(Str, Int), ChangeHold(Str, HoldKind, Int), IssueCoupon(Coupon),
+    PlaceOrder(Checkout), CancelPending(Str), PreparePayment(Str, Str),
+    ObserveAttempt(Str, Outcome), AssignShipment(Str), SetInvoice(Str, Bool, Option[Str]),
+    Pack(Str, Bool), Ship(Str), Deliver(Str), Confirm(Str),
+    RequestClaim(ClaimInput), MoveClaim(Str, ClaimStage), PrepareRefund(Str, Str),
+    CreateBroadcast(Broadcast), ChangeBroadcast(Str, BroadcastStatus), EnterBroadcast(Str), RecordUsage(Usage),
+}
+
+pub struct Receipt {
+    pub scope: Str, pub revision: Int, pub key: Str, pub principal: Principal,
+    pub at: Int, pub request: Request, pub effects: List[Effect],
+}
+pub struct Action {
+    scope: Str, revision: Int, session: Str, principal: Principal, key: Str, request: Request,
+}
+struct Applied { principal: Principal, request: Request, receipt: Receipt }
+struct State {
+    shops: Map[Str, Shop], products: Map[Str, Product], skus: Map[Str, Sku],
+    customers: Map[(Str, Str), Customer], coupons: Map[Str, Coupon], coupon_orders: Map[Str, Str],
+    orders: Map[Str, Order], claims: Map[Str, Claim], attempts: Map[Str, Attempt],
+    broadcasts: Map[Str, Broadcast], usage: Map[Str, Usage],
+}
+pub unique struct Domain {
+    scope: Str, resolve: fn(Str) -> Option[Principal], revision: Int,
+    state: State, applied: Map[Str, Applied],
+}
+
+pub fn Domain.new(scope: Str, resolve: fn(Str) -> Option[Principal]) -> Result[Domain, Error] {
+    valid_id(scope)?
+    Ok(Domain { scope, resolve, revision: 0, applied: [:], state: State {
+        shops: [:], products: [:], skus: [:], customers: [:], coupons: [:], coupon_orders: [:],
+        orders: [:], claims: [:], attempts: [:], broadcasts: [:], usage: [:],
+    } })
+}
+
+// Restore only host-authenticated history. Historical authority is verified by
+// the host, so revoking a current login cannot erase already-committed facts.
+// The reducer checks every record; replay returns no effects to execute.
+pub fn Domain.restore(scope: Str, resolve: fn(Str) -> Option[Principal], history: List[Receipt], verify: fn(Receipt) -> Bool) -> Result[Domain, Error] {
+    var domain = Domain.new(scope, resolve)?
+    for receipt in history {
+        guard(verify(receipt), "untrusted history")?
+        guard(receipt.scope == scope, "history scope mismatch")?
+        valid_id(receipt.key)?
+        valid_id(receipt.principal.subject)?
+        require(receipt.at >= 0, "negative time")?
+        guard(receipt.revision == plus(domain.revision, 1)?, "history revision mismatch")?
+        guard(not domain.applied.contains(receipt.key), "duplicate history key")?
+        let effects = domain.state.reduce(receipt.principal, receipt.request, receipt.at)?
+        guard(effects == receipt.effects, "history effects mismatch")?
+        domain.revision = receipt.revision
+        domain.applied[receipt.key] = Applied { principal: receipt.principal, request: receipt.request, receipt }
+    }
+    Ok(domain)
+}
+
+fn principal(domain: ref Domain, session: Str) -> Result[Principal, Error] {
+    let p = (domain.resolve)(session).ok_or(Unauthenticated)?
+    valid_id(p.subject)?
+    Ok(p)
+}
+
+// The same reducer owns availability and execution. Successful planning never mutates.
+pub fn allow(domain: ref Domain, session: Str, key: Str, request: Request, now: Int) -> Result[Action, Error] {
+    valid_id(key)?
+    require(now >= 0, "negative time")?
+    let principal = principal(domain, session)?
+    match domain.applied.get(key) {
+        Some(previous) => same_request(previous, principal, request)?,
+        None => { var candidate = domain.state; let _ = candidate.reduce(principal, request, now)? },
+    }
+    Ok(Action { scope: domain.scope, revision: domain.revision, session, principal, key, request })
+}
+
+// Filter concrete proposals through the same policy; do not publish denied commands as actions.
+pub fn allowed(domain: ref Domain, session: Str, proposals: List[(Str, Request)], now: Int) -> Result[List[Action], Error] {
+    require(now >= 0, "negative time")?
+    let _ = principal(domain, session)?
+    var actions: List[Action] = []
+    for (key, request) in proposals {
+        if let Ok(action) = allow(domain, session, key, request, now) { actions.push(action) }
+    }
+    Ok(actions)
+}
+
+pub fn Action.description(self) -> Request { self.request }
+
+pub fn Domain.commit(mut self, action: Action, now: Int) -> Result[Receipt, Error] {
+    require(now >= 0, "negative time")?
+    if action.scope != self.scope { return Err(Forbidden) }
+    let principal = principal(self, action.session)?
+    if principal != action.principal { return Err(Forbidden) }
+    if let Some(previous) = self.applied.get(action.key) {
+        same_request(previous, principal, action.request)?
+        return Ok(previous.receipt)
+    }
+    if action.revision != self.revision { return Err(Stale) }
+    let revision = plus(self.revision, 1)?
+    var candidate = self.state
+    let effects = candidate.reduce(principal, action.request, now)?
+    let receipt = Receipt { scope: self.scope, revision, key: action.key, principal, at: now, request: action.request, effects }
+    self.state = candidate
+    self.revision = revision
+    self.applied[action.key] = Applied { principal, request: action.request, receipt }
+    Ok(receipt)
+}
+
+fn same_request(previous: Applied, principal: Principal, request: Request) -> Result[Unit, Error] {
+    if previous.principal != principal or previous.request != request { return Err(Conflict("idempotency key reused")) }
+    Ok(())
+}
+fn require(ok: Bool, reason: Str) -> Result[Unit, Error] { if ok { Ok(()) } else { Err(Invalid(reason)) } }
+fn guard(ok: Bool, reason: Str) -> Result[Unit, Error] { if ok { Ok(()) } else { Err(Conflict(reason)) } }
+fn valid_id(id: Str) -> Result[Unit, Error] { require(id != "" and id == id.trim(), "invalid identity") }
+fn plus(a: Int, b: Int) -> Result[Int, Error] { fple_math.add(a, b).map_err(Invalid) }
+fn times(a: Int, b: Int) -> Result[Int, Error] { fple_math.multiply(a, b).map_err(Invalid) }
+fn share(a: Int, b: Int, d: Int) -> Result[Int, Error] { fple_math.share(a, b, d, false).map_err(Invalid) }
+fn seller(p: Principal, shop: Str) -> Result[Unit, Error] {
+    match p.role { Platform => Ok(()), Seller(id) if id == shop => Ok(()), _ => Err(Forbidden) }
+}
+fn platform(p: Principal) -> Result[Unit, Error] { if p.role == Platform { Ok(()) } else { Err(Forbidden) } }
+fn service(p: Principal) -> Result[Unit, Error] {
+    if p.role == Service or p.role == Platform { Ok(()) } else { Err(Forbidden) }
+}
+fn owner(p: Principal, shop: Str, buyer: Str) -> Result[Unit, Error] {
+    if p.role == Buyer and p.subject == buyer { Ok(()) } else { seller(p, shop) }
+}
+fn discount_valid(d: Discount) -> Result[Unit, Error] {
+    match d { Amount(n) => require(n >= 0, "negative discount"), Percent(rate, cap) => require(rate >= 0 and rate <= 100 and cap >= 0, "invalid discount") }
+}
+fn discounted(amount: Int, d: Discount) -> Result[Int, Error] {
+    discount_valid(d)?
+    let deduction = match d { Amount(n) => n.min(amount), Percent(rate, cap) => share(amount, rate, 100)?.min(cap) }
+    Ok(amount - deduction)
+}
+
+fn State.shop(self, id: Str) -> Result[Shop, Error] { self.shops.get(id).ok_or(Missing("shop")) }
+fn State.order(self, id: Str) -> Result[Order, Error] { self.orders.get(id).ok_or(Missing("order")) }
+fn State.active_shop(self, id: Str) -> Result[Shop, Error] {
+    let shop = self.shop(id)?
+    guard(shop.active, "shop inactive")?
+    Ok(shop)
+}
+fn State.reduce(mut self, p: Principal, r: Request, now: Int) -> Result[List[Effect], Error] {
+    match r {
+        OpenShop(shop) => self.open_shop(p, shop)?,
+        SetShopActive(id, active) => { platform(p)?; var shop = self.shop(id)?; shop.active = active; self.shops[id] = shop },
+        Follow(shop) => self.follow(p, shop)?,
+        AdjustPoints(shop, buyer, delta, reason) => self.adjust_points(p, shop, buyer, delta, reason)?,
+        SetCustomerBlocked(shop, buyer, blocked) => {
+            seller(p, shop)?
+            let key = (shop, buyer)
+            var customer = self.customers.get(key).ok_or(Missing("customer"))?
+            guard(customer.active == blocked, "customer status unchanged")?
+            customer.active = not blocked
+            self.customers[key] = customer
+        },
+        SetCustomerGrade(shop, buyer, grade) => {
+            seller(p, shop)?
+            let key = (shop, buyer)
+            var customer = self.customers.get(key).ok_or(Missing("customer"))?
+            customer.grade = grade
+            self.customers[key] = customer
+        },
+        AddProduct(product) => self.add_product(p, product)?,
+        AddSku(sku) => self.add_sku(p, sku)?,
+        AdjustStock(sku, delta) => self.adjust_stock(p, sku, delta)?,
+        ChangeHold(sku, kind, delta) => self.change_hold(p, sku, kind, delta)?,
+        IssueCoupon(coupon) => self.issue_coupon(p, coupon, now)?,
+        PlaceOrder(checkout) => self.checkout(p, checkout, now)?,
+        CancelPending(id) => self.cancel_pending(p, id)?,
+        PreparePayment(order, id) => return self.prepare_payment(p, order, id),
+        ObserveAttempt(id, outcome) => self.observe(p, id, outcome)?,
+        AssignShipment(id) => self.assign(p, id)?,
+        SetInvoice(id, direct, tracking) => self.invoice(p, id, direct, tracking)?,
+        Pack(id, packed) => self.pack(p, id, packed)?,
+        Ship(id) => self.ship(p, id)?,
+        Deliver(id) => self.deliver(p, id)?,
+        Confirm(id) => self.confirm(p, id)?,
+        RequestClaim(input) => self.request_claim(p, input)?,
+        MoveClaim(id, target) => self.move_claim(p, id, target)?,
+        PrepareRefund(claim, id) => return self.prepare_refund(p, claim, id),
+        CreateBroadcast(broadcast) => self.create_broadcast(p, broadcast)?,
+        ChangeBroadcast(id, target) => self.change_broadcast(p, id, target)?,
+        EnterBroadcast(id) => { self.admit(p, id)?; return Ok([MediaAccess(id, p.subject)]) },
+        RecordUsage(usage) => self.record_usage(p, usage)?,
+    }
+    Ok([])
+}
+
+fn State.open_shop(mut self, p: Principal, shop: Shop) -> Result[Unit, Error] {
+    platform(p)?
+    valid_id(shop.id)?
+    guard(not self.shops.contains(shop.id), "shop exists")?
+    require(shop.shipping >= 0 and shop.signup_points >= 0, "invalid shop amounts")?
+    if let Some(threshold) = shop.free_above { require(threshold >= 0, "negative free shipping threshold")? }
+    self.shops[shop.id] = shop
+    Ok(())
+}
+fn State.follow(mut self, p: Principal, shop_id: Str) -> Result[Unit, Error] {
+    if p.role != Buyer { return Err(Forbidden) }
+    let shop = self.active_shop(shop_id)?
+    let key = (shop_id, p.subject)
+    guard(not self.customers.contains(key), "already followed")?
+    self.customers[key] = Customer { shop: shop_id, buyer: p.subject, active: true, points: shop.signup_points, grade: Basic }
+    Ok(())
+}
+fn State.adjust_points(mut self, p: Principal, shop: Str, buyer: Str, delta: Int, reason: Str) -> Result[Unit, Error] {
+    seller(p, shop)?
+    valid_id(reason)?
+    let key = (shop, buyer)
+    var customer = self.customers.get(key).ok_or(Missing("customer"))?
+    if delta < 0 {
+        require(delta >= -customer.points, "insufficient points")?
+        customer.points += delta
+    } else { customer.points = plus(customer.points, delta)? }
+    self.customers[key] = customer
+    Ok(())
+}
+fn State.add_product(mut self, p: Principal, product: Product) -> Result[Unit, Error] {
+    seller(p, product.shop)?
+    let _ = self.active_shop(product.shop)?
+    valid_id(product.id)?
+    guard(not self.products.contains(product.id), "product exists")?
+    require(product.price >= 0, "negative price")?
+    discount_valid(product.discount)?
+    if let Some(limit) = product.customer_limit { require(limit > 0, "invalid customer limit")? }
+    self.products[product.id] = product
+    Ok(())
+}
+fn State.add_sku(mut self, p: Principal, sku: Sku) -> Result[Unit, Error] {
+    let product = self.products.get(sku.product).ok_or(Missing("product"))?
+    seller(p, product.shop)?
+    valid_id(sku.id)?
+    guard(not self.skus.contains(sku.id), "sku exists")?
+    require(sku.price >= 0 and sku.stock >= 0, "negative sku amount")?
+    let holds = plus(sku.auction_hold, sku.first_order_hold)?
+    require(holds <= sku.stock, "holds exceed stock")?
+    self.skus[sku.id] = sku
+    Ok(())
+}
+fn State.adjust_stock(mut self, p: Principal, id: Str, delta: Int) -> Result[Unit, Error] {
+    var sku = self.skus.get(id).ok_or(Missing("sku"))?
+    let product = self.products.get(sku.product).ok_or(Missing("product"))?
+    seller(p, product.shop)?
+    if delta < 0 { require(delta >= -sku.stock, "insufficient stock")?; sku.stock += delta }
+    else { sku.stock = plus(sku.stock, delta)? }
+    guard(sku.stock >= plus(sku.auction_hold, sku.first_order_hold)?, "stock reserved")?
+    self.skus[id] = sku
+    Ok(())
+}
+fn State.change_hold(mut self, p: Principal, id: Str, kind: HoldKind, delta: Int) -> Result[Unit, Error] {
+    var sku = self.skus.get(id).ok_or(Missing("sku"))?
+    let product = self.products[sku.product]
+    seller(p, product.shop)?
+    let current = if kind == AuctionHold { sku.auction_hold } else { sku.first_order_hold }
+    require(delta >= -current, "hold underflow")?
+    let next = if delta < 0 { current + delta } else { plus(current, delta)? }
+    if kind == AuctionHold { sku.auction_hold = next } else { sku.first_order_hold = next }
+    guard(plus(sku.auction_hold, sku.first_order_hold)? <= sku.stock, "insufficient stock")?
+    self.skus[id] = sku
+    Ok(())
+}
+fn State.issue_coupon(mut self, p: Principal, coupon: Coupon, now: Int) -> Result[Unit, Error] {
+    seller(p, coupon.shop)?
+    valid_id(coupon.id)?
+    let _ = self.customers.get((coupon.shop, coupon.buyer)).ok_or(Missing("customer"))?
+    guard(not self.coupons.contains(coupon.id), "coupon exists")?
+    require(coupon.minimum >= 0 and coupon.expires > now, "invalid coupon terms")?
+    discount_valid(coupon.discount)?
+    self.coupons[coupon.id] = coupon
+    Ok(())
+}
+
+fn State.owned_quantity(self, shop: Str, buyer: Str, product: Str) -> Result[Int, Error] {
+    var quantity = 0
+    for (_, order) in self.orders {
+        if order.shop != shop or order.buyer != buyer or order.status == Canceled { continue }
+        for line in order.lines {
+            if line.product == product { quantity = plus(quantity, line.quantity - line.removed)? }
+        }
+    }
+    Ok(quantity)
+}
+fn State.checkout_lines(self, input: Checkout, buyer: Str) -> Result[(List[OrderLine], Int, Int), Error] {
+    var lines: List[OrderLine] = []
+    var seen: Set[Str] = Set.new()
+    var quantities: Map[Str, Int] = [:]
+    var subtotal = 0
+    var shipping_basis = 0
+    for requested in input.lines {
+        require(requested.quantity > 0, "quantity must be positive")?
+        guard(not seen.contains(requested.sku), "duplicate sku")?
+        let _ = seen.insert(requested.sku)
+        let sku = self.skus.get(requested.sku).ok_or(Missing("sku"))?
+        let product = self.products.get(sku.product).ok_or(Missing("product"))?
+        guard(product.shop == input.shop and product.active, "product unavailable")?
+        guard(sku.stock - sku.auction_hold - sku.first_order_hold >= requested.quantity, "insufficient stock")?
+        let quantity = plus(quantities.get_or(product.id, 0), requested.quantity)?
+        quantities[product.id] = quantity
+        if let Some(limit) = product.customer_limit {
+            guard(plus(self.owned_quantity(input.shop, buyer, product.id)?, quantity)? <= limit, "customer quantity limit")?
+        }
+        let price = if sku.price > 0 { sku.price } else { product.price }
+        let unit = discounted(price, product.discount)?
+        let amount = times(unit, requested.quantity)?
+        subtotal = plus(subtotal, amount)?
+        if not product.free_shipping { shipping_basis = plus(shipping_basis, times(price, requested.quantity)?)? }
+        lines.push(OrderLine { sku: sku.id, product: product.id, quantity: requested.quantity,
+            unit_price: unit, amount, cash_basis: 0, point_basis: 0, removed: 0 })
+    }
+    Ok((lines, subtotal, shipping_basis))
+}
+fn State.checkout(mut self, p: Principal, input: Checkout, now: Int) -> Result[Unit, Error] {
+    if p.role != Buyer { return Err(Forbidden) }
+    valid_id(input.id)?
+    guard(not self.orders.contains(input.id), "order exists")?
+    require(not input.lines.is_empty() and input.points >= 0, "invalid checkout")?
+    let shop = self.active_shop(input.shop)?
+    let customer_key = (shop.id, p.subject)
+    var customer = self.customers.get(customer_key).ok_or(Missing("customer"))?
+    guard(customer.active, "customer blocked")?
+    let (raw_lines, subtotal, shipping_basis) = self.checkout_lines(input, p.subject)?
+    let item_total = self.coupon_total(input.coupon, shop.id, p.subject, subtotal, now)?
+    let free = match shop.free_above { Some(threshold) => shipping_basis >= threshold, None => false }
+    let shipping = if shipping_basis == 0 or free { 0 } else { shop.shipping }
+    let total = plus(item_total, shipping)?
+    let points = input.points.min(total)
+    guard(customer.points >= points, "insufficient points")?
+    let cash = total - points
+    let tender = if cash == 0 { Bank } else { input.tender }
+    guard(cash == 0 or (tender == Card and shop.card_enabled) or (tender == Bank and shop.bank_enabled), "tender disabled")?
+    guard(tender != Card or cash >= 100, "card amount below minimum")?
+    let lines = tender_bases(raw_lines, subtotal, item_total, points.min(item_total))?
+    for line in lines { self.skus[line.sku].stock -= line.quantity }
+    customer.points -= points
+    self.customers[customer_key] = customer
+    if let Some(coupon) = input.coupon { self.coupon_orders[coupon] = input.id }
+    self.orders[input.id] = Order { id: input.id, shop: shop.id, buyer: p.subject, lines,
+        status: if cash == 0 { Paid } else { PendingPayment }, tender, shipping, total, points, cash,
+        coupon: input.coupon, confirmed: false, shipment: Unassigned, packed: false,
+        invoice: None, direct: false, cash_refunded: 0, points_restored: 0 }
+    Ok(())
+}
+fn State.coupon_total(self, id: Option[Str], shop: Str, buyer: Str, subtotal: Int, now: Int) -> Result[Int, Error] {
+    let Some(key) = id else { return Ok(subtotal) }
+    let coupon = self.coupons.get(key).ok_or(Missing("coupon"))?
+    guard(coupon.shop == shop and coupon.buyer == buyer, "coupon owner mismatch")?
+    guard(coupon.active and coupon.expires > now and subtotal >= coupon.minimum, "coupon unusable")?
+    guard(not self.coupon_orders.contains(key), "coupon already used")?
+    discounted(subtotal, coupon.discount)
+}
+fn tender_bases(raw: List[OrderLine], subtotal: Int, total: Int, points: Int) -> Result[List[OrderLine], Error] {
+    var lines: List[OrderLine] = []
+    var weight = 0
+    var allocated_total = 0
+    var allocated_points = 0
+    for original in raw {
+        var line = original
+        weight = plus(weight, line.amount)?
+        let cumulative_total = if subtotal == 0 { 0 } else { share(total, weight, subtotal)? }
+        let cumulative_points = if total == 0 { 0 } else { share(points, cumulative_total, total)? }
+        line.point_basis = cumulative_points - allocated_points
+        line.cash_basis = cumulative_total - allocated_total - line.point_basis
+        allocated_total = cumulative_total
+        allocated_points = cumulative_points
+        lines.push(line)
+    }
+    Ok(lines)
+}
+fn State.has_unsettled_charge(self, order: Str) -> Bool {
+    self.attempts.values().any(fn(a) => a.order == order and a.claim == None and (a.status == InFlight or a.status == Uncertain))
+}
+fn State.cancel_pending(mut self, p: Principal, id: Str) -> Result[Unit, Error] {
+    var order = self.order(id)?
+    owner(p, order.shop, order.buyer)?
+    guard(order.status == PendingPayment and order.shipment == Unassigned, "order not pending")?
+    guard(not self.has_unsettled_charge(id), "payment outcome unresolved")?
+    for line in order.lines { self.skus[line.sku].stock = plus(self.skus[line.sku].stock, line.quantity)? }
+    self.restore_points(order, order.points)?
+    if let Some(coupon) = order.coupon { let _ = self.coupon_orders.remove(coupon) }
+    order.status = Canceled
+    order.points_restored = order.points
+    self.orders[id] = order
+    Ok(())
+}
+fn State.restore_points(mut self, order: Order, amount: Int) -> Result[Unit, Error] {
+    let key = (order.shop, order.buyer)
+    self.customers[key].points = plus(self.customers[key].points, amount)?
+    Ok(())
+}
+fn State.prepare_payment(mut self, p: Principal, order_id: Str, id: Str) -> Result[List[Effect], Error] {
+    let order = self.order(order_id)?
+    owner(p, order.shop, order.buyer)?
+    valid_id(id)?
+    let _ = self.active_shop(order.shop)?
+    guard(order.status == PendingPayment and order.cash > 0, "order not payable")?
+    guard(not self.has_unsettled_charge(order_id), "payment outcome unresolved")?
+    guard(not self.attempts.contains(id), "attempt exists")?
+    self.attempts[id] = Attempt { id, order: order_id, claim: None, amount: order.cash, status: InFlight }
+    Ok([if order.tender == Card { Charge(id, order_id, order.cash) } else { AwaitDeposit(id, order_id, order.cash) }])
+}
+fn State.observe(mut self, p: Principal, id: Str, outcome: Outcome) -> Result[Unit, Error] {
+    service(p)?
+    var attempt = self.attempts.get(id).ok_or(Missing("attempt"))?
+    let target = match outcome {
+        Unknown => Uncertain,
+        Approved(evidence) => { valid_id(evidence)?; Accepted(evidence) },
+        Declined(evidence) => { valid_id(evidence)?; Refused(evidence) },
+    }
+    if attempt.status == target { return Ok(()) }
+    guard(attempt.status == InFlight or attempt.status == Uncertain, "final outcome immutable")?
+    if let Accepted(evidence) = target {
+        for (_, other) in self.attempts {
+            guard(other.status != Accepted(evidence), "provider evidence already used")?
+        }
+        var order = self.order(attempt.order)?
+        match attempt.claim {
+            None => { guard(order.status == PendingPayment, "order not payable")?; order.status = Paid },
+            Some(_) => { order.cash_refunded = plus(order.cash_refunded, attempt.amount)?; guard(order.cash_refunded <= order.cash, "refund exceeds cash")? },
+        }
+        self.orders[order.id] = order
+    }
+    attempt.status = target
+    self.attempts[id] = attempt
+    Ok(())
+}
+
+fn State.assign(mut self, p: Principal, id: Str) -> Result[Unit, Error] {
+    var order = self.order(id)?
+    seller(p, order.shop)?
+    guard(order.status == Paid and not order.confirmed and order.shipment == Unassigned, "shipment unavailable")?
+    guard(not self.open_claim(id), "active claim exists")?
+    order.shipment = PendingShipment
+    self.orders[id] = order
+    Ok(())
+}
+fn State.invoice(mut self, p: Principal, id: Str, direct: Bool, tracking: Option[Str]) -> Result[Unit, Error] {
+    var order = self.order(id)?
+    seller(p, order.shop)?
+    guard(order.shipment != Unassigned, "shipment missing")?
+    if not direct {
+        let number = tracking.ok_or(Invalid("tracking required"))?
+        require(number.len() >= 4 and number.len() <= 120, "invalid tracking")?
+        require(number.chars().all(fn(c) => (c.len() == 1 and c.byte(0).is_alnum()) or c == "-"), "invalid tracking")?
+        let upper = number.upper()
+        require(upper != "READY" and upper != "TBD" and not upper.starts_with("READY-") and not upper.starts_with("TBD-"), "placeholder tracking")?
+    }
+    order.direct = direct
+    order.invoice = tracking
+    self.orders[id] = order
+    Ok(())
+}
+fn State.pack(mut self, p: Principal, id: Str, packed: Bool) -> Result[Unit, Error] {
+    var order = self.order(id)?
+    seller(p, order.shop)?
+    guard(order.shipment == PendingShipment and order.packed != packed, "packing unavailable")?
+    order.packed = packed
+    self.orders[id] = order
+    Ok(())
+}
+fn State.ship(mut self, p: Principal, id: Str) -> Result[Unit, Error] {
+    var order = self.order(id)?
+    seller(p, order.shop)?
+    guard(order.status == Paid and not order.confirmed, "order not shippable")?
+    guard(order.shipment == PendingShipment or order.shipment == Delivered, "shipment not shippable")?
+    guard(order.direct or order.invoice != None, "invoice required")?
+    guard(not self.open_claim(id), "active claim exists")?
+    order.shipment = Shipped
+    self.orders[id] = order
+    Ok(())
+}
+fn State.deliver(mut self, p: Principal, id: Str) -> Result[Unit, Error] {
+    var order = self.order(id)?
+    seller(p, order.shop)?
+    guard(order.shipment == Shipped, "shipment not shipped")?
+    order.shipment = Delivered
+    self.orders[id] = order
+    Ok(())
+}
+fn State.confirm(mut self, p: Principal, id: Str) -> Result[Unit, Error] {
+    var order = self.order(id)?
+    owner(p, order.shop, order.buyer)?
+    guard(order.status == Paid and not order.confirmed and order.shipment == Delivered, "order not confirmable")?
+    guard(not self.open_claim(id), "active claim exists")?
+    guard(order.lines.any(fn(line) => line.quantity > line.removed), "no remaining quantity")?
+    order.confirmed = true
+    self.orders[id] = order
+    Ok(())
+}
+
+fn claim_open(stage: ClaimStage) -> Bool { stage == Requested or stage == Processing or stage == Received or stage == Reshipping }
+fn State.open_claim(self, order: Str) -> Bool {
+    self.claims.values().any(fn(c) => c.input.order == order and claim_open(c.stage))
+}
+fn claim_sequence(kind: ClaimKind) -> List[ClaimStage] {
+    match kind { Cancel => [Requested, Processing, Completed], Return => [Requested, Processing, Received, Completed], Exchange => [Requested, Processing, Received, Reshipping, Completed] }
+}
+fn claim_transition(kind: ClaimKind, from: ClaimStage, to: ClaimStage) -> Bool {
+    if to == Rejected { return claim_open(from) }
+    if to == Requested { return from == Rejected }
+    if to == Withdrawn { return from == Requested or (kind == Return and from == Processing) }
+    let stages = claim_sequence(kind)
+    for i in 0..(stages.len() - 1) { if stages[i] == from and stages[i + 1] == to { return true } }
+    false
+}
+fn State.claim_quantities(self, input: ClaimInput) -> Result[(Int, Int), Error] {
+    var reserved = 0
+    var completed = 0
+    for (_, claim) in self.claims {
+        if claim.input.order != input.order or claim.input.sku != input.sku { continue }
+        if claim_open(claim.stage) { reserved = plus(reserved, claim.input.quantity)? }
+        if claim.stage == Completed and claim.input.kind != Exchange { completed = plus(completed, claim.input.quantity)? }
+    }
+    Ok((reserved, completed))
+}
+fn State.request_claim(mut self, p: Principal, input: ClaimInput) -> Result[Unit, Error] {
+    valid_id(input.id)?
+    guard(not self.claims.contains(input.id), "claim exists")?
+    let order = self.order(input.order)?
+    owner(p, order.shop, order.buyer)?
+    guard(order.status == Paid and not order.confirmed, "order not claimable")?
+    require(input.quantity > 0, "quantity must be positive")?
+    guard(if input.kind == Cancel { order.shipment == Unassigned or order.shipment == PendingShipment } else { order.shipment == Delivered }, "claim shipment mismatch")?
+    let line = order.lines[line_index(order, input.sku)?]
+    let (reserved, completed) = self.claim_quantities(input)?
+    guard(plus(plus(reserved, completed)?, input.quantity)? <= line.quantity, "claim quantity exceeds item")?
+    self.claims[input.id] = Claim { input, stage: Requested, cash: 0, points: 0 }
+    Ok(())
+}
+fn State.move_claim(mut self, p: Principal, id: Str, target: ClaimStage) -> Result[Unit, Error] {
+    var claim = self.claims.get(id).ok_or(Missing("claim"))?
+    let order = self.order(claim.input.order)?
+    if target == Withdrawn or target == Requested { owner(p, order.shop, order.buyer)? } else { seller(p, order.shop)? }
+    guard(claim_transition(claim.input.kind, claim.stage, target), "invalid claim transition")?
+    if target == Requested {
+        guard(order.status == Paid and not order.confirmed, "order not claimable")?
+        guard(if claim.input.kind == Cancel { order.shipment == Unassigned or order.shipment == PendingShipment } else { order.shipment == Delivered }, "claim shipment mismatch")?
+        let (reserved, completed) = self.claim_quantities(claim.input)?
+        let line = order.lines[line_index(order, claim.input.sku)?]
+        guard(plus(plus(reserved, completed)?, claim.input.quantity)? <= line.quantity, "claim quantity exceeds item")?
+    }
+    if target == Completed and claim.input.kind != Exchange { claim = self.complete_claim(claim)? }
+    claim.stage = target
+    self.claims[id] = claim
+    Ok(())
+}
+fn State.complete_claim(mut self, original: Claim) -> Result[Claim, Error] {
+    var claim = original
+    var order = self.order(claim.input.order)?
+    let index = line_index(order, claim.input.sku)?
+    var line = order.lines[index]
+    let before = line.removed
+    let after = plus(before, claim.input.quantity)?
+    guard(after <= line.quantity, "claim quantity exceeds item")?
+    let basis = plus(line.cash_basis, line.point_basis)?
+    let before_total = share(basis, before, line.quantity)?
+    let after_total = share(basis, after, line.quantity)?
+    let before_cash = if basis == 0 { 0 } else { fple_math.share(before_total, line.cash_basis, basis, true).map_err(Invalid)? }
+    let after_cash = if basis == 0 { 0 } else { fple_math.share(after_total, line.cash_basis, basis, true).map_err(Invalid)? }
+    claim.cash = after_cash - before_cash
+    claim.points = after_total - before_total - claim.cash
+    line.removed = after
+    order.lines[index] = line
+    self.skus[line.sku].stock = plus(self.skus[line.sku].stock, claim.input.quantity)?
+    self.restore_points(order, claim.points)?
+    order.points_restored = plus(order.points_restored, claim.points)?
+    if claim.input.kind == Cancel and order.lines.all(fn(l) => l.quantity == l.removed) {
+        // Whole cancellations also restore shipping tender and attendance coupons.
+        claim.cash = plus(claim.cash, order.shipping - (order.points - order.lines.map(fn(l) => l.point_basis).sum()))?
+        let shipping_points = order.points - order.lines.map(fn(l) => l.point_basis).sum()
+        self.restore_points(order, shipping_points)?
+        claim.points = plus(claim.points, shipping_points)?
+        order.points_restored = plus(order.points_restored, shipping_points)?
+        order.status = Canceled
+        if let Some(coupon_id) = order.coupon {
+            if self.coupons[coupon_id].source == Attendance { let _ = self.coupon_orders.remove(coupon_id) }
+        }
+    }
+    self.orders[order.id] = order
+    Ok(claim)
+}
+fn State.prepare_refund(mut self, p: Principal, claim_id: Str, id: Str) -> Result[List[Effect], Error] {
+    let claim = self.claims.get(claim_id).ok_or(Missing("claim"))?
+    let order = self.order(claim.input.order)?
+    seller(p, order.shop)?
+    valid_id(id)?
+    guard(claim.stage == Completed and claim.cash > 0, "no cash refund liability")?
+    guard(not self.attempts.contains(id), "attempt exists")?
+    for (_, a) in self.attempts {
+        if a.claim == Some(claim_id) { guard(matches_declined(a.status), "refund already reserved")? }
+    }
+    var reserved = 0
+    for (_, attempt) in self.attempts {
+        if attempt.order == order.id and attempt.claim != None and not matches_declined(attempt.status) { reserved = plus(reserved, attempt.amount)? }
+    }
+    guard(plus(reserved, claim.cash)? <= order.cash, "refund exceeds payment")?
+    self.attempts[id] = Attempt { id, order: order.id, claim: Some(claim_id), amount: claim.cash, status: InFlight }
+    Ok([Refund(id, order.id, claim.cash)])
+}
+fn matches_declined(status: AttemptStatus) -> Bool { match status { Refused(_) => true, _ => false } }
+
+fn State.create_broadcast(mut self, p: Principal, broadcast: Broadcast) -> Result[Unit, Error] {
+    seller(p, broadcast.shop)?
+    let _ = self.active_shop(broadcast.shop)?
+    valid_id(broadcast.id)?
+    guard(not self.broadcasts.contains(broadcast.id), "broadcast exists")?
+    require(broadcast.status == Draft, "broadcast must start as draft")?
+    let admission = broadcast.admission
+    require(admission.invited.len() <= 200, "too many invitees")?
+    if let Some(minimum) = admission.minimum_received { require(minimum >= 0, "negative admission minimum")? }
+    require(not admission.secret or not admission.invited.is_empty() or not admission.grades.is_empty() or admission.minimum_received != None, "empty secret admission")?
+    self.broadcasts[broadcast.id] = broadcast
+    Ok(())
+}
+fn State.change_broadcast(mut self, p: Principal, id: Str, target: BroadcastStatus) -> Result[Unit, Error] {
+    var broadcast = self.broadcasts.get(id).ok_or(Missing("broadcast"))?
+    seller(p, broadcast.shop)?
+    let from = broadcast.status
+    let allowed = match target {
+        Scheduled => from == Draft or from == Scheduled,
+        Live => from == Draft or from == Scheduled,
+        Ended => from == Live,
+        BroadcastCanceled => from == Draft or from == Scheduled,
+        Deleted => from != Deleted,
+        Draft => false,
+    }
+    guard(allowed, "invalid broadcast transition")?
+    broadcast.status = target
+    self.broadcasts[id] = broadcast
+    Ok(())
+}
+fn State.admit(self, p: Principal, id: Str) -> Result[Unit, Error] {
+    let broadcast = self.broadcasts.get(id).ok_or(Missing("broadcast"))?
+    guard(broadcast.status == Live, "broadcast not live")?
+    let _ = self.active_shop(broadcast.shop)?
+    if seller(p, broadcast.shop).is_ok() { return Ok(()) }
+    if p.role != Buyer { return Err(Forbidden) }
+    let customer = self.customers.get((broadcast.shop, p.subject)).ok_or(Forbidden)?
+    if not customer.active { return Err(Forbidden) }
+    let a = broadcast.admission
+    if a.excluded.contains(p.subject) or a.excluded_grades.contains(customer.grade) { return Err(Forbidden) }
+    if not a.secret or a.invited.contains(p.subject) or a.grades.contains(customer.grade) { return Ok(()) }
+    var received = 0
+    for (_, order) in self.orders {
+        if order.shop == broadcast.shop and order.buyer == p.subject {
+            received = plus(received, self.captured_cash(order.id)? - order.cash_refunded)?
+        }
+    }
+    if let Some(minimum) = a.minimum_received { if received >= minimum { return Ok(()) } }
+    Err(Forbidden)
+}
+fn State.record_usage(mut self, p: Principal, usage: Usage) -> Result[Unit, Error] {
+    service(p)?
+    valid_id(usage.id)?
+    valid_id(usage.project)?
+    valid_id(usage.channel)?
+    let _ = self.broadcasts.get(usage.broadcast).ok_or(Missing("broadcast"))?
+    require(usage.start >= 0 and usage.end >= usage.start, "invalid usage interval")?
+    if let Some(identity) = usage.identity { valid_id(identity)? }
+    guard(not self.usage.contains(usage.id), "usage receipt exists")?
+    self.usage[usage.id] = usage
+    Ok(())
+}
+
+// Reads return copies, never mutable access to aggregate storage.
+pub fn order(domain: ref Domain, session: Str, id: Str) -> Result[Order, Error] {
+    let p = principal(domain, session)?
+    let order = domain.state.order(id)?
+    owner(p, order.shop, order.buyer)?
+    Ok(order)
+}
+pub fn customer(domain: ref Domain, session: Str, shop: Str, buyer: Str) -> Result[Customer, Error] {
+    owner(principal(domain, session)?, shop, buyer)?
+    domain.state.customers.get((shop, buyer)).ok_or(Missing("customer"))
+}
+pub fn sku(domain: ref Domain, session: Str, id: Str) -> Result[Sku, Error] {
+    let p = principal(domain, session)?
+    let sku = domain.state.skus.get(id).ok_or(Missing("sku"))?
+    let product = domain.state.products[sku.product]
+    if p.role == Buyer { let _ = domain.state.active_shop(product.shop)?; guard(product.active, "product unavailable")? }
+    else { seller(p, product.shop)? }
+    Ok(sku)
+}
+pub fn claim(domain: ref Domain, session: Str, id: Str) -> Result[Claim, Error] {
+    let p = principal(domain, session)?
+    let claim = domain.state.claims.get(id).ok_or(Missing("claim"))?
+    let order = domain.state.order(claim.input.order)?
+    owner(p, order.shop, order.buyer)?
+    Ok(claim)
+}
+pub fn attempt(domain: ref Domain, session: Str, id: Str) -> Result[Attempt, Error] {
+    let p = principal(domain, session)?
+    let attempt = domain.state.attempts.get(id).ok_or(Missing("attempt"))?
+    if p.role != Service { let _ = order(domain, session, attempt.order)? }
+    Ok(attempt)
+}
+pub fn usage_seconds(domain: ref Domain, session: Str, broadcast_id: Str, role: UsageRole, start: Int, end: Int) -> Result[Int, Error] {
+    let p = principal(domain, session)?
+    let broadcast = domain.state.broadcasts.get(broadcast_id).ok_or(Missing("broadcast"))?
+    if p.role != Service { seller(p, broadcast.shop)? }
+    require(start >= 0 and end >= start, "invalid usage window")?
+    var intervals: List[(Str, Int, Int)] = []
+    for (_, usage) in domain.state.usage {
+        if usage.broadcast != broadcast_id or usage.role != role { continue }
+        let identity = match usage.identity { Some(uid) => ("known", uid), None => ("unknown", usage.id) }
+        let key = encode((usage.project, usage.channel, identity))
+        let from = usage.start.max(start)
+        let stop = usage.end.min(end)
+        if stop > from { intervals.push((key, from, stop)) }
+    }
+    fple_math.union_seconds(intervals).map_err(Invalid)
+}
+pub fn settlement(domain: ref Domain, session: Str, id: Str) -> Result[Settlement, Error] {
+    let p = principal(domain, session)?
+    let order = domain.state.order(id)?
+    seller(p, order.shop)?
+    guard(not domain.state.has_unsettled_charge(id), "payment outcome unresolved")?
+    let gross = domain.state.captured_cash(id)?
+    for (_, attempt) in domain.state.attempts {
+        if attempt.order == id and attempt.claim != None {
+            guard(attempt.status != InFlight and attempt.status != Uncertain, "refund outcome unresolved")?
+        }
+    }
+    let remaining = gross - order.cash_refunded
+    // Return fees cumulatively from their original basis, preserving each won.
+    let processor_fee = if order.tender == Card { share(gross, 350, 10_000)? - share(order.cash_refunded, 350, 10_000)? } else { 0 }
+    let platform_fee = share(gross, 200, 10_000)? - share(order.cash_refunded, 200, 10_000)?
+    Ok(Settlement { gross, refunded: order.cash_refunded, processor_fee, platform_fee, net: remaining - processor_fee - platform_fee })
+}
+
+fn State.captured_cash(self, id: Str) -> Result[Int, Error] {
+    var gross = 0
+    for (_, attempt) in self.attempts {
+        if attempt.order == id and attempt.claim == None {
+            if let Accepted(_) = attempt.status { gross = plus(gross, attempt.amount)? }
+        }
+    }
+    Ok(gross)
+}
+
+fn line_index(order: Order, sku: Str) -> Result[Int, Error] {
+    for i in 0..order.lines.len() { if order.lines[i].sku == sku { return Ok(i) } }
+    Err(Missing("order line"))
+}

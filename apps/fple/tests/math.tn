@@ -1,0 +1,30 @@
+import fple_math
+
+fn expect(ok: Bool) { if not ok { panic("integer arithmetic regression") } }
+
+fn main(sys: Sys) {
+    for total in 0..30 {
+        for denominator in 1..30 {
+            for numerator in 0..(denominator + 1) {
+                let product = total * numerator
+                expect(fple_math.share(total, numerator, denominator, false).unwrap() == product / denominator)
+                expect(fple_math.share(total, numerator, denominator, true).unwrap() == (2 * product + denominator) / (2 * denominator))
+            }
+            var allocated = 0
+            for before in 0..denominator { allocated += fple_math.slice(total, before, 1, denominator).unwrap() }
+            expect(allocated == total)
+        }
+    }
+    expect(fple_math.share(INT_MAX, INT_MAX, INT_MAX, false) == Ok(INT_MAX))
+    expect(fple_math.share(INT_MAX, INT_MAX - 1, INT_MAX, true) == Ok(INT_MAX - 1))
+    expect(fple_math.share(INT_MAX, 2, 3, false) == Ok(6148914691236517204))
+    expect(fple_math.share(INT_MAX, 2, 3, true) == Ok(6148914691236517205))
+    expect(fple_math.share(INT_MAX, 1, 2, true) == Ok(4611686018427387904))
+    expect(fple_math.add(INT_MAX, 1).is_err())
+    expect(fple_math.multiply(INT_MAX, 2).is_err())
+    expect(fple_math.share(1, 0, 0, false).is_err())
+    expect(fple_math.share(1, 2, 1, false).is_err())
+    expect(fple_math.slice(1, INT_MAX, 1, INT_MAX).is_err())
+    expect(fple_math.union_seconds([("a", 0, INT_MAX), ("b", 0, 1)]).is_err())
+    sys.console.println("math: exhaustive small ratios, cumulative conservation, 64-bit boundaries")
+}

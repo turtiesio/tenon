@@ -1,0 +1,7 @@
+// error: already used
+import fple
+fn main() {
+    let domain = fple.Domain.new("scope", fn(session) => None).unwrap()
+    let copied = domain
+    let actions = fple.allowed(domain, "session", [], 0)
+}

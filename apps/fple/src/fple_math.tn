@@ -1,0 +1,64 @@
+// Nonnegative integer money. No floating point or overflowing intermediates.
+pub fn add(a: Int, b: Int) -> Result[Int, Str] {
+    if a < 0 or b < 0 or a > INT_MAX - b { return Err("amount out of range") }
+    Ok(a + b)
+}
+
+pub fn multiply(a: Int, b: Int) -> Result[Int, Str] {
+    if a < 0 or b < 0 { return Err("negative amount") }
+    if b != 0 and a > INT_MAX / b { return Err("amount out of range") }
+    Ok(a * b)
+}
+
+// a*b/d, with 0 <= b <= d. The result never exceeds a. Carry the
+// remainder without multiplying two potentially large money values.
+fn fraction(a: Int, b: Int, d: Int) -> (Int, Int) {
+    var n = b
+    var q = a / d
+    var r = a % d
+    var total = 0
+    var remainder = 0
+    while n > 0 {
+        if n % 2 == 1 {
+            total += q
+            if remainder >= d - r { total += 1; remainder -= d - r }
+            else { remainder += r }
+        }
+        n /= 2
+        if n > 0 {
+            q += q
+            if r >= d - r { q += 1; r -= d - r }
+            else { r += r }
+        }
+    }
+    (total, remainder)
+}
+
+pub fn share(a: Int, b: Int, d: Int, half_up: Bool) -> Result[Int, Str] {
+    if a < 0 or b < 0 or d <= 0 or b > d { return Err("invalid allocation") }
+    let (q, r) = fraction(a, b, d)
+    Ok(if half_up and r >= d - r { q + 1 } else { q })
+}
+
+// Cumulative allocation: successive slices sum exactly to the original.
+pub fn slice(a: Int, before: Int, count: Int, quantity: Int) -> Result[Int, Str] {
+    let after = add(before, count)?
+    Ok(share(a, after, quantity, false)? - share(a, before, quantity, false)?)
+}
+
+// Identity is already qualified by project/channel/role by the domain.
+// Different unknown identities are deliberately never merged.
+pub fn union_seconds(intervals: List[(Str, Int, Int)]) -> Result[Int, Str] {
+    let ordered = intervals.sorted()
+    var identity = ""
+    var end = 0
+    var total = 0
+    for (key, start, stop) in ordered {
+        if start < 0 or stop < start { return Err("invalid interval") }
+        let from = if key == identity { start.max(end) } else { start }
+        total = add(total, (stop - from).max(0))?
+        end = if key == identity { end.max(stop) } else { stop }
+        identity = key
+    }
+    Ok(total)
+}

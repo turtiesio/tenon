@@ -1,0 +1,29 @@
+import fple
+import fixture
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    let _ = fixture.apply(mut domain, "seller", "sku2", AddSku(fple.Sku { id: "sku2", product: "product", price: 0, stock: 10, auction_hold: 0, first_order_hold: 0 }))
+    let split = PlaceOrder(fple.Checkout { id: "split", shop: "shop", lines: [fple.Line { sku: "sku", quantity: 3 }, fple.Line { sku: "sku2", quantity: 3 }], points: 0, coupon: None, tender: Bank })
+    fixture.expect(fple.allow(domain, "buyer", "split", split, 100).is_err(), "cross-sku product limit bypassed")
+    let _ = fixture.apply(mut domain, "seller", "reserve", ChangeHold("sku", AuctionHold, 7))
+    fixture.expect(fple.allow(domain, "buyer", "held", fixture.checkout("held", 2, 0, None), 100).is_err(), "held stock purchased")
+    fixture.expect(fple.allow(domain, "seller", "underflow", ChangeHold("sku", FirstOrderHold, -2), 100).is_err(), "hold underflow accepted")
+    let _ = fixture.apply(mut domain, "seller", "release", ChangeHold("sku", AuctionHold, -7))
+    let _ = fixture.apply(mut domain, "seller", "small", AddProduct(fple.Product { id: "small", shop: "shop", active: true, price: 99, discount: Amount(0), customer_limit: None, free_shipping: true }))
+    let _ = fixture.apply(mut domain, "seller", "small-sku", AddSku(fple.Sku { id: "small", product: "small", price: 0, stock: 10, auction_hold: 0, first_order_hold: 0 }))
+    let small = fple.Checkout { id: "small", shop: "shop", lines: [fple.Line { sku: "small", quantity: 1 }], points: 0, coupon: None, tender: Card }
+    fixture.expect(fple.allow(domain, "buyer", "small-card", PlaceOrder(small), 100).is_err(), "card minimum bypassed")
+    let _ = fixture.apply(mut domain, "buyer", "small-bank", PlaceOrder(fple.Checkout { tender: Bank, ..small }))
+    let pending = fixture.apply(mut domain, "buyer", "bank", PreparePayment("small", "bank"))
+    fixture.expect(pending.effects == [AwaitDeposit("bank", "small", 99)], "bank tender called charge provider")
+    let _ = fixture.apply(mut domain, "service", "bank-evidence", ObserveAttempt("bank", Approved("deposit")))
+    fixture.expect(fple.settlement(domain, "seller", "small").unwrap().processor_fee == 0, "bank charged processor fee")
+    let _ = fixture.apply(mut domain, "buyer", "points-only", PlaceOrder(fple.Checkout { id: "points-only", points: 1000, ..small }))
+    let zero = fple.order(domain, "buyer", "points-only").unwrap()
+    fixture.expect(zero.cash == 0 and zero.points == 99 and zero.status == Paid and zero.tender == Bank, "zero cash settlement")
+    fixture.expect(fple.allow(domain, "buyer", "zero-charge", PreparePayment("points-only", "zero"), 100).is_err(), "zero cash charged")
+    let _ = fixture.apply(mut domain, "admin", "disabled", SetShopActive("shop", false))
+    fixture.expect(fple.allow(domain, "buyer", "disabled-order", fixture.checkout("disabled", 1, 0, None), 100).is_err(), "inactive seller sold product")
+    sys.console.println("boundaries: product-wide limits, explicit holds, card minimum, bank evidence, zero cash, inactive shops")
+}

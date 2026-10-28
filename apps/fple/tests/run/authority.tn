@@ -1,0 +1,33 @@
+import fple
+import fixture
+
+fn deny(session: Str) -> Option[fple.Principal] { None }
+fn changed(session: Str) -> Option[fple.Principal] { Some(fple.Principal { subject: "changed", role: Platform }) }
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    let request = fixture.checkout("order", 1, 0, None)
+    fixture.expect(fple.allow(domain, "unknown", "key", request, 100) == Err(Unauthenticated), "unknown session accepted")
+    fixture.expect(fple.allow(domain, "foreign", "key", AdjustStock("sku", 1), 100) == Err(Forbidden), "foreign seller accepted")
+    fixture.expect(fple.allow(domain, "buyer", "key", AdjustPoints("shop", "buyer", 1, "reason"), 100) == Err(Forbidden), "buyer changed points")
+    let actions = fple.allowed(domain, "buyer", [("order", request), ("denied", AdjustStock("sku", 1))], 100).unwrap()
+    fixture.expect(actions.len() == 1 and actions[0].description() == request, "denied action exposed")
+    let first = fple.allow(domain, "seller", "first", AdjustStock("sku", 1), 100).unwrap()
+    let stale = fple.allow(domain, "buyer", "order", request, 100).unwrap()
+    let _ = domain.commit(first, 100).unwrap()
+    fixture.expect(domain.commit(stale, 100) == Err(Stale), "stale action accepted")
+    let _ = fixture.apply(mut domain, "buyer", "order", request)
+    fixture.expect(fple.order(domain, "other", "order") == Err(Forbidden), "foreign buyer read order")
+    fixture.expect(fple.order(domain, "foreign", "order") == Err(Forbidden), "foreign seller read order")
+    var copy = fple.order(domain, "buyer", "order").unwrap()
+    copy.cash = 0
+    fixture.expect(fple.order(domain, "buyer", "order").unwrap().cash == 13_000, "read leaked mutable state")
+    let action = fple.allow(domain, "seller", "next", AdjustStock("sku", 1), 100).unwrap()
+    var other_domain = fple.Domain.new("other-scope", fn(s) => fixture.resolve(s)).unwrap()
+    fixture.expect(other_domain.commit(action, 100) == Err(Forbidden), "foreign action scope accepted")
+    var revoked = fple.Domain.new("test", deny).unwrap()
+    fixture.expect(revoked.commit(action, 100) == Err(Unauthenticated), "commit skipped authentication")
+    var reassigned = fple.Domain.new("test", changed).unwrap()
+    fixture.expect(reassigned.commit(action, 100) == Err(Forbidden), "commit skipped principal binding")
+    sys.console.println("authority: scoped reads, allowed actions, stale revisions, authentication, opaque copies")
+}

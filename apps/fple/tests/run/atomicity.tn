@@ -1,0 +1,30 @@
+import fple
+import fixture
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    let _ = fixture.apply(mut domain, "seller", "second-sku", AddSku(fple.Sku {
+        id: "second", product: "product", price: 0, stock: 10, auction_hold: 0, first_order_hold: 0,
+    }))
+    let _ = fixture.apply(mut domain, "seller", "coupon", IssueCoupon(fple.Coupon {
+        id: "coupon", shop: "shop", buyer: "buyer", source: Campaign,
+        discount: Amount(1), minimum: 0, expires: 101, active: true,
+    }))
+    let action = fple.allow(domain, "buyer", "expired", fixture.checkout("expired", 1, 1000, Some("coupon")), 100).unwrap()
+    fixture.expect(domain.commit(action, 101).is_err(), "commit did not recheck expiry")
+    fixture.expect(fple.order(domain, "buyer", "expired").is_err(), "failed commit published order")
+    fixture.expect(fple.sku(domain, "buyer", "sku").unwrap().stock == 10, "failed commit changed stock")
+    fixture.expect(fple.customer(domain, "buyer", "shop", "buyer").unwrap().points == 1000, "failed commit spent points")
+    let _ = fixture.apply(mut domain, "buyer", "order", PlaceOrder(fple.Checkout {
+        id: "order", shop: "shop", lines: [fple.Line { sku: "sku", quantity: 1 }, fple.Line { sku: "second", quantity: 1 }],
+        points: 1000, coupon: None, tender: Card,
+    }))
+    let _ = fixture.apply(mut domain, "seller", "stock-max", AdjustStock("second", INT_MAX - 9))
+    fixture.expect(fple.allow(domain, "buyer", "cancel", CancelPending("order"), 100).is_err(), "overflowing restock accepted")
+    fixture.expect(fple.sku(domain, "buyer", "sku").unwrap().stock == 9, "failed plan partially restocked")
+    fixture.expect(fple.order(domain, "buyer", "order").unwrap().status == PendingPayment, "failed plan canceled order")
+    fixture.expect(fple.customer(domain, "buyer", "shop", "buyer").unwrap().points == 0, "failed plan restored points")
+    fixture.expect(fple.allow(domain, "seller", "held", AdjustStock("sku", -8), 100).is_err(), "stock holds consumed")
+    fixture.expect(fple.allow(domain, "seller", "negative", AdjustStock("sku", INT_MIN), 100).is_err(), "INT_MIN stock delta trapped")
+    sys.console.println("atomicity: expiry revalidation, copy isolation, failed restock rollback, overflow rejection")
+}

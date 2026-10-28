@@ -1,0 +1,51 @@
+import fple
+import fixture
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    var admission = fixture.admission()
+    admission.secret = true
+    admission.invited = ["buyer", "other"]
+    admission.excluded = ["other"]
+    let _ = fixture.apply(mut domain, "seller", "broadcast", CreateBroadcast(fple.Broadcast {
+        id: "broadcast", shop: "shop", status: Draft, admission,
+    }))
+    fixture.expect(fple.allow(domain, "buyer", "draft-ticket", EnterBroadcast("broadcast"), 100).is_err(), "draft playback admitted")
+    let _ = fixture.apply(mut domain, "seller", "schedule", ChangeBroadcast("broadcast", Scheduled))
+    let _ = fixture.apply(mut domain, "seller", "live", ChangeBroadcast("broadcast", Live))
+    let ticket = fixture.apply(mut domain, "buyer", "ticket", EnterBroadcast("broadcast"))
+    fixture.expect(ticket.effects == [MediaAccess("broadcast", "buyer")], "media capability missing")
+    fixture.expect(fple.usage_seconds(domain, "seller", "broadcast", Audience, 0, 100).unwrap() == 0, "token issuance fabricated usage")
+    fixture.expect(fple.allow(domain, "other", "excluded", EnterBroadcast("broadcast"), 100) == Err(Forbidden), "invitation bypassed exclusion")
+    let _ = fixture.apply(mut domain, "seller", "staff-ticket", EnterBroadcast("broadcast"))
+    fixture.expect(fple.allow(domain, "foreign", "foreign-ticket", EnterBroadcast("broadcast"), 100) == Err(Forbidden), "foreign staff admitted")
+    let _ = fixture.apply(mut domain, "seller", "ended", ChangeBroadcast("broadcast", Ended))
+    let usage = fple.Usage { id: "one", broadcast: "broadcast", project: "project", channel: "channel", identity: Some("uid"), role: Audience, start: 10, end: 30 }
+    let _ = fixture.apply(mut domain, "service", "one", RecordUsage(usage))
+    let _ = fixture.apply(mut domain, "service", "two", RecordUsage(fple.Usage { id: "two", start: 20, end: 40, ..usage }))
+    let _ = fixture.apply(mut domain, "service", "three", RecordUsage(fple.Usage { id: "three", identity: Some("second"), ..usage }))
+    let _ = fixture.apply(mut domain, "service", "four", RecordUsage(fple.Usage { id: "four", identity: None, ..usage }))
+    let _ = fixture.apply(mut domain, "service", "five", RecordUsage(fple.Usage { id: "five", identity: None, ..usage }))
+    let _ = fixture.apply(mut domain, "service", "six", RecordUsage(fple.Usage { id: "six", channel: "another", ..usage }))
+    let _ = fixture.apply(mut domain, "service", "host", RecordUsage(fple.Usage { id: "host", role: Host, ..usage }))
+    fixture.expect(fple.usage_seconds(domain, "seller", "broadcast", Audience, 0, 100).unwrap() == 110, "usage union mixed identities")
+    fixture.expect(fple.usage_seconds(domain, "seller", "broadcast", Audience, 25, 35).unwrap() == 30, "window clipping")
+    fixture.expect(fple.usage_seconds(domain, "seller", "broadcast", Host, 0, 100).unwrap() == 20, "usage roles mixed")
+    fixture.expect(fple.allow(domain, "buyer", "fake-usage", RecordUsage(fple.Usage { id: "fake", ..usage }), 100) == Err(Forbidden), "buyer fabricated usage")
+    fixture.expect(fple.allow(domain, "service", "duplicate", RecordUsage(usage), 100).is_err(), "duplicate receipt recorded")
+    fixture.expect(fple.allow(domain, "buyer", "ended-ticket", EnterBroadcast("broadcast"), 100).is_err(), "ended playback admitted")
+    fixture.expect(fple.allow(domain, "seller", "restart", ChangeBroadcast("broadcast", Live), 100).is_err(), "ended broadcast restarted")
+    var grades = fixture.admission()
+    grades.secret = true
+    grades.grades = [Vip]
+    grades.excluded_grades = [Vvip]
+    let _ = fixture.apply(mut domain, "seller", "graded", CreateBroadcast(fple.Broadcast { id: "graded", shop: "shop", status: Draft, admission: grades }))
+    let _ = fixture.apply(mut domain, "seller", "graded-live", ChangeBroadcast("graded", Live))
+    fixture.expect(fple.allow(domain, "buyer", "basic", EnterBroadcast("graded"), 100) == Err(Forbidden), "basic grade admitted")
+    let _ = fixture.apply(mut domain, "seller", "vip", SetCustomerGrade("shop", "buyer", Vip))
+    let _ = fixture.apply(mut domain, "buyer", "vip-ticket", EnterBroadcast("graded"))
+    let _ = fixture.apply(mut domain, "seller", "blocked", SetCustomerBlocked("shop", "buyer", true))
+    fixture.expect(fple.allow(domain, "buyer", "blocked-ticket", EnterBroadcast("graded"), 100) == Err(Forbidden), "blocked customer admitted")
+    fixture.expect(fple.allow(domain, "buyer", "blocked-order", fixture.checkout("blocked", 1, 0, None), 100).is_err(), "blocked customer checked out")
+    sys.console.println("live: admission precedence, explicit lifecycle, price-free metering, identity union, late receipts")
+}

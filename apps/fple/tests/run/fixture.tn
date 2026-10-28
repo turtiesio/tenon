@@ -1,0 +1,67 @@
+// module
+import fple
+
+pub fn resolve(session: Str) -> Option[fple.Principal] {
+    match session {
+        "admin" => Some(fple.Principal { subject: "admin", role: Platform }),
+        "seller" => Some(fple.Principal { subject: "seller", role: Seller("shop") }),
+        "foreign" => Some(fple.Principal { subject: "foreign", role: Seller("other") }),
+        "buyer" => Some(fple.Principal { subject: "buyer", role: Buyer }),
+        "other" => Some(fple.Principal { subject: "other", role: Buyer }),
+        "service" => Some(fple.Principal { subject: "provider", role: Service }),
+        _ => None,
+    }
+}
+
+pub fn apply(domain: mut fple.Domain, session: Str, key: Str, request: fple.Request) -> fple.Receipt {
+    let action = fple.allow(domain, session, key, request, 100).unwrap()
+    domain.commit(action, 100).unwrap()
+}
+
+pub fn expect(ok: Bool, message: Str) { if not ok { panic(message) } }
+
+pub fn new() -> fple.Domain {
+    var domain = fple.Domain.new("test", resolve).unwrap()
+    let _ = apply(mut domain, "admin", "shop", OpenShop(fple.Shop {
+        id: "shop", active: true, shipping: 3000, free_above: Some(30_000),
+        signup_points: 1000, bank_enabled: true, card_enabled: true,
+    }))
+    let _ = apply(mut domain, "buyer", "follow", Follow("shop"))
+    let _ = apply(mut domain, "other", "other-follow", Follow("shop"))
+    let _ = apply(mut domain, "seller", "product", AddProduct(fple.Product {
+        id: "product", shop: "shop", active: true, price: 10_000, discount: Amount(0),
+        customer_limit: Some(5), free_shipping: false,
+    }))
+    let _ = apply(mut domain, "seller", "sku", AddSku(fple.Sku {
+        id: "sku", product: "product", price: 0, stock: 10, auction_hold: 1, first_order_hold: 1,
+    }))
+    domain
+}
+
+pub fn checkout(id: Str, quantity: Int, points: Int, coupon: Option[Str]) -> fple.Request {
+    PlaceOrder(fple.Checkout { id, shop: "shop", lines: [fple.Line { sku: "sku", quantity }], points, coupon, tender: Card })
+}
+
+pub fn pay(domain: mut fple.Domain, id: Str) {
+    let _ = apply(mut domain, "buyer", "{id}-prepare", PreparePayment(id, "{id}-charge"))
+    let _ = apply(mut domain, "service", "{id}-capture", ObserveAttempt("{id}-charge", Approved("{id}-tid")))
+}
+
+pub fn delivered(domain: mut fple.Domain, id: Str) {
+    let _ = apply(mut domain, "seller", "{id}-assign", AssignShipment(id))
+    let _ = apply(mut domain, "seller", "{id}-invoice", SetInvoice(id, true, None))
+    let _ = apply(mut domain, "seller", "{id}-ship", Ship(id))
+    let _ = apply(mut domain, "seller", "{id}-deliver", Deliver(id))
+}
+
+pub fn claim(domain: mut fple.Domain, id: Str, order: Str, kind: fple.ClaimKind, quantity: Int) {
+    let _ = apply(mut domain, "buyer", "{id}-request", RequestClaim(fple.ClaimInput { id, order, sku: "sku", kind, quantity }))
+    let _ = apply(mut domain, "seller", "{id}-process", MoveClaim(id, Processing))
+    if kind != Cancel { let _ = apply(mut domain, "seller", "{id}-receive", MoveClaim(id, Received)) }
+    if kind == Exchange { let _ = apply(mut domain, "seller", "{id}-reship", MoveClaim(id, Reshipping)) }
+    let _ = apply(mut domain, "seller", "{id}-complete", MoveClaim(id, Completed))
+}
+
+pub fn admission() -> fple.Admission {
+    fple.Admission { secret: false, invited: [], grades: [], minimum_received: None, excluded: [], excluded_grades: [] }
+}

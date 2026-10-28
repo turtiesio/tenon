@@ -1,0 +1,5 @@
+// error: private
+import fple
+fn main() {
+    let forged: Result[fple.Action, Str] = decode("Action")
+}

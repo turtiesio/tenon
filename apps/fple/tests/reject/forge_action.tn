@@ -1,0 +1,6 @@
+// error: private
+import fple
+fn main() {
+    let action = fple.Action { scope: "forged", revision: 0, session: "admin",
+        principal: fple.Principal { subject: "admin", role: Platform }, key: "forged", request: Follow("shop") }
+}

@@ -1,0 +1,27 @@
+import fple
+import fixture
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    let _ = fixture.apply(mut domain, "buyer", "order", fixture.checkout("order", 1, 0, None))
+    fixture.expect(fple.allow(domain, "seller", "unpaid", AssignShipment("order"), 100).is_err(), "unpaid order shipped")
+    fixture.pay(mut domain, "order")
+    let _ = fixture.apply(mut domain, "seller", "assign", AssignShipment("order"))
+    fixture.expect(fple.allow(domain, "seller", "no-invoice", Ship("order"), 100).is_err(), "shipment lacked invoice")
+    fixture.expect(fple.allow(domain, "seller", "placeholder", SetInvoice("order", false, Some("READY-1234")), 100).is_err(), "placeholder tracking accepted")
+    let _ = fixture.apply(mut domain, "seller", "invoice", SetInvoice("order", false, Some("1234-5678")))
+    let _ = fixture.apply(mut domain, "seller", "pack", Pack("order", true))
+    let _ = fixture.apply(mut domain, "seller", "unpack", Pack("order", false))
+    let _ = fixture.apply(mut domain, "seller", "ship", Ship("order"))
+    fixture.expect(fple.allow(domain, "buyer", "early-confirm", Confirm("order"), 100).is_err(), "undelivered order confirmed")
+    let _ = fixture.apply(mut domain, "seller", "deliver", Deliver("order"))
+    let _ = fixture.apply(mut domain, "buyer", "return", RequestClaim(fple.ClaimInput { id: "return", order: "order", sku: "sku", kind: Return, quantity: 1 }))
+    let _ = fixture.apply(mut domain, "seller", "process", MoveClaim("return", Processing))
+    let _ = fixture.apply(mut domain, "buyer", "withdraw", MoveClaim("return", Withdrawn))
+    let _ = fixture.apply(mut domain, "buyer", "rejected-request", RequestClaim(fple.ClaimInput { id: "rejected", order: "order", sku: "sku", kind: Return, quantity: 1 }))
+    let _ = fixture.apply(mut domain, "seller", "reject", MoveClaim("rejected", Rejected))
+    let _ = fixture.apply(mut domain, "buyer", "confirm", Confirm("order"))
+    fixture.expect(fple.allow(domain, "buyer", "reopen", MoveClaim("rejected", Requested), 100).is_err(), "claim reopened after confirmation")
+    fixture.expect(fple.allow(domain, "seller", "reship", Ship("order"), 100).is_err(), "confirmed order changed")
+    sys.console.println("fulfillment: payment guards, tracking, packing, delivery, return withdrawal, confirmation")
+}

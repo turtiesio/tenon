@@ -1,0 +1,6 @@
+// error: expected fple.Action
+import fple
+fn main() {
+    var domain = fple.Domain.new("scope", fn(session) => None).unwrap()
+    let result = domain.commit(Follow("shop"), 0)
+}

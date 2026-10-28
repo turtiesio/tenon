@@ -1,0 +1,33 @@
+import fple
+import fixture
+
+fn main(sys: Sys) {
+    var domain = fixture.new()
+    let _ = fixture.apply(mut domain, "seller", "coupon", IssueCoupon(fple.Coupon {
+        id: "attendance", shop: "shop", buyer: "buyer", source: Attendance,
+        discount: Amount(2000), minimum: 0, expires: 200, active: true,
+    }))
+    let _ = fixture.apply(mut domain, "buyer", "order", fixture.checkout("order", 2, 1000, Some("attendance")))
+    fixture.pay(mut domain, "order")
+    fixture.claim(mut domain, "first", "order", Cancel, 1)
+    fixture.expect(fple.allow(domain, "buyer", "partial-coupon", fixture.checkout("partial", 1, 0, Some("attendance")), 100).is_err(), "partial cancellation restored coupon")
+    fixture.claim(mut domain, "last", "order", Cancel, 1)
+    let first = fple.claim(domain, "buyer", "first").unwrap()
+    let last = fple.claim(domain, "buyer", "last").unwrap()
+    fixture.expect(first.cash == 8500 and last.cash == 11_500, "whole cancellation lost shipping")
+    fixture.expect(first.points + last.points == 1000, "whole cancellation lost points")
+    fixture.expect(fple.order(domain, "buyer", "order").unwrap().status == Canceled, "whole cancellation did not cancel order")
+    let _ = fixture.apply(mut domain, "buyer", "restored", fixture.checkout("restored", 1, 0, Some("attendance")))
+    let _ = fixture.apply(mut domain, "seller", "campaign", IssueCoupon(fple.Coupon {
+        id: "campaign", shop: "shop", buyer: "other", source: Campaign,
+        discount: Amount(1), minimum: 0, expires: 200, active: true,
+    }))
+    let _ = fixture.apply(mut domain, "other", "campaign-order", fixture.checkout("campaign-order", 1, 0, Some("campaign")))
+    let _ = fixture.apply(mut domain, "other", "campaign-prepare", PreparePayment("campaign-order", "campaign-charge"))
+    let _ = fixture.apply(mut domain, "service", "campaign-paid", ObserveAttempt("campaign-charge", Approved("campaign-tid")))
+    let _ = fixture.apply(mut domain, "other", "campaign-claim", RequestClaim(fple.ClaimInput { id: "campaign-claim", order: "campaign-order", sku: "sku", kind: Cancel, quantity: 1 }))
+    let _ = fixture.apply(mut domain, "seller", "campaign-process", MoveClaim("campaign-claim", Processing))
+    let _ = fixture.apply(mut domain, "seller", "campaign-complete", MoveClaim("campaign-claim", Completed))
+    fixture.expect(fple.allow(domain, "other", "spent-coupon", fixture.checkout("spent", 1, 0, Some("campaign")), 100).is_err(), "campaign coupon restored after redemption")
+    sys.console.println("cancellation: whole-order shipping, exact tender restoration, attendance versus campaign coupons")
+}

@@ -1,0 +1,46 @@
+import fple
+import fixture
+
+fn restore_failed(result: Result[fple.Domain, fple.Error]) -> Bool {
+    match result { Ok(domain) => false, Err(error) => true }
+}
+
+fn main(sys: Sys) {
+    var domain = fple.Domain.new("recover", fn(s) => fixture.resolve(s)).unwrap()
+    var history: List[fple.Receipt] = []
+    history.push(fixture.apply(mut domain, "admin", "shop", OpenShop(fple.Shop {
+        id: "shop", active: true, shipping: 0, free_above: None, signup_points: 0, bank_enabled: true, card_enabled: true,
+    })))
+    history.push(fixture.apply(mut domain, "buyer", "follow", Follow("shop")))
+    history.push(fixture.apply(mut domain, "seller", "product", AddProduct(fple.Product {
+        id: "product", shop: "shop", active: true, price: 10_000, discount: Amount(0), customer_limit: None, free_shipping: true,
+    })))
+    history.push(fixture.apply(mut domain, "seller", "sku", AddSku(fple.Sku {
+        id: "sku", product: "product", price: 0, stock: 10, auction_hold: 0, first_order_hold: 0,
+    })))
+    history.push(fixture.apply(mut domain, "buyer", "order", fixture.checkout("order", 1, 0, None)))
+    let prepare = PreparePayment("order", "charge")
+    history.push(fixture.apply(mut domain, "buyer", "prepare", prepare))
+    history.push(fixture.apply(mut domain, "service", "unknown", ObserveAttempt("charge", Unknown)))
+    // Stand-in for host verification of the durable log, bound to this scope.
+    let verify = fn(r: fple.Receipt) -> Bool { history.contains(r) }
+    var restored = fple.Domain.restore("recover", fn(s) => fixture.resolve(s), history, verify).unwrap()
+    fixture.expect(fple.order(restored, "buyer", "order") == fple.order(domain, "buyer", "order"), "recovery changed order")
+    fixture.expect(fple.sku(restored, "seller", "sku") == fple.sku(domain, "seller", "sku"), "recovery changed stock")
+    fixture.expect(fple.allow(restored, "buyer", "new-charge", PreparePayment("order", "new-charge"), 100).is_err(), "recovery lost unknown attempt")
+    let retry = fple.allow(restored, "buyer", "prepare", prepare, 100).unwrap()
+    fixture.expect(restored.commit(retry, 100).unwrap() == history[5], "recovery lost idempotency receipt")
+    let _ = fixture.apply(mut restored, "service", "approved", ObserveAttempt("charge", Approved("tid")))
+    fixture.expect(fple.order(restored, "buyer", "order").unwrap().status == Paid, "recovered attempt not reconcilable")
+    let revoked = fple.Domain.restore("recover", fn(s) => None, history, verify).unwrap()
+    fixture.expect(fple.order(revoked, "buyer", "order") == Err(Unauthenticated), "recovery restored revoked login")
+    fixture.expect(restore_failed(fple.Domain.restore("other", fn(s) => fixture.resolve(s), history, verify)), "history scope ignored")
+    fixture.expect(restore_failed(fple.Domain.restore("recover", fn(s) => fixture.resolve(s), history, fn(r) => false)), "untrusted history accepted")
+    var gap = history
+    let _ = gap.remove(2)
+    fixture.expect(restore_failed(fple.Domain.restore("recover", fn(s) => fixture.resolve(s), gap, verify)), "history gap accepted")
+    var altered = history
+    altered[5].effects = []
+    fixture.expect(restore_failed(fple.Domain.restore("recover", fn(s) => fixture.resolve(s), altered, fn(r) => true)), "inconsistent effect history accepted")
+    sys.console.println("recovery: verified replay, idempotency, unknown obligations, revoked logins, corrupt history rejection")
+}

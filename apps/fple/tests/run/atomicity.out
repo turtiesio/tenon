@@ -1,0 +1,2 @@
+atomicity: expiry revalidation, copy isolation, failed restock rollback, overflow rejection
+exit: 0
