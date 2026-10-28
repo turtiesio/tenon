@@ -178,6 +178,13 @@ bad '[package]\nname = "bad"\nversion = "1"\n[dependencies]\nx = { path = "../x"
     "bad/tenon.toml:5: expected a key"
 bad '[package]\nname = "bad"\nversion = "1"\n[dependencies]\nx = { git = "u" }\n' \
     "bad/tenon.toml:5: dependency 'x' must have either path, or git and tag"
+# tests/pkg/NAME.toml (guarded): a manifest `tenon fetch` rejects; its first line is
+# `# error: TEXT`, a substring of the diagnostic
+for f in "$REPO"/tests/pkg/*.toml; do
+    mkdir -p "$T/ws/fixture"
+    cp "$f" "$T/ws/fixture/tenon.toml"
+    expect 1 "$(head -1 "$f" | sed 's/^# error: //')" "$TC" fetch "$T/ws/fixture"
+done
 
 if [ $fails -gt 0 ]; then
     echo "pkg: $fails of $n checks failed"

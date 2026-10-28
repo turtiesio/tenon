@@ -77,6 +77,7 @@ the grammar check, interp_diff, checkfuzz) all take it from there.
 | `tests/lex/`, `tests/parse/` | malformed or tricky input, compared with the seed only (selfhost.sh) |
 | `tests/selfhost/` | checker cases (one diagnostic each, or accepted tricky programs), compared with the seed only; `ckmod*.tn`, `ckbad*.tn`, `ckcycle.tn` and `ckmissingdep.tn` are modules imported by the `mod_*` cases |
 | `tests/fmt/` | `NAME.in.tn` must format to `NAME.out.tn` |
+| `tests/pkg/` | `NAME.toml`: a manifest `tenon fetch` must reject (ops/gates/pkg_test.sh); its first line `# error: TEXT` is a substring of the diagnostic |
 | `tests/lsp/` | fixtures of `ops/gates/lsp_test.py` |
 | `tests/redteam/` | red-team findings (`FINDINGS.md`) and their reproductions (`repros/`) |
 | `tests/v2/` | the same roles (`run`, `reject`, `lex`, `parse`, `fmt`, `lsp`) for what only `tenon` understands (traits, workers) or where it deliberately differs from the frozen seed (a rule or a fix added after the seed froze, which the seed's checker or interpreter does not have: it would fail the cross-check or `ops/evidence/interp_diff.py`); `lex/NAME.tokens` and `parse/NAME.ast` are goldens of `tenon tokens` / `tenon ast` |

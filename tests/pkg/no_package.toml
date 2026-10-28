@@ -1,0 +1,3 @@
+# error: tenon.toml:1: missing [package] table
+# Mutation survivor #10 (compiler/pkg.tn read_manifest): a manifest without [package].
+[dependencies]
