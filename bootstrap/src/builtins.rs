@@ -466,6 +466,12 @@ impl<'a> Interp<'a> {
                 let _ = std::io::stdin().lock().read_to_end(&mut buf);
                 if name == "Console.read_all" { strv(&String::from_utf8_lossy(&buf)) } else { byte_list(&buf) }
             }
+            "Console.read_bytes" => {
+                let _ = self.out.flush();
+                let mut buf = Vec::new();
+                let _ = std::io::stdin().lock().take(int(1).max(0) as u64).read_to_end(&mut buf);
+                byte_list(&buf)
+            }
             "Console.write_bytes" => {
                 let b = list_bytes(&a[1], sp)?;
                 self.write_raw(&b)?;

@@ -1634,6 +1634,17 @@ static TN_UNUSED tn_List_Int tn_read_all_bytes(void) {
     tn_in_pos = tn_in_len;
     return l;
 }
+/* The next n bytes of stdin; fewer only at end of input. */
+static TN_UNUSED tn_List_Int tn_read_bytes(int64_t n) {
+    tn_flush();
+    if (n <= 0) return NULL;
+    while (tn_in_len - tn_in_pos < n && tn_in_fill()) {}
+    int64_t k = tn_in_mem ? tn_in_len - tn_in_pos : 0;
+    if (k > n) k = n;
+    tn_List_Int l = k > 0 ? tn_bytes_list(tn_in_buf + tn_in_pos, k) : NULL;
+    tn_in_pos += k;
+    return l;
+}
 static TN_UNUSED bool tn_str_from_utf8(tn_List_Int l, tn_Str *out) {
     int64_t bad;
     if (!tn_list_to_bytes(l, out, &bad)) return false;
