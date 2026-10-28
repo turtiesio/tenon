@@ -23,6 +23,7 @@ tests/        run/ reject/ lex/ parse/ selfhost/ corpus; redteam/ findings and r
 programs/     real programs with scenario tests (tools/programs.sh)
 bench/        benchmarks against C, Rust, Python, TypeScript (tools/bench.py)
 docs/         reference, quickstart, decision log
+editors/      editor support: vscode/ (syntax highlighting, no build step)
 governance/   guarded tests and the append-only approvals log
 tools/        landing, evidence, study and status tooling
 study/        usability study: tasks, hidden tests, published results
