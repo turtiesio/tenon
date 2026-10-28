@@ -1,7 +1,7 @@
 // module
 // Self-hosted type checker: a second, independent implementation of
 // bootstrap/src/check.rs, bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs and bootstrap/src/linear.rs.
-// `check FILE` must report the same first diagnostic as `tenon check FILE`
+// `check FILE` must report the same first diagnostic as `tenon-seed check FILE`
 // for every file in the corpus (tools/selfhost.sh).
 //
 //   ckast    syntax tree with ids, conversion from the parser, fix_paths

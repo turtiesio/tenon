@@ -17,7 +17,7 @@
    grammar closes them at the end of a line as a fallback. A scope still open
    at the end of a line is a leak; a scope closed only by that fallback means
    the grammar thinks a string is unterminated, which is a leak too unless the
-   real lexer (`tenonc tokens`, $TENON) rejects the file on that line.
+   real lexer (`tenon tokens`, $TENON) rejects the file on that line.
    A few pinned lines (SAMPLES) also check the scopes given to tricky tokens.
 
 Usage: tools/vscode_grammar_check.py [FILE.tn...]   (default: the corpus)
@@ -34,7 +34,7 @@ import corpus as corpus_
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXT = os.path.join(ROOT, "editors", "vscode")
 GRAMMAR = os.path.join(EXT, "syntaxes", "tenon.tmLanguage.json")
-TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenonc")  # ./check: $TENONC
+TENON = corpus_.TENON
 LEXERS = ["selfhost/lexer.tn"]
 
 # Oniguruma spelling -> Python spelling.

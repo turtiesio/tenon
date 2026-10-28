@@ -7,9 +7,9 @@ Mutates the compiler actually used: the self-hosted compile path and the C
 runtime (corpus.trusted(): selfhost/{lexer,parser,front,checker,ck*,emit*,...}.tn,
 runtime/tenon.h). Copies the repository to a scratch directory, then for
 each mutant: applies one small change (flip a comparison, swap +/-, negate a
-boolean, swap and/or, ...), builds tenonc from the mutated source as
+boolean, swap and/or, ...), builds `tenon` from the mutated source as
 ./check does (the seed builds stage0 with -O0, stage0 builds stage1), and
-runs tenonc's test suite (`tenonc test tests tests/v2`, both backends) as the
+runs its test suite (`tenon test tests tests/v2`, both backends) as the
 oracle. A mutant the seed cannot compile "did not build"; one whose stage0
 cannot build stage1 is killed (./check fails); one that builds and passes
 every test "survived": the tests do not notice that change. Survivors are
@@ -19,9 +19,9 @@ import json, os, random, re, shutil, subprocess, sys, tempfile, time
 import corpus
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SEED = os.path.join(ROOT, "target", "release", "tenon")
+SEED = corpus.SEED
 TARGETS = corpus.trusted()["compiler"] + ["runtime/tenon.h"]
-KIND = "tenonc"  # what .evidence/mutation.json counts (totals of an older kind are not carried over)
+KIND = "tenonc"  # what .evidence/mutation.json counts: the self-hosted compiler's tag (it was called tenonc; totals of an older kind are not carried over)
 OPS = [(r" < ", " <= "), (r" <= ", " < "), (r" > ", " >= "), (r" >= ", " > "), (r" == ", " != "),
        (r" != ", " == "), (r" \+ 1", " - 1"), (r" - 1", " + 1"), (r"\btrue\b", "false"), (r"\bfalse\b", "true"),
        (r" && ", " || "), (r" \|\| ", " && "), (r" and ", " or "), (r" or ", " and ")]
@@ -48,19 +48,19 @@ def run(cmd, cwd, timeout, env=None):
 
 def verdict(work, env):
     """nobuild, killed or survived, for the source tree in work."""
-    s0, s1 = os.path.join(work, "tenonc0"), os.path.join(work, "tenonc")
-    if run([SEED, "build", "selfhost/tenonc.tn", "-o", s0, "-O0"], work, 600, env) != 0:
+    s0, s1 = os.path.join(work, "tenon0"), os.path.join(work, "tenon")
+    if run([SEED, "build", "selfhost/tenon.tn", "-o", s0, "-O0"], work, 600, env) != 0:
         return "nobuild"
-    if run([s0, "build", "selfhost/tenonc.tn", "-o", s1], work, 600, env) != 0:
+    if run([s0, "build", "selfhost/tenon.tn", "-o", s1], work, 600, env) != 0:
         return "killed"
-    return "killed" if run([s1, "test", "tests", "tests/v2"], work, 900, dict(env, TENONC=s1)) != 0 else "SURVIVED"
+    return "killed" if run([s1, "test", "tests", "tests/v2"], work, 900, env) != 0 else "SURVIVED"
 
 
 def main():
     count = int(sys.argv[1]) if len(sys.argv) > 1 else 20
     rnd = random.Random(int(sys.argv[2]) if len(sys.argv) > 2 else int(time.time()))
     work = tempfile.mkdtemp(prefix="tenon-mutate-")
-    # the seed's build cache is shared; tenonc's (the mutants' C) stays in the scratch directory
+    # the seed's build cache is shared; tenon's (the mutants' C) stays in the scratch directory
     env = dict(os.environ, TENON_ROOT=work, TENON_CACHE=os.path.join(work, ".cache"))
     try:
         for d in ["selfhost", "runtime", "lib", "tests"]:

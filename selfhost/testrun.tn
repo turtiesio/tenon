@@ -1,5 +1,5 @@
 // module
-// `tenonc test DIR... [--bless]`: the test runner, a port of
+// `tenon test DIR... [--bless]`: the test runner, a port of
 // bootstrap/src/testrun.rs. The contract a landing must pass:
 //
 //   DIR/run/NAME.tn      run with the interpreter AND the C backend; both must
@@ -7,9 +7,9 @@
 //   DIR/reject/NAME.tn   must fail to compile; first line `// error: TEXT`
 //                        names a substring of the expected diagnostic
 //
-//   DIR/lex/NAME.tn      under a v2/ directory (tenonc-only syntax, which the
-//   DIR/parse/NAME.tn    bootstrap cannot cross-check: tools/selfhost.sh skips
-//                        v2/): `tenonc tokens` / `tenonc ast` must print
+//   DIR/lex/NAME.tn      under a v2/ directory (syntax only `tenon` reads, which
+//   DIR/parse/NAME.tn    the seed cannot cross-check: tools/selfhost.sh skips
+//                        v2/): `tenon tokens` / `tenon ast` must print
 //                        NAME.tokens / NAME.ast (--bless writes them). The
 //                        other lex/parse directories are tools/selfhost.sh's.
 //
@@ -20,7 +20,8 @@
 // Every command runs under Proc.run_with with a 20 s timeout. The tests are
 // shared among 8 workers (this program again, `test --worker I/N`, started
 // together by one `sh`); each writes its failures and counts to a file.
-// The runner invokes itself as $TENONC (default `tenonc`, from PATH).
+// The runner invokes itself: `exe` is the running executable's path
+// (selfhost/tenon.tn finds it), passed on to the workers as `--exe`.
 import front
 
 const TIMEOUT_MS: Int = 20000
@@ -133,11 +134,11 @@ fn check_run(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
         Ok(g) if g == ri => Ok(()),
         _ if cx.bless => sys.fs.write(golden, ri).map_err(fn(e) => "{e}"),
         Ok(g) => Err("output differs from " + golden + "\n--- expected\n" + g + "--- got\n" + ri),
-        Err(_) => Err("missing " + golden + " (run `tenonc test --bless`)\n--- got\n" + ri),
+        Err(_) => Err("missing " + golden + " (run `tenon test --bless`)\n--- got\n" + ri),
     }
 }
 
-// A lexer or parser golden test: what `tenonc CMD NAME.tn` prints is NAME.EXT.
+// A lexer or parser golden test: what `tenon CMD NAME.tn` prints is NAME.EXT.
 fn check_golden(sys: Sys, cx: Ctx, tn: Str, cmd: Str, ext: Str) -> Result[Unit, Str] {
     let (dir, name) = split_path(tn)
     let o = run_cmd(sys.proc, cx.exe, [cmd, name], dir, [])
@@ -146,8 +147,8 @@ fn check_golden(sys: Sys, cx: Ctx, tn: Str, cmd: Str, ext: Str) -> Result[Unit, 
     match sys.fs.read(golden) {
         Ok(g) if g == got => Ok(()),
         _ if cx.bless => sys.fs.write(golden, got).map_err(fn(e) => "{e}"),
-        Ok(g) => Err("output of `tenonc " + cmd + "` differs from " + golden + "\n--- expected\n" + g + "--- got\n" + got),
-        Err(_) => Err("missing " + golden + " (run `tenonc test --bless`)\n--- got\n" + got),
+        Ok(g) => Err("output of `tenon " + cmd + "` differs from " + golden + "\n--- expected\n" + g + "--- got\n" + got),
+        Err(_) => Err("missing " + golden + " (run `tenon test --bless`)\n--- got\n" + got),
     }
 }
 
@@ -170,31 +171,20 @@ fn absolute(p: Proc, path: Str) -> Str {
 
 fn quote(s: Str) -> Str { "'" + s.replace("'", "'\\''") + "'" }
 
-pub fn main(sys: Sys, args: List[Str], root0: Str) -> Int {
+// What `tenon test` was asked to do: the DIRs, the toolchain root, this
+// executable, --bless; a worker also gets `--worker K/N` and `--tmp DIR`.
+pub struct Opts { pub dirs: List[Str], pub root: Str, pub exe: Str, pub bless: Bool, pub worker: Str, pub tmp: Str }
+
+pub fn main(sys: Sys, o: Opts) -> Int {
     let p = sys.proc
     let con = sys.console
     let start = sys.clock.mono_ns()
-    let bless = args.contains("--bless")
-    var dirs: List[Str] = []
-    var worker = ""
-    var tmp = ""
-    var i = 0
-    while i < args.len() {
-        let a = args[i]
-        if a == "--root" or a == "--worker" or a == "--tmp" {
-            if i + 1 < args.len() {
-                if a == "--worker" { worker = args[i + 1] }
-                if a == "--tmp" { tmp = args[i + 1] }
-            }
-            i += 2
-        } else {
-            if not a.starts_with("--") { dirs.push(a) }
-            i += 1
-        }
-    }
-    let root = absolute(p, root0)
-    let exe0 = p.env("TENONC").unwrap_or("tenonc")
-    let exe = if exe0.contains("/") { absolute(p, exe0) } else { exe0 }
+    let bless = o.bless
+    let dirs = o.dirs
+    let worker = o.worker
+    let tmp = o.tmp
+    let root = absolute(p, o.root)
+    let exe = absolute(p, o.exe)
     // 0 run, 1 reject, 2 lex, 3 parse
     var jobs: List[(Int, Str)] = []
     for d in dirs {
@@ -239,11 +229,11 @@ pub fn main(sys: Sys, args: List[Str], root0: Str) -> Int {
     let mk = run_cmd(p, "mktemp", ["-d"], "", [])
     let dir = mk.out.trim()
     if mk.code != 0 or dir == "" {
-        con.eprintln("tenonc: cannot make a temporary directory: " + mk.err)
+        con.eprintln("tenon: cannot make a temporary directory: " + mk.err)
         return 2
     }
     var script = ""
-    let common = (if bless { " --bless" } else { "" }) + " --root " + quote(root) + " --tmp " + quote(dir) + dirs.map(fn(d) => " " + quote(d)).join("")
+    let common = (if bless { " --bless" } else { "" }) + " --root " + quote(root) + " --exe " + quote(exe) + " --tmp " + quote(dir) + dirs.map(fn(d) => " " + quote(d)).join("")
     for w in 0..WORKERS {
         script += quote(exe) + " test --worker {w}/{WORKERS}" + common + " > " + quote(front.join(dir, "w{w}.txt")) + " 2>&1 &\n"
     }

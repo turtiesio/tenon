@@ -1,8 +1,8 @@
 // module
 // Self-hosted C backend, part 1: the emitter state, C names of types, and the
 // scope and temporary helpers. A port of bootstrap/src/emit_c.rs (driver,
-// types) and the helpers of bootstrap/src/emit_body.rs; `tenonc emit FILE`
-// must print exactly what `tenon emit FILE` prints (tools/selfhost.sh).
+// types) and the helpers of bootstrap/src/emit_body.rs; `tenon emit FILE`
+// must print exactly what `tenon-seed emit FILE` prints (tools/selfhost.sh).
 //
 //   emit        state, C type names, scopes and temporaries, the driver
 //   emitlayout  type definitions, per-type helpers, decoders, `main`, assembly
@@ -18,7 +18,7 @@
 //
 // The C runtime (runtime/tenon.h) is pasted into the output; the bootstrap
 // embeds it with include_str!, the self-hosted compiler reads it from ROOT
-// when it compiles a program (tenonc.tn).
+// when it compiles a program (tenon.tn).
 
 import ckast
 import cktypes
@@ -84,7 +84,7 @@ pub fn emit(c: checker.Checked, names: List[Str], runtime: Str) -> Result[Str, S
     Ok(p.text())
 }
 
-// The C program in the parts `tenonc build` can compile as separate
+// The C program in the parts `tenon build` can compile as separate
 // translation units: the runtime, types and per-type helpers (head),
 // prototypes of the program's functions (protos), closure environments and
 // vtables (helpers), the functions' definitions (bodies) and `main`.

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Differential evidence for the self-hosted interpreter (selfhost/interp.tn).
 
-    tools/interp_diff.py [TENONC]
+    tools/interp_diff.py [TENON]
 
 Runs every .tn file of the corpus (tools/corpus.py, without v2/: the seed
-cannot read those) with `tenon run` (the seed's interpreter) and `tenonc run`
+cannot read those) with `tenon-seed run` (the seed's interpreter) and `tenon run`
 (tools/evidence.sh), from the file's directory, with its
 `// stdin:` and `// args:` directives (as the test runner gives them), and
 compares standard output, standard error and the exit status byte for byte.
 Files the bootstrap rejects are compared too (the diagnostic must be the
-same). Files the bootstrap needs more than 20 s for are skipped; tenonc may
+same). Files the bootstrap needs more than 20 s for are skipped; tenon may
 take three times as long as the bootstrap (at least 20 s). Prints each
-difference and a summary; exit status 1 if any file differs. TENONC defaults
-to target/tenonc (./check builds it).
+difference and a summary; exit status 1 if any file differs. TENON defaults
+to $TENON, else target/tenon (./check builds it); the seed is $SEED.
 """
 import os
 import subprocess
@@ -23,8 +23,8 @@ from concurrent.futures import ThreadPoolExecutor
 import corpus
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-T = os.path.join(ROOT, "target", "release", "tenon")
-C = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(ROOT, "target", "tenonc")
+T = corpus.SEED
+C = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else corpus.TENON
 TIMEOUT = 20
 
 
@@ -67,14 +67,14 @@ def one(path):
     a = run([T, "run", name] + args, d, stdin)
     if a is None:
         return (path, "skip", "")
-    # tenonc gets three times the bootstrap's time (at least TIMEOUT)
+    # tenon gets three times the bootstrap's time (at least TIMEOUT)
     b = run([C, "run", "--root", ROOT, name] + args, d, stdin, max(TIMEOUT, 3 * (time.time() - start)))
     if b is None:
-        return (path, "diff", "tenonc timed out")
+        return (path, "diff", "tenon timed out")
     if a == b:
         return (path, "same", "")
-    return (path, "diff", f"exit {a[2]} vs {b[2]}\n  tenon  out {a[0][-300:]!r}\n  tenonc out {b[0][-300:]!r}"
-                          f"\n  tenon  err {a[1][-300:]!r}\n  tenonc err {b[1][-300:]!r}")
+    return (path, "diff", f"exit {a[2]} vs {b[2]}\n  seed  out {a[0][-300:]!r}\n  tenon out {b[0][-300:]!r}"
+                          f"\n  seed  err {a[1][-300:]!r}\n  tenon err {b[1][-300:]!r}")
 
 
 def main():
@@ -87,7 +87,7 @@ def main():
             print("DIFF", os.path.relpath(path, ROOT), why)
     count = lambda k: len([r for r in rs if r[1] == k])
     print(f"interp_diff: {count('same')} of {len(rs)} corpus files give the same stdout, stderr and exit status"
-          f" under tenon run and tenonc run; {count('diff')} differ; {count('skip')} skipped (tenon run > {TIMEOUT}s)")
+          f" under tenon-seed run and tenon run; {count('diff')} differ; {count('skip')} skipped (tenon-seed run > {TIMEOUT}s)")
     corpus.record("interp_diff", {"files": len(rs), "same": count("same"), "diff": count("diff"), "skipped": count("skip")})
     return 1 if count("diff") else 0
 

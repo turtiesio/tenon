@@ -2,7 +2,7 @@
 # Packages (docs/packages.md): a fixture workspace in a temporary directory
 # with an app, a path dependency and two git dependencies (local repositories
 # under file:// URLs, one of them transitive; no network is used), checked
-# through target/tenonc ($TENONC):
+# through $TENON (default target/tenon):
 #   fetch and the lock's contents (stable across runs), offline run, build,
 #   check and test (also with the repositories gone), a path dependency is
 #   live, a stale lock after a manifest change, a missing lock, a tampered
@@ -12,10 +12,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO=$PWD
-TC=${TENONC:-$REPO/target/tenonc}
+TC=${TENON:-$REPO/target/tenon}
 case $TC in /*) ;; *) TC=$REPO/$TC ;; esac
-[ -x "$TC" ] || target/release/tenon build selfhost/tenonc.tn -o "$TC"
-export TENON_ROOT=$REPO TENONC=$TC
+export TENON_ROOT=$REPO TENON=$TC
 T=$(mktemp -d)
 trap '[ -n "${PKG_KEEP:-}" ] && echo "kept $T" || rm -rf "$T"' EXIT
 T=$(cd "$T" && pwd -P)
@@ -122,10 +121,10 @@ printf 'pub fn twice(n: Int) -> Int { n * 2 }\n' > "$T/ws/util/src/helper.tn"
 
 # a missing lock, a stale lock
 mv tenon.lock "$T/lock.saved"
-expect 1 "no tenon.lock for tenon.toml; run \`tenonc fetch\`" "$TC" run src/main.tn
+expect 1 "no tenon.lock for tenon.toml; run \`tenon fetch\`" "$TC" run src/main.tn
 mv "$T/lock.saved" tenon.lock
 sed -i.bak 's/v1.0.0/v1.1.0/' tenon.toml
-expect 1 "tenon.lock is out of date with tenon.toml (fmtx: git file://$T/repos/fmtx tag v1.1.0); run \`tenonc fetch\`" "$TC" check src/main.tn
+expect 1 "tenon.lock is out of date with tenon.toml (fmtx: git file://$T/repos/fmtx tag v1.1.0); run \`tenon fetch\`" "$TC" check src/main.tn
 expect 0 "fmtx 1.0.0 (git file://$T/repos/fmtx tag v1.1.0" "$TC" fetch
 expect 0 "<***42> hi" "$TC" run src/main.tn
 mv tenon.toml.bak tenon.toml

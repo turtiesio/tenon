@@ -1,0 +1,486 @@
+// tenon: the Tenon command line, self-hosted: compiler, interpreter, test
+// runner, formatter, language server and package fetcher in one executable
+// (the reference: docs/tools.md; the usage text: `usage_text` below). The
+// frozen seed (bootstrap/, target/release/tenon-seed) only builds stage 0 of
+// this file, which builds stage 1, target/tenon (./check).
+//
+// Flags may come in any position after the command, before or after the
+// other arguments, except for `run`: everything after its FILE is the
+// program's own arguments. `--root DIR` may also come before the command.
+// An unknown flag, a missing flag value or a wrong number of
+// arguments is a usage error (status 2, with the usage text).
+//
+// Inside a package (a tenon.toml in the file's directory or above it),
+// run/build/emit/check/test (and the language server) also resolve `import`
+// to the dependencies pinned in tenon.lock, offline, from the cache
+// (docs/packages.md, selfhost/pkg.tn).
+//
+// The toolchain ROOT holds the prelude, the standard library and the C
+// runtime (ROOT/lib/prelude.tn, ROOT/lib/std/, ROOT/runtime/tenon.h), read at
+// compile time. It is `--root DIR`, else $TENON_ROOT, else found from this
+// executable's own path EXE (`self_exe`): the first of EXE/../../lib/tenon
+// (the layout tools/install.sh makes: PREFIX/bin/tenon and PREFIX/lib/tenon)
+// and EXE/../.. (the repository, for target/tenon) that has lib/prelude.tn;
+// else the current directory.
+//
+// `build` runs $CC (default `cc`) and keeps a build cache: an entry is the
+// executable plus its C source, a hit requires the source to match exactly;
+// $TENON_CACHE names the directory (default $TMPDIR/tenon-cache, /tmp
+// without $TMPDIR), `off` disables it, and $TENON_KEEP_C keeps OUT.c next to
+// the output (and bypasses the cache).
+import front
+import emit
+import interp
+import lexer
+import astdump
+import testrun
+import pkg
+import fmtcmd
+import lsp
+
+const VERSION: Str = "0.2.0"
+
+fn usage_text() -> Str {
+    [
+        "usage: tenon COMMAND [ARGUMENTS] [FLAGS]",
+        "  tenon run FILE.tn [ARGS...]          interpret (reference semantics); ARGS go to the program",
+        "  tenon build FILE.tn [-o OUT] [-O0]   compile to a native executable via C (OUT: FILE without .tn)",
+        "  tenon emit FILE.tn                   print the generated C",
+        "  tenon check FILE.tn                  type-check only",
+        "  tenon test DIR... [--bless]          run the tests in DIR/run and DIR/reject (both backends)",
+        "  tenon fmt [--check] FILE... | -      format in place; --check: list unformatted files; -: stdin",
+        "  tenon lsp                            the language server, on standard input and output",
+        "  tenon fetch [DIR]                    resolve the package's dependencies, write tenon.lock",
+        "  tenon tokens FILE.tn                 the lexer's dump",
+        "  tenon ast FILE.tn                    the parser's dump",
+        "  tenon help | --help, tenon --version",
+        "Every command takes --root DIR, the toolchain root (default: $TENON_ROOT, else found from",
+        "this executable's path), in any position (for run: before FILE). Reference: docs/tools.md",
+    ].join("\n")
+}
+
+fn usage(con: Console) -> Int {
+    con.eprintln(usage_text())
+    2
+}
+
+fn usage_error(con: Console, msg: Str) -> Int {
+    con.eprintln("tenon: " + msg)
+    usage(con)
+}
+
+// The command line after the subcommand: the arguments that are not flags
+// (for `run`: FILE and the program's arguments), and the flags' values.
+struct Opts { cmd: Str, pos: List[Str], vals: Map[Str, Str], flags: List[Str], help: Bool }
+
+fn Opts.val(self, name: Str) -> Option[Str] { self.vals.get(name) }
+
+fn Opts.has(self, name: Str) -> Bool { self.flags.contains(name) }
+
+// Whether subcommand cmd takes flag f. --worker, --tmp and --exe are the
+// test runner's own (it starts itself with them).
+fn takes(cmd: Str, f: Str) -> Bool {
+    match f {
+        "--root" => true,
+        "-o" | "-O0" => cmd == "build",
+        "--bless" | "--worker" | "--tmp" | "--exe" => cmd == "test",
+        "--check" => cmd == "fmt",
+        _ => false,
+    }
+}
+
+fn has_value(f: Str) -> Bool { f == "--root" or f == "-o" or f == "--worker" or f == "--tmp" or f == "--exe" }
+
+fn parse(cmd: Str, args: List[Str]) -> Result[Opts, Str] {
+    var pos: List[Str] = []
+    var vals: Map[Str, Str] = [:]
+    var flags: List[Str] = []
+    var help = false
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        i += 1
+        if cmd == "run" and not pos.is_empty() {
+            pos.push(a)
+        } else if a == "--help" or a == "-h" {
+            help = true
+        } else if not a.starts_with("-") or a == "-" {
+            pos.push(a)
+        } else if not takes(cmd, a) {
+            return Err("unknown flag {a} for `tenon {cmd}`")
+        } else if has_value(a) {
+            if i >= args.len() { return Err("{a} needs a value") }
+            vals[a] = args[i]
+            i += 1
+        } else {
+            flags.push(a)
+        }
+    }
+    let n = pos.len()
+    let ok = match cmd {
+        "run" | "test" | "fmt" => n >= 1,
+        "build" | "emit" | "check" | "tokens" | "ast" => n == 1,
+        "lsp" => n == 0,
+        _ => n <= 1,
+    }
+    if not ok and not help {
+        let want = match cmd {
+            "run" => "FILE.tn [ARGS...]",
+            "test" => "one or more DIRs",
+            "fmt" => "one or more FILEs (or -)",
+            "lsp" => "no arguments",
+            "fetch" => "at most one DIR",
+            _ => "one FILE.tn",
+        }
+        return Err("`tenon {cmd}` takes {want}")
+    }
+    Ok(Opts { cmd, pos, vals, flags, help })
+}
+
+// This executable's absolute path, or None if it cannot be found: asked of
+// the parent of a shell, from /proc on Linux, else from the process table
+// (`ps`: the name it was started as, looked up on PATH if it has no `/`).
+// Symbolic links are not followed.
+fn self_exe(p: Proc) -> Option[Str] {
+    let script = "e=$(readlink /proc/$PPID/exe 2>/dev/null) || e=$(ps -o comm= -p $PPID) || exit 1; case $e in */*) ;; *) e=$(command -v \"$e\") || exit 1 ;; esac; case $e in /*) ;; *) e=$(pwd -P)/$e ;; esac; printf %s \"$e\""
+    match p.run_with("sh", ["-c", script], "", [], 10000) {
+        Ok(o) if o.status == 0 => {
+            let e = Str.from_utf8_lossy(o.out)
+            if e.starts_with("/") { Some(e) } else { None }
+        }
+        _ => None,
+    }
+}
+
+// The toolchain root (see the top of this file).
+fn root_of(sys: Sys, o: Opts) -> Str {
+    match o.val("--root") {
+        Some(r) => return r,
+        None => {}
+    }
+    match sys.proc.env("TENON_ROOT") {
+        Some(r) => return r,
+        None => {}
+    }
+    match self_exe(sys.proc) {
+        Some(exe) => {
+            let up = path_parent(path_parent(exe))
+            for r in [path_join(up, "lib/tenon"), up] {
+                if sys.fs.exists(path_join(r, "lib/prelude.tn")) { return r }
+            }
+        }
+        None => {}
+    }
+    "."
+}
+
+fn fail(con: Console, f: front.Failure) -> Int {
+    if f.fatal {
+        con.eprintln("tenon: " + f.msg)
+        return 2
+    }
+    con.eprintln(f.render())
+    1
+}
+
+// The program in FILE, inside its package if it is in one (docs/packages.md),
+// or the exit status after reporting why it cannot be loaded.
+fn load(sys: Sys, root: Str, file: Str) -> Result[front.Front, Int] {
+    let pk = match pkg.context(sys.fs, sys.proc, root, file) {
+        Ok(c) => c,
+        Err(msg) => {
+            sys.console.eprintln("tenon: " + msg)
+            return Err(1)
+        }
+    }
+    match front.load_in(sys.fs, root, file, pk) {
+        Ok(fr) => Ok(fr),
+        Err(f) => Err(fail(sys.console, f)),
+    }
+}
+
+// fetch [DIR]: resolve the dependencies of the package in DIR (default: the
+// nearest tenon.toml at or above the current directory), fetching git
+// packages into the cache, and write DIR/tenon.lock.
+fn fetch(sys: Sys, o: Opts) -> Int {
+    let top = if o.pos.len() > 0 { o.pos[0] } else {
+        match pkg.find_root(sys.fs, "tenon.toml") {
+            Some(d) => d,
+            None => {
+                sys.console.eprintln("tenon: no tenon.toml in the current directory or above it")
+                return 1
+            }
+        }
+    }
+    match pkg.fetch(sys.fs, sys.proc, root_of(sys, o), top) {
+        Ok(lines) => {
+            for l in lines { sys.console.println(l) }
+            0
+        }
+        Err(msg) => {
+            sys.console.eprintln("tenon: " + msg)
+            1
+        }
+    }
+}
+
+// The C program for FILE, or the exit status after reporting why there is none.
+fn emit_c(sys: Sys, file: Str, root: Str) -> Result[emit.CParts, Int] {
+    let con = sys.console
+    let fr = load(sys, root, file)?
+    let runtime = match sys.fs.read(front.join(root, "runtime/tenon.h")) {
+        Ok(s) => s,
+        Err(e) => {
+            con.eprintln("tenon: cannot read the C runtime: {e}")
+            return Err(2)
+        }
+    }
+    match emit.emit_parts(fr.checked, fr.files.map(fn(f) => f.0), runtime) {
+        Ok(c) => Ok(c),
+        Err(msg) => {
+            con.eprintln("tenon: " + msg)
+            Err(1)
+        }
+    }
+}
+
+// A content hash for build cache names: two polynomial hashes modulo primes
+// below 2^31 (Int arithmetic must not overflow), as 16 hex digits. A hit is
+// verified against the whole C text, so the hash only spreads names.
+pub fn hash_hex(s: Str) -> Str {
+    var a = 0
+    var b = 7
+    for i in 0..s.len() {
+        let c = s.byte(i) + 1
+        a = (a * 31 + c) % 2147483629
+        b = (b * 37 + c) % 2147483587
+    }
+    "{a:08x}{b:08x}"
+}
+
+// The cache entry for this C text, compiler and flags, if the cache is on.
+fn cache_entry(p: Proc, code: Str, cc: Str, opt: Str) -> Option[Str] {
+    if p.env("TENON_KEEP_C").is_some() { return None }
+    let dir = match p.env("TENON_CACHE") {
+        Some(d) => if d == "off" { return None } else { d },
+        None => path_join(p.env("TMPDIR").unwrap_or("/tmp"), "tenon-cache"),
+    }
+    Some(path_join(dir, "t" + hash_hex(code + "|" + cc + "|" + opt) + "-{code.len()}"))
+}
+
+// A program with more than SPLIT_BYTES of function definitions is compiled
+// as several translation units (one per SPLIT_BYTES, at most MAX_UNITS) by
+// parallel runs of the C compiler, then linked. Every unit has the head and
+// the prototypes, with external linkage, and a share of the definitions;
+// unit 0 also has `main` and defines the runtime's state (TN_SPLIT,
+// runtime/tenon.h). The C text (`emit`, the cache, $TENON_KEEP_C) stays one
+// file. Measured on the compiler (5 MB of C): cc -O2 13 s, 8 units 2.6 s.
+const SPLIT_BYTES: Int = 400000
+const MAX_UNITS: Int = 8
+
+fn write(fs: Fs, path: Str, text: Str) -> Result[Unit, Str] {
+    match fs.write(path, text) {
+        Ok(_) => Ok(()),
+        Err(e) => Err("cannot write {path}: {e}"),
+    }
+}
+
+// bodies in n parts of about equal size, each cut where a definition starts
+// (a line beginning with `static`).
+fn split_defs(bodies: Str, n: Int) -> List[Str] {
+    var parts: List[Str] = []
+    var start = 0
+    for k in 1..n {
+        match bodies.find_from("\nstatic ", k * bodies.len() / n) {
+            Some(i) if i + 1 > start => {
+                parts.push(bodies.slice(start, i + 1))
+                start = i + 1
+            }
+            _ => {}
+        }
+    }
+    parts.push(bodies.slice(start, bodies.len()))
+    parts
+}
+
+// Prototypes or definitions with external linkage (`static` dropped from
+// the lines that begin with it).
+fn no_static(s: Str) -> Str {
+    let t = s.replace("\nstatic ", "\n")
+    if t.starts_with("static ") { t.slice(7, t.len()) } else { t }
+}
+
+fn run_cc(p: Proc, cmd: Str, args: List[Str], what: Str) -> Result[Unit, Str] {
+    match p.run(cmd, args) {
+        Ok(0) => Ok(()),
+        Ok(_) => Err("C compiler failed on {what}"),
+        Err(e) => Err("cannot run {cmd}: {e}"),
+    }
+}
+
+fn compile(sys: Sys, p: emit.CParts, cc: Str, out: Str, opt: Str) -> Result[Unit, Str] {
+    let keep = sys.proc.env("TENON_KEEP_C").is_some()
+    let n = (p.bodies.len() / SPLIT_BYTES).min(MAX_UNITS)
+    if n < 2 or keep {
+        let cpath = out + ".c"
+        write(sys.fs, cpath, p.text())?
+        run_cc(sys.proc, cc, [opt, "-w", "-std=gnu11", "-pthread", "-o", out, cpath, "-lm"], cpath)?
+        if not keep { let _ = sys.fs.remove(cpath) }
+        return Ok(())
+    }
+    let protos = no_static(p.protos)
+    let defs = split_defs(p.bodies, n)
+    var units: List[Str] = []
+    for k in 0..defs.len() {
+        let unit = out + ".{k}.c"
+        let (mode, tail) = if k == 0 { (1, p.main_c) } else { (2, "") }
+        write(sys.fs, unit, "#define TN_SPLIT {mode}\n" + p.head + protos + p.helpers + no_static(defs[k]) + tail)?
+        units.push(unit)
+    }
+    // one shell starts the compilers in the background and waits for them all
+    let script = "cc=$1; opt=$2; shift 2; pids=; for f do \"$cc\" \"$opt\" -w -std=gnu11 -pthread -fno-common -c -o \"$f.o\" \"$f\" & pids=\"$pids $!\"; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s"
+    let objs = units.map(fn(u) => u + ".o")
+    var r = run_cc(sys.proc, "sh", ["-c", script, "sh", cc, opt] + units, out + ".*.c")
+    if r.is_ok() { r = run_cc(sys.proc, cc, [opt, "-pthread", "-o", out] + objs + ["-lm"], out + ".*.o") }
+    for f in units + objs { let _ = sys.fs.remove(f) }
+    r
+}
+
+fn build(sys: Sys, o: Opts) -> Int {
+    let con = sys.console
+    let file = o.pos[0]
+    let parts = match emit_c(sys, file, root_of(sys, o)) {
+        Ok(c) => c,
+        Err(status) => return status,
+    }
+    let code = parts.text()
+    var dflt = file
+    while dflt.ends_with(".tn") { dflt = dflt.slice(0, dflt.len() - 3) }
+    let out = o.val("-o").unwrap_or(dflt)
+    let opt = if o.has("-O0") { "-O0" } else { "-O2" }
+    let cc = sys.proc.env("CC").unwrap_or("cc")
+    let entry = cache_entry(sys.proc, code, cc, opt)
+    match entry {
+        Some(e) => {
+            let same = match sys.fs.read(e + ".c") {
+                Ok(c) => c == code,
+                Err(_) => false,
+            }
+            if same and sys.proc.run("cp", [e, out]) == Ok(0) { return 0 }
+        }
+        None => {}
+    }
+    match compile(sys, parts, cc, out, opt) {
+        Ok(_) => {}
+        Err(msg) => {
+            con.eprintln("tenon: " + msg)
+            return 1
+        }
+    }
+    match entry {
+        // the executable first, then its source (written atomically), so an
+        // entry whose source is present is complete
+        Some(e) => {
+            let tmp = e + ".x{sys.clock.mono_ns()}"
+            if sys.fs.mkdir(path_parent(e)).is_ok() and sys.proc.run("cp", [out, tmp]) == Ok(0) {
+                if sys.fs.rename(tmp, e).is_ok() { let _ = sys.fs.write(e + ".c", code) } else { let _ = sys.fs.remove(tmp) }
+            }
+        }
+        None => {}
+    }
+    0
+}
+
+// run FILE [ARGS...]: interpret FILE with ARGS as its arguments, ending with
+// the program's own exit status (also a trap's 70 or 72).
+fn run(sys: Sys, o: Opts) -> Int {
+    match load(sys, root_of(sys, o), o.pos[0]) {
+        Ok(fr) => {
+            let status = interp.run(sys, fr, o.pos.slice(1, o.pos.len()))
+            sys.proc.exit(status)
+            status
+        }
+        Err(status) => status,
+    }
+}
+
+// test DIR...: the test runner (selfhost/testrun.tn) runs this executable.
+fn test(sys: Sys, o: Opts) -> Int {
+    let exe = match o.val("--exe") {
+        Some(e) => e,
+        None => match self_exe(sys.proc) {
+            Some(e) => e,
+            None => {
+                sys.console.eprintln("tenon: cannot find the path of this executable, which `tenon test` runs")
+                return 2
+            }
+        },
+    }
+    let t = testrun.Opts { dirs: o.pos, root: root_of(sys, o), exe, bless: o.has("--bless"), worker: o.val("--worker").unwrap_or(""), tmp: o.val("--tmp").unwrap_or("") }
+    testrun.main(sys, t)
+}
+
+// tokens FILE / ast FILE: print the dump of the source text.
+fn dump(sys: Sys, file: Str, ast: Bool) -> Int {
+    match sys.fs.read(file) {
+        Ok(src) => {
+            sys.console.print(if ast { astdump.dump_src(src) } else { lexer.dump(src) })
+            0
+        }
+        Err(e) => {
+            sys.console.eprintln("tenon: cannot read {file}: {e}")
+            2
+        }
+    }
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var args = sys.args
+    // `--root DIR` before the command moves after it (before run's FILE)
+    if args.len() >= 3 and args[0] == "--root" { args = [args[2], "--root", args[1]] + args.slice(3, args.len()) }
+    if args.is_empty() { return usage(con) }
+    let cmd = args[0]
+    match cmd {
+        "help" | "--help" | "-h" => {
+            con.println(usage_text())
+            return 0
+        }
+        "--version" | "version" => {
+            con.println("tenon " + VERSION)
+            return 0
+        }
+        "run" | "build" | "emit" | "check" | "test" | "fmt" | "lsp" | "fetch" | "tokens" | "ast" => {}
+        _ => return usage_error(con, "unknown command '{cmd}'"),
+    }
+    let o = match parse(cmd, args.slice(1, args.len())) {
+        Ok(o) => o,
+        Err(msg) => return usage_error(con, msg),
+    }
+    if o.help {
+        con.println(usage_text())
+        return 0
+    }
+    match cmd {
+        "run" => run(sys, o),
+        "build" => build(sys, o),
+        "emit" => match emit_c(sys, o.pos[0], root_of(sys, o)) {
+            Ok(c) => {
+                con.print(c.text())
+                0
+            }
+            Err(status) => status,
+        },
+        // silent when the program is accepted, else the diagnostic (status 1)
+        "check" => match load(sys, root_of(sys, o), o.pos[0]) {
+            Ok(_) => 0,
+            Err(status) => status,
+        },
+        "test" => test(sys, o),
+        "fmt" => fmtcmd.main(sys, o.pos, o.has("--check")),
+        "lsp" => lsp.serve(sys, root_of(sys, o)),
+        "fetch" => fetch(sys, o),
+        "tokens" => dump(sys, o.pos[0], false),
+        _ => dump(sys, o.pos[0], true),
+    }
+}

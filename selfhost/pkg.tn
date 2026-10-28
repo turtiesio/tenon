@@ -7,7 +7,7 @@
 // its dependencies offline, from tenon.lock and the cache; front.tn then
 // resolves `import name` to a module next to the importing file, else the
 // entry module of a dependency `name` of the importing file's package, else
-// the standard library. `fetch` (tenonc fetch) resolves with the network: it
+// the standard library. `fetch` (tenon fetch) resolves with the network: it
 // clones git dependencies into $TENON_HOME/cache/git/ (default ~/.tenon) and
 // writes tenon.lock.
 import pkgtoml
@@ -167,7 +167,7 @@ pub fn read_lock(fs: Fs, file: Str) -> Result[List[Locked], Str] {
     for t in parse_toml(file, text)? {
         let name = match t.name.strip_prefix("package.") {
             Some(n) if is_ident(n) => n,
-            _ => return Err("{file}:{t.line}: unexpected table [{t.name}] (expected [package.NAME]); run `tenonc fetch`"),
+            _ => return Err("{file}:{t.line}: unexpected table [{t.name}] (expected [package.NAME]); run `tenon fetch`"),
         }
         var l = Locked { name, version: "", source: "", path: "", git: "", tag: "", commit: "", hash: "" }
         for e in t.entries {
@@ -180,11 +180,11 @@ pub fn read_lock(fs: Fs, file: Str) -> Result[List[Locked], Str] {
                 "tag" => { l.tag = v }
                 "commit" => { l.commit = v }
                 "hash" => { l.hash = v }
-                _ => return Err("{file}:{e.line}: unknown key '{e.key}'; run `tenonc fetch`"),
+                _ => return Err("{file}:{e.line}: unknown key '{e.key}'; run `tenon fetch`"),
             }
         }
         let ok = if l.source == "path" { l.path != "" } else { l.source == "git" and l.git != "" and l.tag != "" and l.commit != "" }
-        if not ok or l.hash == "" { return Err("{file}:{t.line}: incomplete entry for package '{name}'; run `tenonc fetch`") }
+        if not ok or l.hash == "" { return Err("{file}:{t.line}: incomplete entry for package '{name}'; run `tenon fetch`") }
         out.push(l)
     }
     Ok(out)
@@ -193,7 +193,7 @@ pub fn read_lock(fs: Fs, file: Str) -> Result[List[Locked], Str] {
 pub fn render_lock(pkgs: List[Locked]) -> Str {
     var ps = pkgs
     ps.sort_with(fn(a, b) => if a.name < b.name { -1 } else if a.name > b.name { 1 } else { 0 })
-    var s = "# tenon.lock: written by `tenonc fetch` (docs/packages.md); do not edit.\n"
+    var s = "# tenon.lock: written by `tenon fetch` (docs/packages.md); do not edit.\n"
     for p in ps {
         s += "\n[package.{p.name}]\n"
         s += "version = " + pkgtoml.quote(p.version) + "\n"
@@ -284,7 +284,7 @@ fn Node.source(self) -> Str { if self.is_git { "git {self.git} tag {self.tag}" }
 // check against the lock.
 struct Rs { fs: Fs, proc: Proc, online: Bool, top: Str, tool: Str, home: Str, lock: List[Locked], nodes: List[Node], stack: List[Str] }
 
-fn stale(detail: Str) -> Str { "tenon.lock is out of date with tenon.toml ({detail}); run `tenonc fetch`" }
+fn stale(detail: Str) -> Str { "tenon.lock is out of date with tenon.toml ({detail}); run `tenon fetch`" }
 
 fn Rs.locked(self, name: Str) -> Option[Locked] {
     for l in self.lock {
@@ -360,9 +360,9 @@ fn Rs.node(self, from: Int, d: Dep, by: Str) -> Result[Node, Str] {
                     n.dir = dir
                     n.hash = content_hash(self.fs, dir)?
                 } else if have.is_none() {
-                    return Err("package '{d.name}' ({n.source()}, commit {x.commit}) is not in the cache ({n.dir}); run `tenonc fetch`")
+                    return Err("package '{d.name}' ({n.source()}, commit {x.commit}) is not in the cache ({n.dir}); run `tenon fetch`")
                 } else {
-                    return Err("package '{d.name}' in the cache ({n.dir}) does not match tenon.lock (content hash {have.unwrap_or("")}, locked {x.hash}): the cache is corrupt or was modified; delete that directory and run `tenonc fetch`")
+                    return Err("package '{d.name}' in the cache ({n.dir}) does not match tenon.lock (content hash {have.unwrap_or("")}, locked {x.hash}): the cache is corrupt or was modified; delete that directory and run `tenon fetch`")
                 }
             }
             None => {
@@ -433,7 +433,7 @@ fn resolve(fs: Fs, p: Proc, online: Bool, top: Str, tool: Str, hm: Str) -> Resul
     } else if online or m.deps.is_empty() {
         []
     } else {
-        return Err("no {lock_file} for {at(top, "tenon.toml")}; run `tenonc fetch`")
+        return Err("no {lock_file} for {at(top, "tenon.toml")}; run `tenon fetch`")
     }
     let root = Node { name: m.name, version: m.version, is_git: false, rel: ".", git: "", tag: "", commit: "", hash: "", dir: norm(top), by: at(top, "tenon.toml"), deps: m.deps, resolved: [:] }
     var rs = Rs { fs, proc: p, online, top, tool, home: hm, lock, nodes: [root], stack: [] }
@@ -463,7 +463,7 @@ pub fn context(fs: Fs, p: Proc, tool: Str, file: Str) -> Result[Option[Ctx], Str
     Ok(Some(rs.ctx()))
 }
 
-// tenonc fetch: resolve the package in `top` with the network and write its
+// tenon fetch: resolve the package in `top` with the network and write its
 // tenon.lock. Gives the lines to print.
 pub fn fetch(fs: Fs, p: Proc, tool: Str, top: Str) -> Result[List[Str], Str] {
     let rs = resolve(fs, p, true, top, tool, home(p))?
@@ -479,5 +479,5 @@ pub fn fetch(fs: Fs, p: Proc, tool: Str, top: Str) -> Result[List[Str], Str] {
     let old = fs.read(file).unwrap_or("")
     if old != text { fs.write(file, text).map_err(fn(e) => "cannot write {file}: {e}")? }
     lines.sort()
-    Ok(["tenonc: {file}: {locked.len()} packages" + (if old == text { " (unchanged)" } else { "" })] + lines)
+    Ok(["tenon: {file}: {locked.len()} packages" + (if old == text { " (unchanged)" } else { "" })] + lines)
 }

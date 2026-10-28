@@ -63,7 +63,7 @@ pub fn load_in(fs: Fs, root: Str, path: Str, pk: Option[pkg.Ctx]) -> Result[Fron
     }
 }
 
-// An editor buffer, analysed for the language server (selfhost/tenonlsp.tn):
+// An editor buffer, analysed for the language server (selfhost/lsp.tn):
 // as `load`, but the main file's text is `src` (imported modules are read
 // from disk), and `checked` holds the side tables of every function that
 // could be checked even when `failure` (the diagnostic `load` reports) is

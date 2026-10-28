@@ -1,0 +1,64 @@
+// `tenon fmt`: the formatter's command (the layout rules: docs/reference.md,
+// "Formatting"; the formatter itself: selfhost/fmt.tn).
+//   tenon fmt FILE...           rewrite each file in its canonical layout (atomically)
+//   tenon fmt --check FILE...   list the files that are not in canonical layout; exit 1 if any
+//   tenon fmt -                 format standard input to standard output
+// Exit status 2 if a file cannot be read, parsed or written.
+import fmt
+
+// files: the FILE arguments, at least one (selfhost/tenon.tn checks);
+// check: --check was given.
+pub fn main(sys: Sys, files: List[Str], check: Bool) -> Int {
+    let con = sys.console
+    if files == ["-"] and not check {
+        return match fmt.format(con.read_all()) {
+            Ok(text) => {
+                con.print(text)
+                0
+            }
+            Err(e) => {
+                con.eprintln("tenon: <stdin>:{e}")
+                2
+            }
+        }
+    }
+    if files.contains("-") {
+        con.eprintln("tenon: `tenon fmt -` formats standard input alone (no other FILE, no --check)")
+        return 2
+    }
+    var status = 0
+    for f in files {
+        let src = match sys.fs.read(f) {
+            Ok(s) => s,
+            Err(e) => {
+                con.eprintln("tenon: cannot read {f}: {e}")
+                status = 2
+                continue
+            }
+        }
+        let out = match fmt.format(src) {
+            Ok(s) => s,
+            Err(e) => {
+                con.eprintln("tenon: {f}:{e}")
+                status = 2
+                continue
+            }
+        }
+        if out == src { continue }
+        if check {
+            con.println(f)
+            status = status.max(1)
+            continue
+        }
+        let tmp = f + ".fmt.tmp"
+        match sys.fs.write(tmp, out).and_then(fn(_) => sys.fs.rename(tmp, f)) {
+            Ok(_) => {}
+            Err(e) => {
+                con.eprintln("tenon: cannot write {f}: {e}")
+                let _ = sys.fs.remove(tmp)
+                status = 2
+            }
+        }
+    }
+    status
+}

@@ -1,10 +1,10 @@
-// tenonlsp: the Tenon language server (Language Server Protocol 3.17, JSON-RPC
-// 2.0 over standard input and output, Content-Length framing).
+// `tenon lsp`: the Tenon language server (Language Server Protocol 3.17,
+// JSON-RPC 2.0 over standard input and output, Content-Length framing).
 //
-//   tenonlsp [--root DIR]
+//   tenon lsp [--root DIR]
 //
-// DIR is the toolchain root holding lib/prelude.tn and lib/std/ (default
-// $TENON_ROOT, else the current directory). Features: diagnostics (the
+// The root is the toolchain root holding lib/prelude.tn and lib/std/, found
+// as for every command (selfhost/tenon.tn, docs/tools.md). Features: diagnostics (the
 // checker's first diagnostic, parse errors included, on open, change and
 // save), hover (the type of the name under the cursor; signatures for
 // functions), go to definition (locals, functions, types, fields, variants,
@@ -14,8 +14,7 @@
 // the modules they import are read from disk. A file without `fn main` is
 // treated as a module: "program has no 'fn main'" is not reported. A file
 // inside a package (a tenon.toml above it) resolves `import` to the
-// dependencies in its tenon.lock, as tenonc does (docs/packages.md).
-// Build: target/release/tenon build selfhost/tenonlsp.tn -o target/tenonlsp
+// dependencies in its tenon.lock, as `tenon check` does (docs/packages.md).
 // Tests: tools/lsp_test.py.
 import front
 import json
@@ -29,12 +28,11 @@ struct Doc { uri: Str, path: Str, text: Str, an: front.Analysis, good: Option[fr
 
 struct Server { con: Console, fs: Fs, proc: Proc, root: Str, docs: Map[Str, Doc], up: Bool, down: Bool }
 
-fn main(sys: Sys) -> Int {
+// Serve one client until it sends `exit` (status 0 after `shutdown`, else
+// 1) or closes standard input (status 1 unless shut down).
+pub fn serve(sys: Sys, root0: Str) -> Int {
     let con = sys.console
-    var root = sys.proc.env("TENON_ROOT").unwrap_or(".")
-    for i in 0..sys.args.len() {
-        if sys.args[i] == "--root" and i + 1 < sys.args.len() { root = sys.args[i + 1] }
-    }
+    var root = root0
     if not root.starts_with("/") { root = front.join(sys.proc.env("PWD").unwrap_or("/"), root) }
     var s = Server { con, fs: sys.fs, proc: sys.proc, root, docs: [:], up: false, down: false }
     while true {
@@ -106,7 +104,7 @@ fn capabilities() -> json.Json {
             ("definitionProvider", JBool(true)),
             ("completionProvider", JObj([("triggerCharacters", JArr([JStr(".")]))])),
         ])),
-        ("serverInfo", JObj([("name", JStr("tenonlsp"))])),
+        ("serverInfo", JObj([("name", JStr("tenon lsp"))])),
     ])
 }
 

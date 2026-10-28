@@ -1,5 +1,5 @@
 // Tenon language-server client for VS Code. No dependencies: only the `vscode`
-// API and Node built-ins. It starts `tenonlsp` (selfhost/tenonlsp.tn), speaks
+// API and Node built-ins. It starts `tenon lsp` (selfhost/lsp.tn), speaks
 // JSON-RPC 2.0 with Content-Length framing over the server's stdio, keeps the
 // server's view of open .tn buffers in sync (full text on every change), and
 // forwards diagnostics, hover, go to definition and completion.
@@ -30,9 +30,9 @@ class Client {
 
   start() {
     const cfg = vscode.workspace.getConfiguration("tenon");
-    const exe = cfg.get("serverPath") || "tenonlsp";
+    const exe = cfg.get("serverPath") || "tenon";
     const root = toolchainRoot(cfg.get("root"));
-    const args = root ? ["--root", root] : [];
+    const args = root ? ["lsp", "--root", root] : ["lsp"];
     this.output.appendLine(`starting ${exe} ${args.join(" ")}`);
     this.buffer = Buffer.alloc(0);
     this.stopping = false;
@@ -70,7 +70,7 @@ class Client {
 
   failed(exe, e) {
     const msg = e && e.code === "ENOENT"
-      ? `Tenon: cannot start the language server '${exe}'. Build it (see the extension's README) and set "tenon.serverPath".`
+      ? `Tenon: cannot start the language server '${exe}'. Install 'tenon' (tools/install.sh; see the extension's README) or set "tenon.serverPath".`
       : `Tenon: language server error: ${e && e.message}`;
     this.output.appendLine(msg);
     this.restarts = MAX_RESTARTS; // do not retry a server that cannot start
@@ -241,7 +241,7 @@ function workspaceUri() {
 
 // The toolchain root (holding lib/prelude.tn): the setting, else a workspace
 // folder that is a Tenon repository, else none (the server then uses
-// $TENON_ROOT or its working directory).
+// $TENON_ROOT, else the root next to its executable: docs/tools.md).
 function toolchainRoot(setting) {
   if (setting) return setting;
   for (const f of vscode.workspace.workspaceFolders || []) {

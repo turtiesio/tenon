@@ -4,11 +4,11 @@
 # the golden file. Catches memory errors in generated C and the runtime.
 # Everything (tests/run, tests/v2/run, and the programs under programs/v2
 # that have a sanitizer.args: the arguments to run them with, in their
-# directory) is compiled by tenonc ($TENONC, default target/tenonc), the
+# directory) is compiled by `tenon` ($TENON, default target/tenon), the
 # compiler in use.
 set -u
 cd "$(dirname "$0")/.."
-C=${TENONC:-$PWD/target/tenonc}
+C=${TENON:-$PWD/target/tenon}
 export TENON_ROOT=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 n=0; fail=0

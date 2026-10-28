@@ -1,6 +1,6 @@
 // module
 // Self-hosted parser: a second, independent implementation of bootstrap/src/parser.rs.
-// `astdump FILE` must print exactly what `tenon ast FILE` prints.
+// `astdump FILE` must print exactly what `tenon-seed ast FILE` prints.
 
 import lexer
 
