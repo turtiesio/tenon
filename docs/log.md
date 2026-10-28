@@ -173,6 +173,14 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Lean 4 formal track:** Tenon's concept and correctness are proved in Lean 4 (a
+  core calculus with soundness, capability safety, linear/unique soundness, worker
+  isolation, traits, then effects and contracts) and mechanically linked to the
+  compiler (executable semantics run differentially against `tenon run`, checker
+  verdicts compared with a Lean-proved checker). It runs in parallel with milestone
+  3 and gates items 3-7: each needs its Lean spec and proofs before implementation.
+  A verified compiler is out of scope.
+
 - **Milestones 3 and 4 merged:** one third milestone (tenon.md §6), 18 items in
   dependency order, from open correctness findings and staleness gates through
   type-system gaps, effects, contracts, property tests, macros, the standard

@@ -264,6 +264,22 @@ without a "needs:" can start at any time. Distributed execution, distributed
 operations and macros are added only with measurements showing they pay for
 themselves (§4).
 
+**Formal track (parallel, in Lean 4).** Tenon's concept and correctness are proved
+in Lean 4, alongside the items below:
+- A formal core calculus of Tenon with mechanized proofs: type soundness (progress
+  and preservation), capability safety (a program obtains no authority it was not
+  given), linear and unique soundness (no obligation dropped or duplicated),
+  worker isolation (no shared mutable state, so no data races), traits and
+  coherence, and then effects and contracts as they are designed.
+- A mechanized link to the real compiler: the Lean semantics is executable and run
+  differentially against `tenon run` on the corpus, and the checker's verdicts are
+  compared with a checker proved sound in Lean. Every divergence is a finding
+  (item 1).
+- It gates features: items 3-7 each need their Lean specification and proofs
+  before their implementation lands. Proof checking runs in CI; a proof that no
+  longer checks fails the gate like a failing test.
+- Out of scope: a verified compiler (a proof that compiling to C preserves meaning).
+
 1. **Open correctness findings fixed.** Every open finding (correctness reviews,
    mutation survivors, fuzzing) fixed with a guarded regression test, before new
    features land on top.
