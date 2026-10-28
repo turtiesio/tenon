@@ -517,7 +517,30 @@ static TN_UNUSED int tn_float_fixed_into(char *t, tn_Float x, tn_Int d) {
 /* Format specs "{x:SPEC}" (ast.rs FmtSpec): the value is written straight
    into the output buffer, then padded in place. prec -1: none; align and
    radix 0: none. */
-typedef struct { const char *fill; int fill_len; char align, zero; int width, prec; char radix; } tn_fmt_spec;
+typedef struct { const char *fill; int fill_len; char align, zero, group; int width, prec; char radix; } tn_fmt_spec;
+/* ',' grouping of the integer digits after the sign, in place (ast.rs
+   FmtSpec::group_digits): with '0' the padding zeros are grouped digits too,
+   so the result is at least the width and never starts with ','. The text
+   after the digits is ASCII ('.', digits, 'e'), so bytes count as code points. */
+static TN_UNUSED void tn_fmt_group(tn_buf *b, int64_t start, const tn_fmt_spec *f) {
+    char *body = b->p + sizeof(tn_rc) + start;
+    int64_t n = b->len - start;
+    int64_t sign = n > 0 && body[0] == '-', d = 0;
+    while (sign + d < n && body[sign + d] >= '0' && body[sign + d] <= '9') d++;
+    if (d == 0) return;
+    int64_t tail = n - sign - d, k = d;
+    if (f->zero) while (sign + k + (k - 1) / 3 + tail < f->width) k++;
+    int64_t g = k + (k - 1) / 3;
+    tn_buf_grow(b, g - d);
+    body = b->p + sizeof(tn_rc) + start;
+    memmove(body + sign + g, body + sign + d, (size_t)tail);
+    int64_t src = sign + d - 1, dst = sign + g - 1;
+    for (int64_t j = 0; j < k; j++) { /* right to left; dst >= src throughout */
+        if (j > 0 && j % 3 == 0) body[dst--] = ',';
+        body[dst--] = j < d ? body[src--] : '0';
+    }
+    b->len += g - d;
+}
 static TN_UNUSED void tn_fmt_pad(tn_buf *b, int64_t start, int numeric, const tn_fmt_spec *f) {
     char *body = b->p + sizeof(tn_rc) + start;
     int64_t n = b->len - start, cps = 0;
@@ -556,6 +579,7 @@ static TN_UNUSED void tn_Int_fmt(tn_buf *b, tn_Int x, const tn_fmt_spec *f) {
         if (x < 0) r[--k] = '-';
         tn_buf_add(b, r + k, 72 - k);
     }
+    if (f->group) tn_fmt_group(b, start, f);
     tn_fmt_pad(b, start, 1, f);
 }
 static TN_UNUSED void tn_Float_fmt(tn_buf *b, tn_Float x, const tn_fmt_spec *f) {
@@ -566,6 +590,7 @@ static TN_UNUSED void tn_Float_fmt(tn_buf *b, tn_Float x, const tn_fmt_spec *f) 
     } else {
         tn_Float_show(b, x, 0);
     }
+    if (f->group) tn_fmt_group(b, start, f);
     tn_fmt_pad(b, start, 1, f);
 }
 static TN_UNUSED void tn_Str_fmt(tn_buf *b, tn_Str s, const tn_fmt_spec *f) {
@@ -1254,8 +1279,9 @@ static inline bool tn_next_line(tn_Str s, int64_t *pos, tn_Str *out) {
     if (st >= s.len) return false;
     const char *nl = memchr(s.p + st, '\n', (size_t)(s.len - st));
     int64_t e = nl ? nl - s.p : s.len;
-    *out = (tn_Str){s.p + st, e - st, s.o};
     *pos = nl ? e + 1 : s.len;
+    if (e > st && s.p[e - 1] == '\r') e--; /* one trailing "\r", as read_line */
+    *out = (tn_Str){s.p + st, e - st, s.o};
     return true;
 }
 static TN_UNUSED tn_List_Str tn_str_words(tn_Str s) {
@@ -1269,15 +1295,12 @@ static TN_UNUSED tn_List_Str tn_str_words(tn_Str s) {
     }
     return out;
 }
+/* Split on "\n", drop a final empty line, remove one trailing "\r" from every line. */
 static TN_UNUSED tn_List_Str tn_str_lines(tn_Str s) {
     tn_List_Str out = NULL;
-    int64_t st = 0;
-    for (int64_t i = 0; i < s.len; i++)
-        if (s.p[i] == '\n') {
-            tn_List_Str_push(&out, tn_str_view(s, st, i));
-            st = i + 1;
-        }
-    if (st < s.len) tn_List_Str_push(&out, tn_str_view(s, st, s.len));
+    int64_t pos = 0;
+    tn_Str l;
+    while (tn_next_line(s, &pos, &l)) tn_List_Str_push(&out, tn_str_view(s, l.p - s.p, l.p - s.p + l.len));
     return out;
 }
 static inline bool tn_is_space(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f'; }
@@ -1834,6 +1857,27 @@ static TN_UNUSED int tn_fs_append(tn_Fs f, tn_Str p, tn_Str d, tn_Str *msg) {
     int fd = open(full, O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd < 0) TN_FS_FAIL(errno);
     if (!tn_write_all(fd, d) || fsync(fd) != 0) { int e = errno; close(fd); TN_FS_FAIL(e); }
+    close(fd);
+    tn_free(pb.p);
+    return TN_IO_OK;
+}
+/* Cut an existing file to len bytes and fsync; never extends (builtins.rs Fs.truncate). */
+static TN_UNUSED int tn_fs_truncate(tn_Fs f, tn_Str p, tn_Int len, tn_Str *msg) {
+    TN_FS_PRE(true)
+    int fd = open(full, O_WRONLY);
+    if (fd < 0) TN_FS_FAIL(errno);
+    struct stat st;
+    if (fstat(fd, &st) != 0) { int e = errno; close(fd); TN_FS_FAIL(e); }
+    if (len < 0 || len > (tn_Int)st.st_size) {
+        close(fd);
+        char why[128];
+        if (len < 0) snprintf(why, sizeof why, "truncate length %lld is negative", (long long)len);
+        else snprintf(why, sizeof why, "truncate length %lld is larger than the file (%lld bytes)", (long long)len, (long long)st.st_size);
+        *msg = tn_io_msg(TN_IO_FAILED, p, why);
+        tn_free(pb.p);
+        return TN_IO_FAILED;
+    }
+    if (ftruncate(fd, (off_t)len) != 0 || fsync(fd) != 0) { int e = errno; close(fd); TN_FS_FAIL(e); }
     close(fd);
     tn_free(pb.p);
     return TN_IO_OK;

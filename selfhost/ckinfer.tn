@@ -822,6 +822,9 @@ fn Ck.fmt_spec(self, x: ckast.Expr, t0: cktypes.Ty, f: parser.Spec) -> Result[Un
     if f.prec >= 0 and n != "Float" {
         return ckast.fail(x.sp, "precision '.{f.prec}' in format spec ':" + f.text + "' needs a Float, found " + n)
     }
+    if f.group and n != "Int" and n != "Float" {
+        return ckast.fail(x.sp, "',' grouping in format spec ':" + f.text + "' needs an Int or Float, found " + n)
+    }
     if f.zero and n != "Int" and n != "Float" {
         return ckast.fail(x.sp, "'0' padding in format spec ':" + f.text + "' needs an Int or Float, found " + n)
     }

@@ -1,0 +1,16 @@
+"a\r\nb\r\n" -> ["a", "b"] true
+"a\r\nb" -> ["a", "b"] true
+"a\nb\r" -> ["a", "b"] true
+"a\r\r\nb\r" -> ["a\r", "b"] true
+"\r" -> [""] true
+"\r\n" -> [""] true
+"\n\r" -> ["", ""] true
+"a\rb\n" -> ["a\rb"] true
+"" -> [] true
+"\n" -> [""] true
+"\n\n" -> ["", ""] true
+"a\n\nb\n" -> ["a", "", "b"] true
+"a\r\n\r\n" -> ["a", ""] true
+["a\r", "b", "", "", "c"] true
+a [2, 1, 0, 0, 1]
+exit: 0

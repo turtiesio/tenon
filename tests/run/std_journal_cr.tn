@@ -1,0 +1,23 @@
+// std journal keeps its own line format (BODY #CHECKSUM, "\n"-terminated): a
+// record line that gained a "\r" no longer checks and is archived and dropped,
+// even though Str.lines() now removes a trailing "\r" (docs/reference.md §13).
+import journal
+
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    let _ = sys.fs.mkdir("std_journal_cr_tmp")
+    let d = sys.fs.within("std_journal_cr_tmp")
+    let j = journal.open(d, "log")
+    j.append("one")?
+    j.append("two")?
+    let text = d.read("log")?
+    let lines = text.split("\n")
+    d.write("log", lines[0] + "\r\n" + lines[1] + "\n")?   // a CR after the first record
+    let l = j.load()?
+    c.println("{l.records} {l.rejected} {encode(d.read("log.rejected")?.slice(0, 5))}")
+    c.println("{j.load()?.records} {j.load()?.rejected}")
+    d.remove("log")?
+    d.remove("log.rejected")?
+    sys.fs.remove("std_journal_cr_tmp")?
+    Ok(())
+}

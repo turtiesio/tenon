@@ -1,0 +1,45 @@
+// Counting down: rev_range(lo, hi) is lo..hi in descending order (hi - 1 down
+// to lo); empty when hi <= lo, like the range. In a C build `for i in
+// rev_range(a, b)` is a plain loop; elsewhere it is an ordinary List[Int].
+fn h() -> Int { 3 }
+
+fn main(sys: Sys) {
+    let c = sys.console
+    var out: List[Int] = []
+    for y in rev_range(0, h()) { out.push(y) }
+    c.println("{out} {rev_range(0, 3)} {rev_range(0, 3) == [2, 1, 0]}")
+    // empty ranges: hi == lo, hi < lo (as `for i in 5..2` runs zero times)
+    var n = 0
+    for _ in rev_range(2, 2) { n += 1 }
+    for _ in rev_range(5, 2) { n += 1 }
+    for _ in 5..2 { n += 1 }
+    c.println("{n} {rev_range(5, 2)} {rev_range(-1, 2)}")
+    // break and continue
+    for i in rev_range(0, 10) {
+        if i % 3 == 0 { continue }
+        if i < 4 { break }
+        c.println("i={i}")
+    }
+    // the bounds are evaluated once, before the first iteration
+    var hi = 3
+    for i in rev_range(0, hi) {
+        hi += 10
+        c.println("{i} {hi}")
+    }
+    // at the edges of Int: no overflow
+    var k = 0
+    for i in rev_range(INT_MIN, INT_MIN + 3) {
+        k += 1
+        if i == INT_MIN { c.println("reached INT_MIN") }
+    }
+    for i in rev_range(INT_MAX - 2, INT_MAX) { c.println("{INT_MAX - i}") }
+    c.println("{k}")
+    // bottom-up over a grid, as in a falling-sand simulation
+    let grid = ["ab", "cd", "ef"]
+    var rows: List[Str] = []
+    for y in rev_range(0, grid.len()) { rows.push(grid[y]) }
+    c.println("{rows.join(" ")}")
+    // a value like any other list
+    let down = rev_range(1, 4)
+    c.println("{down.map(fn(x) => x * 10)} {down.len()}")
+}

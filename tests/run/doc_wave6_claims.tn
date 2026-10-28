@@ -1,0 +1,39 @@
+// Reference claims added after study wave 6 (docs/reference.md §6, §7, §8, §10, §11).
+enum Mode { S, X }
+enum Shape { Circle(Int), Empty }
+struct Lock { mode: Mode }
+
+fn cmd(t: List[Str]) -> Str {
+    // a guard on a string-literal arm; the next arm takes the rest
+    match t[0] {
+        "ROOM" if t.len() == 3 => "room {t[1]} {t[2]}",
+        "ROOM" => "usage: ROOM NAME CAP",
+        other => "unknown {other}",
+    }
+}
+
+fn main(sys: Sys) {
+    let c = sys.console
+    // §8: a variant without a payload prints its name, also qualified or inside a value
+    c.println("{S} {[S, X]} {Some(X)} {Lock { mode: S }} {Shape.Empty} {Circle(2)}")
+    // §7: a..b with b <= a is empty
+    var n = 0
+    for _ in 3..1 { n += 1 }
+    for _ in 2..2 { n += 1 }
+    c.println("{n}")
+    c.println("{cmd(["ROOM", "a", "4"])} | {cmd(["ROOM"])} | {cmd(["X"])}")
+    // §6: `var` destructures too; every name it binds is mutable
+    var (count, label) = (1, "x")
+    count += 1
+    label += "y"
+    c.println("{count} {label}")
+    // §11: is_space is ' ', '\t', '\n', '\r' (32, 9, 10, 13); not \v (11) or \f (12)
+    c.println("{[32, 9, 10, 13, 11, 12].map(fn(b) => b.is_space())}")
+    // §11: trim also removes \f (12), but not \v (11); words() splits on ' ', '\t', '\r', '\n' only
+    let ff = 12.char()
+    let vt = 11.char()
+    c.println("{(ff + "a" + ff).trim().len()} {(vt + "a" + vt).trim().len()} {("a" + ff + "b").words().len()}")
+    // §10: read and read_bytes on a directory
+    let d = sys.fs.within("fs_jail")
+    c.println("{sys.fs.read_bytes("fs_jail")} {sys.fs.read("fs_jail")} {d.read_bytes(".")}")
+}

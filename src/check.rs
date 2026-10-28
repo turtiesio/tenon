@@ -773,6 +773,9 @@ impl Checker {
                 return err(x.span, format!("precision '.{}' in format spec ':{}' needs a Float, found {}", p, f.text, n));
             }
         }
+        if f.group && n != "Int" && n != "Float" {
+            return err(x.span, format!("',' grouping in format spec ':{}' needs an Int or Float, found {}", f.text, n));
+        }
         if f.zero && n != "Int" && n != "Float" {
             return err(x.span, format!("'0' padding in format spec ':{}' needs an Int or Float, found {}", f.text, n));
         }

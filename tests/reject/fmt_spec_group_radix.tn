@@ -1,0 +1,4 @@
+// error: malformed format spec ',x': ',' grouping cannot be combined with the radix 'x'
+fn main(sys: Sys) {
+    sys.console.println("{255:,x}")
+}

@@ -1,0 +1,4 @@
+// error: ',' grouping in format spec ':>8,' needs an Int or Float, found Str
+fn main(sys: Sys) {
+    sys.console.println("{"1234":>8,}")
+}

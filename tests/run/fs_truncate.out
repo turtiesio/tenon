@@ -1,0 +1,15 @@
+Ok(()) "one\ntwo\n"
+Ok(()) "one\ntwo\n"
+"one\ntwo\nfour\n"
+Err(Failed("log: truncate length 100 is larger than the file (13 bytes)"))
+Err(Failed("log: truncate length -1 is negative"))
+"one\ntwo\nfour\n"
+Ok(()) Err(Failed("u: invalid UTF-8")) [195]
+Err(NotFound("missing")) false
+Err(Failed("sub: Is a directory"))
+Err(Denied("read-only Fs: log"))
+Err(Denied("path escapes the Fs root: ../fs_truncate.tn")) Err(Denied("path escapes the Fs root: /etc/hosts"))
+Err(Denied("path escapes the Fs root: log\u{0}x"))
+Err(Denied("path escapes the Fs root: up/fs_truncate.tn")) true
+Ok(()) ""
+exit: 0

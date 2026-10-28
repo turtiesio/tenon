@@ -28,10 +28,10 @@ pub struct Pattern { pub at: Pos, pub kind: Pat }
 pub enum Seg { SLit(Str), SExpr(Expr), SFmt(Expr, Spec) }
 
 // A format spec `{e:SPEC}`, as src/ast.rs FmtSpec:
-//   [[fill]align]['0']width['.'precision][x|X|b|o]   (every part optional)
+//   [[fill]align]['0']width[',']['.'precision][x|X|b|o]   (every part optional)
 // align and radix are "" when absent, prec is -1.
 pub struct Spec {
-    pub text: Str, pub fill: Str, pub align: Str, pub zero: Bool, pub width: Int, pub prec: Int, pub radix: Str,
+    pub text: Str, pub fill: Str, pub align: Str, pub zero: Bool, pub width: Int, pub group: Bool, pub prec: Int, pub radix: Str,
 }
 
 fn is_align(c: Str) -> Bool { c == "<" or c == ">" or c == "^" }
@@ -73,6 +73,8 @@ pub fn parse_spec(text: Str) -> Result[Spec, Str] {
     if align != "" and w == "" { return Err(bad + "an alignment needs a width, as in \{x:>5}") }
     if zero and align != "" { return Err(bad + "'0' padding cannot be combined with a fill or alignment") }
     let width = w.to_int().unwrap_or(0)
+    let group = i < cs.len() and cs[i] == ","
+    if group { i += 1 }
     var prec = -1
     if i < cs.len() and cs[i] == "." {
         let pend = spec_digits(cs, i + 1)
@@ -87,6 +89,7 @@ pub fn parse_spec(text: Str) -> Result[Spec, Str] {
         radix = cs[i]
         i += 1
     }
+    if group and radix != "" { return Err(bad + "',' grouping cannot be combined with the radix '" + radix + "'") }
     if i < cs.len() {
         let c = cs[i]
         let hint = if c == "f" {
@@ -94,11 +97,11 @@ pub fn parse_spec(text: Str) -> Result[Spec, Str] {
         } else if c == "d" {
             " (Int is decimal by default; drop the 'd')"
         } else {
-            " (the grammar is [[fill]align][0][width][.precision][x|X|b|o])"
+            " (the grammar is [[fill]align][0][width][,][.precision][x|X|b|o])"
         }
         return Err(bad + "unexpected '" + c + "'" + hint)
     }
-    Ok(Spec { text, fill, align, zero, width, prec, radix })
+    Ok(Spec { text, fill, align, zero, width, group, prec, radix })
 }
 
 // `fallback`: the `_` arm added for `if let` / `while let` (see Parser.if_let).

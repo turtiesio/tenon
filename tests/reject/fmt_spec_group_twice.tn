@@ -1,0 +1,4 @@
+// error: malformed format spec ',,': unexpected ','
+fn main(sys: Sys) {
+    sys.console.println("{1000:,,}")
+}

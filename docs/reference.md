@@ -195,6 +195,10 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
 
 - `let x = ...` is immutable; `var x = ...` is mutable. Types are inferred;
   annotate with `let x: List[Int] = []` when needed.
+- `var` destructures like `let`, and every name it binds is mutable:
+  `var (count, label) = (1, "x")` then `count += 1`. One pattern cannot mix
+  `var` and `let` names: bind with `var` (or copy the one part:
+  `let (a, b) = f(); var a2 = a`).
 - Names may not be redeclared inside a function (no shadowing). This includes
   parameters and names bound by patterns: `let v = f()` followed by
   `match v { Some(v) => ... }` is rejected; use another name (`Some(x)`).
@@ -222,12 +226,22 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
 ```tenon
 if a > b { ... } else if a == b { ... } else { ... }   // also an expression
 while cond { ... }
-for i in 0..n { ... }            // half-open range
+for i in 0..n { ... }            // half-open range: 0, 1, ..., n - 1
+for i in rev_range(0, n) { ... } // the same numbers, counting down: n - 1, ..., 0
 for x in xs { ... }              // over a snapshot of the list
 for (k, v) in m { ... }          // over map entries in insertion order
 for x in set.items() { ... }     // a Set is not iterable itself
 break; continue; return value
 ```
+
+A range `a..b` is empty when `b <= a` (`for i in 5..2` runs zero times; no
+step is taken backwards), and both ends are evaluated once, before the first
+iteration. A range is not a value: it appears only after `for ... in`, so
+there is no `(0..n).rev()`. To count down use `rev_range(lo, hi)`, a prelude
+function giving `lo..hi` in descending order (`rev_range(0, 3) == [2, 1, 0]`;
+empty when `hi <= lo`). It is an ordinary `List[Int]`, but `for i in
+rev_range(a, b)` compiles to a plain countdown loop in a C build, without
+building the list (the interpreter builds it). `while` loops work too.
 
 `match` must be exhaustive, and an arm that can never match is an error:
 
@@ -237,6 +251,18 @@ match shape {
     Circle(_) => "circle",
     Rect(w, h) | ... => ...,
     _ => "other",
+}
+```
+
+A guard (`if cond` after the pattern) works on every kind of arm, including
+string and number literals; when the guard is false the following arms are
+tried, so the same literal may appear again without a guard:
+
+```tenon
+match t[0] {
+    "ROOM" if t.len() == 3 => room(t[1], t[2]),
+    "ROOM" => usage(),
+    other => unknown(other),
 }
 ```
 
@@ -304,6 +330,7 @@ containers they are quoted:
 | `[1, 2]`, `["a"]` | `[1, 2]`, `["a"]` |
 | `["k": 1]`, empty map | `["k": 1]`, `[:]` |
 | `Some(1)`, `None` | `Some(1)`, `None` |
+| a variant without payload: `S`, `Shape.Empty`, `[S, X]` | `S`, `Empty`, `[S, X]` (its name, never qualified) |
 | `Point { x: 1, y: 2 }` | `Point { x: 1, y: 2 }` |
 | `(1, "a")` | `(1, "a")` |
 
@@ -318,11 +345,12 @@ interpolation may contain string literals of its own:
 `"{expr:SPEC}"` pads, aligns and converts an `Int`, `Float`, `Str` or `Bool`:
 
 ```
-SPEC      = [[fill] align] ["0"] [width] ["." precision] [radix]
+SPEC      = [[fill] align] ["0"] [width] [","] ["." precision] [radix]
 align     = "<" (left) | ">" (right) | "^" (center)
 fill      = any one character except "}" and "\""   (default: space)
 width     = 1 to 3 digits; the minimum length in code points
 precision = 1 to 3 digits, at most 100; Float only
+","       = thousands separator; Int and Float, not with a radix
 radix     = "x" | "X" | "b" | "o"; Int only
 ```
 
@@ -335,6 +363,9 @@ radix     = "x" | "X" | "b" | "o"; Int only
 | radix | `"{255:x}"`, `"{255:X}"`, `"{5:b}"`, `"{8:o}"`, `"{-255:x}"` | `ff`, `FF`, `101`, `10`, `-ff` |
 | radix + width | `"{255:08x}"`, `"{5:>4b}"` | `000000ff`, ` 101` |
 | precision | `"{2.675:.2}"`, `"{0.5:.0}"`, `"{1.0 / 3.0:8.3}"` | `2.67`, `0`, `   0.333` |
+| separator | `"{1234567:,}"`, `"{-1234:>8,}"`, `"{INT_MIN:,}"` | `1,234,567`, `  -1,234`, `-9,223,372,036,854,775,808` |
+| separator + float | `"{1234567.891:,.2}"`, `"{1234.5:,}"` | `1,234,567.89`, `1,234.5` |
+| separator + zero | `"{1234:011,}"`, `"{1234:012,}"`, `"{-1234.5:012,.2}"` | `000,001,234`, `0,000,001,234`, `-0,001,234.50` |
 
 - **The colon rule**: the spec starts at the first `:` that is not inside
   `( )`, `[ ]`, `{ }` or a nested string or character literal, and runs to
@@ -348,14 +379,21 @@ radix     = "x" | "X" | "b" | "o"; Int only
   `"{2.675:.2}"` is `2.67`). Without a precision a `Float` keeps its usual
   shortest text (`"{0.1:6}"` is `   0.1`); `nan` and `inf` are padded like
   any other text.
+- `,` puts a comma between groups of three digits of the integer part
+  (after the sign, up to the `.` or an exponent; `"{1e20:,}"` is `1e20`, and
+  `nan`/`inf` are unchanged). With `0` padding the zeros are digits too and
+  are grouped as well; the text never starts with a comma, so it can be one
+  character longer than the width (`"{1234:012,}"` is 13 characters), as in
+  Python. It comes after the width and before the precision: `"{x:12,.2}"`.
 - Radix digits are lowercase for `x` (uppercase for `X`), with `-` before
   negative numbers and no `0x` prefix, as `to_str_radix`; `INT_MIN` works.
 - Specs nest like any interpolation:
   `"{"{name:<6}={qty:03}":>12}"`.
 - Everything else is a compile-time error: a spec on any other type
   (`List`, `Option`, a struct, a generic `T`: format the parts, or call
-  `to_str()` first), `.N` on a non-`Float`, a radix on a non-`Int`, `0` on a
-  `Str` or `Bool`, `0` together with an alignment, an alignment without a
+  `to_str()` first), `.N` on a non-`Float`, a radix on a non-`Int`, `0` or `,` on a
+  `Str` or `Bool`, `,` together with a radix (`"{n:,x}"`), a `,` in another
+  position (`"{n:,8}"`, `"{f:.2,}"`), `0` together with an alignment, an alignment without a
   width, an empty spec, and Python's type letters (`"{f:.2f}"` is written
   `"{f:.2}"`; `"{n:d}"` is `"{n}"`). The value's type must be known at that
   point: in `fn(x) => "{x:5}"` annotate `x: Int`.
@@ -442,6 +480,16 @@ path too.
   `Err(Failed("path: invalid UTF-8"))`. For binary files use the byte
   variants `read_bytes`, `write_bytes`, `append_bytes` (§11, "Bytes"), which
   follow the same path, jail and read-only rules as `read`, `write`, `append`.
+- `Fs.read`, `Fs.read_bytes` (and `Fs.truncate`) on a directory give
+  `Err(Failed("path: Is a directory"))` (the operating system's text).
+- `Fs.truncate(path, len)` cuts an existing file to its first `len` bytes and
+  fsyncs it, in place (the cheap way to drop a torn tail: `fs.truncate(p,
+  text.rfind("\n").unwrap() + 1)`). It never extends a file and never
+  creates one: a missing file is `Err(NotFound(path))`, and `len < 0` or
+  `len` larger than the file is `Err(Failed("path: truncate length 9 is
+  larger than the file (5 bytes)"))` (or `"... is negative"`), with the file
+  unchanged. It is a write: a read-only `Fs` gives `Denied`, and the jail,
+  NUL and symlink rules above apply. Unlike `write` it is not atomic.
 - `Fs.list(dir)` gives the entry *names* (not paths) of the files and
   directories in `dir`, without `.` and `..`, sorted by bytes (`"B" < "a"`).
 - `Fs.mkdir(path)` creates the directory and any missing parents, and succeeds
@@ -474,6 +522,8 @@ Highlights:
   starts_with ends_with contains to_int to_float upper lower replace chars
   find_from is_digits strip_prefix strip_suffix (Option) trim_chars (remove
   given ASCII bytes from both ends, e.g. `s.trim_chars(" \t")`)
+  trim_start_chars trim_end_chars (from one end only:
+  `"0250".trim_end_chars("0") == "025"`, `"0250".trim_chars("0") == "25"`)
   repeat pad_left pad_right is_empty rfind split_once rsplit_once to_int_radix
   bytes char_count all_bytes`; `Int.char()` makes a one-character string from
   a code point (`'A'.char() == "A"`, `233.char() == "é"`); `Str.from_utf8(bytes)`
@@ -496,9 +546,17 @@ Highlights:
     The pieces share the original's bytes, like `slice`.
   - `s.split(sep)` keeps empty pieces: `"a,,b,".split(",")` is
     `["a", "", "b", ""]` and `"".split(",")` is `[""]`.
-  - `s.lines()` splits on `"\n"` and drops a final empty line; it does not
-    remove `"\r"`. So `"".lines() == []`, `"\n".lines() == [""]`,
-    `"a\n\nb\n".lines() == ["a", "", "b"]`. `s.words()` splits on runs of spaces, tabs, `"\r"` and `"\n"`.
+  - `s.lines()` gives the lines `Console.read_line` would read from `s`: it
+    splits on `"\n"`, drops a final empty piece (the text after a last
+    `"\n"`), then removes one trailing `"\r"` from every line, also from the
+    last. So `"".lines() == []`, `"\n".lines() == [""]`,
+    `"a\n\nb\n".lines() == ["a", "", "b"]`, `"a\r\nb\r".lines() == ["a", "b"]`,
+    `"a\r\r\n".lines() == ["a\r"]`, `"\r".lines() == [""]`. (Before study
+    wave 6 it kept the `"\r"`.) `s.words()` splits on runs of spaces, tabs,
+    `"\r"` and `"\n"` (not `\v` or `\f`).
+  - `trim_chars`, `trim_start_chars` and `trim_end_chars` remove bytes that
+    occur in `chars`; only ASCII bytes count, so a non-ASCII character is
+    never removed (`"xéx".trim_chars("x") == "é"`).
   - `s.to_int()` accepts an optional `+`/`-` and decimal digits only (no spaces,
     no `_`), and gives `None` on overflow. `s.to_int_radix(base)` (base 2-36,
     otherwise a trap) accepts an optional `-` (no `+`) and one or more digits
@@ -506,13 +564,18 @@ Highlights:
     no spaces or `_`; `None` if invalid or out of range (`INT_MIN` parses):
     `"ff".to_int_radix(16) == Some(255)`. `s.to_float()` also accepts `1.5`,
     `.5`, `5.`, `1e-3`, `inf` and `nan`.
-  - `trim` removes ASCII whitespace; `upper`/`lower` change ASCII letters only.
+  - `trim`, `trim_start` and `trim_end` remove the bytes `' '`, `'\t'`,
+    `'\n'`, `'\r'` and form feed (12), not vertical tab (11);
+    `upper`/`lower` change ASCII letters only.
   - `s.all_bytes(pred)` is true when `pred` holds for every byte (and for
     `""`), for validation with the `Int` classes below:
     `name.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_')`.
 - `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
-  sort_by_desc sort_with swap first last index_of contains extend sorted reversed map filter any all count
+  sort_by_desc sort_with swap first last index_of contains extend sorted reversed map filter retain any all count
   is_empty binary_search max_by min_by group_by`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
+  - `xs.retain(keep)` keeps, in place and in order, the elements for which
+    `keep` is true (`filter` in place; needs a mutable place, also a deep one:
+    `self.res[r].queue.retain(fn(w) => w != name)`).
   - `xs.max_by(key)` / `xs.min_by(key)` give the element with the largest /
     smallest key as an `Option` (`None` for an empty list); of several equal
     keys, the first one in the list. Keys compare with the derived ordering, so
@@ -554,7 +617,8 @@ Highlights:
   fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents); constants
   `INT_MAX`, `INT_MIN`; and for code points
   `is_digit is_alpha is_alnum is_space is_upper is_lower` (ASCII only:
-  `'é'.is_alpha()` is false; `s.byte(i).is_digit()`, `'7' - '0'`), and `char`
+  `'é'.is_alpha()` is false; `is_space` is exactly `' '`, `'\t'`, `'\n'` and
+  `'\r'` (32, 9, 10, 13), not vertical tab or form feed (11, 12); `s.byte(i).is_digit()`, `'7' - '0'`), and `char`
   (the code point as a one-character `Str`); `Float`: `to_int floor ceil round
   sqrt abs min max`, and `to_fixed(decimals)` (exactly that many digits; rounds the
   binary value half to even, like printf). There are no bitwise operators: use
@@ -568,7 +632,7 @@ Highlights:
   exit; a program that answers requests line by line while another process
   waits calls `flush()` after each answer.
 - `Fs`: `read write append exists is_dir remove rename list mkdir mkdir_one
-  within read_only read_bytes write_bytes append_bytes` (details in §10).
+  within read_only read_bytes write_bytes append_bytes truncate` (details in §10).
   `mkdir` creates missing parents, `mkdir_one` exactly one directory; `rename`
   is atomic and replaces the target; `remove` deletes a file or an empty
   directory.
@@ -606,12 +670,11 @@ Highlights:
   - `decode` (§14) rejects a string literal whose escapes do not make valid
     UTF-8.
   - The byte APIs above never change a byte.
-- Line endings: `s.lines()` splits on `"\n"` only and keeps `"\r"`
-  (`"a\r\nb".lines() == ["a\r", "b"]`; use `l.trim_end()` or
-  `l.strip_suffix("\r")`); `s.words()` treats `"\r"` as a separator;
-  `Console.read_line` and `Conn.read_line` remove the `"\n"` and then one
-  trailing `"\r"` from every line they return, also from a last line without
-  `"\n"`, so CRLF and LF input read the same.
+- Line endings: `s.lines()`, `Console.read_line` and `Conn.read_line` all
+  remove the `"\n"` and then one trailing `"\r"` from every line, also from a
+  last line without `"\n"`, so CRLF and LF input read the same
+  (`"a\r\nb".lines() == ["a", "b"]`); `s.words()` treats `"\r"` as a
+  separator; `read_all`, `Fs.read` and `s.split("\n")` keep every `"\r"`.
 - Paths: `path_join(a, b)`, `path_parent(p)`, `path_base(p)` (§10).
 - `Clock`: `now_ms mono_ns sleep_ms`.
 
@@ -720,6 +783,11 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   `std/regex.tn` in the repository, `docs/std-journal.tn` and
   `docs/std-regex.tn` in a study kit; either way `import journal` and
   `import regex` find them.
+- `journal` has its own on-disk format: each record is one line
+  `BODY #CHECKSUM`, and `load` archives and drops any line that does not
+  check (also one that gained a `"\r"` at its end). It cannot read or write
+  a file format that a task fixes (one command per line, say): for that use
+  `Fs.append` (durable), `Fs.write` (atomic) and `Fs.truncate` directly.
 
 ### `regex`
 

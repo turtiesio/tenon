@@ -1,0 +1,4 @@
+// error: format spec ':,' applies to Int, Float, Str or Bool, not List[Int]
+fn main(sys: Sys) {
+    sys.console.println("{[1000]:,}")
+}

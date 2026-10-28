@@ -1,0 +1,5 @@
+// error: malformed format spec ',8': unexpected '8'
+// the separator comes after the width: {n:8,}
+fn main(sys: Sys) {
+    sys.console.println("{1000:,8}")
+}

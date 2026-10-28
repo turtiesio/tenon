@@ -320,7 +320,7 @@ fn main(sys: Sys) -> Int {
     } else {
         con.read_all()
     }
-    let lines = text.lines().map(fn(l) => if l.ends_with("\r") { l.slice(0, l.len() - 1) } else { l })
+    let lines = text.lines() // one trailing "\r" is removed from each line
     var out = ""
     render(mut out, lines)
     con.print(out)

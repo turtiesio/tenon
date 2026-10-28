@@ -181,7 +181,7 @@ pub enum StrSeg {
 }
 
 // A format spec `{e:SPEC}` (docs/reference.md §8):
-//   [[fill]align]['0']width['.'precision][x|X|b|o]   (every part optional)
+//   [[fill]align]['0']width[',']['.'precision][x|X|b|o]   (every part optional)
 #[derive(Debug, Clone, PartialEq)]
 pub struct FmtSpec {
     pub text: String,
@@ -189,6 +189,7 @@ pub struct FmtSpec {
     pub align: Option<char>, // '<', '>' or '^'; None: numbers right, text left
     pub zero: bool,          // sign-aware zero padding (Int, Float)
     pub width: usize,
+    pub group: bool,         // ',' between groups of three digits (Int, Float)
     pub prec: Option<usize>, // Float decimals, as Float.to_fixed
     pub radix: Option<char>, // 'x', 'X', 'b', 'o' (Int)
 }
@@ -235,6 +236,10 @@ impl FmtSpec {
             return bad("'0' padding cannot be combined with a fill or alignment".into());
         }
         let width = w.parse::<usize>().unwrap_or(0);
+        let group = i < cs.len() && cs[i] == ',';
+        if group {
+            i += 1;
+        }
         let mut prec = None;
         if i < cs.len() && cs[i] == '.' {
             i += 1;
@@ -252,21 +257,60 @@ impl FmtSpec {
             radix = Some(cs[i]);
             i += 1;
         }
+        if group && radix.is_some() {
+            return bad(format!("',' grouping cannot be combined with the radix '{}'", radix.unwrap()));
+        }
         if i < cs.len() {
             let c = cs[i];
             let hint = match c {
                 'f' => " (decimals are written {x:.2}, without 'f')".to_string(),
                 'd' => " (Int is decimal by default; drop the 'd')".to_string(),
-                _ => " (the grammar is [[fill]align][0][width][.precision][x|X|b|o])".to_string(),
+                _ => " (the grammar is [[fill]align][0][width][,][.precision][x|X|b|o])".to_string(),
             };
             return bad(format!("unexpected '{}'{}", c, hint));
         }
-        Ok(FmtSpec { text: text.to_string(), fill, align, zero, width, prec, radix })
+        Ok(FmtSpec { text: text.to_string(), fill, align, zero, width, group, prec, radix })
+    }
+
+    // ',' grouping of the integer digits of a number's text (after the sign,
+    // up to the first non-digit: "-1234.5" -> "-1,234.5"; "inf" unchanged).
+    // With '0' the padding zeros are digits too, grouped like the others, and
+    // the text never starts with ',': it may be one longer than the width.
+    // Mirrored by runtime/tenon.h tn_fmt_group.
+    fn group_digits(&self, body: &str) -> String {
+        let (sign, rest) = if body.starts_with('-') { body.split_at(1) } else { ("", body) };
+        let n = rest.bytes().take_while(|c| c.is_ascii_digit()).count();
+        if n == 0 {
+            return body.to_string();
+        }
+        let (int, tail) = rest.split_at(n);
+        let mut k = n;
+        if self.zero {
+            while sign.len() + k + (k - 1) / 3 + tail.len() < self.width {
+                k += 1;
+            }
+        }
+        let digits = "0".repeat(k - n) + int;
+        let mut out = sign.to_string();
+        for (i, c) in digits.chars().enumerate() {
+            if i > 0 && (k - i) % 3 == 0 {
+                out.push(',');
+            }
+            out.push(c);
+        }
+        out + tail
     }
 
     // Pad `body` (already converted: digits, decimals or text) to the width.
     // `numeric`: right-aligned by default, and '0' pads after the sign.
     pub fn pad(&self, body: &str, numeric: bool, out: &mut String) {
+        let grouped;
+        let body = if self.group {
+            grouped = self.group_digits(body);
+            grouped.as_str()
+        } else {
+            body
+        };
         let n = body.chars().count();
         if n >= self.width {
             out.push_str(body);

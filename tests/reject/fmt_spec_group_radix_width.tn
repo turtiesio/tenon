@@ -1,0 +1,4 @@
+// error: malformed format spec '08,b': ',' grouping cannot be combined with the radix 'b'
+fn main(sys: Sys) {
+    sys.console.println("{5:08,b}")
+}

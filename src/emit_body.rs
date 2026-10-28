@@ -379,6 +379,18 @@ impl<'a> Emitter<'a> {
                 self.push(ScopeKind::LoopBody);
                 self.bind(pat, &i, &et, true);
             }
+            ForIter::Each(e) if self.rev_range_args(e).is_some() => {
+                // `for i in rev_range(lo, hi)`: count down instead of building the list
+                let args = self.rev_range_args(e).unwrap();
+                let vs = self.eval_list(&[&args[0], &args[1]]);
+                let (lo, k) = (self.fresh("lo"), self.fresh("k"));
+                self.line(&format!("int64_t {} = {}, {} = {};", lo, vs[0].code, k, vs[1].code));
+                self.line(&format!("while ({k} > {lo}) {{"));
+                self.st.indent += 1;
+                self.push(ScopeKind::LoopBody);
+                self.line(&format!("int64_t {i} = --{k};"));
+                self.bind(pat, &i, &et, true);
+            }
             ForIter::Each(e) if self.fusable(e).is_some() => {
                 // `for x in s.words()` / `s.lines()`: scan the string instead of
                 // building the temporary list (same elements, same order).
@@ -424,6 +436,14 @@ impl<'a> Emitter<'a> {
         self.pop();
         self.st.indent -= 1;
         self.line("}");
+    }
+
+    // The arguments of a call to the prelude's `rev_range` (not a user item hiding it).
+    fn rev_range_args<'e>(&self, e: &'e Expr) -> Option<&'e [Expr]> {
+        let ExprKind::Call(callee, args) = &e.kind else { return None };
+        let Some(Res::Fn(fi, _)) = self.c.res.get(&callee.id) else { return None };
+        let f = &self.c.fns[*fi];
+        (f.name == "rev_range" && f.span.file == 0).then_some(&args[..])
     }
 
     fn fusable<'e>(&self, e: &'e Expr) -> Option<(&'e Expr, &'static str)> {
@@ -818,8 +838,8 @@ impl<'a> Emitter<'a> {
                     let fill = f.fill.encode_utf8(&mut fill);
                     let prec = f.prec.map(|p| p as i64).unwrap_or(-1);
                     self.line(&format!(
-                        "{{ static const tn_fmt_spec fs = {{{}, {}, {}, {}, {}, {}, {}}}; {}_fmt(&{}, {}, &fs); }}",
-                        c_string(fill), fill.len(), align, f.zero as i32, f.width, prec, radix, tn, b, v.code
+                        "{{ static const tn_fmt_spec fs = {{{}, {}, {}, {}, {}, {}, {}, {}}}; {}_fmt(&{}, {}, &fs); }}",
+                        c_string(fill), fill.len(), align, f.zero as i32, f.group as i32, f.width, prec, radix, tn, b, v.code
                     ));
                 }
             }

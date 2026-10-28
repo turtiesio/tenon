@@ -92,6 +92,7 @@ fn Int.is_upper(self) -> Bool { self >= 'A' and self <= 'Z' }
 fn Int.is_lower(self) -> Bool { self >= 'a' and self <= 'z' }
 fn Int.is_alpha(self) -> Bool { self.is_upper() or self.is_lower() }
 fn Int.is_alnum(self) -> Bool { self.is_alpha() or self.is_digit() }
+// is_space: exactly ' ', '\t', '\n', '\r' (32, 9, 10, 13); not vertical tab (11) or form feed (12).
 fn Int.is_space(self) -> Bool { self == ' ' or self == '\t' or self == '\n' or self == '\r' }
 extern fn Float.to_int(self) -> Int
 extern fn Float.sqrt(self) -> Float
@@ -161,13 +162,20 @@ fn Str.strip_prefix(self, p: Str) -> Option[Str] {
 fn Str.strip_suffix(self, p: Str) -> Option[Str] {
     if self.ends_with(p) { Some(self.slice(0, self.len() - p.len())) } else { None }
 }
-// Removes leading and trailing bytes that occur in `chars` (ASCII), e.g. s.trim_chars(" \t").
-fn Str.trim_chars(self, chars: Str) -> Str {
+// Removes leading and trailing bytes that occur in `chars`, e.g. s.trim_chars(" \t");
+// only ASCII bytes count (a non-ASCII character is never removed).
+// trim_start_chars / trim_end_chars remove them from one end only:
+// "0250".trim_end_chars("0") == "025", "0250".trim_chars("0") == "25".
+fn Str.trim_chars(self, chars: Str) -> Str { self.trim_start_chars(chars).trim_end_chars(chars) }
+fn Str.trim_start_chars(self, chars: Str) -> Str {
     var a = 0
+    while a < self.len() and self.byte(a) < 128 and chars.contains(self.slice(a, a + 1)) { a += 1 }
+    self.slice(a, self.len())
+}
+fn Str.trim_end_chars(self, chars: Str) -> Str {
     var b = self.len()
-    while a < b and chars.find(self.slice(a, a + 1)).is_some() { a += 1 }
-    while b > a and chars.find(self.slice(b - 1, b)).is_some() { b -= 1 }
-    self.slice(a, b)
+    while b > 0 and self.byte(b - 1) < 128 and chars.contains(self.slice(b - 1, b)) { b -= 1 }
+    self.slice(0, b)
 }
 fn Str.contains(self, sub: Str) -> Bool { self.find(sub).is_some() }
 // pred holds for every byte (true for ""): s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_')
@@ -196,7 +204,9 @@ fn Str.rsplit_once(self, sep: Str) -> Option[(Str, Str)] {
     let i = self.rfind(sep)?
     Some((self.slice(0, i), self.slice(i + sep.len(), self.len())))
 }
-// Lines without their "\n"; a final empty line is dropped.
+// Lines as Console.read_line reads them: split on "\n", then one trailing "\r" is removed
+// from every line (also the last); a final empty line is dropped:
+// "a\r\nb\r".lines() == ["a", "b"], "a\n\n".lines() == ["a", ""], "".lines() == [].
 extern fn Str.lines(self) -> List[Str]
 // Pieces separated by runs of spaces, tabs, "\r" or "\n".
 extern fn Str.words(self) -> List[Str]
@@ -324,6 +334,18 @@ fn List[T].filter(self, keep: fn(T) -> Bool) -> List[T] {
     }
     out
 }
+// Keep, in place and in order, the elements for which keep(x) is true:
+// xs.retain(fn(x) => x > 0). keep is called once per element, first to last.
+fn List[T].retain(mut self, keep: fn(T) -> Bool) {
+    var j = 0
+    for i in 0..self.len() {
+        if keep(self[i]) {
+            if j < i { self[j] = self[i] }
+            j += 1
+        }
+    }
+    while self.len() > j { let _ = self.pop() }
+}
 fn List[T].any(self, pred: fn(T) -> Bool) -> Bool {
     for x in self {
         if pred(x) { return true }
@@ -379,6 +401,17 @@ fn List[T].group_by[K](self, key: fn(T) -> K) -> Map[K, List[T]] {
         let k = key(x)
         out.or_insert(k, [])
         out[k].push(x)
+    }
+    out
+}
+// The numbers of lo..hi in descending order: rev_range(0, 3) == [2, 1, 0]; empty if hi <= lo.
+// `for i in rev_range(lo, hi)` counts down without building the list in a C build.
+fn rev_range(lo: Int, hi: Int) -> List[Int] {
+    var out: List[Int] = []
+    var i = hi
+    while i > lo {
+        i -= 1
+        out.push(i)
     }
     out
 }
@@ -544,6 +577,9 @@ extern fn Fs.append(self, path: Str, data: Str) -> Result[Unit, IoError]
 extern fn Fs.read_bytes(self, path: Str) -> Result[List[Int], IoError]
 extern fn Fs.write_bytes(self, path: Str, data: List[Int]) -> Result[Unit, IoError]
 extern fn Fs.append_bytes(self, path: Str, data: List[Int]) -> Result[Unit, IoError]
+// Cut an existing file to its first `len` bytes, durably (fsync). Never extends:
+// len < 0 or larger than the file is Err(Failed("path: ...")), and so is a directory.
+extern fn Fs.truncate(self, path: Str, len: Int) -> Result[Unit, IoError]
 extern fn Fs.exists(self, path: Str) -> Bool
 extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError] // file or empty directory
 extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]

@@ -229,6 +229,12 @@ impl<'a> Emitter<'a> {
                 let k = self.tmp_val(&Ty::int(), &format!("{}({}, {}, {}&{})", f, a[0], a[1], extra, m)).code;
                 self.io_result(t, &k, "0", &m)
             }
+            "Fs.truncate" => {
+                let m = self.fresh("m");
+                self.line(&format!("tn_Str {} = {{0}};", m));
+                let k = self.tmp_val(&Ty::int(), &format!("tn_fs_truncate({}, {}, {}, &{})", a[0], a[1], a[2], m)).code;
+                self.io_result(t, &k, "0", &m)
+            }
             "Fs.exists" => self.tmp_val(t, &format!("tn_fs_exists({}, {})", a[0], a[1])),
             "Fs.is_dir" => self.tmp_val(t, &format!("tn_fs_is_dir({}, {})", a[0], a[1])),
             "Fs.rename" => {

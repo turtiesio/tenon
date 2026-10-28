@@ -1,0 +1,8 @@
+S [S, X] Some(X) Lock { mode: S } Empty Circle(2)
+0
+room a 4 | usage: ROOM NAME CAP | unknown X
+2 xy
+[true, true, true, true, false, false]
+1 3 1
+Err(Failed("fs_jail: Is a directory")) Err(Failed("fs_jail: Is a directory")) Err(Failed(".: Is a directory"))
+exit: 0
