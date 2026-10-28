@@ -24,6 +24,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: check --fast
         run: ./check --fast
+  trailers:
+    # Owner rule (docs/log.md): no AI Co-Authored-By trailers in any commit.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: no AI co-author trailers
+        run: |
+          if git log --format='%H%n%B' | grep -iE '^co-authored-by:.*(claude|anthropic|openai|codex|gpt)'; then
+            echo "a commit carries an AI Co-Authored-By trailer"; exit 1
+          fi
   approvals:
     # A pull request is unattended work: tools/approvals.py --pr, run as the
     # base has it (the branch's copy could be changed), refuses approval lines,
