@@ -202,9 +202,10 @@ fn leaf(v: mut ival.Val, op: MOp, sp: ckast.Span, names: ival.Names, ix: Ix) -> 
 // ---- statements ----
 
 pub fn block(it: mut Interp, fr: mut List[ival.Val], ss: List[icode.Stm]) -> Result[ival.Val, Ctl] {
-    var last = ival.unit()
-    for s in ss { last = stmt(mut it, mut fr, s)? }
-    Ok(last)
+    let n = ss.len()
+    if n == 0 { return Ok(ival.unit()) }
+    for i in 0..n - 1 { let _ = stmt(mut it, mut fr, ss[i])? }
+    stmt(mut it, mut fr, ss[n - 1])
 }
 
 fn loop_body(it: mut Interp, fr: mut List[ival.Val], body: List[icode.Stm]) -> Result[Bool, Ctl] {
@@ -331,8 +332,17 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
         NLocal(s) => Ok(fr[s]),
         NLit(v) => Ok(v),
         NBin(op, a, b, sp) => {
-            let x = ev(mut it, mut fr, a)?
-            let y = ev(mut it, mut fr, b)?
+            // operands that are locals or literals are read without a nested evaluation
+            let x = match a {
+                NLocal(s) => fr[s],
+                NLit(v) => v,
+                _ => ev(mut it, mut fr, a)?,
+            }
+            let y = match b {
+                NLocal(s) => fr[s],
+                NLit(v) => v,
+                _ => ev(mut it, mut fr, b)?,
+            }
             binop(op, x, y, sp)
         }
         NField(b, i) => match b {
@@ -345,7 +355,12 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
         NCall(fi, args, sp, site) => {
             if site { it.site = sp }
             var av: List[ival.Val] = []
-            for a in args { av.push(ev(mut it, mut fr, a)?) }
+            for a in args {
+                match a {
+                    NLocal(s) => av.push(fr[s]),
+                    _ => av.push(ev(mut it, mut fr, a)?),
+                }
+            }
             call_fn(mut it, fi, mut av, sp)
         }
         NIf(c, t, els) => {
@@ -380,6 +395,13 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
             let v = ev(mut it, mut fr, x)?
             Ok(ival.vbool(v.i == 0))
         }
+        _ => ev_more(mut it, mut fr, e),
+    }
+}
+
+// The less frequent expressions (kept apart so that `ev`, the hot path, has a small frame).
+fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.Val, Ctl] {
+    match e {
         NNeg(x, sp) => {
             let v = ev(mut it, mut fr, x)?
             if v.k == ival.K_FLOAT { return Ok(ival.vfloat(-v.f)) }
@@ -466,6 +488,13 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
             let v = ev(mut it, mut fr, x)?
             Ok(ival.vstr(ival.show_top(v, it.names)))
         }
+        _ => ev_calls(mut it, mut fr, e),
+    }
+}
+
+// Calls with `mut` arguments or receivers, builtins with `mut self`, decode.
+fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.Val, Ctl] {
+    match e {
         NDecode(t, args, sp, site) => {
             if site { it.site = sp }
             var av: List[ival.Val] = []
@@ -518,6 +547,7 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
             }
             nav(mut fr[pl.root], steps, 0, false, MExt(id, av, keys), sp, it.names, it.ix)
         }
+        _ => panic("interp: unexpected node"),
     }
 }
 
@@ -548,9 +578,14 @@ fn index(b: ival.Val, i: ival.Val, sp: ckast.Span, names: ival.Names) -> Result[
 
 pub fn binop(op: Int, a: ival.Val, b: ival.Val, sp: ckast.Span) -> Result[ival.Val, Ctl] {
     let k = a.k
-    if k == ival.K_INT and op <= icode.OP_REM {
+    if k == ival.K_INT {
         let x = a.i
         let y = b.i
+        if op == icode.OP_LT { return Ok(ival.vbool(x < y)) }
+        if op == icode.OP_EQ { return Ok(ival.vbool(x == y)) }
+        if op >= icode.OP_NE {
+            return Ok(ival.vbool(if op == icode.OP_NE { x != y } else if op == icode.OP_LE { x <= y } else if op == icode.OP_GT { x > y } else { x >= y }))
+        }
         if op == icode.OP_ADD {
             return match x.checked_add(y) {
                 Some(r) => Ok(ival.vint(r)),
@@ -576,11 +611,6 @@ pub fn binop(op: Int, a: ival.Val, b: ival.Val, sp: ckast.Span) -> Result[ival.V
     if op == icode.OP_EQ { return Ok(ival.vbool(ival.eq(a, b))) }
     if op == icode.OP_NE { return Ok(ival.vbool(not ival.eq(a, b))) }
     if op >= icode.OP_LT {
-        if k == ival.K_INT {
-            let x = a.i
-            let y = b.i
-            return Ok(ival.vbool(if op == icode.OP_LT { x < y } else if op == icode.OP_LE { x <= y } else if op == icode.OP_GT { x > y } else { x >= y }))
-        }
         let c = match ival.cmp(a, b) {
             Ok(c) => c,
             Err(m) => return trap(m, sp),
