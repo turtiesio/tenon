@@ -21,3 +21,4 @@ import TenonCore.Theorems
 import TenonCore.TypeExamples
 import TenonCore.Traits
 import TenonCore.TypeGaps
+import TenonCore.TypeGapsStable

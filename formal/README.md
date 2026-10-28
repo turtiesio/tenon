@@ -18,7 +18,7 @@ project (`lakefile.toml`, toolchain pinned in `lean-toolchain`:
 | Parametricity (substitution lemma, checking a generic function once) | `TenonCore/Subst.lean`, `TenonCore/SubstTyping.lean` | **proved** |
 | The hypotheses are satisfiable (a typed linear program) | `TenonCore/TypeExamples.lean` | **proved** |
 | Traits and coherence (impls, generic impls with bounds, supertraits, `dyn`) | `TenonCore/Traits.lean` | **proved** |
-| Milestone-3 item 3 specification (user `Eq`/`Ord`/`Hash`, sorting, maps) | `TenonCore/TypeGaps.lean` | stated; mostly **proved** (rest: `Todo/TypeGaps.lean`) |
+| Milestone-3 item 3 specification (user `Eq`/`Ord`/`Hash`, sorting, maps) | `TenonCore/TypeGaps.lean` | **proved** (+ `TypeGapsStable.lean`) |
 | The guarded theorem statements | `TenonCore/Theorems.lean` | guarded (ops/governance/guarded.txt) |
 | Translator from `tenon ast` dumps to the core | `Front/Parse.lean`, `Front/Translate.lean` | done |
 | Runner (`lake exe tenon-core`) | `Main.lean` | done |
@@ -37,7 +37,7 @@ it installs the pinned toolchain on first use.
 cd formal && lake build                  # the core, the proofs, the translator, tenon-core
 ops/gates/formal_check.sh                # the gate: build, no sorry, the axiom audit
 python3 ops/gates/formal_diff.py --list  # the differential test (needs target/tenon: ./check)
-lake build Todo                          # the unfinished statements (uses sorry)
+lake build Todo                          # unfinished statements (may use sorry; empty now)
 ```
 
 Run one program on the core by hand:
@@ -185,6 +185,7 @@ removing one needs an owner approval, `../ops/governance/README.md`).
 | `bounded_call_resolves` | in a generic function with bounds, a call of a trait method on a value of a bounded type, at any type arguments satisfying the bounds (supertraits included), does not get stuck on method lookup | `Traits.lean` (`entails_sound`) |
 | `dyn_dispatch` | a method call on a `dyn` value resolves to the impl of the value's type, with the trait method's parameters and the trait's signature at that type: `dyn` dispatch is type-safe | `Traits.lean` |
 | `sort_unique`, `sort_sorted_perm` | with a user `Ord` that is a total order, every correct sort gives the same list (the two backends cannot disagree); a lawful `Ord` sorts; any comparator gives a permutation | `TypeGaps.lean` |
+| `stable_sort_unique`, `sort_stable_equiv` | with a user `Ord` that is only a total preorder (distinct values may compare equal): two stable sorts give the same list; the model sort is stable; any two sorted permutations agree up to `equal` position by position | `TypeGapsStable.lean` |
 | `maps_agree` | with lawful user `Eq`/`Ord`/`Hash` (and `Ord` consistent with `Eq`, `Hash` with `Eq`), the ordered map and the hashed map agree with the insertion-order map on every lookup | `TypeGaps.lean` |
 | `unlawful_eq_map_provenance`, `user_impls_capability_safe` | an arbitrary (inconsistent) user `Eq` breaks only functional results: the map holds only inserted keys and values; whatever user impls do, they get no authority (`capability_safety` for the elaborated program; `obligations_conserved` likewise, `TypeGaps.user_impls_obligations_conserved`) | `TypeGaps.lean` |
 
@@ -324,7 +325,7 @@ fix the checker rejects them.
 `./check` runs `ops/gates/formal_check.sh` ("formal" in its table): under 1 s
 warm on the development machine (Apple M4 Max), about 9 s for a full rebuild
 of `formal/` (the first build on a new machine also downloads the
-toolchain). It requires at least the 25 statements of `Theorems.lean` in the
+toolchain). It requires at least the 27 statements of `Theorems.lean` in the
 axiom audit. CI installs elan and caches the toolchain and the build
 (`.github/workflows/ci.yml`, `nightly.yml`). The differential test takes
 about 25 s on 8 cores.
@@ -347,11 +348,10 @@ about 25 s on 8 cores.
    (monomorphized keys; `HeadCoherent` excludes them now); a unification-based
    overlap check proved sound against `Coherent`; the orphan rule; object
    safety.
-4. **Item 3** (`Todo/TypeGaps.lean`): uniqueness of sorted permutations up to
-   `Eq` for a total preorder, stability of the sort, uniqueness of a stable
-   sort (what makes the backends agree when a user `Ord` calls distinct values
-   equal); then the connection of `resolve` to a full `eval` of a user
-   comparator inside the builtin sort.
+4. **Item 3**: the connection of `resolve` to a full `eval` of a user
+   comparator inside the builtin sort, and a proof that the backends' actual
+   sort (the interpreter's bottom-up merge sort, `Prims.lean`) is a stable
+   sorted permutation, so `stable_sort_unique` applies to it.
 5. **Effects and contracts** (milestone items 4-5) as they are designed.
 6. Link the worker machine to the sequential core (a worker's local steps as
    core evaluations), and model `Fs` paths (the jail's `..` and symlink rules)

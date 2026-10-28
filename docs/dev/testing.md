@@ -128,8 +128,8 @@ pinned in `formal/lean-toolchain`; elan installs it (CI caches it).
   a proof that no longer checks, on `sorry`, `admit` or a new `axiom` in a
   built file, and on a guarded theorem that depends on an axiom beyond
   `propext`, `Classical.choice` and `Quot.sound` (`formal/Axioms.lean`; at
-  least the 25 statements of `Theorems.lean` must be audited).
-  Statements that are not proved yet live in `formal/Todo/`, which the gate
+  least the 27 statements of `Theorems.lean` must be audited).
+  Statements that are not proved yet go to the `Todo` library (`formal/Todo.lean`), which the gate
   does not build.
 - The statements in `formal/TenonCore/Theorems.lean` are guarded like tests
   (`theorems` in `ops/governance/guarded.txt`): changing or removing one needs

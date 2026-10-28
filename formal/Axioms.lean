@@ -27,6 +27,8 @@ import TenonCore
 #print axioms Tenon.Theorems.dyn_dispatch
 #print axioms Tenon.Theorems.sort_unique
 #print axioms Tenon.Theorems.sort_sorted_perm
+#print axioms Tenon.Theorems.stable_sort_unique
+#print axioms Tenon.Theorems.sort_stable_equiv
 #print axioms Tenon.Theorems.maps_agree
 #print axioms Tenon.Theorems.unlawful_eq_map_provenance
 #print axioms Tenon.Theorems.user_impls_capability_safe

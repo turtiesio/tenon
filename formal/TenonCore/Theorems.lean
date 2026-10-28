@@ -13,6 +13,7 @@ import TenonCore.Workers
 import TenonCore.TypeSafeRest
 import TenonCore.SubstTyping
 import TenonCore.TypeGaps
+import TenonCore.TypeGapsStable
 
 namespace Tenon.Theorems
 open Tenon
@@ -250,6 +251,20 @@ theorem maps_agree {α β : Type} {E : TypeGaps.UEq α} {O : TypeGaps.UOrd α} (
       TypeGaps.mget E.eq j (TypeGaps.mbuild E.eq [] ops) :=
   ⟨TypeGaps.omap_agrees hO hc ops [] [] (fun _ => by simp [TypeGaps.oget, TypeGaps.mget]) j,
    TypeGaps.hmap_agrees hE hH ops (fun _ => []) [] (fun _ => by simp [TypeGaps.hget, TypeGaps.mget]) j⟩
+
+/-- With a user `Ord` that is only a total preorder (distinct values may compare
+equal), stable sorting is well defined: two stable sorts give the same list. -/
+theorem stable_sort_unique {α : Type} {O : TypeGaps.UOrd α} (hO : O.Lawful) (f g : List α → List α)
+    (hf : ∀ l, (f l).Perm l ∧ TypeGaps.Sorted O.cmp (f l)) (hg : ∀ l, (g l).Perm l ∧ TypeGaps.Sorted O.cmp (g l))
+    (sf : TypeGaps.Stable O.cmp f) (sg : TypeGaps.Stable O.cmp g) (l : List α) : f l = g l :=
+  TypeGaps.stable_sort_unique hO f g hf hg sf sg l
+
+/-- The model sort is stable, and any two sorted permutations agree up to the user's `equal`. -/
+theorem sort_stable_equiv {α : Type} {O : TypeGaps.UOrd α} (hO : O.Lawful) :
+    TypeGaps.Stable O.cmp (TypeGaps.isort O.cmp) ∧
+    ∀ l1 l2 : List α, TypeGaps.Sorted O.cmp l1 → TypeGaps.Sorted O.cmp l2 → l1.Perm l2 →
+      TypeGaps.LRel (fun a b => O.cmp a b = .eq) l1 l2 :=
+  ⟨TypeGaps.isort_stable hO, fun _ _ h1 h2 hp => TypeGaps.sorted_perm_equiv hO h1 h2 hp⟩
 
 /-- An unlawful user `Eq` breaks only functional results: the map holds only inserted keys and values. -/
 theorem unlawful_eq_map_provenance {α β : Type} (eq : α → α → Bool) (ops : List (α × β)) :

@@ -5,7 +5,7 @@
 # theorem of formal/TenonCore/Theorems.lean (the guarded statements) may depend
 # only on Lean's standard axioms. The Lean toolchain is formal/lean-toolchain
 # (elan installs it: formal/README.md, "How to run"). Unfinished statements
-# live in formal/Todo/, which is not built here.
+# go to the Todo library (formal/Todo.lean), which is not built here.
 set -euo pipefail
 cd "$(dirname "$0")/../../formal"
 lake=$(command -v lake || true)
@@ -27,13 +27,13 @@ fi
 # the sources the build checks: the core, the translator, the runner
 srcs=$(find TenonCore Front -name '*.lean'; echo TenonCore.lean Front.lean Main.lean)
 if grep -nE '(^|[^A-Za-z_.])(sorry|admit)([^A-Za-z_]|$)|^[[:space:]]*(axiom|unsafe axiom)[[:space:]]' $srcs; then
-  echo "formal_check: sorry, admit or axiom in a built file (unfinished statements go to formal/Todo/)"
+  echo "formal_check: sorry, admit or axiom in a built file (unfinished statements go to the Todo library, formal/Todo.lean)"
   exit 1
 fi
 out=$("$lake" env lean Axioms.lean 2>&1)
 n=$(printf "%s\n" "$out" | grep -cE "depends on axioms|does not depend on any axioms" || true)
 bad=$(printf '%s\n' "$out" | grep "depends on axioms" | grep -vE "depends on axioms: \[(propext|Classical.choice|Quot.sound)(, (propext|Classical.choice|Quot.sound))*\]$" || true)
-if [ "$n" -lt 25 ] || [ -n "$bad" ] || printf '%s\n' "$out" | grep -q "error"; then
+if [ "$n" -lt 27 ] || [ -n "$bad" ] || printf '%s\n' "$out" | grep -q "error"; then
   printf '%s\n' "$out"
   echo "formal_check: a guarded theorem depends on a non-standard axiom (or did not check)"
   exit 1

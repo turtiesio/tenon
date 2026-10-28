@@ -47,8 +47,10 @@ theorem it must satisfy:
   bound `T: Sub` entails `T: Super` (`Traits.super_entails`; for the prelude,
   `ord_bound_gives_eq`, `hash_bound_gives_eq`).
 
-Stated but not proved (formal/Todo/TypeGaps.lean): uniqueness of sorted
-permutations up to Eq for a total preorder and uniqueness of a stable sort.
+For a user `Ord` that is only a total preorder (distinct values may compare
+equal), TypeGapsStable.lean: `isort` is stable (`isort_stable`), stable sorts
+are unique (`stable_sort_unique`, `stable_sort_eq_isort`), and any two sorted
+permutations agree up to `equal` position by position (`sorted_perm_equiv`).
 -/
 import TenonCore.Traits
 import TenonCore.Capability
