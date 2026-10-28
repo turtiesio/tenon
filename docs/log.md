@@ -173,6 +173,12 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **CLI and seed (after the milestone-2 cleanup audit, docs/CLEANUP_PLAN.md):** one
+  self-hosted `tenon` binary with subcommands (run build emit check test fmt lsp
+  fetch tokens ast) replaces tenonc/tenonfmt/tenonlsp; the frozen Rust compiler is
+  renamed `tenon-seed` and only builds stage 1. The seed stays Rust and may only
+  shrink.
+
 - **Milestone 2 scope (after milestone 1):** repository layout cleanup; fully
   self-hosted compiler; traits with generic bounds and explicit `dyn`; multi-core
   via isolated workers and typed channels; tooling: fmt, language server, packages
