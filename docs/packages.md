@@ -1,7 +1,7 @@
 # Packages
 
 A package is a directory with a `tenon.toml` manifest. It can depend on other
-packages by local path or by git URL and tag. `tenonc fetch` resolves the
+packages by local path or by git URL and tag. `tenon fetch` resolves the
 dependencies, fetches git packages into a cache and pins everything in
 `tenon.lock`. Builds then work offline from the lock and the cache. There is
 no registry.
@@ -16,7 +16,7 @@ part of `./check`.
 ```
 app/
   tenon.toml        the manifest
-  tenon.lock        written by `tenonc fetch`; commit it
+  tenon.lock        written by `tenon fetch`; commit it
   src/main.tn       the app's own files: any layout
 util/
   tenon.toml
@@ -89,12 +89,12 @@ with `path`, or with `git` and `tag`). Every string in it must be non-empty.
 
 ## The lock: tenon.lock
 
-`tenonc fetch` writes the lock with one table per dependency, direct or
+`tenon fetch` writes the lock with one table per dependency, direct or
 transitive, sorted by name. It writes the file only if its text changes, so
 running `fetch` again with nothing new leaves it byte for byte the same.
 
 ```toml
-# tenon.lock: written by `tenonc fetch` (docs/packages.md); do not edit.
+# tenon.lock: written by `tenon fetch` (docs/packages.md); do not edit.
 
 [package.json]
 version = "1.2.0"
@@ -153,7 +153,10 @@ identified by its name, so each name has exactly one source in a build:
 
 ## Commands
 
-### `tenonc fetch [DIR]`
+The package-aware commands of `tenon`; every command, flag and exit status
+is in [docs/tools.md](tools.md).
+
+### `tenon fetch [DIR]`
 
 Resolves the package in `DIR`, or, without `DIR`, the nearest `tenon.toml`
 at or above the current directory. It then writes `tenon.lock` and prints
@@ -171,7 +174,7 @@ A locked commit is kept even if the tag later moves upstream. To pick up a
 moved tag, delete that package's table from the lock, or delete the lock.
 `fetch` also recomputes the hash of every path package.
 
-### `tenonc run`, `build`, `emit`, `check`, `test`
+### `tenon run`, `build`, `emit`, `check`, `test`
 
 A file is inside a package when a `tenon.toml` is in its directory or any
 directory above it. For a relative path the search climbs with `..`, so it
@@ -179,27 +182,27 @@ works from a subdirectory too, for at most 64 levels. Inside a package these
 commands resolve dependencies **offline**:
 
 - With dependencies but no `tenon.lock`, they fail with
-  `no tenon.lock for tenon.toml; run \`tenonc fetch\``. A package with no
+  `no tenon.lock for tenon.toml; run \`tenon fetch\``. A package with no
   dependencies needs no lock.
 - If the lock does not match the manifests, they fail with
-  `tenon.lock is out of date with tenon.toml (DETAIL); run \`tenonc fetch\``.
+  `tenon.lock is out of date with tenon.toml (DETAIL); run \`tenon fetch\``.
   This happens when a dependency is missing from the lock or listed with a
   different source, or when the lock lists a package that is no longer needed.
 - A git package must be in the cache at its locked commit, else they fail
-  with `... is not in the cache ...; run \`tenonc fetch\``.
+  with `... is not in the cache ...; run \`tenon fetch\``.
 - A git package's content hash must equal the lock's. If it does not, they
   fail with `package 'x' in the cache (DIR) does not match tenon.lock
   (content hash H, locked H'): the cache is corrupt or was modified; delete
-  that directory and run \`tenonc fetch\``.
+  that directory and run \`tenon fetch\``.
 - **Path dependencies are live and git dependencies are pinned.** A path
   package is read from its directory as it is now. If its files changed
   since the last fetch, that is not an error, even though the hash in the lock
-  is then out of date. `tenonc fetch` refreshes it. Adding or removing a
+  is then out of date. `tenon fetch` refreshes it. Adding or removing a
   dependency in a path package's manifest does make the lock out of date,
   because resolution re-reads every manifest.
 
-Package errors are reported as `tenonc: MESSAGE` with exit status 1. The
-language server (`selfhost/tenonlsp.tn`) resolves imports the same way, and
+Package errors are reported as `tenon: MESSAGE` with exit status 1. The
+language server (`tenon lsp`) resolves imports the same way, and
 shows a package error as the diagnostic at the start of the file.
 
 ## Imports in a package
@@ -226,10 +229,10 @@ names must be unique in a program`.
 
 `$TENON_HOME/cache/git/HASH/`, with `TENON_HOME` defaulting to `~/.tenon`. It
 holds one directory per fetched (URL, commit), with no `.git`, named by a
-hash of `URL@COMMIT`. Deleting it is always safe: `tenonc fetch` refills it.
+hash of `URL@COMMIT`. Deleting it is always safe: `tenon fetch` refills it.
 
 ## Network
 
-Only `tenonc fetch` uses the network, through `git` and only for a git
+Only `tenon fetch` uses the network, through `git` and only for a git
 package that the cache lacks. The tests use local repositories under
 `file://` URLs and never contact a remote host.

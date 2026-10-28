@@ -1,10 +1,10 @@
 # Self-hosted C backend: notes
 
-`selfhost/tenonc.tn` is the self-hosted compiler driver; every `tenon`
-subcommand has a tenonc equivalent (selfhost/SELFHOST.md). The C backend's:
+`selfhost/tenon.tn` is the driver of `tenon`, the self-hosted command line; every seed
+subcommand has a `tenon` equivalent (selfhost/SELFHOST.md, docs/tools.md). The C backend's:
 
-    tenonc emit FILE [--root DIR]            = `tenon emit FILE`, byte for byte
-    tenonc build FILE [-o OUT] [-O0] [--root DIR]
+    tenon emit FILE [--root DIR]             = `tenon-seed emit FILE`, byte for byte
+    tenon build FILE [-o OUT] [-O0] [--root DIR]
 
 Its C backend is a second, independent implementation of
 bootstrap/src/emit_c.rs, emit_body.rs, emit_ctl.rs and emit_builtins.rs,
@@ -15,7 +15,7 @@ program, the declarations and the type, resolution and capture side tables).
 
 | Module | Ports | Contents |
 |---|---|---|
-| `tenonc.tn` | main.rs, emit_c.rs `build`/`compile` | subcommands, reading the runtime, running the C compiler |
+| `tenon.tn` | main.rs, emit_c.rs `build`/`compile` | subcommands and flags, reading the runtime, running the C compiler |
 | `front.tn` | main.rs `front` | loading the prelude and modules, checking |
 | `emit.tn` | emit_c.rs, helpers of emit_body.rs | emitter state, C type names, boxing, scopes and temporaries, the driver |
 | `emitlayout.tn` | emit_c.rs | type definitions in dependency order, per-type helpers, decoders, `main`, assembly |
@@ -31,21 +31,21 @@ functions taking `m: mut emit.Em`. The modules import each other in a cycle
 ## Inputs read at compile time
 
 The bootstrap embeds lib/prelude.tn, lib/std/*.tn and runtime/tenon.h
-(`include_str!`). tenonc reads them from the repository ROOT when it compiles
-a program: `--root DIR`, else `$TENON_ROOT`, else the current directory
-(`check` also takes ROOT as its second argument). The runtime is
+(`include_str!`). `tenon` reads them from the toolchain ROOT when it compiles
+a program: `--root DIR`, else `$TENON_ROOT`, else found from its own path,
+else the current directory (docs/tools.md). The runtime is
 pasted into the C exactly as the bootstrap pastes it, so the output does not
 depend on where it was read from.
 
 `build` uses the `Proc` capability (lib/prelude.tn, docs/reference.md §11) to
 read `$CC` and `$TENON_KEEP_C` and to run `$CC OPT -w -std=gnu11 -pthread -o OUT
 OUT.c -lm`, as the bootstrap does, with the same kind of build cache
-(selfhost/SELFHOST.md); its own messages start with `tenonc:`. Unlike the
-bootstrap, a program with more than 400 kB of function definitions (tenonc
-itself: 5 MB of C) is compiled as up to 8 translation units by parallel
-`$CC` runs and then linked (`emit.CParts`, tenonc.tn `compile`; the
+(selfhost/SELFHOST.md); its own messages start with `tenon:`. Unlike the
+bootstrap, a program with more than 400 kB of function definitions (`tenon`
+itself: 6 MB of C) is compiled as up to 8 translation units by parallel
+`$CC` runs and then linked (`emit.CParts`, tenon.tn `compile`; the
 runtime's state is shared through `TN_STATE` in runtime/tenon.h): cc -O2 on
-tenonc.tn takes 2.6 s instead of 13 s. `emit` and the cache still see one
+tenon.tn takes about 3 s instead of 13 s. `emit` and the cache still see one
 C text.
 
 ## Fidelity rules that matter for identical C
@@ -81,21 +81,21 @@ C text.
 ## Testing
 
 - `tools/selfhost.sh` (in `./check`): for every corpus file the bootstrap
-  accepts, `tenon emit` and `tenonc emit` print the same bytes and exit with
+  accepts, `tenon-seed emit` and `tenon emit` print the same bytes and exit with
   the same status (321 files). In the same pass, the fixpoint: stage0 (the
-  bootstrap building tenonc.tn, -O0) and stage1 (stage0 building tenonc.tn,
+  bootstrap building tenon.tn, -O0) and stage1 (stage0 building tenon.tn,
   the compiler ./check uses) emit identical C for every file stage1
-  accepts, v2 files and tenonc.tn itself included (345 files).
+  accepts, v2 files and tenon.tn itself included (342 files).
 - `tools/checkfuzz.py` (evidence): mutants that both compilers accept are
   also compared by their emitted C.
 
 ## Stage B
 
 Stage A (this port) is complete. Stage B (the interpreter, the test runner,
-`tokens`/`ast`, the build cache, the gates switched to tenonc, the frozen
+`tokens`/`ast`, the build cache, the gates switched to `tenon`, the frozen
 bootstrap) is described in selfhost/SELFHOST.md.
 
-## Traits (v2: tenonc only; selfhost/emittrait.tn)
+## Traits (v2: not in the seed; selfhost/emittrait.tn)
 
 None of this code runs for a program without traits, so the C of the whole
 v1 corpus stays byte-identical to the bootstrap's (tools/selfhost.sh).
@@ -119,7 +119,7 @@ v1 corpus stays byte-identical to the bootstrap's (tools/selfhost.sh).
   `encode` (TN_FULL) does not. Its prototype goes with the helper
   prototypes, which come before the functions'.
 
-## Workers and channels (v2: tenonc only; emitbi.tn `worker_call`)
+## Workers and channels (v2: not in the seed; emitbi.tn `worker_call`)
 
 A program whose checker results resolve a call to `Sys.workers` (emit.tn
 `uses_workers`, `Em.mt`) is compiled for threads; nothing changes for any

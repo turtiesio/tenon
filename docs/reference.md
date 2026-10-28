@@ -29,7 +29,9 @@ native executable through C (`tenon build prog.tn -o prog`). Both must behave
 identically; the test suite checks this for every test program.
 `tenon build` caches executables by their generated C, so rebuilding an
 unchanged program is instant (cache in `$TENON_CACHE`, default
-`<tmp>/tenon-cache`; `TENON_CACHE=off` disables it).
+`$TMPDIR/tenon-cache`; `TENON_CACHE=off` disables it). Every command, flag,
+environment variable and exit status of `tenon` is in
+[docs/tools.md](tools.md).
 
 ## 2. Lexical structure
 
@@ -70,7 +72,7 @@ unchanged program is instant (cache in `$TENON_CACHE`, default
 | `Option[T]` | `Some(T)` or `None`. There is no null. |
 | `Result[T, E]` | `Ok(T)` or `Err(E)`. |
 | `Console`, `Fs`, `Clock`, `Net`, `Proc` | Capabilities (§10). |
-| `Workers`, `Worker[R]`, `Sender[T]`, `Receiver[T]` | Workers and channels (§18; tenonc only). |
+| `Workers`, `Worker[R]`, `Sender[T]`, `Receiver[T]` | Workers and channels (§18). |
 
 There is **no implicit conversion** of any kind: `1 + 2.0` is a type error;
 write `1.to_float() + 2.0`.
@@ -466,7 +468,7 @@ struct Sys { console: Console, fs: Fs, clock: Clock, net: Net, proc: Proc, args:
 given to the unattenuated `sys.fs` are relative to the current directory (or
 absolute; `sys.fs.within("/srv/data")` is fine). `sys.net` is the network
 capability (§15); `sys.proc` runs other programs (below); `sys.workers()`
-(tenonc only) starts workers on other cores (§18). There are no global functions for I/O, no ambient file system access, and no
+starts workers on other cores (§18). There are no global functions for I/O, no ambient file system access, and no
 way to construct a capability. Functions that need authority take it as a
 parameter, so a signature shows what a function can touch. Attenuate before
 passing on:
@@ -769,7 +771,7 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 - `import name` looks for `name.tn` next to the importing file first, then in the
   standard library (`journal`, `regex`). A local file therefore hides a std
   module of the same name, except that a file never imports itself.
-- Packages ([docs/packages.md](packages.md); self-hosted `tenonc` only). Inside a
+- Packages ([docs/packages.md](packages.md)). Inside a
   package, meaning a `tenon.toml` in the file's directory or above it, `import name`
   looks in three places in turn. First `name.tn` next to the importing file. Then
   the entry module `src/name.tn` of a dependency `name` declared in the manifest of
@@ -777,10 +779,11 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   declared as `name = { path = "../dir" }` or as
   `name = { git = "URL", tag = "v1.2.0" }`, and its name may not be a std
   module's.
-  `tenonc fetch` resolves the dependencies, transitively, into `tenon.lock`
-  (sources, commits, content hashes). `run`, `build`, `check` and `test` then
+  `tenon fetch` resolves the dependencies, transitively, into `tenon.lock`
+  (sources, commits, content hashes). `run`, `build`, `emit`, `check`, `test`
+  and the language server then
   build offline from the lock and the cache (`$TENON_HOME`, default
-  `~/.tenon`). They fail with a request to run `tenonc fetch` if the lock is
+  `~/.tenon`). They fail with a request to run `tenon fetch` if the lock is
   missing or out of date, and fail if a cached package's hash differs from
   the lock. Path dependencies are live and git dependencies are pinned.
   Module names are global: two different files may not both be module `name`.
@@ -933,11 +936,11 @@ reported in increasing id order. A struct holding a `Poller` must be declared
 
 ## 16. Formatting
 
-`tenonfmt FILE...` rewrites files in the one canonical layout (atomically);
-`tenonfmt --check FILE...` lists the files that are not in it and exits 1;
-`tenonfmt -` formats standard input to standard output. Build it with
-`tenon build selfhost/tenonfmt.tn -o target/tenonfmt`. A file that does not
-parse is refused and left unchanged. The rules:
+`tenon fmt FILE...` rewrites files in the one canonical layout (atomically);
+`tenon fmt --check FILE...` lists the files that are not in it and exits 1;
+`tenon fmt -` formats standard input to standard output (docs/tools.md). A
+file that does not parse is refused and left unchanged (exit status 2). The
+rules:
 
 - Line breaks are the author's: long lines are not reflowed, and lines are
   never joined. The only line added splits `a; b` in a block written on
@@ -974,13 +977,13 @@ must lex to the same tokens as the original (up to a `,` or `;` before a
 closing bracket) and must parse. `tools/fmt_check.sh` (run by `./check`)
 also checks that every file in the repository except those listed in
 `tools/fmt_skip.txt` is formatted, that formatting is idempotent, and that
-`tenonc ast` of each file it changes is unchanged except positions.
+`tenon ast` of each file it changes is unchanged except positions.
 
 ## 17. Traits
 
 A trait names a set of methods; an `impl` gives them for one type. Traits
-are implemented by the self-hosted compiler (`tenonc run`, `tenonc build`);
-the bootstrap `tenon` does not know them.
+are implemented by `tenon`, the self-hosted compiler;
+the frozen seed (`tenon-seed`, which only builds the compiler) does not know them.
 
 ```tenon
 trait Shape {
@@ -1118,8 +1121,8 @@ core. Workers share nothing: each has a heap of its own, and they
 communicate through typed channels. What goes from one worker to another is
 copied into the receiver's heap (a unique value is moved), so no two threads
 ever touch the same value and there are no data races, by construction.
-Workers are implemented by the self-hosted compiler (`tenonc run`, `tenonc
-build`; lib/v2/prelude.tn); the bootstrap `tenon` does not know them.
+Workers are implemented by `tenon`, the self-hosted compiler
+(lib/v2/prelude.tn); the frozen seed (`tenon-seed`) does not know them.
 
 ```tenon
 fn count_words(lines: List[Str]) -> Int {
@@ -1251,15 +1254,15 @@ fn main(sys: Sys) {
 (tests/v2/run/workers_event_loop.tn is a server worker with a client event
 loop in `main`.)
 
-**In the interpreter** (`tenonc run`) workers run on one thread under a
-deterministic scheduler, with the same results as `tenonc build` for every
+**In the interpreter** (`tenon run`) workers run on one thread under a
+deterministic scheduler, with the same results as `tenon build` for every
 program whose output does not depend on scheduling (selfhost/iwork.tn): a
 worker runs when `main` waits (`recv`, `join`, `try_recv`), until it finishes
 or waits itself; a waiting worker is resumed by running it again from the
 start, with every effect it already had (output, files, channels) replayed
 from a log instead of repeated. So resuming a worker costs the work it did
 before, and a worker blocked in a socket read or `Poller.wait` without a
-timeout holds up the others. Use `tenonc build` for speed.
+timeout holds up the others. Use `tenon build` for speed.
 
 **Costs** (C backend, Apple M4 Max; selfhost/iwork.tn and runtime/tenon.h for
 the implementation):

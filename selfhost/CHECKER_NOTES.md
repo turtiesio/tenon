@@ -1,6 +1,6 @@
 # Self-hosted checker: notes
 
-`tenonc check FILE` (selfhost/tenonc.tn) runs a second, independent
+`tenon check FILE` (selfhost/tenon.tn) runs a second, independent
 implementation of the bootstrap's front end after parsing: module loading
 (bootstrap/src/main.rs `front`), bootstrap/src/check.rs,
 bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs,
@@ -9,7 +9,7 @@ It is silent on success and prints the first diagnostic as
 `PATH:LINE:COL: error: MESSAGE`. `tools/selfhost.sh` compares it with
 `tenon check` on every `.tn` file in the corpus. `checker.check` returns the
 side tables the C backend uses (`Checked`; see EMITTER_NOTES.md).
-`checker.check_lenient` (used by the language server, selfhost/tenonlsp.tn,
+`checker.check_lenient` (used by the language server, selfhost/lsp.tn,
 through `front.analyze_in`) reports the same first diagnostic but goes on
 checking the other functions after one fails, so the side tables cover the
 whole program while it is being edited.
@@ -82,7 +82,7 @@ expressions, declarations, variants, parameters and imports.
 
 ## Testing
 
-- `tools/selfhost.sh` (part of `./check --fast`, using `tenonc check`): every corpus file, including
+- `tools/selfhost.sh` (part of `./check --fast`, using `tenon check`): every corpus file, including
   the extra cases in `tests/selfhost/` (one diagnostic per file, plus accepted
   programs with tricky constructs; `ckmod*.tn`, `ckbad*.tn`, `ckcycle.tn` and
   `ckmissingdep.tn` are modules imported by the `mod_*` cases).
@@ -97,10 +97,10 @@ expressions, declarations, variants, parameters and imports.
 None on the corpus. Files skipped by `tools/selfhost.sh` would be listed here
 with a minimal reproduction.
 
-## Traits (v2: tenonc only)
+## Traits (v2: not in the seed)
 
 Traits exist only in the self-hosted compiler (docs/reference.md §17); the
-bootstrap cannot parse them, so they are tested by `tenonc test tests/v2`
+bootstrap cannot parse them, so they are tested by `tenon test tests/v2`
 and never cross-checked (tools/selfhost.sh skips every `v2/` directory).
 
 - **Front end.** parser.tn: `trait`, `impl[..] T for Type`, bounds in
@@ -133,7 +133,7 @@ and never cross-checked (tools/selfhost.sh skips every `v2/` directory).
   receiver; `dyn` cannot hold linear or unique values; an impl method's
   `self` is exempt only in the type's own module.
 
-## Workers and channels (v2: tenonc only)
+## Workers and channels (v2: not in the seed)
 
 docs/reference.md §18; the API is in lib/v2/prelude.tn (`extern fn`s with
 bounds, `Workers.par_map` in Tenon).

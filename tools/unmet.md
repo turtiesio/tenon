@@ -14,7 +14,7 @@ Only what tools/status.py cannot compute; the verdicts above come from data.
   string-returning and Map-environment versions ran at 1.85x and 1.62x of C;
   docs/reference.md (performance model) explains why.
 - **Concurrency.** A single-threaded event loop per thread (programs/chat) and
-  isolated workers with channels on every core (tenonc only:
+  isolated workers with channels on every core (not in the seed:
   docs/reference.md §18, programs/v2/scan, bench/v2).
 - **Landing time** is printed by tools/land.sh on each landing but not
   collected anywhere, so the "landing <= 5 min" goals are not measured here.

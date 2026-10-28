@@ -1,27 +1,33 @@
-# Self-hosting stage B: tenonc replaces the bootstrap CLI
+# Self-hosting: `tenon` replaces the bootstrap CLI
 
-`selfhost/tenonc.tn` has every subcommand of the bootstrap's `tenon`
-(tenon.md §5, "Fully self-hosted compiler"):
+`selfhost/tenon.tn` is the driver of `tenon`, the one self-hosted
+executable (tenon.md §5, "Fully self-hosted compiler"; its reference:
+docs/tools.md). It has every subcommand of the frozen seed
+(`target/release/tenon-seed`, which only builds stage 0), and more:
 
-| tenonc | = tenon | Implementation |
+| tenon | = tenon-seed | Implementation |
 |---|---|---|
-| `run [--root DIR] FILE [ARGS...]` | `run` | interp.tn and the i*.tn modules below |
-| `build FILE [-o OUT] [-O0]` | `build` | emit*.tn (EMITTER_NOTES.md), the build cache in tenonc.tn |
+| `run FILE [ARGS...]` | `run` | interp.tn and the i*.tn modules below |
+| `build FILE [-o OUT] [-O0]` | `build` | emit*.tn (EMITTER_NOTES.md), the build cache in tenon.tn |
 | `emit FILE` | `emit` | emit*.tn |
 | `check FILE` | `check` | checker.tn (CHECKER_NOTES.md) |
 | `test DIR... [--bless]` | `test` | testrun.tn |
 | `tokens FILE`, `ast FILE` | `tokens`, `ast` | lexer.tn `dump`, astdump.tn |
-| `fetch [DIR]` | (none: tenonc only) | pkg.tn, pkgtoml.tn (docs/packages.md; test: tools/pkg_test.sh) |
+| `fmt [--check] FILE...`, `fmt -` | (none) | fmtcmd.tn, fmt.tn, fmtlayout.tn, fmtlex.tn (test: tools/fmt_check.sh) |
+| `lsp` | (none) | lsp.tn, lspquery.tn, lspindex.tn, lsppos.tn, json.tn (test: tools/lsp_test.py) |
+| `fetch [DIR]` | (none) | pkg.tn, pkgtoml.tn (docs/packages.md; test: tools/pkg_test.sh) |
 
 Inside a package (a `tenon.toml` at or above the file's directory), `run`,
 `build`, `emit`, `check` and `test` resolve `import` also to the dependencies
 pinned in `tenon.lock`, offline, from the cache (pkg.tn `context`, front.tn
 `load_in`); the language server does the same.
 
-Each prints and exits with what the `tenon` subcommand does; tenonc's own
-messages (unreadable files, a failing C compiler) start with `tenonc:`.
-The prelude, the standard library and the C runtime come from the repository
-root (`--root DIR`, else `$TENON_ROOT`, else the current directory).
+Each prints and exits with what the seed's subcommand does; the driver's own
+messages (unreadable files, a failing C compiler, usage errors) start with
+`tenon:`, as the seed's do. The prelude, the standard library and the C
+runtime come from the toolchain root (`--root DIR`, else `$TENON_ROOT`, else
+found from the executable's own path, else the current directory:
+docs/tools.md). Flags may come in any position (tools/cli_test.sh).
 
 ## The interpreter
 
@@ -69,7 +75,7 @@ vtable of `Code.vts`: per trait method the function to call). Show impls:
 ieval.prerender replaces each part of a value whose type has one by its
 text (`K_RAW`) before formatting; a program without Show impls skips it.
 
-Known differences from `tenon run` (none is exercised by the corpus):
+Known differences from `tenon-seed run` (none is exercised by the corpus):
 
 - A dropped `Listener` or `Conn` is closed when the program ends, not when the
   value is dropped (an interpreted value has no destructor). Blocking sockets
@@ -85,33 +91,33 @@ the key type's Show impl, as `m[k]` read as a value and C everywhere
 
 Verification:
 
-- `./check` runs the whole suite with tenonc (`tenonc test tests tests/v2`:
+- `./check` runs the whole suite with `tenon` (`tenon test tests tests/v2`:
   every run test on the interpreter and the C backend, compared with the
-  .out files). The bootstrap's own `tenon test tests` runs in
+  .out files). The seed's own `tenon-seed test tests` runs in
   tools/evidence.sh, as the differential reference for its interpreter.
-- `tools/programs.sh` (in ./check, with tenonc) runs the 9 program scenarios
-  (chat uses the event loop, kvhttp blocking sockets) on `tenonc run` and
-  `tenonc build`.
-- `tools/interp_diff.py` (evidence): every corpus file under `tenon run` and
-  `tenonc run`, byte-identical stdout, stderr and exit status: 755 of 758 the
+- `tools/programs.sh` (in ./check) runs the 9 program scenarios
+  (chat uses the event loop, kvhttp blocking sockets) on `tenon run` and
+  `tenon build`.
+- `tools/interp_diff.py` (evidence): every corpus file under `tenon-seed run` and
+  `tenon run`, byte-identical stdout, stderr and exit status: 755 of 758 the
   same, 0 different, 3 skipped (over 20 s in the bootstrap). The 5
   benchmarks run separately give the same output too.
 - tools/selfhost.sh fails when the prelude has an `extern fn` the interpreter
   does not know (a builtin added to the bootstrap must be added here too).
 
-Speed (tenonc built -O2 by ./check; bootstrap = `tenon run`): fib(38) 18.8 s
+Speed (tenon built -O2 by ./check; bootstrap = `tenon-seed run`): fib(38) 18.8 s
 vs 17.0 s, bench/trees 33.7 s vs 43.3 s, tests/run/std_regex.tn 2.4 s vs
 2.3 s. ./check's own timing table gives its current cost per step.
 
 ## The test runner
 
-`tenonc test` (testrun.tn) ports bootstrap/src/testrun.rs: the same jobs,
+`tenon test` (testrun.tn) ports bootstrap/src/testrun.rs: the same jobs,
 directives (`// stdin:` with `\n` and `\xHH`, `// args:`, `// error:`),
 rendering, golden files and `--bless`, and the same 20 s timeout per command
 (`Proc.run_with`, which captures output and kills on timeout). Tests run in
 8 workers: the runner starts itself 8 times (`test --worker I/N`) from one
-`sh` and sums their results. It invokes itself as `$TENONC` (./check sets it),
-else `tenonc` from PATH.
+`sh` and sums their results. It invokes itself: tenon.tn finds its own path
+(`self_exe`: /proc on Linux, else `ps` and PATH) and passes it on as `--exe`.
 
 ## New prelude API
 
@@ -127,22 +133,22 @@ self-hosted C backend; tests/run/proc_run_with.tn and proc_exit_range.tn.
 ## The build cache
 
 As the bootstrap's: an entry is the executable plus its C source, named by a
-hash of the C text, the C compiler and the flags (tenonc.tn `hash_hex`, two
+hash of the C text, the C compiler and the flags (tenon.tn `hash_hex`, two
 polynomial hashes: the prelude has no hash function); a hit requires the
 cached source to equal the new one exactly. `$TENON_CACHE` (default
 `$TMPDIR/tenon-cache`), `off`, and `$TENON_KEEP_C` behave as in the
-bootstrap; tenonc entries are named `t...` and never collide with the
+bootstrap; tenon's entries are named `t...` and never collide with the
 bootstrap's. tools/cache_test.sh (in ./check).
 
 ## Gates
 
-`./check` has the bootstrap build tenonc with -O0 (stage0, target/tenonc0),
-stage0 build tenonc at -O2 in parallel translation units (stage1,
-target/tenonc), and runs the whole test suite, the program scenarios, the
+`./check` has the seed build tenon with -O0 (stage0, target/tenon0),
+stage0 build tenon at -O2 in parallel translation units (stage1,
+target/tenon), and runs the whole test suite, the program scenarios, the
 doc programs and the grammar check with stage1. tools/selfhost.sh compares
 stage1 with the bootstrap (`tokens`, `ast`, `check`, `emit`) and stage0 with
 stage1 (the fixpoint) in one pass over the corpus. The bootstrap's own
-`tenon test tests` runs in tools/evidence.sh as the differential reference.
+`tenon-seed test tests` runs in tools/evidence.sh as the differential reference.
 ./check prints the time of each step at the end.
 
 ## Workers and channels in the interpreter (v2)
