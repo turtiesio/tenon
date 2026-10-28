@@ -35,8 +35,11 @@ def candidates(text):
         s = line.strip()
         if s.startswith("//") or s.startswith("/*") or s.startswith("*") or s.startswith("#") or "assert" in s or '"' in s:
             continue
+        # Only the code part of the line: a mutant inside a trailing comment
+        # (`x = f() // a and b`) can never change behaviour (issue #12).
+        code = line.split("//", 1)[0]
         for pat, rep in OPS:
-            for m in re.finditer(pat, line):
+            for m in re.finditer(pat, code):
                 out.append((i, m.start(), m.end(), rep))
     return out
 
