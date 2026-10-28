@@ -277,7 +277,7 @@ def main():
         w("- Lean core semantics vs `tenon run`: not run yet (`ops/gates/formal_diff.py`)")
     if cfuzz:
         w(f"- seed's checker and emitter vs tenon's on {cfuzz['mutants']} mutated corpus programs: {cfuzz['disagreements']} disagreements"
-          f" ({when(cfuzz)}; `ops/evidence/checkfuzz.py N`)")
+          f", {cfuzz.get('by_design', 0)} by design (tenon's stricter rules, v2 syntax) ({when(cfuzz)}; `ops/evidence/checkfuzz.py N`)")
         if cfuzz["disagreements"]:
             reg("checkfuzz", f"checkfuzz: {cfuzz['disagreements']} disagreements between the seed's checker and tenon's",
                 f"Seed {cfuzz.get('seed')} (`python3 ops/evidence/checkfuzz.py {cfuzz['mutants']} {cfuzz.get('seed')}`):\n\n"

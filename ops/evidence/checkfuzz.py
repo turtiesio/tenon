@@ -6,10 +6,16 @@ identifiers and types, flipped let/var, mut/ref, literals ...) and both
 first line; when both accept a mutant, `tenon-seed emit` and `tenon emit` must
 print the same C (and exit with the same status).
 
+Two kinds of difference are by design and reported separately, not as
+disagreements: tenon rejects with a rule added after the seed froze while the
+seed accepts (STRICTER), and the seed stops at syntax that only tenon reads
+(V2_SYNTAX). Every other difference is a disagreement: tenon accepts what the
+seed rejects, other diagnostics, a crash or timeout, different C.
+
 Usage: ops/evidence/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
 The binaries are $SEED and $TENON (ops/corpus.py; ./check and ops/evidence/evidence.sh build them).
-Disagreements are kept in .evidence/checkfuzz/ (mutant + both outputs);
-the totals go to .evidence/checkfuzz.json."""
+Disagreements are kept in .evidence/checkfuzz/ (mutant + both outputs), the
+differences by design as by-design-*; the totals go to .evidence/checkfuzz.json."""
 import os, random, re, shutil, subprocess, sys, tempfile, concurrent.futures as cf
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # ops/: corpus.py
 import corpus as corpus_
@@ -22,6 +28,47 @@ TYPES = ["Int", "Str", "Bool", "Float", "Unit", "List[Int]", "Map[Str, Int]", "O
 SNIPPETS = ["mut ", "ref ", "?", ".0", ".len()", ".unwrap()", "not ", "-", "_", "None", "Some(1)", "Ok(())", "Err(\"e\")",
             "[]", "[:]", "()", "1.5", "\"s\"", "true", "return", "break", "self", "panic(\"x\")", "x", "encode(", "decode(",
             ".to_str()", "+ 1", "== 1", "{ }", "let _ = ", "var ", "let ", "const ", "pub ", "linear ", "unique "]
+# Rules tenon's checker has and the frozen seed's lacks: the start of tenon's diagnostic (the text
+# after "error: ") when the seed accepts. Each with the change that added it and where
+# docs/reference.md states it; add one only together with its rule.
+STRICTER = [
+    (r"this linear value would be lost if another part of the expression leaves early",
+     "linear value in flight next to an early exit: 06027af, reference §12"),
+    (r"'[^']+' has 'ref' parameters, so it can only be called, not used as a value",
+     "function with ref parameters used as a value: ed34e7d, reference §12"),
+    (r"constant '[^']+' has the (linear|unique) type .*: every use would copy it",
+     "linear or unique constant: d2de63f, reference §12"),
+    (r"cannot (encode|decode) \S+: \S+ is private to its module", "private type encoded or decoded: a35a3f5, reference §13, §14"),
+    (r"variant '[^']+' of \S+ is private to its module", "pattern naming a private enum's variant: a35a3f5, reference §13"),
+    (r"'[^']+' was already used: a (linear|unique) value cannot be used after it is moved",
+     "use after move: bdbca07, reference §12"),
+    (r"'self' was already used: a (linear|unique) value cannot be copied", "copy of a unique or linear self: c33c7cf, reference §12"),
+    (r"'self' is a 'ref' parameter: it can be inspected but not consumed", "move of a 'mut self': c33c7cf, reference §12"),
+]
+# Syntax only tenon reads: the seed's diagnostic, and the mutant's text before the
+# position it names (a regex on that line up to the column, then the rest of the line).
+V2_SYNTAX = [
+    (r"expected ',', found ':'", r"\[\s*[A-Za-z_]\w*\s*$", r":",
+     "a bound in a type-parameter list, [T: Show]: reference §17 (Bounds)"),
+]
+
+
+def by_design(mut, want, got):
+    """The STRICTER or V2_SYNTAX entry that explains this difference, or None."""
+    msg = lambda line: line.split(": error: ", 1)[1] if ": error: " in line else None
+    if want == "ok" and msg(got):
+        for pat, why in STRICTER:
+            if re.match(pat, msg(got)):
+                return "stricter by design (" + why + ")"
+    m = re.match(r".*?:(\d+):(\d+): error: (.*)$", want)
+    if m and got != "ok" and msg(got) is not None:
+        lines = mut.split("\n")
+        ln, col = int(m.group(1)) - 1, int(m.group(2)) - 1
+        if ln < len(lines):
+            for diag, before, at, why in V2_SYNTAX:
+                if re.match(diag, m.group(3)) and re.search(before, lines[ln][:col]) and re.match(at, lines[ln][col:]):
+                    return "v2 syntax the seed cannot read (" + why + ")"
+    return None
 
 
 def mutate(src, r):
@@ -106,7 +153,8 @@ def run_one(args):
         except subprocess.TimeoutExpired:
             got = "<selfhost timeout>"
         if want != got:
-            return (rel, mut, want, got)
+            why = by_design(mut, want, got)
+            return ("by design", why, rel, mut, want, got) if why else (rel, mut, want, got)
         if want == "ok":
             try:
                 a = subprocess.run([SEED, "emit", rel], cwd=tmp, capture_output=True, timeout=20)
@@ -133,7 +181,7 @@ def main():
     jobs = [(n, seed, r.choice(good if r.random() < 0.85 else files), ck) for n in range(count)]
     out = os.path.join(ROOT, ".evidence", "checkfuzz")
     os.makedirs(out, exist_ok=True)
-    bad = 0
+    bad = designed = 0
     kinds = {}
     with cf.ThreadPoolExecutor(max_workers=corpus_.JOBS) as ex:
         for res in ex.map(run_one, jobs):
@@ -143,17 +191,24 @@ def main():
                 k = re.sub(r"'[^']*'|\b[A-Z]\w*(\[.*?\])?|\d+", "_", res[1].split(": error: ")[-1])[:60]
                 kinds[k] = kinds.get(k, 0) + 1
                 continue
-            bad += 1
-            rel, mut, want, got = res
-            name = os.path.join(out, "%d-%s" % (bad, os.path.basename(rel)))
+            if res[0] == "by design":
+                designed += 1
+                why, (rel, mut, want, got) = res[1], res[2:]
+                name = os.path.join(out, "by-design-%d-%s" % (designed, os.path.basename(rel)))
+                label = "BY DESIGN %s: %s" % (name, why)
+            else:
+                bad += 1
+                rel, mut, want, got = res
+                name = os.path.join(out, "%d-%s" % (bad, os.path.basename(rel)))
+                label = "DISAGREE %s" % name
             open(name, "w", encoding="utf-8").write(mut)
             open(name + ".diff", "w", encoding="utf-8").write("bootstrap: %s\nselfhost:  %s\n" % (want, got))
-            print("DISAGREE %s\n  bootstrap: %s\n  selfhost:  %s" % (name, want, got))
+            print("%s\n  bootstrap: %s\n  selfhost:  %s" % (label, want, got))
     if "-v" in sys.argv:
         for k, v in sorted(kinds.items(), key=lambda kv: -kv[1]):
             print("%6d  %s" % (v, k))
-    print("checkfuzz: %d mutants, %d disagreements, %d distinct outcomes" % (count, bad, len(kinds)))
-    corpus_.record("checkfuzz", {"mutants": count, "seed": seed, "disagreements": bad, "outcomes": len(kinds)})
+    print("checkfuzz: %d mutants, %d disagreements, %d by design (STRICTER, V2_SYNTAX), %d distinct outcomes" % (count, bad, designed, len(kinds)))
+    corpus_.record("checkfuzz", {"mutants": count, "seed": seed, "disagreements": bad, "by_design": designed, "outcomes": len(kinds)})
     sys.exit(1 if bad else 0)
 
 

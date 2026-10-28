@@ -222,7 +222,7 @@ does, and runs, each writing `.evidence/NAME.json` (`corpus.record`):
 | `tenon-seed test tests` | the seed's own run of the v1 suite (a reference for its interpreter) |
 | `ops/evidence/interp_diff.py` | the seed's interpreter and `tenon run` on every corpus file: the same output, errors and exit status |
 | `ops/gates/formal_diff.py` | the Lean core's evaluator and `tenon run` on every corpus program the core covers: the same output and exit status; and no program `tenon check` accepts gets stuck in the core (below) |
-| `ops/evidence/checkfuzz.py N SEED` | token-level mutants of corpus programs: both checkers print the same first line, accepted mutants emit the same C (disagreements in `.evidence/checkfuzz/`) |
+| `ops/evidence/checkfuzz.py N SEED` | token-level mutants of corpus programs: both checkers print the same first line, accepted mutants emit the same C (disagreements in `.evidence/checkfuzz/`); counted apart, by design: tenon rejects with a rule the seed lacks while the seed accepts (`STRICTER`, each entry naming its commit and reference section), or the seed stops at syntax only tenon reads (`V2_SYNTAX`) |
 | `ops/evidence/mutate.py N SEED` | mutants of the trusted compile path and the runtime; survivors (the tests did not notice) become tasks; a mutant judged equivalent is listed with its reason in `EQUIVALENT` and only counted |
 | `ops/evidence/bench.py` | the benchmarks against C, Rust, Python and TypeScript (`--parallel`: the worker speedups) |
 
