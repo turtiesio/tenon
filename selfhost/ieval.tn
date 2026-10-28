@@ -1,0 +1,602 @@
+// module (imported by the self-hosted interpreter)
+// The evaluator: a port of bootstrap/src/interp.rs over the lowered code of
+// selfhost/icode.tn. Every rule that is visible to a program follows the
+// bootstrap: evaluation order, `mut` arguments taken out of their places and
+// written back after the call, where traps are reported (the last call from
+// user code into the prelude, for traps inside the prelude), the depth limit.
+import ckast
+import checker
+import icode
+import ival
+import ibuiltin
+import icap
+import icodec
+
+pub const MAX_DEPTH: Int = 20000
+pub const EXIT_TRAP: Int = 70
+pub const EXIT_STACK: Int = 72
+pub const EXIT_OUTPUT: Int = 74
+
+// How evaluation leaves an expression early.
+pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int) }
+
+// Enum numbers the interpreter builds values of.
+pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
+
+// The interpreter's state. It owns the event-loop handles the program's
+// sockets live in (selfhost/icap.tn), so it is unique.
+pub unique struct Interp {
+    pub fns: List[icode.FnRt], pub lams: List[icode.LamRt], pub names: ival.Names, pub ix: Ix,
+    pub files: List[Str], pub site: ckast.Span, pub depth: Int,
+    pub checked: checker.Checked,
+    pub con: Console, pub clock: Clock, pub net: Net, pub proc: Proc, pub fss: List[Fs],
+    pub net_state: icap.NetState,
+    pub bp: Poller, pub pp0: Poller, pub pp1: Poller, pub pp2: Poller, pub pp3: Poller,
+}
+
+pub fn trap[T](msg: Str, sp: ckast.Span) -> Result[T, Ctl] { Err(CTrap(msg, sp)) }
+
+pub fn some(ix: Ix, v: ival.Val) -> ival.Val { ival.venum(ix.opt, 0, [v]) }
+pub fn none(ix: Ix) -> ival.Val { ival.venum(ix.opt, 1, []) }
+pub fn opt(ix: Ix, v: Option[ival.Val]) -> ival.Val {
+    match v {
+        Some(x) => some(ix, x),
+        None => none(ix),
+    }
+}
+pub fn ok(ix: Ix, v: ival.Val) -> ival.Val { ival.venum(ix.res, 0, [v]) }
+pub fn err(ix: Ix, v: ival.Val) -> ival.Val { ival.venum(ix.res, 1, [v]) }
+
+pub fn loc(it: mut Interp, sp: ckast.Span) -> Str { "{it.files[sp.file]}:{sp.line}:{sp.col}" }
+
+fn overflow[T](it: mut Interp) -> Result[T, Ctl] {
+    it.con.eprintln("trap: stack overflow")
+    Err(CExit(EXIT_STACK))
+}
+
+// ---- calls ----
+
+// Call function fi with the arguments in `fr`, which becomes its frame: after
+// the call, fr[0..nparams] are the final values of the parameters (for `mut`
+// parameters and `mut self`, which the caller writes back).
+pub fn call_fn(it: mut Interp, fi: Int, fr: mut List[ival.Val], sp: ckast.Span) -> Result[ival.Val, Ctl] {
+    let ext = it.fns[fi].ext
+    if ext != -1 { return ibuiltin.call(mut it, ext, fi, fr, sp) }
+    if it.depth >= MAX_DEPTH { return overflow(mut it) }
+    let ns = it.fns[fi].nslots
+    while fr.len() < ns { fr.push(ival.unit()) }
+    let body = it.fns[fi].body
+    it.depth += 1
+    let r = block(mut it, mut fr, body)
+    it.depth -= 1
+    match r {
+        Ok(v) => Ok(v),
+        Err(CRet(v)) => Ok(v),
+        Err(c) => Err(c),
+    }
+}
+
+// Call a function value.
+pub fn apply(it: mut Interp, f: ival.Val, args: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, Ctl] {
+    if f.k == ival.K_FNAMED {
+        var av = args
+        return call_fn(mut it, f.j, mut av, sp)
+    }
+    if f.k == ival.K_FCTOR { return Ok(ival.venum(f.i, f.j, args)) }
+    if it.depth >= MAX_DEPTH { return overflow(mut it) }
+    var fr = f.xs + args
+    let ns = it.lams[f.j].nslots
+    while fr.len() < ns { fr.push(ival.unit()) }
+    let body = it.lams[f.j].body
+    it.depth += 1
+    let r = ev(mut it, mut fr, body)
+    it.depth -= 1
+    match r {
+        Ok(v) => Ok(v),
+        Err(CRet(v)) => Ok(v),
+        Err(c) => Err(c),
+    }
+}
+
+// A `mut` argument's place, its path evaluated, and where it is in the arguments.
+struct Taken { at: Int, root: Int, steps: List[RStep], sp: ckast.Span }
+
+// Evaluate arguments into av; `mut place` arguments are taken out of their
+// places (left as unit) after all the others are evaluated.
+fn args_mut(it: mut Interp, fr: mut List[ival.Val], args: List[icode.Arg], av: mut List[ival.Val], taken: mut List[Taken]) -> Result[Unit, Ctl] {
+    for a in args {
+        match a {
+            AMut(pl) => {
+                let steps = eval_steps(mut it, mut fr, pl.steps)?
+                taken.push(Taken { at: av.len(), root: pl.root, steps, sp: pl.sp })
+                av.push(ival.unit())
+            }
+            AVal(e) => av.push(ev(mut it, mut fr, e)?),
+        }
+    }
+    for t in taken { av[t.at] = nav(mut fr[t.root], t.steps, 0, false, MTake, t.sp, it.names, it.ix)? }
+    Ok(())
+}
+
+fn put_back(it: mut Interp, fr: mut List[ival.Val], taken: List[Taken], finals: List[ival.Val], sp: ckast.Span) -> Result[Unit, Ctl] {
+    for t in taken { let _ = nav(mut fr[t.root], t.steps, 0, false, MSet(finals[t.at]), sp, it.names, it.ix)? }
+    Ok(())
+}
+
+// ---- places ----
+
+pub enum RStep { RsField(Int), RsIdx(ival.Val) }
+
+// What to do at the end of a path.
+pub enum MOp {
+    MGet,
+    MCheck,
+    MSet(ival.Val),
+    MTake,
+    MBin(Int, ival.Val, ckast.Span),
+    MExt(Int, List[ival.Val], List[ival.Val]), // builtin `mut self` method, arguments, sort keys
+}
+
+fn eval_steps(it: mut Interp, fr: mut List[ival.Val], steps: List[icode.PStep]) -> Result[List[RStep], Ctl] {
+    var out: List[RStep] = []
+    for s in steps {
+        match s {
+            PathField(f) => out.push(RsField(f)),
+            PathIndex(e) => out.push(RsIdx(ev(mut it, mut fr, e)?)),
+        }
+    }
+    Ok(out)
+}
+
+// Follow `steps` from v (bootstrap/src/interp.rs `navigate`); `create`: a
+// missing map key at the end of the path is inserted (assignment `m[k] = v`).
+pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, sp: ckast.Span, names: ival.Names, ix: Ix) -> Result[ival.Val, Ctl] {
+    if i == steps.len() { return leaf(mut v, op, sp, names, ix) }
+    match steps[i] {
+        RsField(f) => nav(mut v.xs[f], steps, i + 1, create, op, sp, names, ix),
+        RsIdx(k) => {
+            if v.k == ival.K_LIST {
+                let n = v.xs.len()
+                if k.i < 0 or k.i >= n { return trap("index {k.i} out of bounds for length {n}", sp) }
+                return nav(mut v.xs[k.i], steps, i + 1, create, op, sp, names, ix)
+            }
+            let key = ival.to_key(k)
+            if not v.m.contains(key) {
+                if not (create and i + 1 == steps.len()) { return trap("key not found: " + ival.show_nested(k, names), sp) }
+                v.m[key] = ival.unit()
+            }
+            nav(mut v.m[key], steps, i + 1, create, op, sp, names, ix)
+        }
+    }
+}
+
+fn leaf(v: mut ival.Val, op: MOp, sp: ckast.Span, names: ival.Names, ix: Ix) -> Result[ival.Val, Ctl] {
+    match op {
+        MGet => Ok(v),
+        MCheck => Ok(ival.unit()),
+        MSet(x) => {
+            v = x
+            Ok(ival.unit())
+        }
+        MTake => {
+            let old = v
+            v = ival.unit()
+            Ok(old)
+        }
+        MBin(o, x, ssp) => {
+            if o == icode.OP_ADD and v.k == ival.K_STR {
+                v.s += x.s
+            } else if o == icode.OP_ADD and v.k == ival.K_LIST {
+                v.xs.extend(x.xs)
+            } else {
+                let cur = v
+                v = ival.unit()
+                v = binop(o, cur, x, ssp)?
+            }
+            Ok(ival.unit())
+        }
+        MExt(id, args, keys) => ibuiltin.mut_op(mut v, id, args, keys, sp, ix),
+    }
+}
+
+// ---- statements ----
+
+pub fn block(it: mut Interp, fr: mut List[ival.Val], ss: List[icode.Stm]) -> Result[ival.Val, Ctl] {
+    var last = ival.unit()
+    for s in ss { last = stmt(mut it, mut fr, s)? }
+    Ok(last)
+}
+
+fn loop_body(it: mut Interp, fr: mut List[ival.Val], body: List[icode.Stm]) -> Result[Bool, Ctl] {
+    match block(mut it, mut fr, body) {
+        Ok(_) => Ok(true),
+        Err(CContinue) => Ok(true),
+        Err(CBreak) => Ok(false),
+        Err(c) => Err(c),
+    }
+}
+
+fn stmt(it: mut Interp, fr: mut List[ival.Val], s: icode.Stm) -> Result[ival.Val, Ctl] {
+    match s {
+        IExpr(e) => ev(mut it, mut fr, e),
+        ILet(p, e) => {
+            let v = ev(mut it, mut fr, e)?
+            let _ = bind(mut fr, p, v)
+            Ok(ival.unit())
+        }
+        IAssign(pl, op, e, ssp) => {
+            if pl.steps.is_empty() {
+                let v = ev(mut it, mut fr, e)?
+                if op < 0 {
+                    fr[pl.root] = v
+                } else {
+                    let _ = leaf(mut fr[pl.root], MBin(op, v, ssp), pl.sp, it.names, it.ix)?
+                }
+                return Ok(ival.unit())
+            }
+            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            let v = ev(mut it, mut fr, e)?
+            if op < 0 {
+                let _ = nav(mut fr[pl.root], steps, 0, true, MSet(v), pl.sp, it.names, it.ix)?
+            } else {
+                let _ = nav(mut fr[pl.root], steps, 0, false, MBin(op, v, ssp), pl.sp, it.names, it.ix)?
+            }
+            Ok(ival.unit())
+        }
+        IWhile(c, body) => {
+            while true {
+                let cv = ev(mut it, mut fr, c)?
+                if not (cv.k == ival.K_BOOL and cv.i == 1) { break }
+                if not loop_body(mut it, mut fr, body)? { break }
+            }
+            Ok(ival.unit())
+        }
+        IForRange(p, a, b, body) => {
+            let lo = ev(mut it, mut fr, a)?
+            let hi = ev(mut it, mut fr, b)?
+            var i = lo.i
+            while i < hi.i {
+                let _ = bind(mut fr, p, ival.vint(i))
+                if not loop_body(mut it, mut fr, body)? { break }
+                i += 1
+            }
+            Ok(ival.unit())
+        }
+        IForEach(p, e, body) => {
+            let v = ev(mut it, mut fr, e)?
+            let items = if v.k == ival.K_MAP { ival.map_items(v.m) } else { v.xs }
+            for x in items {
+                let _ = bind(mut fr, p, x)
+                if not loop_body(mut it, mut fr, body)? { break }
+            }
+            Ok(ival.unit())
+        }
+        ILetElse(p, e, els) => {
+            let v = ev(mut it, mut fr, e)?
+            if not bind(mut fr, p, v) {
+                let _ = block(mut it, mut fr, els)?
+                return trap("interp: 'let ... else' block did not leave", ckast.Span { file: 0, line: 0, col: 0 })
+            }
+            Ok(ival.unit())
+        }
+        IReturn(e) => match e {
+            Some(x) => Err(CRet(ev(mut it, mut fr, x)?)),
+            None => Err(CRet(ival.unit())),
+        },
+        IBreak => Err(CBreak),
+        IContinue => Err(CContinue),
+    }
+}
+
+// Match v against p, binding names into the frame.
+pub fn bind(fr: mut List[ival.Val], p: icode.IPat, v: ival.Val) -> Bool {
+    match p {
+        BBind(s) => {
+            fr[s] = v
+            true
+        }
+        BWild => true,
+        BVariant(vi, ps) => {
+            if v.k != ival.K_ENUM or v.j != vi { return false }
+            let n = ps.len().min(v.xs.len())
+            for i in 0..n {
+                if not bind(mut fr, ps[i], v.xs[i]) { return false }
+            }
+            true
+        }
+        BTuple(ps) => {
+            if v.k != ival.K_TUPLE { return false }
+            let n = ps.len().min(v.xs.len())
+            for i in 0..n {
+                if not bind(mut fr, ps[i], v.xs[i]) { return false }
+            }
+            true
+        }
+        BInt(n) => v.k == ival.K_INT and v.i == n,
+        BStr(s) => v.k == ival.K_STR and v.s == s,
+        BBool(b) => v.k == ival.K_BOOL and (v.i == 1) == b,
+        BOr(alts) => {
+            for a in alts {
+                if bind(mut fr, a, v) { return true }
+            }
+            false
+        }
+    }
+}
+
+// ---- expressions ----
+
+pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.Val, Ctl] {
+    match e {
+        NLocal(s) => Ok(fr[s]),
+        NLit(v) => Ok(v),
+        NBin(op, a, b, sp) => {
+            let x = ev(mut it, mut fr, a)?
+            let y = ev(mut it, mut fr, b)?
+            binop(op, x, y, sp)
+        }
+        NField(b, i) => match b {
+            NLocal(s) => Ok(fr[s].xs[i]),
+            _ => {
+                let v = ev(mut it, mut fr, b)?
+                Ok(v.xs[i])
+            }
+        },
+        NCall(fi, args, sp, site) => {
+            if site { it.site = sp }
+            var av: List[ival.Val] = []
+            for a in args { av.push(ev(mut it, mut fr, a)?) }
+            call_fn(mut it, fi, mut av, sp)
+        }
+        NIf(c, t, els) => {
+            let cv = ev(mut it, mut fr, c)?
+            if cv.i == 1 {
+                block(mut it, mut fr, t)
+            } else {
+                match els {
+                    Some(x) => ev(mut it, mut fr, x),
+                    None => Ok(ival.unit()),
+                }
+            }
+        }
+        NIndex(b, i, sp) => {
+            let bv = ev(mut it, mut fr, b)?
+            let iv = ev(mut it, mut fr, i)?
+            index(bv, iv, sp, it.names)
+        }
+        NAnd(a, b) => {
+            let x = ev(mut it, mut fr, a)?
+            if x.i == 0 { return Ok(x) }
+            ev(mut it, mut fr, b)
+        }
+        NOr(a, b) => {
+            let x = ev(mut it, mut fr, a)?
+            if x.i == 1 { return Ok(x) }
+            ev(mut it, mut fr, b)
+        }
+        NMatch(s, arms) => ev_match(mut it, mut fr, s, arms),
+        NBlock(b) => block(mut it, mut fr, b),
+        NNot(x) => {
+            let v = ev(mut it, mut fr, x)?
+            Ok(ival.vbool(v.i == 0))
+        }
+        NNeg(x, sp) => {
+            let v = ev(mut it, mut fr, x)?
+            if v.k == ival.K_FLOAT { return Ok(ival.vfloat(-v.f)) }
+            if v.i == INT_MIN { return trap("integer overflow", sp) }
+            Ok(ival.vint(-v.i))
+        }
+        NStr(segs) => {
+            var s = ""
+            for g in segs {
+                match g {
+                    GLit(l) => s += l,
+                    GShow(x) => {
+                        let v = ev(mut it, mut fr, x)?
+                        ival.show(mut s, v, true, it.names, false)
+                    }
+                    GFmt(x, f) => {
+                        let v = ev(mut it, mut fr, x)?
+                        ival.fmt_spec(mut s, v, f)
+                    }
+                }
+            }
+            Ok(ival.vstr(s))
+        }
+        NCtor(ei, vi, args) => {
+            var av: List[ival.Val] = []
+            for a in args { av.push(ev(mut it, mut fr, a)?) }
+            Ok(ival.venum(ei, vi, av))
+        }
+        NTry(x) => {
+            let v = ev(mut it, mut fr, x)?
+            if v.j == 0 { Ok(v.xs[0]) } else { Err(CRet(v)) }
+        }
+        NList(xs) => {
+            var av: List[ival.Val] = []
+            for a in xs { av.push(ev(mut it, mut fr, a)?) }
+            Ok(ival.vlist(av))
+        }
+        NTuple(xs) => {
+            var av: List[ival.Val] = []
+            for a in xs { av.push(ev(mut it, mut fr, a)?) }
+            Ok(ival.vtuple(av))
+        }
+        NNew(si, n, given, base) => {
+            var vals: List[(Int, ival.Val)] = []
+            for g in given { vals.push((g.0, ev(mut it, mut fr, g.1)?)) }
+            var fs: List[ival.Val] = []
+            match base {
+                Some(b) => {
+                    let bv = ev(mut it, mut fr, b)?
+                    fs = bv.xs
+                }
+                None => fs = List.filled(n, ival.unit()),
+            }
+            for g in vals { fs[g.0] = g.1 }
+            Ok(ival.vstruct(si, fs))
+        }
+        NMapLit(ps) => {
+            var m: Map[ival.Key, ival.Val] = [:]
+            for p in ps {
+                let k = ev(mut it, mut fr, p.0)?
+                let v = ev(mut it, mut fr, p.1)?
+                m[ival.to_key(k)] = v
+            }
+            Ok(ival.vmap(m))
+        }
+        NConst(fi, sp) => {
+            var av: List[ival.Val] = []
+            call_fn(mut it, fi, mut av, sp)
+        }
+        NFnVal(fi) => Ok(ival.vfnamed(fi)),
+        NCtorFn(ei, vi) => Ok(ival.vfctor(ei, vi)),
+        NLambda(li, caps) => {
+            var cv: List[ival.Val] = []
+            for c in caps { cv.push(fr[c]) }
+            Ok(ival.vflam(li, cv))
+        }
+        NApply(f, args, sp) => {
+            let fv = ev(mut it, mut fr, f)?
+            var av: List[ival.Val] = []
+            for a in args { av.push(ev(mut it, mut fr, a)?) }
+            apply(mut it, fv, av, sp)
+        }
+        NToStr(x) => {
+            let v = ev(mut it, mut fr, x)?
+            Ok(ival.vstr(ival.show_top(v, it.names)))
+        }
+        NDecode(t, args, sp, site) => {
+            if site { it.site = sp }
+            var av: List[ival.Val] = []
+            for a in args { av.push(ev(mut it, mut fr, a)?) }
+            Ok(icodec.decode(mut it, t, av[0].s))
+        }
+        NCallMut(fi, args, sp, site) => {
+            if site { it.site = sp }
+            var av: List[ival.Val] = []
+            var taken: List[Taken] = []
+            args_mut(mut it, mut fr, args, mut av, mut taken)?
+            let r = call_fn(mut it, fi, mut av, sp)?
+            put_back(mut it, mut fr, taken, av, sp)?
+            Ok(r)
+        }
+        NMethodMut(fi, recv, args, sp, site) => {
+            if site { it.site = sp }
+            let rv = ev(mut it, mut fr, recv)?
+            var av: List[ival.Val] = [rv]
+            var taken: List[Taken] = []
+            args_mut(mut it, mut fr, args, mut av, mut taken)?
+            let r = call_fn(mut it, fi, mut av, sp)?
+            put_back(mut it, mut fr, taken, av, sp)?
+            Ok(r)
+        }
+        NMutSelf(fi, pl, args, sp, site) => {
+            if site { it.site = sp }
+            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            var av: List[ival.Val] = [ival.unit()]
+            var taken: List[Taken] = []
+            args_mut(mut it, mut fr, args, mut av, mut taken)?
+            av[0] = nav(mut fr[pl.root], steps, 0, false, MTake, pl.sp, it.names, it.ix)?
+            let r = call_fn(mut it, fi, mut av, sp)?
+            let _ = nav(mut fr[pl.root], steps, 0, false, MSet(av[0]), pl.sp, it.names, it.ix)?
+            put_back(mut it, mut fr, taken, av, sp)?
+            Ok(r)
+        }
+        NExtMut(id, pl, args, sp, site) => {
+            if site { it.site = sp }
+            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            var av: List[ival.Val] = []
+            for a in args { av.push(ev(mut it, mut fr, a)?) }
+            // sort_by keys are computed first, element by element
+            var keys: List[ival.Val] = []
+            if id == ibuiltin.M_SORT_BY or id == ibuiltin.M_SORT_BY_DESC {
+                let cur = nav(mut fr[pl.root], steps, 0, false, MGet, pl.sp, it.names, it.ix)?
+                for x in cur.xs { keys.push(apply(mut it, av[0], [x], sp)?) }
+            } else if not steps.is_empty() {
+                let _ = nav(mut fr[pl.root], steps, 0, false, MCheck, pl.sp, it.names, it.ix)?
+            }
+            nav(mut fr[pl.root], steps, 0, false, MExt(id, av, keys), sp, it.names, it.ix)
+        }
+    }
+}
+
+fn ev_match(it: mut Interp, fr: mut List[ival.Val], s: icode.Node, arms: List[icode.IArm]) -> Result[ival.Val, Ctl] {
+    let v = ev(mut it, mut fr, s)?
+    for a in arms {
+        if bind(mut fr, a.pat, v) {
+            let go = match a.guard {
+                Some(g) => ev(mut it, mut fr, g)?.i == 1,
+                None => true,
+            }
+            if go { return ev(mut it, mut fr, a.body) }
+        }
+    }
+    trap("interp: no match arm", ckast.Span { file: 0, line: 0, col: 0 })
+}
+
+fn index(b: ival.Val, i: ival.Val, sp: ckast.Span, names: ival.Names) -> Result[ival.Val, Ctl] {
+    if b.k == ival.K_LIST {
+        if i.i < 0 or i.i >= b.xs.len() { return trap("index {i.i} out of bounds for length {b.xs.len()}", sp) }
+        return Ok(b.xs[i.i])
+    }
+    match b.m.get(ival.to_key(i)) {
+        Some(v) => Ok(v),
+        None => trap("key not found: " + ival.show_nested(i, names), sp),
+    }
+}
+
+pub fn binop(op: Int, a: ival.Val, b: ival.Val, sp: ckast.Span) -> Result[ival.Val, Ctl] {
+    let k = a.k
+    if k == ival.K_INT and op <= icode.OP_REM {
+        let x = a.i
+        let y = b.i
+        if op == icode.OP_ADD {
+            return match x.checked_add(y) {
+                Some(r) => Ok(ival.vint(r)),
+                None => trap("integer overflow", sp),
+            }
+        }
+        if op == icode.OP_SUB {
+            return match x.checked_sub(y) {
+                Some(r) => Ok(ival.vint(r)),
+                None => trap("integer overflow", sp),
+            }
+        }
+        if op == icode.OP_MUL {
+            return match x.checked_mul(y) {
+                Some(r) => Ok(ival.vint(r)),
+                None => trap("integer overflow", sp),
+            }
+        }
+        if y == 0 { return trap("division by zero", sp) }
+        if x == INT_MIN and y == -1 { return trap("integer overflow", sp) }
+        return Ok(ival.vint(if op == icode.OP_DIV { x / y } else { x % y }))
+    }
+    if op == icode.OP_EQ { return Ok(ival.vbool(ival.eq(a, b))) }
+    if op == icode.OP_NE { return Ok(ival.vbool(not ival.eq(a, b))) }
+    if op >= icode.OP_LT {
+        if k == ival.K_INT {
+            let x = a.i
+            let y = b.i
+            return Ok(ival.vbool(if op == icode.OP_LT { x < y } else if op == icode.OP_LE { x <= y } else if op == icode.OP_GT { x > y } else { x >= y }))
+        }
+        let c = match ival.cmp(a, b) {
+            Ok(c) => c,
+            Err(m) => return trap(m, sp),
+        }
+        if k == ival.K_FLOAT {
+            let x = a.f
+            let y = b.f
+            return Ok(ival.vbool(if op == icode.OP_LT { x < y } else if op == icode.OP_LE { x <= y } else if op == icode.OP_GT { x > y } else { x >= y }))
+        }
+        return Ok(ival.vbool(if op == icode.OP_LT { c < 0 } else if op == icode.OP_LE { c <= 0 } else if op == icode.OP_GT { c > 0 } else { c >= 0 }))
+    }
+    if k == ival.K_FLOAT {
+        let x = a.f
+        let y = b.f
+        return Ok(ival.vfloat(if op == icode.OP_ADD { x + y } else if op == icode.OP_SUB { x - y } else if op == icode.OP_MUL { x * y } else if op == icode.OP_DIV { x / y } else { x % y }))
+    }
+    if k == ival.K_STR { return Ok(ival.vstr(a.s + b.s)) }
+    Ok(ival.vlist(a.xs + b.xs))
+}

@@ -1,0 +1,92 @@
+// module (imported by tenonc.tn)
+// `tenonc run`: the reference interpreter in Tenon, a port of
+// bootstrap/src/interp.rs `run` (with ieval, ibuiltin, icap, icodec, icode
+// and ival). It runs the checked program and gives the exit status
+// `tenon run` gives, after printing what it prints.
+import ckast
+import front
+import icode
+import ival
+import ieval
+import ibuiltin
+import icap
+
+// Type names as users write them (without the module prefix).
+fn display(n: Str) -> Str {
+    var i = n.len() - 1
+    while i >= 0 and n.byte(i) != 46 { i -= 1 }
+    n.slice(i + 1, n.len())
+}
+
+fn span0() -> ckast.Span { ckast.Span { file: 0, line: 0, col: 0 } }
+
+pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
+    let c = fr.checked
+    let env = c.env
+    var snames: List[Str] = []
+    var shown: List[List[Option[Str]]] = []
+    var full: List[List[Option[Str]]] = []
+    for s in env.structs {
+        snames.push(display(s.name))
+        // a module's private fields are hidden (shown as `..`) so formatting cannot leak them
+        var sh: List[Option[Str]] = []
+        var fl: List[Option[Str]] = []
+        var hidden = false
+        for i in 0..s.fields.len() {
+            if not hidden and s.file > 1 and not s.pub_fields[i] {
+                sh.push(None)
+                hidden = true
+            }
+            if not hidden { sh.push(Some(s.fields[i].0)) }
+            fl.push(Some(s.fields[i].0))
+        }
+        shown.push(sh)
+        full.push(fl)
+    }
+    var vnames: List[List[Str]] = []
+    for e in env.enums { vnames.push(e.variants.map(fn(v) => v.0)) }
+    let names = ival.Names { snames, shown, full, vnames }
+    let code = icode.lower(c, ibuiltin.numbering(ibuiltin.ext_names()), ibuiltin.numbering(ibuiltin.mut_names()))
+    let ix = ieval.Ix {
+        opt: env.enum_idx("Option").unwrap(), res: env.enum_idx("Result").unwrap(), io: env.enum_idx("IoError").unwrap(),
+        ev: env.enum_idx("NetEvent").unwrap(),
+    }
+    var it = ieval.Interp {
+        fns: code.fns, lams: code.lams, names, ix, files: fr.files.map(fn(f) => f.0), site: span0(), depth: 0, checked: c,
+        con: sys.console, clock: sys.clock, net: sys.net, proc: sys.proc, fss: [sys.fs], net_state: icap.new_net_state(),
+        bp: sys.net.poller(), pp0: sys.net.poller(), pp1: sys.net.poller(), pp2: sys.net.poller(), pp3: sys.net.poller(),
+    }
+    var argv: List[ival.Val] = []
+    for a in args { argv.push(ival.vstr(a)) }
+    let sysv = ival.vstruct(env.struct_idx("Sys").unwrap(), [
+        ival.vcap(ival.CAP_CONSOLE, 0), ival.vcap(ival.CAP_FS, 0), ival.vcap(ival.CAP_CLOCK, 0), ival.vcap(ival.CAP_NET, 0),
+        ival.vcap(ival.CAP_PROC, 0), ival.vlist(argv),
+    ])
+    var av: List[ival.Val] = if env.fns[c.main].params.is_empty() { [] } else { [sysv] }
+    let main_sp = c.prog.fns[c.main].sp
+    match ieval.call_fn(mut it, c.main, mut av, span0()) {
+        Ok(v) => {
+            if v.k == ival.K_INT {
+                let st = v.i
+                if st < 0 or st > 255 or st == 70 or st == 71 or st == 72 or st == 74 {
+                    let at = ieval.loc(mut it, main_sp)
+                    it.con.eprintln("trap: exit status {st} is out of range or reserved\n  at {at}")
+                    return ieval.EXIT_TRAP
+                }
+                return st
+            }
+            if v.k == ival.K_ENUM and v.j == 1 {
+                it.con.eprintln("error: " + ival.show_top(v.xs[0], it.names))
+                return 1
+            }
+            0
+        }
+        Err(CTrap(msg, sp)) => {
+            let at = ieval.loc(mut it, if sp.file == 0 { it.site } else { sp })
+            it.con.eprintln("trap: {msg}\n  at {at}")
+            ieval.EXIT_TRAP
+        }
+        Err(CExit(st)) => st,
+        Err(_) => 0,
+    }
+}

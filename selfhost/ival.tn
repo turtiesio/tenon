@@ -1,0 +1,406 @@
+// module (imported by the self-hosted interpreter)
+// Interpreter values: a port of bootstrap/src/value.rs (derived equality,
+// ordering and formatting) for `tenonc run` (selfhost/interp.tn).
+//
+// A value is one struct whose fields are used according to its kind `k`, so
+// that a part deep inside a value can be changed in place through a `mut`
+// place (`v.xs[i].xs[j] = x`), which an enum payload cannot. Lists and maps
+// are Tenon's own copy-on-write values, which gives the language's value
+// semantics for free: copying a Val shares its parts until one is changed.
+//
+//   k        fields used
+//   K_UNIT   -
+//   K_INT    i
+//   K_FLOAT  f
+//   K_BOOL   i (0 or 1)
+//   K_STR    s
+//   K_LIST   xs
+//   K_TUPLE  xs
+//   K_MAP    m (keys as `Key`, in insertion order)
+//   K_STRUCT i (struct index), xs (fields)
+//   K_ENUM   i (enum index), j (variant), xs (payload)
+//   K_FNAMED j (function index)                a named function as a value
+//   K_FCTOR  i (enum), j (variant)             a variant constructor as a value
+//   K_FLAM   j (lambda index), xs (captures)   a closure
+//   K_CAP    i (CAP_CONSOLE, ...), j (which one: an index the interpreter keeps)
+import parser
+
+pub const K_UNIT: Int = 0
+pub const K_INT: Int = 1
+pub const K_FLOAT: Int = 2
+pub const K_BOOL: Int = 3
+pub const K_STR: Int = 4
+pub const K_LIST: Int = 5
+pub const K_TUPLE: Int = 6
+pub const K_MAP: Int = 7
+pub const K_STRUCT: Int = 8
+pub const K_ENUM: Int = 9
+pub const K_FNAMED: Int = 10
+pub const K_FCTOR: Int = 11
+pub const K_FLAM: Int = 12
+pub const K_CAP: Int = 13
+
+pub const CAP_CONSOLE: Int = 0
+pub const CAP_FS: Int = 1
+pub const CAP_CLOCK: Int = 2
+pub const CAP_NET: Int = 3
+pub const CAP_PROC: Int = 4
+pub const CAP_LISTENER: Int = 5
+pub const CAP_CONN: Int = 6
+pub const CAP_POLLER: Int = 7
+
+pub struct Val { pub k: Int, pub i: Int, pub j: Int, pub f: Float, pub s: Str, pub xs: List[Val], pub m: Map[Key, Val] }
+
+// A map key: the checker only allows keys without floats, functions and
+// capabilities, so every key value has an exact hashable form.
+pub enum Key {
+    KUnit,
+    KInt(Int),
+    KBool(Bool),
+    KStr(Str),
+    KList(List[Key]),
+    KTuple(List[Key]),
+    KStruct(Int, List[Key]),
+    KEnum(Int, Int, List[Key]),
+    KMap(List[(Key, Key)]), // entries sorted: maps are equal regardless of order
+    KOther(Str),
+}
+
+pub fn unit() -> Val { Val { k: K_UNIT, i: 0, j: 0, f: 0.0, s: "", xs: [], m: [:] } }
+pub fn vint(i: Int) -> Val { Val { k: K_INT, i, j: 0, f: 0.0, s: "", xs: [], m: [:] } }
+pub fn vfloat(f: Float) -> Val { Val { k: K_FLOAT, i: 0, j: 0, f, s: "", xs: [], m: [:] } }
+pub fn vbool(b: Bool) -> Val { Val { k: K_BOOL, i: if b { 1 } else { 0 }, j: 0, f: 0.0, s: "", xs: [], m: [:] } }
+pub fn vstr(s: Str) -> Val { Val { k: K_STR, i: 0, j: 0, f: 0.0, s, xs: [], m: [:] } }
+pub fn vlist(xs: List[Val]) -> Val { Val { k: K_LIST, i: 0, j: 0, f: 0.0, s: "", xs, m: [:] } }
+pub fn vtuple(xs: List[Val]) -> Val { Val { k: K_TUPLE, i: 0, j: 0, f: 0.0, s: "", xs, m: [:] } }
+pub fn vmap(m: Map[Key, Val]) -> Val { Val { k: K_MAP, i: 0, j: 0, f: 0.0, s: "", xs: [], m } }
+pub fn vstruct(si: Int, xs: List[Val]) -> Val { Val { k: K_STRUCT, i: si, j: 0, f: 0.0, s: "", xs, m: [:] } }
+pub fn venum(ei: Int, vi: Int, xs: List[Val]) -> Val { Val { k: K_ENUM, i: ei, j: vi, f: 0.0, s: "", xs, m: [:] } }
+pub fn vfnamed(fi: Int) -> Val { Val { k: K_FNAMED, i: 0, j: fi, f: 0.0, s: "", xs: [], m: [:] } }
+pub fn vfctor(ei: Int, vi: Int) -> Val { Val { k: K_FCTOR, i: ei, j: vi, f: 0.0, s: "", xs: [], m: [:] } }
+pub fn vflam(li: Int, caps: List[Val]) -> Val { Val { k: K_FLAM, i: 0, j: li, f: 0.0, s: "", xs: caps, m: [:] } }
+pub fn vcap(kind: Int, which: Int) -> Val { Val { k: K_CAP, i: kind, j: which, f: 0.0, s: "", xs: [], m: [:] } }
+
+pub fn bytes_val(b: List[Int]) -> Val {
+    var xs: List[Val] = []
+    for x in b { xs.push(vint(x)) }
+    vlist(xs)
+}
+
+// ---- keys ----
+
+pub fn to_key(v: Val) -> Key {
+    let k = v.k
+    if k == K_INT { return KInt(v.i) }
+    if k == K_STR { return KStr(v.s) }
+    if k == K_BOOL { return KBool(v.i == 1) }
+    if k == K_UNIT { return KUnit }
+    if k == K_LIST { return KList(keys_of(v.xs)) }
+    if k == K_TUPLE { return KTuple(keys_of(v.xs)) }
+    if k == K_STRUCT { return KStruct(v.i, keys_of(v.xs)) }
+    if k == K_ENUM { return KEnum(v.i, v.j, keys_of(v.xs)) }
+    if k == K_MAP {
+        var es: List[(Key, Key)] = []
+        for (a, b) in v.m { es.push((a, to_key(b))) }
+        es.sort()
+        return KMap(es)
+    }
+    KOther("{v.k}:{v.f}")
+}
+
+fn keys_of(xs: List[Val]) -> List[Key] {
+    var out: List[Key] = []
+    for x in xs { out.push(to_key(x)) }
+    out
+}
+
+pub fn from_key(k: Key) -> Val {
+    match k {
+        KInt(i) => vint(i),
+        KStr(s) => vstr(s),
+        KBool(b) => vbool(b),
+        KUnit => unit(),
+        KList(ks) => vlist(vals_of(ks)),
+        KTuple(ks) => vtuple(vals_of(ks)),
+        KStruct(si, ks) => vstruct(si, vals_of(ks)),
+        KEnum(ei, vi, ks) => venum(ei, vi, vals_of(ks)),
+        KMap(es) => {
+            var m: Map[Key, Val] = [:]
+            for e in es { m[e.0] = from_key(e.1) }
+            vmap(m)
+        }
+        KOther(_) => unit(),
+    }
+}
+
+fn vals_of(ks: List[Key]) -> List[Val] {
+    var out: List[Val] = []
+    for k in ks { out.push(from_key(k)) }
+    out
+}
+
+// The entries of a map value as (key, value) tuples, in iteration order.
+pub fn map_items(m: Map[Key, Val]) -> List[Val] {
+    var out: List[Val] = []
+    for (k, v) in m { out.push(vtuple([from_key(k), v])) }
+    out
+}
+
+// ---- equality and ordering (bootstrap/src/value.rs PartialEq, cmp) ----
+
+pub fn eq(a: Val, b: Val) -> Bool {
+    let k = a.k
+    if k != b.k { return false }
+    if k == K_INT or k == K_BOOL { return a.i == b.i }
+    if k == K_STR { return a.s == b.s }
+    if k == K_UNIT { return true }
+    if k == K_FLOAT { return a.f == b.f }
+    if k == K_LIST or k == K_TUPLE or k == K_STRUCT { return seq_eq(a.xs, b.xs) }
+    if k == K_ENUM { return a.j == b.j and seq_eq(a.xs, b.xs) }
+    if k == K_MAP {
+        if a.m.len() != b.m.len() { return false }
+        for (key, v) in a.m {
+            match b.m.get(key) {
+                Some(w) => if not eq(v, w) { return false },
+                None => return false,
+            }
+        }
+        return true
+    }
+    false
+}
+
+fn seq_eq(a: List[Val], b: List[Val]) -> Bool {
+    if a.len() != b.len() { return false }
+    for i in 0..a.len() {
+        if not eq(a[i], b[i]) { return false }
+    }
+    true
+}
+
+fn c3(lt: Bool, gt: Bool) -> Int { if lt { -1 } else if gt { 1 } else { 0 } }
+
+// Derived ordering: -1, 0 or 1; Err when the values are maps (not ordered).
+pub fn cmp(a: Val, b: Val) -> Result[Int, Str] {
+    let k = a.k
+    if k != b.k { return Ok(0) }
+    if k == K_INT or k == K_BOOL { return Ok(c3(a.i < b.i, a.i > b.i)) }
+    if k == K_STR { return Ok(c3(a.s < b.s, a.s > b.s)) }
+    if k == K_FLOAT { return Ok(c3(a.f < b.f, a.f > b.f)) }
+    if k == K_LIST or k == K_TUPLE or k == K_STRUCT {
+        let n = a.xs.len().min(b.xs.len())
+        for i in 0..n {
+            let r = cmp(a.xs[i], b.xs[i])?
+            if r != 0 { return Ok(r) }
+        }
+        return Ok(c3(a.xs.len() < b.xs.len(), a.xs.len() > b.xs.len()))
+    }
+    if k == K_ENUM {
+        if a.j != b.j { return Ok(c3(a.j < b.j, a.j > b.j)) }
+        let n = a.xs.len().min(b.xs.len())
+        for i in 0..n {
+            let r = cmp(a.xs[i], b.xs[i])?
+            if r != 0 { return Ok(r) }
+        }
+        return Ok(0)
+    }
+    if k == K_MAP { return Err("maps are not ordered") }
+    Ok(0)
+}
+
+// ---- formatting (bootstrap/src/value.rs show) ----
+
+// Struct names and fields as formatting shows them (`shown`: a module's
+// private fields are None, shown as `..`; `full`: every field, for encode),
+// and the variant names of every enum.
+pub struct Names {
+    pub snames: List[Str], pub shown: List[List[Option[Str]]], pub full: List[List[Option[Str]]],
+    pub vnames: List[List[Str]],
+}
+
+pub fn quote(out: mut Str, s: Str) {
+    out += "\""
+    var start = 0
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if c < 32 or c == 34 or c == 92 {
+            out += s.slice(start, i)
+            start = i + 1
+            if c == 34 { out += "\\\"" }
+            else if c == 92 { out += "\\\\" }
+            else if c == 10 { out += "\\n" }
+            else if c == 9 { out += "\\t" }
+            else if c == 13 { out += "\\r" }
+            else { out += "\\u\{" + c.to_str_radix(16) + "}" }
+        }
+    }
+    out += s.slice(start, s.len())
+    out += "\""
+}
+
+fn cap_name(i: Int) -> Str {
+    ["<Console>", "<Fs>", "<Clock>", "<Net>", "<Proc>", "<Listener>", "<Conn>", "<Poller>"][i]
+}
+
+fn seq(out: mut Str, xs: List[Val], n: Names, full: Bool) {
+    for i in 0..xs.len() {
+        if i > 0 { out += ", " }
+        show(mut out, xs[i], false, n, full)
+    }
+}
+
+// `top`: a string is shown as itself, not quoted (interpolation, to_str).
+pub fn show(out: mut Str, v: Val, top: Bool, n: Names, full: Bool) {
+    let k = v.k
+    if k == K_INT {
+        out += v.i.to_str()
+    } else if k == K_STR {
+        if top { out += v.s } else { quote(mut out, v.s) }
+    } else if k == K_FLOAT {
+        out += v.f.to_str()
+    } else if k == K_BOOL {
+        out += if v.i == 1 { "true" } else { "false" }
+    } else if k == K_UNIT {
+        out += "()"
+    } else if k == K_LIST {
+        out += "["
+        seq(mut out, v.xs, n, full)
+        out += "]"
+    } else if k == K_TUPLE {
+        out += "("
+        seq(mut out, v.xs, n, full)
+        out += ")"
+    } else if k == K_MAP {
+        if v.m.len() == 0 {
+            out += "[:]"
+            return
+        }
+        out += "["
+        var first = true
+        for (key, x) in v.m {
+            if not first { out += ", " }
+            first = false
+            show(mut out, from_key(key), false, n, full)
+            out += ": "
+            show(mut out, x, false, n, full)
+        }
+        out += "]"
+    } else if k == K_STRUCT {
+        out += n.snames[v.i]
+        if v.xs.is_empty() {
+            out += " \{}"
+            return
+        }
+        out += " \{ "
+        let fields = if full { n.full[v.i] } else { n.shown[v.i] }
+        let m = fields.len().min(v.xs.len())
+        for i in 0..m {
+            if i > 0 { out += ", " }
+            match fields[i] {
+                Some(f) => {
+                    out += f
+                    out += ": "
+                    show(mut out, v.xs[i], false, n, full)
+                }
+                None => {
+                    out += ".."
+                    break
+                }
+            }
+        }
+        out += " }"
+    } else if k == K_ENUM {
+        out += n.vnames[v.i][v.j]
+        if not v.xs.is_empty() {
+            out += "("
+            seq(mut out, v.xs, n, full)
+            out += ")"
+        }
+    } else if k == K_CAP {
+        out += cap_name(v.i)
+    } else {
+        out += "<fn>"
+    }
+}
+
+pub fn show_top(v: Val, n: Names) -> Str {
+    var s = ""
+    show(mut s, v, true, n, false)
+    s
+}
+
+pub fn show_nested(v: Val, n: Names) -> Str {
+    var s = ""
+    show(mut s, v, false, n, false)
+    s
+}
+
+// ---- format specs (bootstrap/src/ast.rs FmtSpec::pad, radix_digits) ----
+
+fn group_digits(f: parser.Spec, body: Str) -> Str {
+    let neg = body.starts_with("-")
+    let sign = if neg { "-" } else { "" }
+    let rest = if neg { body.slice(1, body.len()) } else { body }
+    var n = 0
+    while n < rest.len() and rest.byte(n).is_digit() { n += 1 }
+    if n == 0 { return body }
+    let int = rest.slice(0, n)
+    let tail = rest.slice(n, rest.len())
+    var k = n
+    if f.zero {
+        while sign.len() + k + (k - 1) / 3 + tail.len() < f.width { k += 1 }
+    }
+    let digits = "0".repeat(k - n) + int
+    var out = sign
+    for i in 0..digits.len() {
+        if i > 0 and (k - i) % 3 == 0 { out += "," }
+        out += digits.slice(i, i + 1)
+    }
+    out + tail
+}
+
+fn pad(out: mut Str, f: parser.Spec, body0: Str, numeric: Bool) {
+    let body = if f.group { group_digits(f, body0) } else { body0 }
+    let n = body.char_count()
+    if n >= f.width {
+        out += body
+        return
+    }
+    let padn = f.width - n
+    if f.zero {
+        if body.starts_with("-") {
+            out += "-"
+            out += "0".repeat(padn)
+            out += body.slice(1, body.len())
+        } else {
+            out += "0".repeat(padn)
+            out += body
+        }
+        return
+    }
+    let al = if f.align == "" { if numeric { ">" } else { "<" } } else { f.align }
+    let left = if al == "<" { 0 } else if al == "^" { padn / 2 } else { padn }
+    out += f.fill.repeat(left)
+    out += body
+    out += f.fill.repeat(padn - left)
+}
+
+fn radix_digits(v: Int, r: Str) -> Str {
+    if r == "x" { v.to_str_radix(16) }
+    else if r == "X" { v.to_str_radix(16).upper() }
+    else if r == "b" { v.to_str_radix(2) }
+    else { v.to_str_radix(8) }
+}
+
+// `{v:SPEC}`: the checker allows only Int, Float, Str and Bool.
+pub fn fmt_spec(out: mut Str, v: Val, f: parser.Spec) {
+    if v.k == K_INT {
+        pad(mut out, f, if f.radix == "" { v.i.to_str() } else { radix_digits(v.i, f.radix) }, true)
+    } else if v.k == K_FLOAT {
+        pad(mut out, f, if f.prec >= 0 { v.f.to_fixed(f.prec) } else { v.f.to_str() }, true)
+    } else if v.k == K_STR {
+        pad(mut out, f, v.s, false)
+    } else {
+        pad(mut out, f, if v.i == 1 { "true" } else { "false" }, false)
+    }
+}

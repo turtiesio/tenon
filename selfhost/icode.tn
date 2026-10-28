@@ -1,0 +1,482 @@
+// module (imported by the self-hosted interpreter)
+// The interpreter's code: the checked program (checker.Checked) lowered to a
+// tree with every resolution done once. Names become frame slots (a function
+// frame holds its parameters, then one slot per name bound in its body; a
+// lambda frame holds its captures, its parameters, then its locals), calls
+// know their target, and builtins are numbered. The meaning of each node is
+// bootstrap/src/interp.rs on the node it was lowered from; selfhost/ieval.tn
+// evaluates it in the same order.
+import ckast
+import ckenv
+import cktypes
+import checker
+import ival
+import parser
+
+pub enum Node {
+    NLit(ival.Val),
+    NStr(List[Seg]),
+    NLocal(Int),
+    NConst(Int, ckast.Span),
+    NFnVal(Int),
+    NCtorFn(Int, Int),
+    NCall(Int, List[Node], ckast.Span, Bool), // function, arguments, call site, sets the prelude call site
+    NCallMut(Int, List[Arg], ckast.Span, Bool),
+    NDecode(cktypes.Ty, List[Node], ckast.Span, Bool),
+    NCtor(Int, Int, List[Node]),
+    NApply(Node, List[Node], ckast.Span),
+    NToStr(Node),
+    NMutSelf(Int, Place, List[Arg], ckast.Span, Bool),
+    NExtMut(Int, Place, List[Node], ckast.Span, Bool),
+    NMethodMut(Int, Node, List[Arg], ckast.Span, Bool),
+    NField(Node, Int),
+    NIndex(Node, Node, ckast.Span),
+    NNeg(Node, ckast.Span),
+    NNot(Node),
+    NBin(Int, Node, Node, ckast.Span),
+    NAnd(Node, Node),
+    NOr(Node, Node),
+    NIf(Node, List[Stm], Option[Node]),
+    NBlock(List[Stm]),
+    NMatch(Node, List[IArm]),
+    NList(List[Node]),
+    NTuple(List[Node]),
+    NMapLit(List[(Node, Node)]),
+    NNew(Int, Int, List[(Int, Node)], Option[Node]),
+    NTry(Node),
+    NLambda(Int, List[Int]),
+}
+
+pub enum Seg { GLit(Str), GShow(Node), GFmt(Node, parser.Spec) }
+
+pub enum Arg { AVal(Node), AMut(Place) }
+
+pub enum PStep { PathField(Int), PathIndex(Node) }
+// A place: a frame slot and a path into it; `sp` is where navigation traps.
+pub struct Place { pub root: Int, pub steps: List[PStep], pub sp: ckast.Span }
+
+pub enum IPat { BWild, BBind(Int), BInt(Int), BStr(Str), BBool(Bool), BTuple(List[IPat]), BVariant(Int, List[IPat]), BOr(List[IPat]) }
+
+pub struct IArm { pub pat: IPat, pub guard: Option[Node], pub body: Node }
+
+pub enum Stm {
+    IExpr(Node),
+    ILet(IPat, Node),
+    ILetElse(IPat, Node, List[Stm]),
+    IAssign(Place, Int, Node, ckast.Span), // place, operator (-1: plain), value, statement span
+    IWhile(Node, List[Stm]),
+    IForRange(IPat, Node, Node, List[Stm]),
+    IForEach(IPat, Node, List[Stm]),
+    IReturn(Option[Node]),
+    IBreak,
+    IContinue,
+}
+
+// Binary operators.
+pub const OP_ADD: Int = 0
+pub const OP_SUB: Int = 1
+pub const OP_MUL: Int = 2
+pub const OP_DIV: Int = 3
+pub const OP_REM: Int = 4
+pub const OP_EQ: Int = 5
+pub const OP_NE: Int = 6
+pub const OP_LT: Int = 7
+pub const OP_LE: Int = 8
+pub const OP_GT: Int = 9
+pub const OP_GE: Int = 10
+
+pub fn op_id(op: Str) -> Int {
+    match op {
+        "Add" => OP_ADD,
+        "Sub" => OP_SUB,
+        "Mul" => OP_MUL,
+        "Div" => OP_DIV,
+        "Rem" => OP_REM,
+        "Eq" => OP_EQ,
+        "Ne" => OP_NE,
+        "Lt" => OP_LT,
+        "Le" => OP_LE,
+        "Gt" => OP_GT,
+        _ => OP_GE,
+    }
+}
+
+// A function: `ext` is the builtin number of an `extern fn` (-1 otherwise).
+pub struct FnRt { pub name: Str, pub ext: Int, pub nparams: Int, pub nslots: Int, pub body: List[Stm] }
+pub struct LamRt { pub nslots: Int, pub body: Node }
+
+pub struct Code { pub fns: List[FnRt], pub lams: List[LamRt] }
+
+struct Cx { c: checker.Checked, scope: Map[Str, Int], n: Int, lams: List[LamRt], exts: Map[Str, Int], mexts: Map[Str, Int] }
+
+// Lower the whole program. `exts` numbers the builtins that take their
+// receiver by value, `mexts` the `mut self` ones (selfhost/ibuiltin.tn).
+pub fn lower(c: checker.Checked, exts: Map[Str, Int], mexts: Map[Str, Int]) -> Code {
+    var cx = Cx { c, scope: [:], n: 0, lams: [], exts, mexts }
+    var fns: List[FnRt] = []
+    for fi in 0..c.prog.fns.len() { fns.push(cx.function(fi)) }
+    Code { fns, lams: cx.lams }
+}
+
+fn Cx.function(mut self, fi: Int) -> FnRt {
+    let info = self.c.env.fns[fi]
+    let np = info.params.len()
+    if info.is_extern {
+        return FnRt { name: info.name, ext: self.exts.get(info.name).unwrap_or(-2), nparams: np, nslots: np, body: [] }
+    }
+    self.scope = [:]
+    self.n = 0
+    for p in info.params { let _ = self.bind(p.0) }
+    let body = match self.c.prog.fns[fi].body {
+        Some(b) => self.block(b),
+        None => [],
+    }
+    FnRt { name: info.name, ext: -1, nparams: np, nslots: self.n, body }
+}
+
+fn Cx.bind(mut self, n: Str) -> Int {
+    // The checker forbids shadowing, so a name already in scope here was bound
+    // by an earlier alternative of the same `|` pattern: share its slot.
+    match self.scope.get(n) {
+        Some(s) => return s,
+        None => {}
+    }
+    self.scope[n] = self.n
+    self.n += 1
+    self.n - 1
+}
+
+fn Cx.slot(self, n: Str) -> Int {
+    match self.scope.get(n) {
+        Some(s) => s,
+        None => panic("interp: unbound local {n}"),
+    }
+}
+
+fn Cx.block(mut self, b: ckast.Block) -> List[Stm] {
+    let saved = self.scope
+    var out: List[Stm] = []
+    for s in b.stmts { out.push(self.stmt(s)) }
+    self.scope = saved
+    out
+}
+
+fn Cx.stmt(mut self, s: ckast.Stmt) -> Stm {
+    match s.k {
+        KLet(p, _, _, v, els) => {
+            let value = self.expr(v)
+            match els {
+                Some(b) => {
+                    let eb = self.block(b)
+                    ILetElse(self.pat(p), value, eb)
+                }
+                None => ILet(self.pat(p), value),
+            }
+        }
+        KExpr(e) => IExpr(self.expr(e)),
+        KAssign(t, op, v) => {
+            let pl = self.place(t)
+            let value = self.expr(v)
+            let o = match op {
+                Some(x) => op_id(x),
+                None => -1,
+            }
+            IAssign(pl, o, value, s.sp)
+        }
+        KWhile(c, b) => {
+            let cond = self.expr(c)
+            IWhile(cond, self.block(b))
+        }
+        KFor(p, it, b) => {
+            match it {
+                FRange(lo, hi) => {
+                    let a = self.expr(lo)
+                    let z = self.expr(hi)
+                    let saved = self.scope
+                    let ip = self.pat(p)
+                    let body = self.block(b)
+                    self.scope = saved
+                    IForRange(ip, a, z, body)
+                }
+                FEach(x) => {
+                    let e = self.expr(x)
+                    let saved = self.scope
+                    let ip = self.pat(p)
+                    let body = self.block(b)
+                    self.scope = saved
+                    IForEach(ip, e, body)
+                }
+            }
+        }
+        KReturn(e) => match e {
+            Some(x) => IReturn(Some(self.expr(x))),
+            None => IReturn(None),
+        },
+        KBreak => IBreak,
+        KContinue => IContinue,
+    }
+}
+
+fn Cx.pats(mut self, ps: List[ckast.Pat]) -> List[IPat] {
+    var out: List[IPat] = []
+    for p in ps { out.push(self.pat(p)) }
+    out
+}
+
+fn Cx.pat(mut self, p: ckast.Pat) -> IPat {
+    match p.k {
+        QWild => BWild,
+        QBind(n) => if n == "_" { BWild } else { BBind(self.bind(n)) },
+        QInt(i) => BInt(i),
+        QStr(s) => BStr(s),
+        QBool(b) => BBool(b),
+        QTuple(ps) => BTuple(self.pats(ps)),
+        QVariant(_, _, ps) => {
+            let vi = match self.c.res.get(p.id) {
+                Some(RVariant(_, v, _)) => v,
+                _ => panic("interp: unresolved variant pattern"),
+            }
+            BVariant(vi, self.pats(ps))
+        }
+        QOr(alts) => BOr(self.pats(alts)),
+    }
+}
+
+fn Cx.exprs(mut self, es: List[ckast.Expr]) -> List[Node] {
+    var out: List[Node] = []
+    for e in es { out.push(self.expr(e)) }
+    out
+}
+
+fn Cx.args(mut self, es: List[ckast.Expr]) -> List[Arg] {
+    var out: List[Arg] = []
+    for e in es {
+        match e.k {
+            XMutArg(inner) => {
+                let pl = self.place(inner)
+                out.push(AMut(Place { root: pl.root, steps: pl.steps, sp: e.sp }))
+            }
+            _ => out.push(AVal(self.expr(e))),
+        }
+    }
+    out
+}
+
+fn Cx.place(mut self, e: ckast.Expr) -> Place {
+    match e.k {
+        XName(n) => Place { root: self.slot(n), steps: [], sp: e.sp },
+        XField(b, _) => {
+            let base = self.place(b)
+            let i = match self.c.res.get(e.id) {
+                Some(RField(i)) => i,
+                _ => panic("interp: unresolved field"),
+            }
+            Place { root: base.root, steps: base.steps + [PathField(i)], sp: e.sp }
+        }
+        XTField(b, i) => {
+            let base = self.place(b)
+            Place { root: base.root, steps: base.steps + [PathField(i)], sp: e.sp }
+        }
+        XIndex(b, i) => {
+            let base = self.place(b)
+            let ix = self.expr(i)
+            Place { root: base.root, steps: base.steps + [PathIndex(ix)], sp: e.sp }
+        }
+        _ => panic("interp: not a place"),
+    }
+}
+
+// The prelude call site rule (bootstrap/src/interp.rs `user_site`): a call
+// from user code into a prelude function records where it was made.
+fn Cx.into_prelude(self, fi: Int, sp: ckast.Span) -> Bool { self.c.env.fns[fi].sp.file == 0 and sp.file != 0 }
+
+fn Cx.expr(mut self, e: ckast.Expr) -> Node {
+    match e.k {
+        XInt(i) => NLit(ival.vint(i)),
+        XFloat(f) => NLit(ival.vfloat(f)),
+        XBool(b) => NLit(ival.vbool(b)),
+        XUnit => NLit(ival.unit()),
+        XStr(xs, lits) => {
+            var segs: List[Seg] = []
+            var k = 0
+            var all_lit = true
+            var text = ""
+            for l in lits {
+                match l {
+                    Some(s) => {
+                        segs.push(GLit(s))
+                        text += s
+                    }
+                    None => {
+                        all_lit = false
+                        match xs[k].k {
+                            XFmt(inner, f) => segs.push(GFmt(self.expr(inner), f)),
+                            _ => segs.push(GShow(self.expr(xs[k]))),
+                        }
+                        k += 1
+                    }
+                }
+            }
+            if all_lit { NLit(ival.vstr(text)) } else { NStr(segs) }
+        }
+        XName(_) | XPath(_, _) => self.name(e),
+        XField(b, _) => {
+            let i = match self.c.res.get(e.id) {
+                Some(RField(i)) => i,
+                _ => panic("interp: unresolved field"),
+            }
+            NField(self.expr(b), i)
+        }
+        XTField(b, i) => NField(self.expr(b), i),
+        XIndex(a, b) => {
+            let x = self.expr(a)
+            NIndex(x, self.expr(b), e.sp)
+        }
+        XCall(callee, args) => self.call(e, callee, args),
+        XMethod(recv, _, args) => self.method(e, recv, args),
+        XUnary(op, x) => if op == "neg" { NNeg(self.expr(x), e.sp) } else { NNot(self.expr(x)) },
+        XBinary(op, l, r) => {
+            let a = self.expr(l)
+            let b = self.expr(r)
+            if op == "And" { NAnd(a, b) } else if op == "Or" { NOr(a, b) } else { NBin(op_id(op), a, b, e.sp) }
+        }
+        XIf(c, t, els) => {
+            let cond = self.expr(c)
+            let then = self.block(t)
+            match els {
+                Some(x) => NIf(cond, then, Some(self.expr(x))),
+                None => NIf(cond, then, None),
+            }
+        }
+        XMatch(s, arms) => {
+            let scrut = self.expr(s)
+            var out: List[IArm] = []
+            for a in arms {
+                let saved = self.scope
+                let pat = self.pat(a.pat)
+                let guard = match a.guard {
+                    Some(g) => Some(self.expr(g)),
+                    None => None,
+                }
+                let body = self.expr(a.body)
+                self.scope = saved
+                out.push(IArm { pat, guard, body })
+            }
+            NMatch(scrut, out)
+        }
+        XBlock(b) => NBlock(self.block(b)),
+        XList(xs) => NList(self.exprs(xs)),
+        XTuple(xs) => NTuple(self.exprs(xs)),
+        XMap(ps) => {
+            var out: List[(Node, Node)] = []
+            for kv in ps {
+                let k = self.expr(kv.0)
+                out.push((k, self.expr(kv.1)))
+            }
+            NMapLit(out)
+        }
+        XNew(_, fields, base) => {
+            let si = match self.c.res.get(e.id) {
+                Some(RStruct(i)) => i,
+                _ => panic("interp: unresolved struct literal"),
+            }
+            let decl = self.c.env.structs[si]
+            var given: List[(Int, Node)] = []
+            for f in fields {
+                var i = 0
+                while decl.fields[i].0 != f.0 { i += 1 }
+                given.push((i, self.expr(f.1)))
+            }
+            match base {
+                Some(b) => NNew(si, decl.fields.len(), given, Some(self.expr(b))),
+                None => NNew(si, decl.fields.len(), given, None),
+            }
+        }
+        XTry(x) => NTry(self.expr(x)),
+        XLambda(params, _, body) => {
+            let caps = self.c.captures.get(e.id).unwrap_or([])
+            var cap_slots: List[Int] = []
+            for c in caps { cap_slots.push(self.slot(c.0)) }
+            let li = self.lams.len()
+            self.lams.push(LamRt { nslots: 0, body: NLit(ival.unit()) })
+            let saved_scope = self.scope
+            let saved_n = self.n
+            self.scope = [:]
+            self.n = 0
+            for c in caps { let _ = self.bind(c.0) }
+            for p in params {
+                // parameters always get their own slot (they follow the captures)
+                self.scope[p.0] = self.n
+                self.n += 1
+            }
+            let b = self.expr(body)
+            self.lams[li] = LamRt { nslots: self.n, body: b }
+            self.scope = saved_scope
+            self.n = saved_n
+            NLambda(li, cap_slots)
+        }
+        XMutArg(_) => panic("interp: mut arguments are handled at calls"),
+        XFmt(_, _) => panic("interp: format specs are handled in strings"),
+    }
+}
+
+fn Cx.name(mut self, e: ckast.Expr) -> Node {
+    match self.c.res.get(e.id) {
+        Some(RLocal(n)) => NLocal(self.slot(n)),
+        Some(RConst(fi)) => NConst(fi, e.sp),
+        Some(RFn(fi, _)) => NFnVal(fi),
+        Some(RVariant(ei, vi, _)) => {
+            if self.c.env.enums[ei].variants[vi].1.is_empty() { NLit(ival.venum(ei, vi, [])) } else { NCtorFn(ei, vi) }
+        }
+        _ => panic("interp: unresolved name"),
+    }
+}
+
+fn Cx.call(mut self, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr]) -> Node {
+    let site = match self.c.res.get(callee.id) {
+        Some(RFn(fi, _)) => self.into_prelude(fi, e.sp),
+        _ => false,
+    }
+    match self.c.res.get(e.id) {
+        Some(RCallValue) => {
+            let f = self.expr(callee)
+            return NApply(f, self.exprs(args), e.sp)
+        }
+        _ => {}
+    }
+    match self.c.res.get(callee.id) {
+        Some(RFn(fi, targs)) => {
+            let info = self.c.env.fns[fi]
+            if info.name == "decode" { return NDecode(targs[0], self.exprs(args), e.sp, site) }
+            if info.muts.any(fn(b) => b) { return NCallMut(fi, self.args(args), e.sp, site) }
+            NCall(fi, self.exprs(args), e.sp, site)
+        }
+        Some(RVariant(ei, vi, _)) => NCtor(ei, vi, self.exprs(args)),
+        _ => {
+            let f = self.expr(callee)
+            NApply(f, self.exprs(args), e.sp)
+        }
+    }
+}
+
+fn Cx.method(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr]) -> Node {
+    match self.c.res.get(e.id) {
+        Some(RToStr) => NToStr(self.expr(recv)),
+        Some(RMethod(fi, _)) => {
+            let info = self.c.env.fns[fi]
+            let site = self.into_prelude(fi, e.sp)
+            if info.self_kind == MutSelf {
+                let pl = self.place(recv)
+                if info.is_extern {
+                    let id = self.mexts.get(info.name).unwrap_or(-2)
+                    return NExtMut(id, pl, self.exprs(args), e.sp, site)
+                }
+                return NMutSelf(fi, pl, self.args(args), e.sp, site)
+            }
+            let r = self.expr(recv)
+            if info.muts.any(fn(b) => b) { return NMethodMut(fi, r, self.args(args), e.sp, site) }
+            NCall(fi, [r] + self.exprs(args), e.sp, site)
+        }
+        _ => panic("interp: unresolved method"),
+    }
+}
