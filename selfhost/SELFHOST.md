@@ -73,9 +73,15 @@ Verification:
   (chat uses the event loop, kvhttp blocking sockets) on `tenonc run` and
   `tenonc build`.
 - `tools/interp_diff.py` (evidence): every corpus file under `tenon run` and
-  `tenonc run`, byte-identical stdout, stderr and exit status: 754 of 758 the
-  same, 3 skipped (benchmarks over 20 s), 1 different only in time
-  (bench/fib).
+  `tenonc run`, byte-identical stdout, stderr and exit status: 755 of 758 the
+  same, 0 different, 3 skipped (over 20 s in the bootstrap). The 5
+  benchmarks run separately give the same output too.
+- tools/selfhost.sh fails when the prelude has an `extern fn` the interpreter
+  does not know (a builtin added to the bootstrap must be added here too).
+
+Speed (tenonc built -O2 by ./check; bootstrap = `tenon run`): fib(38) 18.8 s
+vs 17.0 s, bench/trees 33.7 s vs 43.3 s, tests/run/std_regex.tn 2.4 s vs
+2.3 s. ./check stays near 30 s (21 s before stage B, with fewer steps).
 
 ## The test runner
 

@@ -319,3 +319,30 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   function that runs commands says so in its signature.
 - The prelude, std modules and runtime header are read from the repository
   (`--root`, `$TENON_ROOT`, or `.`) instead of embedded.
+
+## 2026-10-28 — self-hosting stage B: tenonc replaces the bootstrap CLI
+
+- **Interpreter in Tenon** (selfhost/interp.tn, ival, icode, ieval, ibuiltin,
+  icap, icodec; ~2,500 lines; port of interp.rs, builtins.rs, value.rs,
+  codec.rs): `tenonc run`. A value is one struct whose fields are used by
+  kind, so deep parts change in place through `mut` places; Tenon's own
+  copy-on-write lists and maps give the value semantics. Names are resolved
+  once to frame slots. Capabilities are the host's (an interpreted `Fs` is a
+  host `Fs`), so the jail rules are the C runtime's. Same stdout, stderr and
+  exit status as `tenon run` on 755 of 758 corpus files, 0 different, 3
+  skipped as slower than 20 s in the bootstrap (tools/interp_diff.py), and on
+  the 5 benchmarks; speed 0.8x-1.1x the bootstrap's (fib 18.8 vs 17.0 s,
+  trees 33.7 vs 43.3 s, std_regex 2.4 vs 2.3 s).
+- **`tenonc test`** (selfhost/testrun.tn, port of testrun.rs) with 8 worker
+  processes; **`tokens`/`ast`** subcommands; **`check`** now behaves like
+  `tenon check`; a **build cache** like the bootstrap's (exact C match).
+- **Language addition:** `Proc.run_with(cmd, args, dir, input, timeout_ms)`
+  (captured output, a timeout; the test runner) and `Proc.exit(status)` (any
+  status, also the reserved ones; the interpreter passes on 70 and 72).
+- **Gates:** ./check builds tenonc (stage1) with the bootstrap and runs the
+  suite, programs, doctest and the grammar check with it; `tenon test` runs
+  as the differential reference; selfhost.sh and fixpoint.sh stay.
+  ./check 21.4 s before stage B (fewer steps), 30-35 s after.
+- **Freeze:** `frozen bootstrap/*` in governance/guarded.txt: tools/approvals.py
+  refuses any unapproved change to the bootstrap and any growth of its line
+  count (governance/README.md).

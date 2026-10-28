@@ -33,10 +33,16 @@ def expected(text):
     return first if first.startswith("// error:") else text
 
 
-def frozen_lines(rev, frozen):
-    """Total line count of the files under the frozen globs at rev."""
-    files = [f for f in git("ls-tree", "-r", "--name-only", rev).splitlines() if any(fnmatch.fnmatch(f, g) for g in frozen)]
-    return sum((show(rev, f) or "").count("\n") for f in files)
+def frozen_growth(base, paths):
+    """Lines added minus lines removed in the changed frozen files (one git call)."""
+    if not paths:
+        return 0
+    grew = 0
+    for row in git("diff", "--numstat", "--no-renames", base, "HEAD", "--", *paths).splitlines():
+        added, removed = row.split("\t")[:2]
+        if added != "-":
+            grew += int(added) - int(removed)
+    return grew
 
 
 def main():
@@ -58,9 +64,11 @@ def main():
         elif line.strip():
             problems.append(f"{LOG}: malformed approval line: {line!r} (want DATE | APPROVER | PATH | reason)")
     changed = git("diff", "--name-status", "--no-renames", base, "HEAD").splitlines()
+    frozen_changed = []
     for row in changed:
         status, path = row.split("\t", 1)
         if any(fnmatch.fnmatch(path, g) for g in frozen):
+            frozen_changed.append(path)
             # a frozen path: any change at all (added, changed or deleted) needs
             # an approval naming the file, or a glob that covers it
             if not any(path == a or fnmatch.fnmatch(path, a) for a in approved):
@@ -75,10 +83,9 @@ def main():
         if weakened and path not in approved:
             what = "deleted" if after is None else "changed what it expects"
             problems.append(f"{path}: guarded test {what}; add an approval line to {LOG}")
-    if frozen:
-        was, now = frozen_lines(base, frozen), frozen_lines("HEAD", frozen)
-        if now > was:
-            problems.append(f"frozen paths grew from {was} to {now} lines; their line count may only shrink (an approval does not lift this)")
+    grew = frozen_growth(base, frozen_changed)
+    if grew > 0:
+        problems.append(f"frozen paths grew by {grew} lines; their line count may only shrink (an approval does not lift this)")
     for p in problems:
         print("approvals:", p)
     return 1 if problems else 0
