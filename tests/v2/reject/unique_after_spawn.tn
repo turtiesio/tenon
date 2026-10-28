@@ -1,0 +1,14 @@
+// error: 't' was already used: a unique value cannot be copied
+// A unique value given to spawn moves to the worker.
+unique struct Token { id: Int }
+
+fn id_of(t: Token) -> Int { t.id }
+
+fn main(sys: Sys) {
+    let t = Token { id: 1 }
+    let h = sys.workers().spawn(id_of, t)
+    tx_again(t)
+    sys.console.println("{h.join()}")
+}
+
+fn tx_again(t: Token) { let _ = t }

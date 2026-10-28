@@ -1,0 +1,10 @@
+// error: type Poller does not implement Send (needed by bound A: Send of Workers.spawn): Poller belongs to the worker that opened it (send a Net and open it there)
+// A Poller (an event loop) cannot be sent: its sockets belong to the worker
+// that opened them. Send the Net and open the Poller in the worker.
+fn serve(p: Poller) -> Int { p.port(0) }
+
+fn main(sys: Sys) {
+    let p = sys.net.poller()
+    let h = sys.workers().spawn(serve, p)
+    sys.console.println("{h.join()}")
+}

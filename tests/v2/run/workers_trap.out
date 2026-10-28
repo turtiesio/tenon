@@ -1,0 +1,4 @@
+start
+exit: 70
+stderr: trap: index 3 out of bounds for length 3
+stderr:   at workers_trap.tn:5:28

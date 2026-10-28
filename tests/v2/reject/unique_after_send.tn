@@ -1,0 +1,11 @@
+// error: 't' was already used: a unique value cannot be copied
+// A unique value sent through a channel moves: the sender cannot use it.
+unique struct Token { id: Int }
+
+fn main(sys: Sys) {
+    let (tx, rx) = channel()
+    let t = Token { id: 1 }
+    tx.send(t)
+    let again = t
+    sys.console.println("{again.id} {rx.recv().is_some()}")
+}

@@ -203,6 +203,7 @@ fn Env.kind_walk(self, t: cktypes.Ty, k0: ckast.Kind, seen0: List[cktypes.Ty]) -
                 seen = r.1
             }
         }
+        Con(n, _) if cktypes.is_shared_handle(n) => {}
         Con(n, args) => {
             for x in args {
                 let r = self.kind_walk(x, k, seen)
@@ -250,6 +251,49 @@ pub fn Env.enum_variants(self, t: cktypes.Ty) -> Option[List[(Str, List[cktypes.
         },
         _ => None,
     }
+}
+
+// Why values of t cannot go to another worker (the derived trait Send), or
+// None if they can. Sent values are copied into the receiving worker's heap
+// (unique ones are moved), so every type is sendable except linear types (a
+// channel or a worker that is never joined could drop the obligation) and
+// the socket handles (Poller, Listener, Conn: their sockets belong to the
+// worker that opened them; send a Net and open them there).
+pub fn Env.unsendable_part(self, t: cktypes.Ty) -> Option[Str] { self.unsendable_walk(t, []).0 }
+
+fn Env.unsendable_walk(self, t: cktypes.Ty, seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
+    if seen0.contains(t) { return (None, seen0) }
+    var seen = seen0
+    seen.push(t)
+    match t {
+        Con(n, _) if cktypes.is_unique_builtin(n) => return (Some(n + " belongs to the worker that opened it (send a Net and open it there)"), seen),
+        Con(n, _) if cktypes.is_shared_handle(n) => return (None, seen),
+        _ => {}
+    }
+    if self.kind_of(t) == Linear { return (Some("the linear type " + t.show() + " could be dropped by a channel or a worker that is never joined"), seen) }
+    var parts: List[cktypes.Ty] = []
+    match t {
+        Tup(ts) => parts = ts,
+        Con(_, args) => {
+            match self.struct_fields(t) {
+                Some(fs) => parts = fs.map(fn(f) => f.1),
+                None => match self.enum_variants(t) {
+                    Some(vs) => {
+                        for v in vs { parts.extend(v.1) }
+                    }
+                    None => {}
+                },
+            }
+            parts.extend(args)
+        }
+        _ => {}
+    }
+    for x in parts {
+        let r = self.unsendable_walk(x, seen)
+        if r.0.is_some() { return r }
+        seen = r.1
+    }
+    (None, seen)
 }
 
 // The first part of t that derived equality cannot handle exactly: functions
@@ -328,7 +372,7 @@ pub fn Env.dyn_trait(self, t: cktypes.Ty) -> Option[Int] {
 // ---- traits ----
 
 // The derived traits: satisfied structurally; only Show may be implemented (to override formatting).
-pub fn builtin_trait_name(n: Str) -> Bool { n == "Eq" or n == "Ord" or n == "Hash" or n == "Show" }
+pub fn builtin_trait_name(n: Str) -> Bool { n == "Eq" or n == "Ord" or n == "Hash" or n == "Show" or n == "Send" }
 pub fn Env.is_builtin_trait(self, ti: Int) -> Bool { self.traits[ti].file == 0 and builtin_trait_name(self.traits[ti].name) }
 pub fn Env.is_show(self, ti: Int) -> Bool { self.traits[ti].file == 0 and self.traits[ti].name == "Show" }
 
@@ -453,6 +497,7 @@ pub fn Env.implements(self, t: cktypes.Ty, tr: Int, pb: Map[Str, List[Int]]) -> 
         }) {
             return false
         }
+        if n == "Send" { return self.unsendable_part(t).is_none() }
         if n == "Show" {
             return not t.any(fn(x) => match x {
                 Fun(_, _) => true,

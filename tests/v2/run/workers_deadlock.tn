@@ -1,0 +1,16 @@
+// Channels are closed only by close: a program whose every thread waits
+// (here main waits on a channel that the finished worker never closed)
+// traps with "deadlock" at main's wait instead of hanging, on both backends.
+fn produce(tx: Sender[Int]) {
+    for i in 0..3 { tx.send(i) }
+}
+
+fn main(sys: Sys) {
+    let w = sys.workers()
+    let (tx, rx) = channel()
+    let h = w.spawn(produce, tx)
+    h.join()
+    var sum = 0
+    while let Some(x) = rx.recv() { sum += x }
+    sys.console.println("unreachable {sum}")
+}

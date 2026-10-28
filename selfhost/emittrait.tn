@@ -52,6 +52,7 @@ pub fn dyn_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, b: mut Str) {
     b += "static TN_UNUSED uint64_t {n}_hash({n} x) \{ (void)x; return 0; }\n"
     b += "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode) \{ ((const struct {n}_vt *)x.vt)->show(b, x.o, mode); }\n"
     b += "static TN_UNUSED bool {n}_dec(tn_dec *d, {n} *out) \{ (void)d; (void)out; return false; }\n"
+    if m.mt { b += "static TN_UNUSED {n} {n}_copy({n} x) \{ x.o = x.o->copy(x.o); return x; }\n" }
 }
 
 // The methods in a vtable: a derived trait's (Show's `to_str`) are not
@@ -75,6 +76,10 @@ fn dbox(m: mut emit.Em, v: cktypes.Ty) -> Str {
     m.helpers += "struct " + n + " \{ tn_env h; " + vn + " v; };\n"
     m.helpers += "static void " + n + "_drop(tn_env *e) \{ struct " + n + " *B = (void *)e; " + rel + "tn_free(B); }\n"
     m.helpers += "static void " + n + "_show(tn_buf *b, tn_env *e, int mode) \{ " + vn + "_show(b, ((struct " + n + " *)e)->v, mode); }\n"
+    if m.mt {
+        let cv = if m.trivial(v) { "" } else { "N->v = " + vn + "_copy(B->v); " }
+        m.helpers += "static tn_env *" + n + "_copy(tn_env *e) \{ struct " + n + " *B = (void *)e, *N = tn_alloc(sizeof *N); *N = *B; N->h.rc = 1; " + cv + "return &N->h; }\n"
+    }
     n
 }
 
@@ -126,7 +131,8 @@ pub fn dyn_value(m: mut emit.Em, x: ckast.Expr, t: cktypes.Ty) -> emit.CV {
     let bx = dbox(mut m, xt)
     let tn = m.cty(t)
     let v = m.fresh("dyn")
-    m.line("struct {bx} *{v} = tn_alloc(sizeof *{v}); {v}->h.rc = 1; {v}->h.drop = {bx}_drop; {v}->v = {code};")
+    let cpy = if m.mt { " {v}->h.copy = {bx}_copy;" } else { "" }
+    m.line("struct {bx} *{v} = tn_alloc(sizeof *{v}); {v}->h.rc = 1; {v}->h.drop = {bx}_drop;" + cpy + " {v}->v = {code};")
     m.tmp_owned(t, "(({tn})\{ &{v}->h, &{vt} })")
 }
 

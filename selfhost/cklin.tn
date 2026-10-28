@@ -30,7 +30,15 @@ fn word(k: ckast.Kind) -> Str { ckenv.kind_word(k) }
 
 // Builtins (no body to analyze) that consume a generic argument exactly once.
 fn extern_ok(n: Str) -> Bool {
-    n == "Option.unwrap" or n == "Option.expect" or n == "Result.unwrap" or n == "Result.expect" or n == "panic"
+    n == "Option.unwrap" or n == "Option.expect" or n == "Result.unwrap" or n == "Result.expect" or n == "panic" or
+        worker_extern(n)
+}
+
+// v2 (lib/v2/prelude.tn): a unique value given to spawn or send moves to the
+// other worker; one received comes out of the channel once.
+fn worker_extern(n: Str) -> Bool {
+    n == "Workers.spawn" or n == "channel" or n == "Sender.send" or n == "Sender.close" or n == "Receiver.recv" or
+        n == "Receiver.try_recv"
 }
 
 pub fn check_all(env: ckenv.Env, fns: List[ckast.FnDecl], types: Map[Int, cktypes.Ty], res: Map[Int, ckenv.Res], caps: Map[Int, List[(Str, cktypes.Ty)]]) -> Result[Unit, ckast.Diag] {
@@ -329,6 +337,10 @@ fn Walk.generic_args_ok(mut self, fi: Int, targs: List[cktypes.Ty], sp: ckast.Sp
         let k = self.kind_ty(t)
         if k != Plain {
             var ok = false
+            if info.is_extern and info.name == "Workers.spawn" and i == 1 {
+                return ckast.fail(sp, "a worker cannot return the " + word(k) + " type " + t.show() +
+                    ": a Worker handle can be copied and every join gives the result; send it through a channel instead")
+            }
             if info.is_extern {
                 ok = extern_ok(info.name)
             } else {

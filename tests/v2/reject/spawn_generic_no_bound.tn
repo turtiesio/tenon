@@ -1,0 +1,7 @@
+// error: type A does not implement Send (needed by bound A: Send of Workers.spawn)
+// Spawning a generic function's argument needs the bound A: Send.
+fn in_worker[A](w: Workers, f: fn(A) -> Int, x: A) -> Int { w.spawn(f, x).join() }
+
+fn main(sys: Sys) {
+    sys.console.println("{in_worker(sys.workers(), fn(x: Int) => x + 1, 2)}")
+}

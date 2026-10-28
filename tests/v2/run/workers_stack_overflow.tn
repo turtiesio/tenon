@@ -1,0 +1,9 @@
+// Endless recursion in a worker ends the program as it does in main:
+// "trap: stack overflow", status 72 (each worker has a stack of its own).
+fn down(n: Int) -> Int { down(n + 1) + 1 }
+
+fn main(sys: Sys) {
+    sys.console.println("start")
+    let h = sys.workers().spawn(down, 0)
+    sys.console.println("{h.join()}")
+}

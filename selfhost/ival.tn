@@ -54,6 +54,10 @@ pub const CAP_PROC: Int = 4
 pub const CAP_LISTENER: Int = 5
 pub const CAP_CONN: Int = 6
 pub const CAP_POLLER: Int = 7
+pub const CAP_WORKERS: Int = 8
+pub const CAP_SENDER: Int = 9 // j: the channel (selfhost/iwork.tn)
+pub const CAP_RECEIVER: Int = 10
+pub const CAP_WORKER: Int = 11 // j: the worker
 
 pub struct Val { pub k: Int, pub i: Int, pub j: Int, pub f: Float, pub s: Str, pub xs: List[Val], pub m: Map[Key, Val] }
 
@@ -246,7 +250,7 @@ pub fn quote(out: mut Str, s: Str) {
 }
 
 fn cap_name(i: Int) -> Str {
-    ["<Console>", "<Fs>", "<Clock>", "<Net>", "<Proc>", "<Listener>", "<Conn>", "<Poller>"][i]
+    ["<Console>", "<Fs>", "<Clock>", "<Net>", "<Proc>", "<Listener>", "<Conn>", "<Poller>", "<Workers>", "<Sender>", "<Receiver>", "<Worker>"][i]
 }
 
 fn seq(out: mut Str, xs: List[Val], n: Names, full: Bool) {

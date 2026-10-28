@@ -185,6 +185,11 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             m.line("}")
             emit.bor(m.payload(xt, a[0], 0, 0))
         }
+        "Console.println" if m.mt => {
+            // one locked write, so lines from different workers never mix
+            m.line("tn_writeln((" + a[1] + ").p, (size_t)(" + a[1] + ").len);")
+            emit.bor("0")
+        }
         "Console.print" | "Console.println" => {
             m.line("tn_write((" + a[1] + ").p, (size_t)(" + a[1] + ").len);")
             if name == "Console.println" { m.line("tn_write(\"\\n\", 1);") }
@@ -349,7 +354,115 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             m.line("tn_sleep_ms(" + a[1] + ");")
             emit.bor("0")
         }
+        "Sys.workers" | "Workers.cores" | "Workers.spawn" | "Worker.join" | "channel" | "Sender.send" | "Sender.close" |
+            "Receiver.recv" | "Receiver.try_recv" => worker_call(mut m, name, a, ptys, t, loc),
         _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// ---- workers and channels (lib/v2/prelude.tn; runtime/tenon.h) ----
+
+// A value of type t for another worker: a deep copy when the program has
+// workers; otherwise (channels in one thread) the value itself, retained.
+fn send_copy(m: mut emit.Em, t: cktypes.Ty, code: Str) -> Str {
+    if m.trivial(t) { return code }
+    let tn = m.cty(t)
+    if m.mt { tn + "_copy(" + code + ")" } else { tn + "_retain(" + code + ")" }
+}
+
+// A function releasing a value of type t in place (NULL for trivial types).
+fn release_fn(m: mut emit.Em, t: cktypes.Ty) -> Str {
+    if m.trivial(t) { return "NULL" }
+    let key = "rel:" + t.show()
+    match m.wk.get(key) {
+        Some(n) => return n,
+        None => {}
+    }
+    let tn = m.cty(t)
+    let n = m.fresh("tn_relp")
+    m.wk[key] = n
+    m.helpers += "static void " + n + "(void *p) \{ " + tn + "_release(*(" + tn + " *)p); }\n"
+    n
+}
+
+// The body of a worker running a fn(A) -> R: the argument and the function
+// (copies made by spawn) are the worker's own; the result stays in the task.
+fn task_runner(m: mut emit.Em, at: cktypes.Ty, rt: cktypes.Ty) -> Str {
+    let key = "run:" + at.show() + ":" + rt.show()
+    match m.wk.get(key) {
+        Some(n) => return n,
+        None => {}
+    }
+    let an = m.cty(at)
+    let rn = m.cty(rt)
+    let n = m.fresh("tn_run")
+    m.wk[key] = n
+    let rel = if m.trivial(at) { "" } else { an + "_release(a); " }
+    m.helpers += "static void " + n + "(tn_Worker t) \{ " + an + " a; memcpy(&a, t->arg, sizeof a); " +
+        rn + " r = ((" + rn + " (*)(tn_env *, " + an + "))t->f.f)(t->f.env, a); " + rel +
+        "tn_fn_release(t->f); memcpy(t->res, &r, sizeof r); }\n"
+    n
+}
+
+fn worker_call(m: mut emit.Em, name: Str, a: List[Str], ptys: List[cktypes.Ty], t: cktypes.Ty, loc: Str) -> emit.CV {
+    match name {
+        "Sys.workers" => m.tmp_val(t, "0"),
+        "Workers.cores" => m.tmp_val(t, "tn_cores()"),
+        "Workers.spawn" => {
+            let at = ptys[2]
+            let rt = t.args()[0]
+            let an = m.cty(at)
+            let rn = m.cty(rt)
+            let run = task_runner(mut m, at, rt)
+            let rel = release_fn(mut m, rt)
+            let k = m.fresh("tk")
+            let x = m.fresh("x")
+            let fc = if m.mt { "tn_fn_copy(" + a[1] + ")" } else { "tn_fn_retain(" + a[1] + ")" }
+            let xc = send_copy(mut m, at, a[2])
+            m.line("tn_Worker {k} = tn_task_new(sizeof({an}), sizeof({rn}), {run}, {rel}); \{ {an} {x} = {xc}; memcpy({k}->arg, &{x}, sizeof {x}); } {k}->f = {fc}; tn_task_start({k}, {loc});")
+            m.tmp_owned(t, k)
+        }
+        "Worker.join" => {
+            let rt = t
+            let rn = m.cty(rt)
+            m.line("tn_task_join(" + a[0] + ", " + loc + ");")
+            let v = send_copy(mut m, rt, "*(" + rn + " *)(" + a[0] + ")->res")
+            m.tmp_owned(t, v)
+        }
+        "channel" => {
+            let et = match t {
+                Tup(ts) => ts[0].args()[0],
+                _ => t,
+            }
+            let rel = release_fn(mut m, et)
+            let en = m.cty(et)
+            let tn = m.cty(t)
+            let ch = m.fresh("ch")
+            m.line("tn_Chan " + ch + " = tn_chan_new(sizeof(" + en + "), " + rel + ");")
+            m.tmp_owned(t, "(" + tn + ")\{ " + ch + ", tn_Chan_retain(" + ch + ") }")
+        }
+        "Sender.send" => {
+            let et = ptys[1]
+            let en = m.cty(et)
+            let x = m.fresh("x")
+            let xc = send_copy(mut m, et, a[1])
+            m.line("\{ " + en + " " + x + " = " + xc + "; tn_chan_send(" + a[0] + ", &" + x + ", " + loc + "); }")
+            emit.bor("0")
+        }
+        "Sender.close" => {
+            m.line("tn_chan_close(" + a[0] + ");")
+            emit.bor("0")
+        }
+        _ => {
+            // Receiver.recv, Receiver.try_recv
+            let et = t.args()[0]
+            let en = m.cty(et)
+            let v = m.fresh("v")
+            m.line(en + " " + v + ";")
+            let wait = if name == "Receiver.recv" { "true" } else { "false" }
+            let ok = m.tmp_val(bool_t(), "tn_chan_recv(" + a[0] + ", &" + v + ", " + wait + ", " + loc + ")").code
+            some_none(mut m, t, ok, v)
+        }
     }
 }
 

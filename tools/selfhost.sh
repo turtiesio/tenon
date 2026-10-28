@@ -54,15 +54,16 @@ one() {
 export -f one
 find bootstrap lib tests programs selfhost bench study -name '*.tn' -not -path '*/v2/*' 2>/dev/null | sort \
   | xargs -P 8 -I{} bash -c 'one "$@"' _ {} "$T" "$tmp" > "$tmp/results"
-# every builtin of the prelude is known to the self-hosted interpreter
+# every builtin of the prelude (and of lib/v2/prelude.tn) is known to the self-hosted interpreter
 python3 - >> "$tmp/results" <<'EOF'
 import re
-names = re.findall(r"^extern fn ([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?(?:\.[a-z_][A-Za-z0-9_]*)?)", open("lib/prelude.tn").read(), re.M)
-known = open("selfhost/ibuiltin.tn").read() + open("selfhost/icap.tn").read()
+prelude = open("lib/prelude.tn").read() + open("lib/v2/prelude.tn").read()
+names = re.findall(r"^extern fn ([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?(?:\.[a-z_][A-Za-z0-9_]*)?)", prelude, re.M)
+known = open("selfhost/ibuiltin.tn").read() + open("selfhost/icap.tn").read() + open("selfhost/iwork.tn").read()
 for n in names:
     n = re.sub(r"\[[^\]]*\]", "", n)
     if n != "decode" and f'"{n}"' not in known:
-        print(f"FAIL the self-hosted interpreter has no builtin {n} (selfhost/ibuiltin.tn, icap.tn)")
+        print(f"FAIL the self-hosted interpreter has no builtin {n} (selfhost/ibuiltin.tn, icap.tn, iwork.tn)")
 EOF
 grep -v '^RESULT ' "$tmp/results" || true
 n=$(grep -c '^RESULT ' "$tmp/results")

@@ -72,6 +72,10 @@ pub struct Em {
     pub show_ovs: Map[cktypes.Ty, Str], // a type with a Show impl: its `to_str` instance
     pub dboxes: Map[cktypes.Ty, Str],   // the box of `dyn` values of a type
     pub vtables: Map[Str, Str],         // "trait:type" -> its vtable
+    // workers (emitbi.tn): the program starts workers (compiled with TN_MT,
+    // every type gets a deep copy helper), and the helpers made so far
+    pub mt: Bool,
+    pub wk: Map[Str, Str],
 }
 
 // The C program for a checked program; Err(message) if it cannot be compiled.
@@ -79,7 +83,7 @@ pub fn emit(c: checker.Checked, names: List[Str], runtime: Str) -> Result[Str, S
     var m = Em {
         c, names, tnames: [:], tlist: [], boxed: [:], fn_names: [:], fn_queue: [], wrappers: [:],
         protos: "", bodies: "", helpers: "", counter: 0, st: new_state(), err: "",
-        show_tr: emittrait.show_trait(c.env), show_ovs: [:], dboxes: [:], vtables: [:],
+        show_tr: emittrait.show_trait(c.env), show_ovs: [:], dboxes: [:], vtables: [:], mt: uses_workers(c), wk: [:],
     }
     let main_name = emitbody.fn_inst(mut m, c.main, [])
     while let Some(job) = m.fn_queue.pop() {
@@ -95,6 +99,19 @@ pub fn emit(c: checker.Checked, names: List[Str], runtime: Str) -> Result[Str, S
     let out = emitlayout.assemble(mut m, runtime, main_c)
     if m.err != "" { return Err(m.err) }
     Ok(out)
+}
+
+// Does the program start workers (call Sys.workers)? Then it is compiled
+// with TN_MT (runtime/tenon.h): thread-local heaps and deep copies.
+fn uses_workers(c: checker.Checked) -> Bool {
+    for (_, r) in c.res {
+        match r {
+            RMethod(fi, _) if c.env.fns[fi].name == "Sys.workers" => return true,
+            RFn(fi, _) if c.env.fns[fi].name == "Sys.workers" => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 // The C backend makes one copy per type instantiation; a function or type
@@ -281,6 +298,7 @@ pub fn Em.is_boxed(mut self, t: cktypes.Ty) -> Bool {
 fn builtin_c(n: Str) -> Bool {
     match n {
         "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn" | "Poller" | "Proc" => true,
+        "Workers" => true,
         _ => false,
     }
 }
@@ -297,6 +315,7 @@ pub fn Em.cty(mut self, t: cktypes.Ty) -> Str {
     let name = match t {
         Con(n, a) if a.is_empty() and builtin_c(n) => "tn_" + n,
         Con(n, a) if n == "List" and (a[0].is("Str") or a[0].is("Int")) => "tn_List_" + a[0].show(),
+        Con(n, _) if cktypes.is_shared_handle(n) => "tn_" + n,
         Fun(_, _) => "tn_fn",
         Con(n, _) => {
             self.counter += 1
@@ -388,7 +407,7 @@ pub fn Em.pty(self, id: Int) -> cktypes.Ty { self.c.types[id].subst(self.st.tps,
 
 fn trivial_name(n: Str) -> Bool {
     match n {
-        "Int" | "Float" | "Bool" | "Unit" | "Console" | "Clock" | "Net" | "Proc" => true,
+        "Int" | "Float" | "Bool" | "Unit" | "Console" | "Clock" | "Net" | "Proc" | "Workers" => true,
         _ => false,
     }
 }
@@ -403,7 +422,7 @@ pub fn Em.trivial(mut self, t: cktypes.Ty) -> Bool {
             }
             true
         }
-        Con(n, _) if n == "List" or n == "Map" or n == "Str" or n == "Fs" => false,
+        Con(n, _) if n == "List" or n == "Map" or n == "Str" or n == "Fs" or cktypes.is_shared_handle(n) => false,
         Con(_, _) if ty_depth(t) > 48 => {
             self.polymorphic_recursion("the type " + display(t.show()) + " keeps growing")
             true

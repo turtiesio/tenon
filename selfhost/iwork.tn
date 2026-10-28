@@ -1,0 +1,246 @@
+// module (imported by the self-hosted interpreter)
+// Workers and channels (lib/v2/prelude.tn) in the interpreter.
+//
+// The interpreter is itself a Tenon program built by the bootstrap, which
+// has no threads, so workers run on one host thread under a deterministic
+// cooperative scheduler, with the observable results of the C backend for
+// every program whose output does not depend on scheduling:
+//
+// - A spawned worker does not run until the main program waits: recv on an
+//   empty channel, join of an unfinished worker, or try_recv on an empty
+//   channel (polling). Then the workers that can run take turns (round
+//   robin, from the one after the last that ran), each until it finishes or
+//   would wait itself, until what the main program waits for is there (for
+//   try_recv: one turn each).
+// - A worker that would wait (recv, join, or try_recv on an empty channel,
+//   which yields its turn) is suspended by unwinding it (ieval.CBlock), and
+//   resumed later by running it again from the start in replay mode: every
+//   builtin with an effect (console, capabilities, channels, workers) that
+//   the worker already did returns its logged result instead of running
+//   again, so the worker repeats only its own computation. A worker resumed
+//   k times costs about k times the work it did before its last wait.
+// - When the main program waits and no worker can run, every thread is
+//   waiting: the program traps with "deadlock", as the C runtime does.
+// - A worker blocked in the host (a socket read, Poller.wait, sleep_ms, a
+//   console read) blocks every worker: the interpreter has one thread.
+// - Values need no copying (an interpreted value is immutable and shared);
+//   a channel is a queue of values, closed only by Sender.close.
+import ckast
+import ival
+import ieval
+import ibuiltin
+
+pub const S_NEW: Int = 0
+pub const S_BLOCKED: Int = 1
+pub const S_DONE: Int = 2
+pub const S_RUNNING: Int = 3
+
+// A blocked worker waits for on_chan (a value or the close) or for on_task
+// to finish; with both -1 it only yielded (try_recv) and can always run.
+// yield_at: the log position of its try_recv that yielded (which does not
+// yield again when the worker is resumed there).
+pub struct Task {
+    pub f: ival.Val, pub arg: ival.Val, pub state: Int, pub on_chan: Int, pub on_task: Int, pub res: ival.Val,
+    pub log: List[ival.Val], pub pos: Int, pub yield_at: Int,
+}
+
+pub struct Chan { pub q: List[ival.Val], pub head: Int, pub closed: Bool }
+
+// cur: the worker running now (-1: the main program); last: the worker that
+// ran last (round robin).
+pub struct Sched { pub tasks: List[Task], pub chans: List[Chan], pub cur: Int, pub last: Int, pub cores: Int }
+
+pub fn new_sched() -> Sched { Sched { tasks: [], chans: [], cur: -1, last: -1, cores: 0 } }
+
+pub fn work_names() -> List[Str] {
+    [
+        "Sys.workers", "Workers.spawn", "Workers.cores", "Worker.join", "channel", "Sender.send", "Sender.close",
+        "Receiver.recv", "Receiver.try_recv",
+    ]
+}
+
+const DEADLOCK: Str = "deadlock: every worker is waiting for a channel or a join"
+
+// A builtin with an effect called by a worker: logged, and replayed when the
+// worker is resumed.
+pub fn logged(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    let w = it.wk.cur
+    let p = it.wk.tasks[w].pos
+    if p < it.wk.tasks[w].log.len() {
+        it.wk.tasks[w].pos = p + 1
+        return Ok(it.wk.tasks[w].log[p])
+    }
+    let r = ibuiltin.call_raw(mut it, id, fi, a, sp)?
+    it.wk.tasks[w].log.push(r)
+    it.wk.tasks[w].pos = p + 1
+    Ok(r)
+}
+
+pub fn call(it: mut ieval.Interp, id: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    match id {
+        0 => Ok(ival.vcap(ival.CAP_WORKERS, 0)),
+        1 => {
+            it.wk.tasks.push(Task {
+                f: a[1], arg: a[2], state: S_NEW, on_chan: -1, on_task: -1, res: ival.unit(), log: [], pos: 0, yield_at: -1,
+            })
+            Ok(ival.vcap(ival.CAP_WORKER, it.wk.tasks.len() - 1))
+        }
+        2 => Ok(ival.vint(cores(mut it))),
+        3 => join(mut it, a[0].j, sp),
+        4 => {
+            it.wk.chans.push(Chan { q: [], head: 0, closed: false })
+            let c = it.wk.chans.len() - 1
+            Ok(ival.vtuple([ival.vcap(ival.CAP_SENDER, c), ival.vcap(ival.CAP_RECEIVER, c)]))
+        }
+        5 => {
+            let c = a[0].j
+            if it.wk.chans[c].closed { return ieval.trap("send on a closed channel", sp) }
+            it.wk.chans[c].q.push(a[1])
+            Ok(ival.unit())
+        }
+        6 => {
+            it.wk.chans[a[0].j].closed = true
+            Ok(ival.unit())
+        }
+        7 => recv(mut it, a[0].j, sp),
+        _ => try_recv(mut it, a[0].j, sp),
+    }
+}
+
+fn cores(it: mut ieval.Interp) -> Int {
+    if it.wk.cores == 0 {
+        it.wk.cores = 1
+        match it.proc.run_with("getconf", ["_NPROCESSORS_ONLN"], "", [], 5000) {
+            Ok(o) => match Str.from_utf8_lossy(o.out).trim().to_int() {
+                Some(n) if n > 0 => { it.wk.cores = n }
+                _ => {}
+            },
+            Err(_) => {}
+        }
+    }
+    it.wk.cores
+}
+
+fn has(it: mut ieval.Interp, c: Int) -> Bool { it.wk.chans[c].head < it.wk.chans[c].q.len() }
+
+fn ready(it: mut ieval.Interp, c: Int) -> Bool { has(mut it, c) or it.wk.chans[c].closed }
+
+fn pop(it: mut ieval.Interp, c: Int) -> ival.Val {
+    let h = it.wk.chans[c].head
+    let v = it.wk.chans[c].q[h]
+    it.wk.chans[c].head = h + 1
+    if h + 1 >= 64 and (h + 1) * 2 >= it.wk.chans[c].q.len() {
+        let q = it.wk.chans[c].q
+        it.wk.chans[c].q = q.slice(h + 1, q.len())
+        it.wk.chans[c].head = 0
+    }
+    v
+}
+
+fn take(it: mut ieval.Interp, c: Int) -> ival.Val {
+    if has(mut it, c) { return ieval.some(it.ix, pop(mut it, c)) }
+    ieval.none(it.ix)
+}
+
+fn recv(it: mut ieval.Interp, c: Int, sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if not ready(mut it, c) {
+        if it.wk.cur >= 0 { return block(mut it, c, -1) }
+        while not ready(mut it, c) { step(mut it, sp)? }
+    }
+    Ok(take(mut it, c))
+}
+
+fn try_recv(it: mut ieval.Interp, c: Int, sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if not has(mut it, c) {
+        let w = it.wk.cur
+        if w >= 0 {
+            // a worker polling yields its turn once
+            let p = it.wk.tasks[w].pos
+            if it.wk.tasks[w].yield_at != p {
+                it.wk.tasks[w].yield_at = p
+                return block(mut it, -1, -1)
+            }
+        } else {
+            // the main program polling: every worker that can run takes a turn
+            var n = it.wk.tasks.len()
+            while n > 0 and not has(mut it, c) {
+                let x = runnable(mut it)
+                if x < 0 { break }
+                run(mut it, x, sp)?
+                n -= 1
+            }
+        }
+    }
+    Ok(take(mut it, c))
+}
+
+fn join(it: mut ieval.Interp, t: Int, sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if it.wk.tasks[t].state != S_DONE {
+        if it.wk.cur >= 0 { return block(mut it, -1, t) }
+        while it.wk.tasks[t].state != S_DONE { step(mut it, sp)? }
+    }
+    Ok(it.wk.tasks[t].res)
+}
+
+// The running worker would wait: suspend it.
+fn block(it: mut ieval.Interp, c: Int, t: Int) -> Result[ival.Val, ieval.Ctl] {
+    let w = it.wk.cur
+    it.wk.tasks[w].on_chan = c
+    it.wk.tasks[w].on_task = t
+    Err(CBlock)
+}
+
+fn can_run(it: mut ieval.Interp, w: Int) -> Bool {
+    let st = it.wk.tasks[w].state
+    if st == S_NEW { return true }
+    if st != S_BLOCKED { return false }
+    let c = it.wk.tasks[w].on_chan
+    let t = it.wk.tasks[w].on_task
+    if c >= 0 { return ready(mut it, c) }
+    if t >= 0 { return it.wk.tasks[t].state == S_DONE }
+    true
+}
+
+// The next worker after the last one that ran that can run, or -1.
+fn runnable(it: mut ieval.Interp) -> Int {
+    let n = it.wk.tasks.len()
+    for k in 1..n + 1 {
+        let w = (it.wk.last + k) % n
+        if can_run(mut it, w) { return w }
+    }
+    -1
+}
+
+// The main program waits: run one worker, or trap if none can run.
+fn step(it: mut ieval.Interp, sp: ckast.Span) -> Result[Unit, ieval.Ctl] {
+    let w = runnable(mut it)
+    if w < 0 { return ieval.trap(DEADLOCK, sp) }
+    run(mut it, w, sp)
+}
+
+// Run (or resume, replaying its log) worker w until it finishes or waits.
+fn run(it: mut ieval.Interp, w: Int, sp: ckast.Span) -> Result[Unit, ieval.Ctl] {
+    let depth = it.depth
+    let site = it.site
+    it.wk.cur = w
+    it.wk.last = w
+    it.wk.tasks[w].pos = 0
+    it.wk.tasks[w].state = S_RUNNING
+    it.depth = 0
+    let f = it.wk.tasks[w].f
+    let arg = it.wk.tasks[w].arg
+    let r = ieval.apply(mut it, f, [arg], sp)
+    it.wk.cur = -1
+    match r {
+        Ok(v) => {
+            it.wk.tasks[w].state = S_DONE
+            it.wk.tasks[w].res = v
+            it.wk.tasks[w].log = []
+        }
+        Err(CBlock) => { it.wk.tasks[w].state = S_BLOCKED }
+        Err(c) => return Err(c), // a trap or an exit in a worker ends the program
+    }
+    it.depth = depth
+    it.site = site
+    Ok(())
+}

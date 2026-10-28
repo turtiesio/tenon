@@ -25,3 +25,87 @@ pub trait Hash {}
 pub trait Show {
     fn to_str(self) -> Str
 }
+
+// ---- Workers and channels (docs/reference.md §18) ----
+//
+// A worker runs a function on another OS thread with a heap of its own:
+// workers share nothing. A value passed to spawn, returned by a worker or
+// sent through a channel is copied into the receiving worker's heap (a
+// unique value is moved: the sender loses it), so reference counts stay
+// single-threaded and there are no data races.
+
+// The types whose values can go to another worker: every type except linear
+// types (a channel or a worker that is never joined could drop the
+// obligation) and the socket handles Poller, Listener and Conn (their sockets
+// belong to the worker that opened them: send a Net and open them there).
+// Derived structurally, like Eq; a type parameter needs the bound `T: Send`.
+pub trait Send {}
+
+// The authority to start workers. Like every capability it comes only from
+// `main`'s Sys, and a worker can use only what it is given.
+extern fn Sys.workers(self) -> Workers
+
+// Start `f(arg)` on a new worker. A trap in a worker ends the whole program,
+// as a trap in `main` does.
+extern fn Workers.spawn[A: Send, R: Send](self, f: fn(A) -> R, arg: A) -> Worker[R]
+
+// The number of cores available (for sizing a pool of workers).
+extern fn Workers.cores(self) -> Int
+
+// Wait for the worker to finish and give its result (a copy, so a handle
+// may be joined again, also from another worker).
+extern fn Worker[R].join(self) -> R
+
+// A new channel: any number of workers may send to it and receive from it
+// (each value is received once). Channels are unbounded: send never waits.
+extern fn channel[T: Send]() -> (Sender[T], Receiver[T])
+
+// Send a value (copied into the channel; a unique one is moved). Sending on
+// a closed channel traps.
+extern fn Sender[T].send(self, x: T)
+
+// Close the channel: no more values can be sent; receivers get the values
+// still in it, then None. Channels are closed only by close (not by dropping
+// the senders); a program that waits on a channel nobody can send to or
+// close traps with "deadlock".
+extern fn Sender[T].close(self)
+
+// The next value, waiting for one; None once the channel is closed and empty.
+extern fn Receiver[T].recv(self) -> Option[T]
+
+// The next value if one is there now (None if the channel is empty), without
+// waiting: for polling a channel from an event loop.
+extern fn Receiver[T].try_recv(self) -> Option[T]
+
+// `f` of every element, computed by up to `cores()` workers: the same list as
+// `xs.map(f)`, in the same order.
+pub fn Workers.par_map[T: Send, U: Send](self, xs: List[T], f: fn(T) -> U) -> List[U] { self.par_map_n(self.cores(), xs, f) }
+
+// par_map with at most n workers. The list is cut into a few chunks per
+// worker, which the workers take from a channel as they finish the previous
+// one (so uneven elements still keep every worker busy).
+pub fn Workers.par_map_n[T: Send, U: Send](self, n: Int, xs: List[T], f: fn(T) -> U) -> List[U] {
+    let len = xs.len()
+    let k = n.min(len)
+    if k <= 1 { return xs.map(f) }
+    let nch = (k * 4).min(len)
+    let (jobs, todo): (Sender[(Int, List[T])], Receiver[(Int, List[T])]) = channel()
+    let (done, results): (Sender[(Int, List[U])], Receiver[(Int, List[U])]) = channel()
+    for c in 0..nch { jobs.send((c, xs.slice(len * c / nch, len * (c + 1) / nch))) }
+    jobs.close()
+    var hs: List[Worker[Unit]] = []
+    for _ in 0..k { hs.push(self.spawn(fn(_) => map_chunks(todo, done, f), ())) }
+    var parts: List[List[U]] = List.filled(nch, [])
+    for _ in 0..nch {
+        let (c, ys) = results.recv().unwrap()
+        parts[c] = ys
+    }
+    for h in hs { h.join() }
+    var out: List[U] = []
+    for p in parts { out.extend(p) }
+    out
+}
+
+fn map_chunks[T, U](todo: Receiver[(Int, List[T])], done: Sender[(Int, List[U])], f: fn(T) -> U) {
+    while let Some((c, ys)) = todo.recv() { done.send((c, ys.map(f))) }
+}

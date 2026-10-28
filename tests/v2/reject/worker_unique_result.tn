@@ -1,0 +1,11 @@
+// error: a worker cannot return the unique type Token: a Worker handle can be copied and every join gives the result; send it through a channel instead
+// A worker cannot return a unique value: a Worker handle can be copied, and
+// each join would give it again. Send it through a channel instead.
+unique struct Token { id: Int }
+
+fn make(id: Int) -> Token { Token { id } }
+
+fn main(sys: Sys) {
+    let h = sys.workers().spawn(make, 3)
+    sys.console.println("{h.join().id}")
+}

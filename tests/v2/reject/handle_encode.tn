@@ -1,0 +1,7 @@
+// error: cannot encode Sender[Str]: Sender is a capability
+// Channel handles cannot be encoded (nor decoded: no forged channels).
+fn main(sys: Sys) {
+    let (tx, _) = channel()
+    tx.send("x")
+    sys.console.println(encode(tx))
+}

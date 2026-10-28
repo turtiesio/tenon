@@ -1,0 +1,12 @@
+// error: type Job does not implement Send (needed by bound A: Send of Workers.spawn): the linear type Job could be dropped by a channel or a worker that is never joined
+// A linear value cannot be given to a worker.
+linear struct Job { id: Int }
+
+fn Job.finish(self) -> Int { self.id }
+
+fn finish(j: Job) -> Int { j.finish() }
+
+fn main(sys: Sys) {
+    let h = sys.workers().spawn(finish, Job { id: 1 })
+    sys.console.println("{h.join()}")
+}

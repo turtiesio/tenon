@@ -1,0 +1,9 @@
+// Sending on a closed channel traps (the value would never be received).
+fn main(sys: Sys) {
+    let (tx, rx) = channel()
+    tx.send(1)
+    tx.close()
+    sys.console.println("{rx.recv()}")
+    tx.send(2)
+    sys.console.println("unreachable")
+}

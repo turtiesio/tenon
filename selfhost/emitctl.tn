@@ -176,6 +176,15 @@ pub fn lambda(m: mut emit.Em, e: ckast.Expr, params: List[(Str, Option[ckast.TEx
     drop += "tn_free(E); }\n"
     m.helpers += env
     m.helpers += drop
+    if m.mt {
+        // a deep copy of the captures, for sending the closure to another worker
+        var cp = "static tn_env *" + name + "_copy(tn_env *e) \{ struct " + name + "_env *E = (void *)e, *N = tn_alloc(sizeof *N); *N = *E; N->h.rc = 1; "
+        for c in caps {
+            let tn = m.cty(c.1)
+            cp += "N->c_" + c.0 + " = " + tn + "_copy(E->c_" + c.0 + "); "
+        }
+        m.helpers += cp + "return &N->h; }\n"
+    }
     var ps = ["tn_env *env_"]
     for i in 0..params.len().min(pts.len()) {
         let tn = m.cty(pts[i])
@@ -210,7 +219,8 @@ pub fn lambda(m: mut emit.Em, e: ckast.Expr, params: List[(Str, Option[ckast.TEx
     // creation
     if caps.is_empty() { return emit.bor("((tn_fn)\{ (void *)" + name + ", NULL })") }
     let env_v = m.fresh("env")
-    m.line("struct {name}_env *{env_v} = tn_alloc(sizeof *{env_v}); {env_v}->h.rc = 1; {env_v}->h.drop = {name}_drop;")
+    let cpy = if m.mt { " {env_v}->h.copy = {name}_copy;" } else { "" }
+    m.line("struct {name}_env *{env_v} = tn_alloc(sizeof *{env_v}); {env_v}->h.rc = 1; {env_v}->h.drop = {name}_drop;" + cpy)
     for c in caps {
         let code2 = m.own(emit.bor(m.local_code(c.0)), c.1)
         m.line(env_v + "->c_" + c.0 + " = " + code2 + ";")

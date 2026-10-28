@@ -1,0 +1,3 @@
+exit: 70
+stderr: trap: deadlock: every worker is waiting for a channel or a join
+stderr:   at workers_deadlock.tn:14:27
