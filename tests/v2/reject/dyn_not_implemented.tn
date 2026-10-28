@@ -1,0 +1,14 @@
+// error: type Str does not implement Shape (needed by dyn Shape)
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl Shape for Circle {
+    fn area(self) -> Int { self.r }
+}
+
+fn main() {
+    let _ = dyn Shape("square")
+}

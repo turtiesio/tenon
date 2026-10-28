@@ -1,0 +1,12 @@
+// error: unknown trait 'Shap'
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl Shap for Circle {
+    fn area(self) -> Int { 0 }
+}
+
+fn main() {}

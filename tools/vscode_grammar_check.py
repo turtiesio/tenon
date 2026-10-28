@@ -3,7 +3,9 @@
 
 1. The extension's JSON files parse; package.json points at files that exist.
 2. The grammar's keyword rules (repository.keywords, each `\\b(a|b|...)\\b`)
-   name exactly the bootstrap lexer's KEYWORDS: none missing, none invented.
+   name exactly the self-hosted lexer's keywords (selfhost/lexer.tn
+   `keywords()`; the bootstrap's list lacks the v2 ones such as `trait`):
+   none missing, none invented.
 3. Every regex compiles with Python's `re`. The grammar is kept to the subset
    that Oniguruma (VS Code) and Python agree on; the few Oniguruma spellings
    that have a Python equivalent are translated first (TRANSLATE), and
@@ -15,7 +17,7 @@
    grammar closes them at the end of a line as a fallback. A scope still open
    at the end of a line is a leak; a scope closed only by that fallback means
    the grammar thinks a string is unterminated, which is a leak too unless the
-   real lexer (`target/release/tenon tokens`) rejects the file on that line.
+   real lexer (`tenonc tokens`, $TENON) rejects the file on that line.
    A few pinned lines (SAMPLES) also check the scopes given to tricky tokens.
 
 Usage: tools/vscode_grammar_check.py [FILE.tn...]   (default: the whole repo)
@@ -30,8 +32,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXT = os.path.join(ROOT, "editors", "vscode")
 GRAMMAR = os.path.join(EXT, "syntaxes", "tenon.tmLanguage.json")
-TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "release", "tenon")  # ./check: tenonc
-LEXERS = ["bootstrap/src/lexer.rs", "src/lexer.rs"]
+TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenonc")  # ./check: $TENONC
+LEXERS = ["selfhost/lexer.tn"]
 
 # Oniguruma spelling -> Python spelling.
 TRANSLATE = [
@@ -50,6 +52,11 @@ SAMPLES = [
     ('linear struct Tx { id: Int }', "linear", "storage.modifier.tenon", None),
     ('linear struct Tx { id: Int }', "Tx", "entity.name.type.tenon", None),
     ('import journal', "journal", "entity.name.namespace.tenon", None),
+    ('pub trait Shape {', "trait", "storage.type.tenon", None),
+    ('pub trait Shape {', "Shape", "entity.name.type.tenon", None),
+    ('impl[T: Show] Show for List[T] {', "impl", "storage.type.tenon", None),
+    ('let d = dyn Shape(c)', "dyn", "storage.modifier.tenon", None),
+    ('let d = dyn Shape(c)', "Shape", "entity.name.type.tenon", "variable.other.enummember.tenon"),
     ('let c: Console = sys.console', "Console", "support.type.capability.tenon", None),
     ('let s = "a {x:>8} b"', ">8", "constant.other.format-spec.tenon", None),
     ('let s = "a {x:>8} b"', "x", "meta.embedded.expression.tenon", "constant.other.format-spec.tenon"),
@@ -218,7 +225,7 @@ def lexer_keywords():
         path = os.path.join(ROOT, rel)
         if os.path.exists(path):
             src = open(path, encoding="utf-8").read()
-            m = re.search(r"const KEYWORDS: &\[&str\] = &\[(.*?)\];", src, re.S)
+            m = re.search(r"pub fn keywords\(\) -> List\[Str\] \{(.*?)\n\}", src, re.S)
             if m:
                 return rel, set(re.findall(r'"(\w+)"', m.group(1)))
     return None, None
@@ -280,7 +287,7 @@ def main():
 
     rel, kws = lexer_keywords()
     if kws is None:
-        problems.append(f"no KEYWORDS list found in {' or '.join(LEXERS)}")
+        problems.append(f"no keywords() list found in {' or '.join(LEXERS)}")
     else:
         gkw = set()
         for p in g.repo["keywords"]["patterns"]:

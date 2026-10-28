@@ -4,12 +4,13 @@
 #   1. every .tn file not listed in tools/fmt_skip.txt is in canonical layout
 #      (`tenonfmt --check`);
 #   2. formatting preserves meaning, on every .tn file it changes (skipped
-#      ones included; with --all on every file): `tenon ast` of the original
+#      ones included; with --all on every file): `tenonc ast` of the original
 #      and of the formatted text are identical except positions, and so are
-#      the tokens (`tenon tokens`) except a `,` or `;` directly before a
-#      closing bracket;
+#      the tokens (`tenonc tokens`) except a `,` or `;` directly before a
+#      closing bracket (the self-hosted parser, so v2 files are covered too;
+#      tenonc is $TENONC, else built here);
 #   3. formatting is idempotent: the formatted text is in canonical layout;
-#   4. a file is refused (left unchanged) exactly when `tenon ast` cannot
+#   4. a file is refused (left unchanged) exactly when `tenonc ast` cannot
 #      parse it; files that do not parse are exempt from 1;
 #   5. tests/fmt/NAME.in.tn formats to tests/fmt/NAME.out.tn.
 set -euo pipefail
@@ -17,7 +18,8 @@ cd "$(dirname "$0")/.."
 T=target/release/tenon
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 "$T" build selfhost/tenonfmt.tn -o "$tmp/tenonfmt"
-python3 - "$T" "$tmp" "$@" <<'EOF'
+if [ -n "${TENONC:-}" ]; then A=$TENONC; else A=$tmp/tenonc; "$T" build selfhost/tenonc.tn -o "$A" -O0; fi
+python3 - "$A" "$tmp" "$@" <<'EOF'
 import fnmatch, os, re, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
@@ -74,9 +76,9 @@ def same(f):
     a = run(T, "ast", f)
     parses = not a.stdout.startswith("error ")
     if f in refused:
-        return [f"{f}: refused by tenonfmt, but `tenon ast` parses it"] if parses else []
+        return [f"{f}: refused by tenonfmt, but `tenonc ast` parses it"] if parses else []
     if not parses:
-        return [f"{f}: formatted by tenonfmt, but `tenon ast` does not parse it"]
+        return [f"{f}: formatted by tenonfmt, but `tenonc ast` does not parse it"]
     if f not in changed and not every:
         return []
     b = run(T, "ast", os.path.join(c, f))

@@ -45,14 +45,30 @@ pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
     }
     var vnames: List[List[Str]] = []
     for e in env.enums { vnames.push(e.variants.map(fn(v) => v.0)) }
-    let names = ival.Names { snames, shown, full, vnames }
+    // types with a Show impl format with it (the prelude's Show; not when encoding)
+    var ovs: Map[(Int, Int), Int] = [:]
+    for im in env.impls {
+        if env.is_show(im.tr) {
+            match im.target {
+                Con(n, _) => match env.struct_idx(n) {
+                    Some(si) => ovs[(0, si)] = im.fns[0],
+                    None => match env.enum_idx(n) {
+                        Some(ei) => ovs[(1, ei)] = im.fns[0],
+                        None => {}
+                    },
+                },
+                _ => {}
+            }
+        }
+    }
+    let names = ival.Names { snames, shown, full, vnames, ovs }
     let code = icode.lower(c, ibuiltin.numbering(ibuiltin.ext_names()), ibuiltin.numbering(ibuiltin.mut_names()))
     let ix = ieval.Ix {
         opt: env.enum_idx("Option").unwrap(), res: env.enum_idx("Result").unwrap(), io: env.enum_idx("IoError").unwrap(),
         ev: env.enum_idx("NetEvent").unwrap(),
     }
     var it = ieval.Interp {
-        fns: code.fns, lams: code.lams, names, ix, files: fr.files.map(fn(f) => f.0), site: span0(), depth: 0, checked: c,
+        fns: code.fns, lams: code.lams, vts: code.vts, names, ix, files: fr.files.map(fn(f) => f.0), site: span0(), depth: 0, checked: c,
         con: sys.console, clock: sys.clock, net: sys.net, proc: sys.proc, fss: [sys.fs], net_state: icap.new_net_state(),
         bp: sys.net.poller(), pp0: sys.net.poller(), pp1: sys.net.poller(), pp2: sys.net.poller(), pp3: sys.net.poller(),
     }
@@ -76,7 +92,11 @@ pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
                 return st
             }
             if v.k == ival.K_ENUM and v.j == 1 {
-                it.con.eprintln("error: " + ival.show_top(v.xs[0], it.names))
+                let payload = match ieval.prerender(mut it, v.xs[0]) {
+                    Ok(x) => x,
+                    Err(_) => v.xs[0],
+                }
+                it.con.eprintln("error: " + ival.show_top(payload, it.names))
                 return 1
             }
             0

@@ -3,6 +3,18 @@
 import parser
 
 fn tps(ps: List[Str]) -> Str { if ps.is_empty() { "" } else { "[" + ps.join(", ") + "]" } }
+
+// Type parameters with their bounds (`[T: Show + Eq, U]`).
+fn btps(ps: List[Str], bs: List[parser.Bound]) -> Str {
+    if bs.is_empty() { return tps(ps) }
+    "[" + ps.map(fn(p) => {
+        var s = p
+        for b in bs {
+            if b.param == p { s += ": " + b.traits.map(fn(t) => t.0).join(" + ") }
+        }
+        s
+    }).join(", ") + "]"
+}
 fn vis(p: Bool) -> Str { if p { " pub" } else { "" } }
 fn kind(k: Str) -> Str { if k == "" { "" } else { " " + k } }
 fn at(p: parser.Pos) -> Str { "@{p.line}:{p.col}" }
@@ -122,6 +134,7 @@ fn expr(e: parser.Expr) -> Str {
             })
             "lambda (" + params.join(", ") + ")" + r.map(fn(t) => " -> " + ty(t)).unwrap_or("") + " " + expr(b)
         }
+        EDyn(t, x) => "dyn " + t + " " + expr(x),
     }
     "(" + at(e.at) + " " + body + ")"
 }
@@ -137,18 +150,25 @@ fn dump(p: parser.Program) -> Str {
         let vs = e.variants.map(fn(v) => " (" + v.0 + list(v.1.map(ty)) + ")")
         out.push("(enum" + vis(e.public) + kind(e.kind) + " " + e.name + tps(e.tparams) + vs.join("") + ")")
     }
-    for f in p.fns {
-        let owner = f.owner.map(fn(o) => ty(o) + ".").unwrap_or("")
-        let selfk = if f.self_kind == "" { "" } else { " " + f.self_kind }
-        let ps = f.params.map(fn(x) => " (" + x.name + (if x.by_ref { " ref" } else { "" }) + (if x.by_mut { " mut" } else { "" }) + " " + ty(x.ty) + ")")
-        let ret = f.ret.map(fn(r) => " -> " + ty(r)).unwrap_or("")
-        let body = match f.body {
-            Some(b) => " " + block(b),
-            None => " extern",
-        }
-        out.push("(" + (if f.is_const { "const" } else { "fn" }) + vis(f.public) + " " + owner + f.name + tps(f.tparams) + selfk + ps.join("") + ret + body + ")")
+    for f in p.fns { out.push(fn_decl(f, " extern")) }
+    for t in p.traits { out.push("(trait" + vis(t.public) + " " + t.name + list(t.methods.map(fn(f) => fn_decl(f, ""))) + ")") }
+    for i in p.impls {
+        out.push("(impl" + btps(i.tparams, i.bounds) + " " + i.trait_name + " for " + ty(i.target) + list(i.methods.map(fn(f) => fn_decl(f, ""))) + ")")
     }
     out.map(fn(l) => l + "\n").join("")
+}
+
+// `no_body`: what a function without a body shows (an extern, or a trait method without a default).
+fn fn_decl(f: parser.FnDecl, no_body: Str) -> Str {
+    let owner = f.owner.map(fn(o) => ty(o) + ".").unwrap_or("")
+    let selfk = if f.self_kind == "" { "" } else { " " + f.self_kind }
+    let ps = f.params.map(fn(x) => " (" + x.name + (if x.by_ref { " ref" } else { "" }) + (if x.by_mut { " mut" } else { "" }) + " " + ty(x.ty) + ")")
+    let ret = f.ret.map(fn(r) => " -> " + ty(r)).unwrap_or("")
+    let body = match f.body {
+        Some(b) => " " + block(b),
+        None => no_body,
+    }
+    "(" + (if f.is_const { "const" } else { "fn" }) + vis(f.public) + " " + owner + f.name + btps(f.tparams, f.bounds) + selfk + ps.join("") + ret + body + ")"
 }
 
 // The dump of a source text, or the parser's first error, as `tenon ast` prints it.

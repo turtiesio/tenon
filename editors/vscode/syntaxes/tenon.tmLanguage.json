@@ -46,13 +46,13 @@
       ]
     },
     "keywords": {
-      "comment": "The union of these alternations must equal the bootstrap lexer's KEYWORDS (checked).",
+      "comment": "The union of these alternations must equal the self-hosted lexer's keywords() (selfhost/lexer.tn; checked).",
       "patterns": [
         { "name": "keyword.control.tenon", "match": "\\b(if|else|while|for|in|match|return|break|continue)\\b" },
         { "name": "keyword.operator.logical.tenon", "match": "\\b(and|or|not)\\b" },
         { "name": "keyword.control.import.tenon", "match": "\\b(import)\\b" },
-        { "name": "storage.type.tenon", "match": "\\b(fn|let|var|struct|enum|const)\\b" },
-        { "name": "storage.modifier.tenon", "match": "\\b(pub|linear|unique|mut|ref|extern)\\b" },
+        { "name": "storage.type.tenon", "match": "\\b(fn|let|var|struct|enum|const|trait|impl)\\b" },
+        { "name": "storage.modifier.tenon", "match": "\\b(pub|linear|unique|mut|ref|extern|dyn)\\b" },
         { "name": "constant.language.boolean.tenon", "match": "\\b(true|false)\\b" },
         { "name": "variable.language.self.tenon", "match": "\\b(self)\\b" }
       ]
@@ -74,9 +74,17 @@
     "type-decl": {
       "patterns": [
         {
-          "match": "\\b(struct|enum)\\s+([A-Z][A-Za-z0-9_]*)",
+          "match": "\\b(struct|enum|trait)\\s+([A-Z][A-Za-z0-9_]*)",
           "captures": {
             "1": { "name": "storage.type.tenon" },
+            "2": { "name": "entity.name.type.tenon" }
+          }
+        },
+        {
+          "comment": "dyn Trait (a type, or a conversion `dyn Trait(x)`; not a variant)",
+          "match": "\\b(dyn)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.modifier.tenon" },
             "2": { "name": "entity.name.type.tenon" }
           }
         }

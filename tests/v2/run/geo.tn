@@ -1,0 +1,35 @@
+// module (imported by trait_modules.tn)
+// A public trait with a default method, a type implementing it, and a
+// private trait used only inside the module.
+pub trait Shape {
+    fn area(self) -> Int
+    fn label(self) -> Str { "shape of area {self.area()}" }
+}
+
+trait Secret {
+    fn code(self) -> Int
+}
+
+pub struct Circle { pub r: Int }
+
+impl Shape for Circle {
+    fn area(self) -> Int { 3 * self.r * self.r }
+}
+
+impl Secret for Circle {
+    fn code(self) -> Int { self.r * 1000 }
+}
+
+pub fn total(xs: List[dyn Shape]) -> Int {
+    var t = 0
+    for x in xs { t += x.area() }
+    t
+}
+
+pub fn code_of(c: Circle) -> Int { c.code() }
+
+pub fn biggest[T: Shape](xs: List[T]) -> Int {
+    var b = 0
+    for x in xs { b = b.max(x.area()) }
+    b
+}

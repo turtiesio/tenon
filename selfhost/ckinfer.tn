@@ -28,12 +28,15 @@ pub struct Ck {
     pub types: Map[Int, cktypes.Ty],
     pub res: Map[Int, ckenv.Res],
     pub captures: Map[Int, List[(Str, cktypes.Ty)]],
+    pub bmap: Map[Str, List[Int]],                         // bounds of the type parameters in scope
+    pub pbounds: List[(ckast.Span, cktypes.Ty, Int, Str)], // pending: type, trait it must implement, what needs it
 }
 
 pub fn new_ck(env: ckenv.Env) -> Ck {
     Ck {
         env, sub: cktypes.new_subst(), scopes: [], ctx: [], ptypes: [:], pres: [:], pcaps: [:], lambdas: [],
         tparams: [], self_mut: false, in_callee: false, let_types: [], types: [:], res: [:], captures: [:],
+        bmap: [:], pbounds: [],
     }
 }
 
@@ -63,6 +66,12 @@ pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Di
     self.sub = cktypes.new_subst()
     let info = self.env.fns[idx]
     self.tparams = info.tparams
+    self.bmap = self.env.bound_map(idx)
+    self.pbounds = []
+    self.env.self_ty = match info.origin {
+        OImpl(_) => info.owner,
+        _ => None,
+    }
     self.self_mut = f.self_kind == MutSelf
     var params: List[Local] = []
     let mutp = f.params.filter(fn(p) => p.by_mut).map(fn(p) => p.name)
@@ -77,8 +86,29 @@ pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Di
             return ckast.fail(lt.0, "cannot infer the type of '" + lt.1 + "'; add a type annotation (for example `let " + lt.1 + ": List[Int] = ...`)")
         }
     }
+    for pb in self.pbounds {
+        let t = self.sub.finish(pb.1)
+        if not self.env.implements(t, pb.2, self.bmap) {
+            let kind = self.env.kind_of(t)
+            if pb.3.starts_with("dyn ") and kind != Plain {
+                return ckast.fail(pb.0, "a 'dyn' value cannot hold the " + ckenv.kind_word(kind) + " type " + t.show())
+            }
+            return ckast.fail(pb.0, "type " + t.show() + " does not implement " + self.env.traits[pb.2].name + " (needed by " + pb.3 + ")")
+        }
+    }
     self.flush()
     Ok(())
+}
+
+// Record that the type arguments of a use of function fi must satisfy its bounds.
+fn Ck.need_bounds(mut self, fi: Int, targs: List[cktypes.Ty], sp: ckast.Span) {
+    let f = self.env.fns[fi]
+    for i in 0..f.bounds.len().min(targs.len()) {
+        for b in f.bounds[i] {
+            let p = f.tparams[i]
+            self.pbounds.push((sp, targs[i], b, "bound " + p + ": " + self.env.traits[b].name + " of " + f.name))
+        }
+    }
 }
 
 fn finish_all(sub: cktypes.Subst, ts: List[cktypes.Ty]) -> List[cktypes.Ty] { ts.map(fn(t) => sub.finish(t)) }
@@ -95,6 +125,7 @@ fn Ck.flush(mut self) {
             RFn(i, ts) => RFn(i, finish_all(sub, ts)),
             RVariant(e, v, ts) => RVariant(e, v, finish_all(sub, ts)),
             RMethod(i, ts) => RMethod(i, finish_all(sub, ts)),
+            RTrait(tr, mi, t, ts) => RTrait(tr, mi, sub.finish(t), finish_all(sub, ts)),
             other => other,
         }
     }
@@ -809,6 +840,15 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
             self.fmt_spec(x, t, f)?
             Ok(cktypes.t_str())
         }
+        XDyn(tn, x) => {
+            let tr = self.env.resolve_trait(tn, e.sp)?
+            self.env.object_safe(tr, e.sp)?
+            let t0 = self.sub.fresh()
+            let xt = self.expr(x, t0)?
+            let name = self.env.traits[tr].name
+            self.pbounds.push((e.sp, xt, tr, "dyn " + name))
+            Ok(Con("dyn " + name, []))
+        }
     }
 }
 
@@ -854,6 +894,7 @@ fn Ck.name(mut self, e: ckast.Expr, n: Str) -> Result[cktypes.Ty, ckast.Diag] {
                 return Ok(f.ret)
             }
             let targs = self.instantiate(fi)
+            self.need_bounds(fi, targs, e.sp)
             self.pres[e.id] = RFn(fi, targs)
             return Ok(self.fn_type(fi, targs))
         }
@@ -894,6 +935,7 @@ fn Ck.path(mut self, e: ckast.Expr, t0: Str, m: Str) -> Result[cktypes.Ty, ckast
         return Ok(self.env.fns[fi].ret)
     }
     let targs = self.instantiate(fi)
+    self.need_bounds(fi, targs, e.sp)
     self.pres[e.id] = RFn(fi, targs)
     Ok(self.fn_type(fi, targs))
 }
@@ -1051,14 +1093,31 @@ fn Ck.method(mut self, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast
         self.pres[e.id] = RToStr
         return Ok(cktypes.t_str())
     }
+    match rt {
+        Par(p) => {
+            let bs = self.bmap.get(p).unwrap_or([])
+            if bs.is_empty() { return ckast.fail(e.sp, "no methods are available on generic type '" + p + "'") }
+            return self.trait_call(e, recv, rt, bs, m, args, "type parameter '" + p + "'")
+        }
+        _ => {}
+    }
+    match self.env.dyn_trait(rt) {
+        Some(tr) => return self.trait_call(e, recv, rt, [tr], m, args, rt.show()),
+        None => {}
+    }
     let owner = match rt {
         Con(n, _) => n,
-        Par(p) => return ckast.fail(e.sp, "no methods are available on generic type '" + p + "'"),
-        _ => return ckast.fail(e.sp, "type " + self.show(rt) + " has no method '" + m + "'"),
+        _ => "",
     }
-    let fi = match self.env.find_fn(owner + "." + m) {
+    let found = if owner == "" { None } else { self.env.find_fn(owner + "." + m) }
+    let fi = match found {
         Some(i) => i,
         None => {
+            match self.impl_method(e, recv, rt, m)? {
+                Some(i) => return self.method_call(e, recv, m, args, i.0, i.1, owner),
+                None => {}
+            }
+            if owner == "" { return ckast.fail(e.sp, "type " + self.show(rt) + " has no method '" + m + "'") }
             let hint = match self.env.struct_fields(rt) {
                 Some(fs) if fs.any(fn(f) => f.0 == m) => "; to call the field, write (x." + m + ")(...)",
                 _ => "",
@@ -1072,6 +1131,14 @@ fn Ck.method(mut self, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast
         return ckast.fail(e.sp, "'" + owner + "." + m + "' is not a method; call it as " + owner + "." + m + "(...)")
     }
     let targs = self.instantiate(fi)
+    self.method_call(e, recv, m, args, fi, targs, owner)
+}
+
+// A method call resolved to function fi with type arguments targs.
+fn Ck.method_call(mut self, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast.Expr], fi: Int, targs: List[cktypes.Ty], owner: Str) -> Result[cktypes.Ty, ckast.Diag] {
+    let rt = self.sub.shallow(self.ptypes.get(recv.id).unwrap_or(cktypes.t_unit()))
+    let f = self.env.fns[fi]
+    self.need_bounds(fi, targs, e.sp)
     let own = f.owner.unwrap().subst(f.tparams, targs)
     let params = f.params.slice(1, f.params.len()).map(fn(p) => p.1.subst(f.tparams, targs))
     let ret = f.ret.subst(f.tparams, targs)
@@ -1087,5 +1154,78 @@ fn Ck.method(mut self, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast
     self.pres[e.id] = RMethod(fi, targs)
     let roots0 = if f.self_kind == MutSelf { [place_root(recv)] } else { [] }
     self.call_args_mut(e.sp, params, f.muts, args, "method '" + m + "'", roots0)?
+    Ok(ret)
+}
+
+// A method of a trait implemented for the receiver's type: the function and
+// its type arguments, if exactly one impl provides `m`.
+fn Ck.impl_method(mut self, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, m: Str) -> Result[Option[(Int, List[cktypes.Ty])], ckast.Diag] {
+    var cands: List[(Int, Int)] = []
+    for ii in 0..self.env.impls.len() {
+        let im = self.env.impls[ii]
+        let ms = self.env.traits[im.tr].methods
+        for mi in 0..ms.len() {
+            if ms[mi].name == m {
+                var trial = self.sub
+                var vs: List[cktypes.Ty] = []
+                for _ in im.tparams { vs.push(trial.fresh()) }
+                if trial.unify(im.target.subst(im.tparams, vs), rt) { cands.push((ii, mi)) }
+            }
+        }
+    }
+    if cands.is_empty() { return Ok(None) }
+    if cands.len() > 1 {
+        let r = self.sub.resolve(rt)
+        if r.any(is_var) { return ckast.fail(recv.sp, "the type of the receiver must be known here; add a type annotation") }
+        let names = cands.map(fn(c) => self.env.traits[self.env.impls[c.0].tr].name)
+        return ckast.fail(e.sp, "method '" + m + "' of " + r.show() + " is ambiguous: it is in traits " + names.join(" and "))
+    }
+    let (ii, mi) = cands[0]
+    let im = self.env.impls[ii]
+    let vs = self.fresh_list(im.tparams.len())
+    let _ = self.sub.unify(im.target.subst(im.tparams, vs), rt)
+    let fi = im.fns[mi]
+    let tm = self.env.traits[im.tr].methods[mi]
+    let own = self.fresh_list(tm.tparams.len())
+    let targs = match self.env.fns[fi].origin {
+        ODefault(_, _) => [rt] + own,
+        _ => vs + own,
+    }
+    Ok(Some((fi, targs)))
+}
+
+// A call of a method of the traits `trs` on a type parameter (its bounds) or a `dyn` value.
+fn Ck.trait_call(mut self, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, trs: List[Int], m: Str, args: List[ckast.Expr], what: Str) -> Result[cktypes.Ty, ckast.Diag] {
+    var cands: List[(Int, Int)] = []
+    for tr in trs {
+        let ms = self.env.traits[tr].methods
+        for mi in 0..ms.len() {
+            if ms[mi].name == m { cands.push((tr, mi)) }
+        }
+    }
+    if cands.is_empty() {
+        let names = trs.map(fn(t) => self.env.traits[t].name).join(" + ")
+        return ckast.fail(e.sp, what + " has no method '" + m + "' (its traits: " + names + ")")
+    }
+    if cands.len() > 1 {
+        let names = cands.map(fn(c) => self.env.traits[c.0].name)
+        return ckast.fail(e.sp, "method '" + m + "' of " + what + " is ambiguous: it is in traits " + names.join(" and "))
+    }
+    let (tr, mi) = cands[0]
+    let tm = self.env.traits[tr].methods[mi]
+    let mtargs = self.fresh_list(tm.tparams.len())
+    let ps = ["Self"] + tm.tparams
+    let ts = [rt] + mtargs
+    let params = tm.params.map(fn(p) => p.1.subst(ps, ts))
+    let ret = tm.ret.subst(ps, ts)
+    if tm.self_kind == MutSelf {
+        match self.place(recv, false) {
+            Ok(_) => {}
+            Err(d) => return ckast.fail(d.sp, "'" + m + "' mutates its receiver: " + d.msg),
+        }
+    }
+    self.pres[e.id] = RTrait(tr, mi, rt, mtargs)
+    let roots0 = if tm.self_kind == MutSelf { [place_root(recv)] } else { [] }
+    self.call_args_mut(e.sp, params, tm.muts, args, "method '" + m + "'", roots0)?
     Ok(ret)
 }

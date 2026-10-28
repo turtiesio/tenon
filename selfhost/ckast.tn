@@ -56,6 +56,7 @@ pub enum EK {
     XLambda(List[(Str, Option[TExpr])], Option[TExpr], Expr),
     XMutArg(Expr),           // `mut place` as an argument to a `mut` parameter
     XFmt(Expr, parser.Spec), // `{e:SPEC}` inside an XStr (bootstrap/src/ast.rs StrSeg::Expr with a spec)
+    XDyn(Str, Expr),         // `dyn Trait(value)`: the trait as written
 }
 pub struct Expr { pub id: Int, pub sp: Span, pub k: EK }
 // `fallback`: the `_` arm added for `if let` / `while let` (parser.tn `if_let`).
@@ -80,6 +81,25 @@ pub struct FnDecl {
     pub name: Str, pub owner: Option[TExpr], pub tparams: List[Str], pub self_kind: SelfK,
     pub params: List[Param], pub ret: Option[TExpr], pub body: Option[Block], pub public: Bool, pub is_const: Bool,
     pub sp: Span,
+    pub bounds: List[Bound], pub origin: Origin,
+}
+
+// `T: Show + Eq`: the trait names as written.
+pub struct Bound { pub param: Str, pub traits: List[(Str, Span)], pub sp: Span }
+
+// Where a function comes from: an item, a method of impl I (its owner is the
+// impl's type, its type parameters the impl's then its own), or the default
+// body of method M of trait T (generic in `Self`, bounded by T).
+pub enum Origin { OFn, OImpl(Int), ODefault(Int, Int) }
+
+// A trait: its methods' signatures (bodies are in Program.fns, `defaults`
+// gives the function of each method's default body, -1 if none).
+pub struct TraitDecl { pub name: Str, pub public: Bool, pub methods: List[FnDecl], pub defaults: List[Int], pub sp: Span }
+
+// An impl: `methods` are its functions in Program.fns, in source order.
+pub struct ImplDecl {
+    pub trait_name: Str, pub trait_sp: Span, pub target: TExpr, pub tparams: List[Str], pub bounds: List[Bound],
+    pub methods: List[Int], pub sp: Span,
 }
 pub struct StructDecl {
     pub name: Str, pub tparams: List[Str], pub fields: List[(Str, TExpr)], pub pub_fields: List[Bool],
@@ -93,6 +113,7 @@ pub struct Import { pub file: Int, pub name: Str, pub sp: Span }
 pub struct Program {
     pub structs: List[StructDecl], pub enums: List[EnumDecl], pub fns: List[FnDecl], pub imports: List[Import],
     pub modules: List[Str], // module name per file ("" for the prelude and the main file)
+    pub traits: List[TraitDecl], pub impls: List[ImplDecl],
 }
 
 pub fn upper(s: Str) -> Bool { s.len() > 0 and s.byte(0) >= 65 and s.byte(0) <= 90 }
@@ -295,12 +316,17 @@ fn Conv.expr(mut self, e: parser.Expr) -> Expr {
             XLambda(params, self.opt_ty(r), self.expr(b))
         }
         MutArg(x) => XMutArg(self.expr(x)),
+        EDyn(t, x) => XDyn(t, self.expr(x)),
     }
     Expr { id: self.id(), sp: self.sp(e.at), k }
 }
 
 fn self_kind(s: Str) -> SelfK {
     if s == "self" { ValSelf } else if s == "mut-self" { MutSelf } else { NoSelf }
+}
+
+fn Conv.bounds(self, bs: List[parser.Bound]) -> List[Bound] {
+    bs.map(fn(b) => Bound { param: b.param, traits: b.traits.map(fn(t) => (t.0, self.sp(t.1))), sp: self.sp(b.at) })
 }
 
 fn Conv.fn_decl(mut self, f: parser.FnDecl) -> FnDecl {
@@ -312,13 +338,59 @@ fn Conv.fn_decl(mut self, f: parser.FnDecl) -> FnDecl {
     FnDecl {
         name: f.name, owner: self.opt_ty(f.owner), tparams: f.tparams, self_kind: self_kind(f.self_kind),
         params, ret: self.opt_ty(f.ret), body, public: f.public, is_const: f.is_const, sp: self.sp(f.at),
+        bounds: self.bounds(f.bounds), origin: OFn,
+    }
+}
+
+// The traits and impls of one file: default bodies and impl methods become
+// functions (appended to fns); the trait keeps the signatures.
+fn Conv.traits_impls(mut self, f: parser.Program, prog: mut Program) {
+    for t in f.traits {
+        let ti = prog.traits.len()
+        var sigs: List[FnDecl] = []
+        var defaults: List[Int] = []
+        for mi in 0..t.methods.len() {
+            let m = t.methods[mi]
+            let d = self.fn_decl(m)
+            sigs.push(FnDecl { body: None, public: t.public, ..d })
+            match d.body {
+                Some(_) => {
+                    defaults.push(prog.fns.len())
+                    let self_t = TExpr { sp: d.sp, k: TNamed("Self", []) }
+                    let b = Bound { param: "Self", traits: [(t.name, d.sp)], sp: d.sp }
+                    prog.fns.push(FnDecl {
+                        owner: Some(self_t), tparams: ["Self"] + d.tparams, bounds: [b] + d.bounds, origin: ODefault(ti, mi),
+                        public: t.public, ..d
+                    })
+                }
+                None => defaults.push(-1),
+            }
+        }
+        prog.traits.push(TraitDecl { name: t.name, public: t.public, methods: sigs, defaults, sp: self.sp(t.at) })
+    }
+    for im in f.impls {
+        let ii = prog.impls.len()
+        let target = self.ty(im.target)
+        let bs = self.bounds(im.bounds)
+        var ms: List[Int] = []
+        for m in im.methods {
+            let d = self.fn_decl(m)
+            ms.push(prog.fns.len())
+            prog.fns.push(FnDecl {
+                owner: Some(target), tparams: im.tparams + d.tparams, bounds: bs + d.bounds, origin: OImpl(ii), public: true, ..d
+            })
+        }
+        prog.impls.push(ImplDecl {
+            trait_name: im.trait_name, trait_sp: self.sp(im.trait_at), target, tparams: im.tparams, bounds: bs, methods: ms,
+            sp: self.sp(im.at),
+        })
     }
 }
 
 // Merge the parsed files (file 0 is the prelude, 1 the main file) into one
 // program, as bootstrap/src/main.rs `front` does, then rewrite paths.
 pub fn convert(files: List[parser.Program], modules: List[Str]) -> Program {
-    var prog = Program { structs: [], enums: [], fns: [], imports: [], modules }
+    var prog = Program { structs: [], enums: [], fns: [], imports: [], modules, traits: [], impls: [] }
     var c = Conv { file: 0, next: 0 }
     for fi in 0..files.len() {
         c.file = fi
@@ -336,6 +408,7 @@ pub fn convert(files: List[parser.Program], modules: List[Str]) -> Program {
             })
         }
         for d in f.fns { prog.fns.push(c.fn_decl(d)) }
+        c.traits_impls(f, mut prog)
         for im in f.imports { prog.imports.push(Import { file: fi, name: im.0, sp: c.sp(im.1) }) }
     }
     fix_paths(prog)
@@ -470,6 +543,7 @@ fn Fixer.children(self, k: EK) -> EK {
         XLambda(ps, r, b) => XLambda(ps, r, self.expr(b)),
         XMutArg(b) => XMutArg(self.expr(b)),
         XFmt(b, f) => XFmt(self.expr(b), f),
+        XDyn(t, b) => XDyn(t, self.expr(b)),
         other => other,
     }
 }
@@ -561,7 +635,7 @@ fn block_exprs(b: Block) -> List[Expr] {
 pub fn children(e: Expr) -> List[Expr] {
     match e.k {
         XStr(xs, _) | XList(xs) | XTuple(xs) => xs,
-        XField(b, _) | XTField(b, _) | XUnary(_, b) | XTry(b) | XMutArg(b) | XFmt(b, _) => [b],
+        XField(b, _) | XTField(b, _) | XUnary(_, b) | XTry(b) | XMutArg(b) | XFmt(b, _) | XDyn(_, b) => [b],
         XIndex(a, b) | XBinary(_, a, b) => [a, b],
         XCall(c, args) | XMethod(c, _, args) => [c] + args,
         XIf(c, t, els) => {

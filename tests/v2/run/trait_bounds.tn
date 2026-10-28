@@ -1,0 +1,83 @@
+// Generic functions with bounds: trait methods on type parameters, several
+// bounds, derived traits as bounds, bounds passed on to other generic functions.
+trait Describe {
+    fn describe(self) -> Str
+}
+
+trait Weigh {
+    fn weight(self) -> Int
+}
+
+struct Apple { grams: Int }
+
+struct Crate { apples: List[Apple] }
+
+impl Describe for Apple {
+    fn describe(self) -> Str { "apple ({self.grams} g)" }
+}
+
+impl Weigh for Apple {
+    fn weight(self) -> Int { self.grams }
+}
+
+impl Describe for Crate {
+    fn describe(self) -> Str { "crate of {self.apples.len()}" }
+}
+
+impl Weigh for Crate {
+    fn weight(self) -> Int { 500 + total(self.apples) }
+}
+
+impl Describe for Int {
+    fn describe(self) -> Str { "the number {self}" }
+}
+
+fn total[T: Weigh](xs: List[T]) -> Int {
+    var t = 0
+    for x in xs { t += x.weight() }
+    t
+}
+
+fn label[T: Describe + Weigh](x: T) -> Str { x.describe() + ", {x.weight()} g" }
+
+fn heaviest[T: Describe + Weigh](xs: List[T]) -> Str {
+    var best = xs[0]
+    for x in xs {
+        if x.weight() > best.weight() { best = x }
+    }
+    label(best)
+}
+
+// derived traits as bounds
+fn largest[T: Ord](xs: List[T]) -> T {
+    var m = xs[0]
+    for x in xs {
+        if x > m { m = x }
+    }
+    m
+}
+
+fn count_distinct[K: Hash + Eq](xs: List[K]) -> Int {
+    var seen: Map[K, Bool] = [:]
+    for x in xs { seen[x] = true }
+    seen.len()
+}
+
+fn show_all[T: Show](xs: List[T]) -> Str { xs.map(fn(x) => x.to_str()).join("; ") }
+
+fn twice[T: Describe](x: T) -> Str { x.describe() + " / " + x.describe() }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let a = Apple { grams: 150 }
+    let b = Apple { grams: 210 }
+    con.println(label(a))
+    con.println(heaviest([a, b]))
+    let c = Crate { apples: [a, b] }
+    con.println(label(c))
+    con.println("{total([c, Crate { apples: [] }])}")
+    con.println(twice(7))
+    con.println("{largest([3, 9, 4])} {largest(["pear", "fig"])}")
+    con.println("{count_distinct([1, 2, 2, 3, 1])}")
+    con.println(show_all([a, b]))
+}

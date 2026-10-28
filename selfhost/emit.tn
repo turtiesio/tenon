@@ -9,6 +9,7 @@
 //   emitbody    functions, statements, places, expressions, calls
 //   emitctl     patterns, `match`, `?`, closures and function values
 //   emitbi      the prelude's `extern fn`s
+//   emittrait   trait calls, `dyn` values and vtables, Show impls
 //
 // Ownership protocol: every expression yields a CV that is either *owned*
 // (a temp registered in the innermost scope, released at statement or
@@ -25,6 +26,7 @@ import ckenv
 import checker
 import emitlayout
 import emitbody
+import emittrait
 
 pub enum Sk { SkFn, SkBlock, SkStmt, SkLoop }
 
@@ -65,6 +67,11 @@ pub struct Em {
     pub counter: Int,
     pub st: FnState,
     pub err: Str, // set when the program cannot be compiled (polymorphic recursion)
+    // traits (emittrait.tn)
+    pub show_tr: Int,                   // the prelude's Show if some type implements it, else -1
+    pub show_ovs: Map[cktypes.Ty, Str], // a type with a Show impl: its `to_str` instance
+    pub dboxes: Map[cktypes.Ty, Str],   // the box of `dyn` values of a type
+    pub vtables: Map[Str, Str],         // "trait:type" -> its vtable
 }
 
 // The C program for a checked program; Err(message) if it cannot be compiled.
@@ -72,6 +79,7 @@ pub fn emit(c: checker.Checked, names: List[Str], runtime: Str) -> Result[Str, S
     var m = Em {
         c, names, tnames: [:], tlist: [], boxed: [:], fn_names: [:], fn_queue: [], wrappers: [:],
         protos: "", bodies: "", helpers: "", counter: 0, st: new_state(), err: "",
+        show_tr: emittrait.show_trait(c.env), show_ovs: [:], dboxes: [:], vtables: [:],
     }
     let main_name = emitbody.fn_inst(mut m, c.main, [])
     while let Some(job) = m.fn_queue.pop() {
@@ -79,6 +87,11 @@ pub fn emit(c: checker.Checked, names: List[Str], runtime: Str) -> Result[Str, S
         emitbody.emit_fn(mut m, job.0, job.1, job.2)
     }
     let main_c = emitlayout.main_wrapper(mut m, main_name)
+    // (a type first named by `main` may queue its Show impl)
+    while let Some(job) = m.fn_queue.pop() {
+        if m.err != "" { return Err(m.err) }
+        emitbody.emit_fn(mut m, job.0, job.1, job.2)
+    }
     let out = emitlayout.assemble(mut m, runtime, main_c)
     if m.err != "" { return Err(m.err) }
     Ok(out)
@@ -321,6 +334,7 @@ pub fn Em.cty(mut self, t: cktypes.Ty) -> Str {
             _ => {}
         }
         self.tlist.push(t)
+        emittrait.note_type(mut self, t)
     }
     name
 }

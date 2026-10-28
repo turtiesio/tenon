@@ -1,0 +1,10 @@
+// error: has the wrong signature: expected fn(self, Int) -> Int, found fn(self, Str) -> Int
+trait Scale {
+    fn scale(self, k: Int) -> Int
+}
+
+impl Scale for Int {
+    fn scale(self, k: Str) -> Int { self }
+}
+
+fn main() {}

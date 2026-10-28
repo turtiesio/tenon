@@ -1,0 +1,48 @@
+// Traits and obligations: a linear type's impl in its own module finishes
+// the value (`self` consumes it), a bounded generic function consumes a
+// linear argument exactly once; `mut self` trait methods and `mut`
+// parameters on type parameters and concrete types.
+trait Finish {
+    fn finish(self) -> Str
+}
+
+trait Counter {
+    fn bump(mut self) -> Int
+    fn add_to(self, total: mut Int)
+}
+
+linear struct Job { id: Int }
+
+struct Tally { n: Int }
+
+impl Finish for Job {
+    fn finish(self) -> Str { "job {self.id} done" }
+}
+
+impl Counter for Tally {
+    fn bump(mut self) -> Int {
+        self.n += 1
+        self.n
+    }
+    fn add_to(self, total: mut Int) { total += self.n }
+}
+
+fn complete[T: Finish](x: T) -> Str { x.finish() }
+
+fn bump_twice[T: Counter](c: mut T) -> Int {
+    let _ = c.bump()
+    c.bump()
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let j = Job { id: 7 }
+    con.println(complete(j))
+    let k = Job { id: 8 }
+    con.println(k.finish())
+    var t = Tally { n: 0 }
+    con.println("{t.bump()} {bump_twice(mut t)} {t.n}")
+    var total = 10
+    t.add_to(mut total)
+    con.println("{total}")
+}

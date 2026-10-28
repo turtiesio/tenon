@@ -1,0 +1,14 @@
+// error: an impl of Show can only bound its type parameters by Eq, Ord, Hash or Show
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+struct Box[T] { v: T }
+
+impl[T: Shape] Show for Box[T] {
+    fn to_str(self) -> Str { "box" }
+}
+
+fn main() {}

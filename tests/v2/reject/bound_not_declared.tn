@@ -1,0 +1,12 @@
+// error: type T does not implement Shape (needed by bound U: Shape of area_of)
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+fn area_of[U: Shape](x: U) -> Int { x.area() }
+
+fn wrapper[T](x: T) -> Int { area_of(x) }
+
+fn main() {}

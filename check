@@ -7,13 +7,15 @@
 # governance/README.md) builds stage1 tenonc, which then runs the whole suite,
 # the program scenarios, the doc programs and the grammar check. The
 # bootstrap's own `tenon test` runs the suite once more as the differential
-# reference; selfhost.sh and fixpoint.sh compare the two compilers.
+# reference; selfhost.sh and fixpoint.sh compare the two compilers. tests/v2
+# (and lib/v2) hold what only tenonc understands (traits): no bootstrap
+# cross-check sees them; tenonc test checks both of its backends on them.
 set -euo pipefail
 cd "$(dirname "$0")"
 cargo build --release --quiet
 target/release/tenon build selfhost/tenonc.tn -o target/tenonc
 export TENONC=$PWD/target/tenonc TENON_ROOT=$PWD
-TENON=$TENONC target/tenonc test tests
+TENON=$TENONC target/tenonc test tests tests/v2
 target/release/tenon test tests
 TENON=$TENONC python3 tools/doctest.py
 TENON=$TENONC python3 tools/vscode_grammar_check.py

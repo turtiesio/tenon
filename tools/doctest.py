@@ -2,8 +2,9 @@
 """Doc-snippet check: every whole program in the docs must compile.
 
 Extracts each ```tenon block of docs/reference.md and docs/quickstart.md that
-contains `fn main`, writes it to a temporary file and runs
-`target/release/tenon check` on it. Blocks without `fn main` are fragments and
+contains `fn main`, writes it to a temporary file and runs `tenonc check` on
+it ($TENON, default target/tenonc: the self-hosted compiler, so the docs may
+show v2 features such as traits). Blocks without `fn main` are fragments and
 are skipped. Std modules (`import regex`) are found by the compiler as usual.
 
 Conventions for doc authors:
@@ -22,7 +23,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "release", "tenon")  # ./check: tenonc
+TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenonc")  # ./check: $TENONC
 DOCS = ["docs/reference.md", "docs/quickstart.md"]
 FENCE = re.compile(r"^(\s*)```(\S*)\s*$")
 

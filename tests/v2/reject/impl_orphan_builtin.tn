@@ -1,0 +1,6 @@
+// error: impl Show for Int is not allowed here: Int has no module of its own (an impl must be in the module of its trait or of its type)
+impl Show for Int {
+    fn to_str(self) -> Str { "int" }
+}
+
+fn main() {}

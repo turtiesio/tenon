@@ -1,0 +1,7 @@
+// error: type mismatch: expected Int, found Str
+trait Shape {
+    fn area(self) -> Int
+    fn double(self) -> Int { "two" }
+}
+
+fn main() {}

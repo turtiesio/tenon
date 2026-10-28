@@ -10,6 +10,8 @@
 #            bootstrap accepts: byte-identical C and the same exit status
 # tenonc is $TENONC when set (./check builds it once), else built here with
 # -O0 (building is most of the cost, running is cheap).
+# Files under a v2/ directory (lib/v2, tests/v2) use syntax only tenonc has
+# (traits): they are skipped here and checked by `tenonc test tests/v2`.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 T=target/release/tenon
@@ -50,7 +52,7 @@ one() {
   echo "RESULT $kind ${out:-ok}"
 }
 export -f one
-find bootstrap lib tests programs selfhost bench study -name '*.tn' 2>/dev/null | sort \
+find bootstrap lib tests programs selfhost bench study -name '*.tn' -not -path '*/v2/*' 2>/dev/null | sort \
   | xargs -P 8 -I{} bash -c 'one "$@"' _ {} "$T" "$tmp" > "$tmp/results"
 # every builtin of the prelude is known to the self-hosted interpreter
 python3 - >> "$tmp/results" <<'EOF'

@@ -1,0 +1,16 @@
+// module (imported by impl_orphan_module.tn, trait_private.tn, linear_impl_foreign_module.tn)
+pub trait Shape {
+    fn area(self) -> Int
+}
+
+trait Secret {
+    fn code(self) -> Int
+}
+
+pub struct Circle { pub r: Int }
+
+pub linear struct Token { pub n: Int }
+
+impl Secret for Circle {
+    fn code(self) -> Int { self.r }
+}

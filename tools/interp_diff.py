@@ -77,8 +77,8 @@ def one(path):
 def main():
     files = sorted(os.path.join(d, f) for top in ["bootstrap", "lib", "tests", "programs", "selfhost", "bench", "study"]
                    for d, _, fs in os.walk(os.path.join(ROOT, top)) for f in fs if f.endswith(".tn"))
-    # a repro that needs a prepared directory and changes it when run
-    files = [f for f in files if not f.endswith("02-fs-symlink-escape.tn")]
+    # a repro that needs a prepared directory and changes it when run; v2/ files are tenonc-only
+    files = [f for f in files if not f.endswith("02-fs-symlink-escape.tn") and "/v2/" not in f]
     with ThreadPoolExecutor(8) as ex:
         rs = list(ex.map(one, files))
     for path, kind, why in rs:

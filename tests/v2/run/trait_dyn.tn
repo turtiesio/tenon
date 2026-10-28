@@ -1,0 +1,75 @@
+// `dyn Trait` values: a heterogeneous list, calls through the vtable,
+// default methods through dyn, dyn values passed to bounded generics and
+// stored in structs and maps, formatting a dyn value, value semantics.
+trait Shape {
+    fn area(self) -> Int
+    fn scaled(self, k: Int) -> Int { self.area() * k }
+    fn name(self) -> Str
+}
+
+struct Square { side: Int }
+
+struct Rect { w: Int, h: Int }
+
+enum Blob { Small, Big(Int) }
+
+impl Shape for Square {
+    fn area(self) -> Int { self.side * self.side }
+    fn name(self) -> Str { "square" }
+}
+
+impl Shape for Rect {
+    fn area(self) -> Int { self.w * self.h }
+    fn name(self) -> Str { "rect" }
+    fn scaled(self, k: Int) -> Int { self.w * k * self.h * k }
+}
+
+impl Shape for Blob {
+    fn area(self) -> Int {
+        match self {
+            Small => 1,
+            Big(n) => n,
+        }
+    }
+    fn name(self) -> Str { "blob" }
+}
+
+impl Shape for List[Int] {
+    fn area(self) -> Int { self.sum() }
+    fn name(self) -> Str { "ints" }
+}
+
+struct Scene { shapes: List[dyn Shape], title: Str }
+
+fn total_area[T: Shape](xs: List[T]) -> Int {
+    var t = 0
+    for x in xs { t += x.area() }
+    t
+}
+
+fn boxed[T: Shape](x: T) -> dyn Shape { dyn Shape(x) }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    var shapes: List[dyn Shape] = [dyn Shape(Square { side: 2 }), dyn Shape(Rect { w: 2, h: 3 }), dyn Shape(Big(7))]
+    shapes.push(dyn Shape(Small))
+    shapes.push(dyn Shape([1, 2, 3]))
+    shapes.push(boxed(Square { side: 5 }))
+    for s in shapes { con.println("{s.name()}: {s.area()} {s.scaled(2)}") }
+    con.println("total {total_area(shapes)}")
+    // a dyn value converted again is the same value
+    let again = dyn Shape(shapes[0])
+    con.println("{again.area()}")
+    // formatting shows the value inside
+    con.println("{shapes[1]} {shapes}")
+    let shown: List[dyn Show] = [dyn Show(1), dyn Show("two"), dyn Show(Square { side: 3 })]
+    con.println("{shown} {shown[1].to_str()}")
+    // in structs and maps; copies are independent values
+    let scene = Scene { shapes, title: "demo" }
+    var by_name: Map[Str, dyn Shape] = [:]
+    for s in scene.shapes { by_name[s.name()] = s }
+    con.println("{by_name.len()} {by_name["rect"].area()} {scene.title}")
+    var copy = scene.shapes
+    let _ = copy.pop()
+    con.println("{copy.len()} {scene.shapes.len()}")
+}

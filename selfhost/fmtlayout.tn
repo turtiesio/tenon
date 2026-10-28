@@ -103,7 +103,7 @@ fn classify(toks: List[fmtlex.FTok]) -> Brackets {
         if t.kind == FComment { continue }
         let head = stack[top].head
         if t.kind == FKey {
-            if head == "" and ["if", "while", "for", "match", "fn"].contains(t.text) {
+            if head == "" and ["if", "while", "for", "match", "fn", "trait", "impl"].contains(t.text) {
                 stack[top].head = t.text
                 stack[top].head_at = i
             } else if t.text == "struct" or t.text == "enum" {
@@ -255,7 +255,7 @@ pub fn edit(toks: List[fmtlex.FTok]) -> List[fmtlex.FTok] {
 fn call_like(a: fmtlex.FTok) -> Bool {
     match a.kind {
         FWord => true,
-        FKey => a.text == "fn" or a.text == "self",
+        FKey => a.text == "fn" or a.text == "self" or a.text == "impl",
         FSym => a.text == ")" or a.text == "]" or a.text == "?",
         _ => false,
     }

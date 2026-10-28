@@ -1,0 +1,27 @@
+// A trait, impls for two types, a default method, calls on concrete types.
+trait Shape {
+    fn area(self) -> Int
+    fn name(self) -> Str { "shape" }
+    fn describe(self) -> Str { self.name() + " of area {self.area()}" }
+}
+
+struct Square { side: Int }
+
+struct Rect { w: Int, h: Int }
+
+impl Shape for Square {
+    fn area(self) -> Int { self.side * self.side }
+    fn name(self) -> Str { "square" }
+}
+
+impl Shape for Rect {
+    fn area(self) -> Int { self.w * self.h }
+}
+
+fn main(sys: Sys) {
+    let s = Square { side: 3 }
+    let r = Rect { w: 2, h: 5 }
+    sys.console.println("{s.area()} {r.area()}")
+    sys.console.println(s.describe())
+    sys.console.println(r.describe())
+}

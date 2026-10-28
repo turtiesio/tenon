@@ -1,0 +1,12 @@
+// error: linear value 'self' is never used
+import geo
+
+trait Finish {
+    fn finish(self) -> Int
+}
+
+impl Finish for geo.Token {
+    fn finish(self) -> Int { self.n }
+}
+
+fn main() {}

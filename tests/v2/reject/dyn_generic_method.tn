@@ -1,0 +1,8 @@
+// error: trait Pairs cannot be used with 'dyn': method 'pair' is generic
+trait Pairs {
+    fn pair[U](self, u: U) -> Int
+}
+
+fn f(x: dyn Pairs) {}
+
+fn main() {}

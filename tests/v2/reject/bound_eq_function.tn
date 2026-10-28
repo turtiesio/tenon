@@ -1,0 +1,8 @@
+// error: type fn(Int) -> Int does not implement Eq (needed by bound T: Eq of same)
+fn same[T: Eq](a: T, b: T) -> Bool { a == b }
+
+fn inc(x: Int) -> Int { x + 1 }
+
+fn main() {
+    let _ = same(inc, inc)
+}

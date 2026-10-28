@@ -17,7 +17,7 @@ fn keywords() -> List[Str] {
     [
         "fn", "let", "var", "if", "else", "while", "for", "in", "match", "return", "break",
         "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
-        "unique", "import", "extern", "pub", "ref", "const",
+        "unique", "import", "extern", "pub", "ref", "const", "trait", "impl", "dyn",
     ]
 }
 

@@ -1,0 +1,13 @@
+// error: method 'perimeter' is not in trait Shape
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl Shape for Circle {
+    fn area(self) -> Int { self.r }
+    fn perimeter(self) -> Int { self.r }
+}
+
+fn main() {}

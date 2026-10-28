@@ -45,6 +45,8 @@ pub enum Node {
     NNew(Int, Int, List[(Int, Node)], Option[Node]),
     NTry(Node),
     NLambda(Int, List[Int]),
+    NDyn(Node, Int),                            // a value and its vtable (Code.vts)
+    NDynCall(Int, Node, List[Arg], ckast.Span), // method of the receiver's vtable
 }
 
 pub enum Seg { GLit(Str), GShow(Node), GFmt(Node, parser.Spec) }
@@ -105,17 +107,91 @@ pub fn op_id(op: Str) -> Int {
 pub struct FnRt { pub name: Str, pub ext: Int, pub nparams: Int, pub nslots: Int, pub body: List[Stm] }
 pub struct LamRt { pub nslots: Int, pub body: Node }
 
-pub struct Code { pub fns: List[FnRt], pub lams: List[LamRt] }
+// `vts`: the vtables of `dyn` values, a function per trait method.
+pub struct Code { pub fns: List[FnRt], pub lams: List[LamRt], pub vts: List[List[Int]] }
 
-struct Cx { c: checker.Checked, scope: Map[Str, Int], n: Int, lams: List[LamRt], exts: Map[Str, Int], mexts: Map[Str, Int] }
+// Functions that need their type arguments (bounded by a trait other than
+// the derived Eq, Ord, Hash and Show, or a trait's default method) are
+// lowered once per instantiation, as the C backend does: `tps`/`tas` is the
+// instance being lowered, `insts` the instances (function index in `out`).
+struct Cx {
+    c: checker.Checked, scope: Map[Str, Int], n: Int, lams: List[LamRt], exts: Map[Str, Int], mexts: Map[Str, Int],
+    tps: List[Str], tas: List[cktypes.Ty], needs: List[Bool], insts: Map[(Int, List[cktypes.Ty]), Int],
+    queue: List[(Int, List[cktypes.Ty], Int)], out: List[FnRt], vts: List[List[Int]], vt_ix: Map[(Int, cktypes.Ty), Int],
+}
+
+fn needs_types(env: ckenv.Env, fi: Int) -> Bool {
+    let f = env.fns[fi]
+    match f.origin {
+        ODefault(_, _) => return true,
+        _ => {}
+    }
+    f.bounds.any(fn(bs) => bs.any(fn(b) => not env.is_builtin_trait(b)))
+}
 
 // Lower the whole program. `exts` numbers the builtins that take their
 // receiver by value, `mexts` the `mut self` ones (selfhost/ibuiltin.tn).
 pub fn lower(c: checker.Checked, exts: Map[Str, Int], mexts: Map[Str, Int]) -> Code {
-    var cx = Cx { c, scope: [:], n: 0, lams: [], exts, mexts }
-    var fns: List[FnRt] = []
-    for fi in 0..c.prog.fns.len() { fns.push(cx.function(fi)) }
-    Code { fns, lams: cx.lams }
+    let n = c.prog.fns.len()
+    var needs: List[Bool] = []
+    for fi in 0..n { needs.push(needs_types(c.env, fi)) }
+    var cx = Cx {
+        c, scope: [:], n: 0, lams: [], exts, mexts, tps: [], tas: [], needs, insts: [:], queue: [], out: [], vts: [],
+        vt_ix: [:],
+    }
+    for fi in 0..n { cx.out.push(cx.stub(fi)) }
+    for fi in 0..n {
+        if not cx.needs[fi] { cx.out[fi] = cx.function(fi) }
+    }
+    while let Some(job) = cx.queue.pop() {
+        cx.tps = cx.c.env.fns[job.0].tparams
+        cx.tas = job.1
+        cx.out[job.2] = cx.function(job.0)
+    }
+    Code { fns: cx.out, lams: cx.lams, vts: cx.vts }
+}
+
+fn Cx.stub(self, fi: Int) -> FnRt {
+    let info = self.c.env.fns[fi]
+    FnRt { name: info.name, ext: -1, nparams: info.params.len(), nslots: info.params.len(), body: [] }
+}
+
+fn Cx.st(self, t: cktypes.Ty) -> cktypes.Ty { t.subst(self.tps, self.tas) }
+
+// The function to call for function fi at type arguments targs (as written in the code being lowered).
+fn Cx.target(mut self, fi: Int, targs: List[cktypes.Ty]) -> Int {
+    if not self.needs[fi] { return fi }
+    let ts = targs.map(fn(t) => self.st(t))
+    match self.insts.get((fi, ts)) {
+        Some(i) => return i,
+        None => {}
+    }
+    let i = self.out.len()
+    self.out.push(self.stub(fi))
+    self.insts[(fi, ts)] = i
+    self.queue.push((fi, ts, i))
+    i
+}
+
+// The vtable of trait tr for values of type v.
+fn Cx.vtable(mut self, tr: Int, v: cktypes.Ty) -> Int {
+    match self.vt_ix.get((tr, v)) {
+        Some(i) => return i,
+        None => {}
+    }
+    var fs: List[Int] = []
+    if not self.c.env.is_builtin_trait(tr) {
+        for mi in 0..self.c.env.traits[tr].methods.len() {
+            match self.c.env.method_for(tr, mi, v, []) {
+                Some((fi, targs)) => fs.push(self.target(fi, targs)),
+                None => panic("interp: no impl of " + self.c.env.traits[tr].name + " for " + v.show()),
+            }
+        }
+    }
+    let i = self.vts.len()
+    self.vts.push(fs)
+    self.vt_ix[(tr, v)] = i
+    i
 }
 
 fn Cx.function(mut self, fi: Int) -> FnRt {
@@ -417,6 +493,14 @@ fn Cx.expr(mut self, e: ckast.Expr) -> Node {
         }
         XMutArg(_) => panic("interp: mut arguments are handled at calls"),
         XFmt(_, _) => panic("interp: format specs are handled in strings"),
+        XDyn(_, x) => {
+            let xt = self.st(self.c.types[x.id])
+            let t = self.st(self.c.types[e.id])
+            let v = self.expr(x)
+            if xt == t { return v }
+            let tr = self.c.env.dyn_trait(t).unwrap()
+            NDyn(v, self.vtable(tr, xt))
+        }
     }
 }
 
@@ -424,7 +508,7 @@ fn Cx.name(mut self, e: ckast.Expr) -> Node {
     match self.c.res.get(e.id) {
         Some(RLocal(n)) => NLocal(self.slot(n)),
         Some(RConst(fi)) => NConst(fi, e.sp),
-        Some(RFn(fi, _)) => NFnVal(fi),
+        Some(RFn(fi, targs)) => NFnVal(self.target(fi, targs)),
         Some(RVariant(ei, vi, _)) => {
             if self.c.env.enums[ei].variants[vi].1.is_empty() { NLit(ival.venum(ei, vi, [])) } else { NCtorFn(ei, vi) }
         }
@@ -445,9 +529,10 @@ fn Cx.call(mut self, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr]) 
         _ => {}
     }
     match self.c.res.get(callee.id) {
-        Some(RFn(fi, targs)) => {
-            let info = self.c.env.fns[fi]
-            if info.name == "decode" { return NDecode(targs[0], self.exprs(args), e.sp, site) }
+        Some(RFn(fi0, targs)) => {
+            let info = self.c.env.fns[fi0]
+            if info.name == "decode" { return NDecode(self.st(targs[0]), self.exprs(args), e.sp, site) }
+            let fi = self.target(fi0, targs)
             if info.muts.any(fn(b) => b) { return NCallMut(fi, self.args(args), e.sp, site) }
             NCall(fi, self.exprs(args), e.sp, site)
         }
@@ -462,21 +547,35 @@ fn Cx.call(mut self, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr]) 
 fn Cx.method(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr]) -> Node {
     match self.c.res.get(e.id) {
         Some(RToStr) => NToStr(self.expr(recv)),
-        Some(RMethod(fi, _)) => {
-            let info = self.c.env.fns[fi]
-            let site = self.into_prelude(fi, e.sp)
-            if info.self_kind == MutSelf {
-                let pl = self.place(recv)
-                if info.is_extern {
-                    let id = self.mexts.get(info.name).unwrap_or(-2)
-                    return NExtMut(id, pl, self.exprs(args), e.sp, site)
-                }
-                return NMutSelf(fi, pl, self.args(args), e.sp, site)
+        Some(RMethod(fi, targs)) => self.method_fn(e, recv, args, fi, targs),
+        Some(RTrait(tr, mi, rt0, mt)) => {
+            let rt = self.st(rt0)
+            if self.c.env.dyn_trait(rt).is_some() {
+                let r = self.expr(recv)
+                return NDynCall(mi, r, self.args(args), e.sp)
             }
-            let r = self.expr(recv)
-            if info.muts.any(fn(b) => b) { return NMethodMut(fi, r, self.args(args), e.sp, site) }
-            NCall(fi, [r] + self.exprs(args), e.sp, site)
+            match self.c.env.method_for(tr, mi, rt, mt.map(fn(t) => self.st(t))) {
+                Some((fi, targs)) => self.method_fn(e, recv, args, fi, targs),
+                None => panic("interp: no impl of " + self.c.env.traits[tr].name + " for " + rt.show()),
+            }
         }
         _ => panic("interp: unresolved method"),
     }
+}
+
+fn Cx.method_fn(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr], fi0: Int, targs: List[cktypes.Ty]) -> Node {
+    let info = self.c.env.fns[fi0]
+    let fi = self.target(fi0, targs)
+    let site = self.into_prelude(fi0, e.sp)
+    if info.self_kind == MutSelf {
+        let pl = self.place(recv)
+        if info.is_extern {
+            let id = self.mexts.get(info.name).unwrap_or(-2)
+            return NExtMut(id, pl, self.exprs(args), e.sp, site)
+        }
+        return NMutSelf(fi, pl, self.args(args), e.sp, site)
+    }
+    let r = self.expr(recv)
+    if info.muts.any(fn(b) => b) { return NMethodMut(fi, r, self.args(args), e.sp, site) }
+    NCall(fi, [r] + self.exprs(args), e.sp, site)
 }

@@ -1,0 +1,8 @@
+// error: trait Twin cannot be used with 'dyn': method 'twin' mentions Self
+trait Twin {
+    fn twin(self) -> Self
+}
+
+fn main() {
+    let xs: List[dyn Twin] = []
+}

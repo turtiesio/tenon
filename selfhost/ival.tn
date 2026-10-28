@@ -23,6 +23,9 @@
 //   K_FCTOR  i (enum), j (variant)             a variant constructor as a value
 //   K_FLAM   j (lambda index), xs (captures)   a closure
 //   K_CAP    i (CAP_CONSOLE, ...), j (which one: an index the interpreter keeps)
+//   K_DYN    i (vtable: icode.Code.vts), xs ([the value])   a `dyn Trait` value
+//   K_RAW    s                                  text a Show impl made (formatting only, ieval.prerender)
+//   K_MAPV   xs (key, value, key, value, ...)   a map being formatted (formatting only)
 import parser
 
 pub const K_UNIT: Int = 0
@@ -39,6 +42,9 @@ pub const K_FNAMED: Int = 10
 pub const K_FCTOR: Int = 11
 pub const K_FLAM: Int = 12
 pub const K_CAP: Int = 13
+pub const K_DYN: Int = 14
+pub const K_RAW: Int = 15
+pub const K_MAPV: Int = 16
 
 pub const CAP_CONSOLE: Int = 0
 pub const CAP_FS: Int = 1
@@ -216,6 +222,7 @@ pub fn cmp(a: Val, b: Val) -> Result[Int, Str] {
 pub struct Names {
     pub snames: List[Str], pub shown: List[List[Option[Str]]], pub full: List[List[Option[Str]]],
     pub vnames: List[List[Str]],
+    pub ovs: Map[(Int, Int), Int], // (0, struct) or (1, enum) with a Show impl: its `to_str`
 }
 
 pub fn quote(out: mut Str, s: Str) {
@@ -318,6 +325,21 @@ pub fn show(out: mut Str, v: Val, top: Bool, n: Names, full: Bool) {
         }
     } else if k == K_CAP {
         out += cap_name(v.i)
+    } else if k == K_DYN {
+        show(mut out, v.xs[0], top, n, full)
+    } else if k == K_RAW {
+        out += v.s
+    } else if k == K_MAPV {
+        out += "["
+        var i = 0
+        while i + 1 < v.xs.len() {
+            if i > 0 { out += ", " }
+            show(mut out, v.xs[i], false, n, full)
+            out += ": "
+            show(mut out, v.xs[i + 1], false, n, full)
+            i += 2
+        }
+        out += "]"
     } else {
         out += "<fn>"
     }

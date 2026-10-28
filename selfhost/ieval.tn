@@ -26,7 +26,7 @@ pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
 // The interpreter's state. It owns the event-loop handles the program's
 // sockets live in (selfhost/icap.tn), so it is unique.
 pub unique struct Interp {
-    pub fns: List[icode.FnRt], pub lams: List[icode.LamRt], pub names: ival.Names, pub ix: Ix,
+    pub fns: List[icode.FnRt], pub lams: List[icode.LamRt], pub vts: List[List[Int]], pub names: ival.Names, pub ix: Ix,
     pub files: List[Str], pub site: ckast.Span, pub depth: Int,
     pub checked: checker.Checked,
     pub con: Console, pub clock: Clock, pub net: Net, pub proc: Proc, pub fss: List[Fs],
@@ -96,6 +96,49 @@ pub fn apply(it: mut Interp, f: ival.Val, args: List[ival.Val], sp: ckast.Span) 
         Err(CRet(v)) => Ok(v),
         Err(c) => Err(c),
     }
+}
+
+// ---- Show impls ----
+
+// v with every part whose type has a Show impl replaced by that impl's text
+// (K_RAW), for formatting; the identity when the program has no Show impls.
+pub fn prerender(it: mut Interp, v: ival.Val) -> Result[ival.Val, Ctl] {
+    if it.names.ovs.is_empty() { return Ok(v) }
+    render(mut it, v)
+}
+
+fn render_all(it: mut Interp, xs: List[ival.Val]) -> Result[List[ival.Val], Ctl] {
+    var out: List[ival.Val] = []
+    for x in xs { out.push(render(mut it, x)?) }
+    Ok(out)
+}
+
+fn render(it: mut Interp, v: ival.Val) -> Result[ival.Val, Ctl] {
+    let k = v.k
+    if k == ival.K_STRUCT or k == ival.K_ENUM {
+        match it.names.ovs.get((if k == ival.K_STRUCT { 0 } else { 1 }, v.i)) {
+            Some(fi) => {
+                var av = [v]
+                let s = call_fn(mut it, fi, mut av, ckast.Span { file: 0, line: 0, col: 0 })?
+                return Ok(ival.Val { k: ival.K_RAW, s: s.s, ..ival.unit() })
+            }
+            None => {}
+        }
+    }
+    if k == ival.K_STRUCT or k == ival.K_ENUM or k == ival.K_LIST or k == ival.K_TUPLE {
+        if v.xs.is_empty() { return Ok(v) }
+        return Ok(ival.Val { xs: render_all(mut it, v.xs)?, ..v })
+    }
+    if k == ival.K_DYN { return render(mut it, v.xs[0]) }
+    if k == ival.K_MAP and v.m.len() > 0 {
+        var xs: List[ival.Val] = []
+        for (key, x) in v.m {
+            xs.push(render(mut it, ival.from_key(key))?)
+            xs.push(render(mut it, x)?)
+        }
+        return Ok(ival.Val { k: ival.K_MAPV, xs, ..ival.unit() })
+    }
+    Ok(v)
 }
 
 // A `mut` argument's place, its path evaluated, and where it is in the arguments.
@@ -377,7 +420,13 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
         NIndex(b, i, sp) => {
             let bv = ev(mut it, mut fr, b)?
             let iv = ev(mut it, mut fr, i)?
-            index(bv, iv, sp, it.names)
+            match index(bv, iv, sp, it.names) {
+                Err(CTrap(m, at)) if m.starts_with("key not found: ") and not it.names.ovs.is_empty() => {
+                    let shown = prerender(mut it, iv)?
+                    trap("key not found: " + ival.show_nested(shown, it.names), at)
+                }
+                r => r,
+            }
         }
         NAnd(a, b) => {
             let x = ev(mut it, mut fr, a)?
@@ -414,7 +463,8 @@ fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival
                 match g {
                     GLit(l) => s += l,
                     GShow(x) => {
-                        let v = ev(mut it, mut fr, x)?
+                        let v0 = ev(mut it, mut fr, x)?
+                        let v = prerender(mut it, v0)?
                         ival.show(mut s, v, true, it.names, false)
                     }
                     GFmt(x, f) => {
@@ -485,8 +535,23 @@ fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival
             apply(mut it, fv, av, sp)
         }
         NToStr(x) => {
-            let v = ev(mut it, mut fr, x)?
+            let v0 = ev(mut it, mut fr, x)?
+            let v = prerender(mut it, v0)?
             Ok(ival.vstr(ival.show_top(v, it.names)))
+        }
+        NDyn(x, vt) => {
+            let v = ev(mut it, mut fr, x)?
+            Ok(ival.Val { k: ival.K_DYN, i: vt, xs: [v], ..ival.unit() })
+        }
+        NDynCall(mi, recv, args, sp) => {
+            let rv = ev(mut it, mut fr, recv)?
+            let fi = it.vts[rv.i][mi]
+            var av: List[ival.Val] = [rv.xs[0]]
+            var taken: List[Taken] = []
+            args_mut(mut it, mut fr, args, mut av, mut taken)?
+            let r = call_fn(mut it, fi, mut av, sp)?
+            put_back(mut it, mut fr, taken, av, sp)?
+            Ok(r)
         }
         _ => ev_calls(mut it, mut fr, e),
     }

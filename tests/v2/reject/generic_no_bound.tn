@@ -1,0 +1,10 @@
+// error: no methods are available on generic type 'T'
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+fn area_of[T](x: T) -> Int { x.area() }
+
+fn main() {}

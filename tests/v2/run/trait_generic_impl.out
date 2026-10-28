@@ -1,0 +1,7 @@
+[(1, 2) (3, 4)]
+<[[(1, 2)] []]>
+<strs:['a' 'b']>
+<out:in:(1, 2)>
+some 5 <nothing>
+Point { x: 1, y: 2 } tag 7
+exit: 0

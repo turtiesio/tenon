@@ -158,8 +158,12 @@ pub fn call(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast
         }
         47 | 48 => {
             if a[0].j == 0 { return Ok(a[0].xs[0]) }
-            if id == 48 { return ieval.trap(a[1].s + ": " + ival.show_nested(a[0].xs[0], it.names), sp) }
-            ieval.trap("unwrap on " + ival.show_nested(a[0], it.names), sp)
+            if id == 48 {
+                let p = ieval.prerender(mut it, a[0].xs[0])?
+                return ieval.trap(a[1].s + ": " + ival.show_nested(p, it.names), sp)
+            }
+            let p = ieval.prerender(mut it, a[0])?
+            ieval.trap("unwrap on " + ival.show_nested(p, it.names), sp)
         }
         49 => {
             it.con.print(a[1].s)

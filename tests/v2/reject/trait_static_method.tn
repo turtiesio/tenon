@@ -1,0 +1,6 @@
+// error: trait method 'make' must take 'self' or 'mut self' first
+trait Make {
+    fn make() -> Int
+}
+
+fn main() {}

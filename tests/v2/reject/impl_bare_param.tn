@@ -1,0 +1,12 @@
+// error: an impl must name a type, not the type parameter 'T'
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl[T] Shape for T {
+    fn area(self) -> Int { 0 }
+}
+
+fn main() {}
