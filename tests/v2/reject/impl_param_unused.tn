@@ -1,0 +1,12 @@
+// error: type parameter 'U' of the impl does not appear in List[T]
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl[T, U] Shape for List[T] {
+    fn area(self) -> Int { 0 }
+}
+
+fn main() {}

@@ -132,6 +132,7 @@ pub enum Ex {
     Try(Expr),
     Lambda(List[(Str, Option[Ty])], Option[Ty], Expr),
     MutArg(Expr),
+    EDyn(Str, Expr), // `dyn Trait(value)`: a trait object
 }
 
 pub struct Expr { pub at: Pos, pub kind: Ex }
@@ -158,6 +159,19 @@ pub struct Param { pub name: Str, pub by_ref: Bool, pub by_mut: Bool, pub ty: Ty
 pub struct FnDecl {
     pub is_const: Bool, pub public: Bool, pub owner: Option[Ty], pub name: Str, pub tparams: List[Str],
     pub self_kind: Str, pub params: List[Param], pub ret: Option[Ty], pub body: Option[Block], pub at: Pos,
+    pub bounds: List[Bound], // `[T: Show + Eq]`: the traits each bounded type parameter needs
+}
+
+// A type parameter's bounds: `T: Show + Eq` (trait names as written, `mod.Trait` included).
+pub struct Bound { pub param: Str, pub traits: List[(Str, Pos)], pub at: Pos }
+
+// `trait Name { fn m(self, ...) -> T; fn d(self) -> T { default body } }`
+pub struct TraitDecl { pub public: Bool, pub name: Str, pub methods: List[FnDecl], pub at: Pos }
+
+// `impl[T: Show] Trait for Type { fn m(self, ...) -> T { ... } }`
+pub struct ImplDecl {
+    pub tparams: List[Str], pub bounds: List[Bound], pub trait_name: Str, pub trait_at: Pos, pub target: Ty,
+    pub methods: List[FnDecl], pub at: Pos,
 }
 
 pub struct StructDecl {
@@ -170,6 +184,7 @@ pub struct EnumDecl {
 
 pub struct Program {
     pub imports: List[(Str, Pos)], pub structs: List[StructDecl], pub enums: List[EnumDecl], pub fns: List[FnDecl],
+    pub traits: List[TraitDecl], pub impls: List[ImplDecl],
 }
 
 pub struct ParseError { pub line: Int, pub col: Int, pub msg: Str }
@@ -251,7 +266,17 @@ fn Parser.item(mut self, prog: Program) -> Result[Program, ParseError] {
         pr.imports.push((self.ident()?, at))
         return Ok(pr)
     }
+    if self.is_kw("impl") {
+        pr.impls.push(self.impl_decl()?)
+        return Ok(pr)
+    }
     let public = self.eat_kw("pub")
+    if self.is_kw("trait") {
+        var d = self.trait_decl()?
+        d.public = public
+        pr.traits.push(d)
+        return Ok(pr)
+    }
     let kind = if self.eat_kw("linear") { "linear" } else if self.eat_kw("unique") { "unique" } else { "" }
     if self.is_kw("struct") {
         var d = self.struct_decl(kind)?
@@ -275,12 +300,13 @@ fn Parser.item(mut self, prog: Program) -> Result[Program, ParseError] {
         let bat = self.here()
         let value = self.expr()?
         let body = Block { at: bat, stmts: [Stmt { at: bat, kind: ExprStmt(value) }] }
-        pr.fns.push(FnDecl { is_const: true, public, owner: None, name, tparams: [], self_kind: "", params: [], ret: Some(ret), body: Some(body), at })
+        pr.fns.push(FnDecl { is_const: true, public, owner: None, name, tparams: [], self_kind: "", params: [], ret: Some(ret), body: Some(body), at, bounds: [] })
     } else if self.is_kw("extern") and kind == "" {
         self.advance()
         if not self.is_kw("fn") { return Err(self.fail("'fn'")) }
         pr.fns.push(self.fn_decl(true)?)
     } else {
+        if public and self.is_kw("impl") { return Err(err_at(self.here(), "an impl has no visibility: remove 'pub'")) }
         return Err(self.fail("'fn', 'const', 'struct' or 'enum'"))
     }
     Ok(pr)
@@ -295,6 +321,79 @@ fn Parser.tparams(mut self) -> Result[List[Str], ParseError] {
         }
     }
     Ok(v)
+}
+
+// `[T, U: Show + Eq]` of a function or an impl: the names and their bounds.
+fn Parser.tparams_bounded(mut self) -> Result[(List[Str], List[Bound]), ParseError] {
+    var v: List[Str] = []
+    var bs: List[Bound] = []
+    if self.eat_sym("[") {
+        while not self.eat_sym("]") {
+            let at = self.here()
+            let n = self.ident()?
+            v.push(n)
+            if self.eat_sym(":") {
+                var ts = [self.trait_name()?]
+                while self.eat_sym("+") { ts.push(self.trait_name()?) }
+                bs.push(Bound { param: n, traits: ts, at })
+            }
+            if not self.is_sym("]") { self.expect_sym(",")? }
+        }
+    }
+    Ok((v, bs))
+}
+
+// A trait name as written: `Show` or `module.Show`.
+fn Parser.trait_name(mut self) -> Result[(Str, Pos), ParseError] {
+    let at = self.here()
+    var n = self.ident()?
+    if self.is_sym(".") {
+        match self.tok_at(1) {
+            Ident(t) => {
+                self.advance()
+                self.advance()
+                n = n + "." + t
+            }
+            _ => {}
+        }
+    }
+    Ok((n, at))
+}
+
+// The methods of a trait (bodies optional: defaults) or an impl (bodies required).
+fn Parser.methods(mut self, in_trait: Bool) -> Result[List[FnDecl], ParseError] {
+    self.expect_sym("\{")?
+    var ms: List[FnDecl] = []
+    self.skip_semis()
+    while not self.eat_sym("}") {
+        if not self.is_kw("fn") {
+            return Err(self.fail(if in_trait { "'fn' (a method of the trait)" } else { "'fn' (a method of the impl)" }))
+        }
+        ms.push(self.fn_decl_in(false, if in_trait { 1 } else { 2 })?)
+        if not self.is_sym("}") and not self.eat_sym(";") { return Err(self.fail("end of statement")) }
+        self.skip_semis()
+    }
+    Ok(ms)
+}
+
+fn Parser.trait_decl(mut self) -> Result[TraitDecl, ParseError] {
+    let at = self.here()
+    self.advance()
+    let name = self.ident()?
+    if self.is_sym("[") { return Err(err_at(self.here(), "traits have no type parameters; put them on the methods")) }
+    let methods = self.methods(true)?
+    Ok(TraitDecl { public: false, name, methods, at })
+}
+
+fn Parser.impl_decl(mut self) -> Result[ImplDecl, ParseError] {
+    let at = self.here()
+    self.advance()
+    let (tparams, bounds) = self.tparams_bounded()?
+    let (trait_name, trait_at) = self.trait_name()?
+    if not self.eat_kw("for") { return Err(self.fail("'for' (impl TRAIT for TYPE)")) }
+    let target = self.type_expr()?
+    let methods = self.methods(false)?
+    Ok(ImplDecl { tparams, bounds, trait_name, trait_at, target, methods, at })
 }
 
 fn Parser.sep_or_close(self) -> Bool { self.is_sym("}") or self.is_sym(",") or self.is_sym(";") }
@@ -362,13 +461,20 @@ fn Parser.owner_follows(self) -> Bool {
     false
 }
 
-fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
+fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] { self.fn_decl_in(is_extern, 0) }
+
+// `mode`: 0 an item, 1 a trait method (body optional), 2 an impl method.
+// Methods of traits and impls take `self` without naming an owner type.
+fn Parser.fn_decl_in(mut self, is_extern: Bool, mode: Int) -> Result[FnDecl, ParseError] {
     let at = self.here()
     self.advance()
     let first_at = self.here()
     let first = self.ident()?
     var owner: Option[Ty] = None
     var name = first
+    if mode != 0 and (self.is_sym(".") or (self.is_sym("[") and self.owner_follows())) {
+        return Err(err_at(first_at, "a method of a trait or impl is named without its type: 'fn {first}(self, ...)'"))
+    }
     if self.is_sym("[") and self.owner_follows() {
         self.advance()
         var args: List[Ty] = []
@@ -386,11 +492,11 @@ fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
         }
         owner = Some(Named(first, [], first_at))
     }
-    let tparams = self.tparams()?
+    let (tparams, bounds) = self.tparams_bounded()?
     self.expect_sym("(")?
     var self_kind = ""
     var params: List[Param] = []
-    if owner.is_some() {
+    if owner.is_some() or mode != 0 {
         if self.is_kw("mut") and self.tok_at(1) == Kw("self") {
             self.advance()
             self.advance()
@@ -410,8 +516,8 @@ fn Parser.fn_decl(mut self, is_extern: Bool) -> Result[FnDecl, ParseError] {
         if not self.is_sym(")") { self.expect_sym(",")? }
     }
     let ret = if self.eat_sym("->") { Some(self.type_expr()?) } else { None }
-    let body = if is_extern { None } else { Some(self.block()?) }
-    Ok(FnDecl { is_const: false, public: false, owner, name, tparams, self_kind, params, ret, body, at })
+    let body = if is_extern or (mode == 1 and not self.is_sym("\{")) { None } else { Some(self.block()?) }
+    Ok(FnDecl { is_const: false, public: false, owner, name, tparams, self_kind, params, ret, body, at, bounds })
 }
 
 fn Parser.type_list(mut self, close: Str) -> Result[List[Ty], ParseError] {
@@ -425,6 +531,11 @@ fn Parser.type_list(mut self, close: Str) -> Result[List[Ty], ParseError] {
 
 fn Parser.type_expr(mut self) -> Result[Ty, ParseError] {
     let at = self.here()
+    if self.eat_kw("dyn") {
+        // a trait object type: `dyn Show`, `dyn module.Shape`
+        let (n, _) = self.trait_name()?
+        return Ok(Named("dyn " + n, [], at))
+    }
     if self.eat_kw("fn") {
         self.expect_sym("(")?
         let args = self.type_list(")")?
@@ -816,6 +927,17 @@ fn Parser.primary(mut self) -> Result[Expr, ParseError] {
         }
         Kw(k) if k == "match" => self.match_expr(at),
         Kw(k) if k == "fn" => self.lambda(at),
+        Kw(k) if k == "dyn" => {
+            self.advance()
+            let (n, _) = self.trait_name()?
+            self.expect_sym("(")?
+            let save = self.no_struct
+            self.no_struct = false
+            let x = self.expr()?
+            self.no_struct = save
+            self.expect_sym(")")?
+            Ok(Expr { at, kind: EDyn(n, x) })
+        }
         Ident(name) => {
             self.advance()
             let up = upper(name)
@@ -1022,7 +1144,7 @@ pub fn parse(src: Str) -> Result[Program, ParseError] {
         Err(e) => return Err(ParseError { line: e.line, col: e.col, msg: e.msg }),
     }
     var p = Parser { toks, pos: 0, no_struct: false }
-    var prog = Program { imports: [], structs: [], enums: [], fns: [] }
+    var prog = Program { imports: [], structs: [], enums: [], fns: [], traits: [], impls: [] }
     p.skip_semis()
     while not p.at_eof() {
         prog = p.item(prog)?

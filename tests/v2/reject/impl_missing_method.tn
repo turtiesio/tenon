@@ -1,0 +1,10 @@
+// error: impl Shape for Circle is missing method 'area'
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl Shape for Circle {}
+
+fn main() {}

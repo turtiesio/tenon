@@ -1,0 +1,12 @@
+// error: method 'area' of impl Shape for Circle has the wrong signature: expected fn(self) -> Int, found fn(self) -> Str
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl Shape for Circle {
+    fn area(self) -> Str { "big" }
+}
+
+fn main() {}

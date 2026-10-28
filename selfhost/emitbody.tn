@@ -10,6 +10,7 @@ import checker
 import emit
 import emitctl
 import emitbi
+import emittrait
 
 // A place being assigned or mutated: a C pointer to the root variable, then steps.
 pub enum Step { StepField(Str), StepList(cktypes.Ty, Str), StepMap(cktypes.Ty, Str) }
@@ -21,6 +22,7 @@ fn may_mutate(c: checker.Checked, e: ckast.Expr) -> Bool {
         XLambda(_, _, _) => return false,
         XMethod(_, _, _) => match c.res.get(e.id) {
             Some(RMethod(fi, _)) if c.env.fns[fi].self_kind == MutSelf => return true,
+            Some(RTrait(tr, mi, _, _)) if c.env.traits[tr].methods[mi].self_kind == MutSelf => return true,
             _ => {}
         },
         XBlock(b) | XIf(_, b, _) => {
@@ -685,6 +687,7 @@ pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
         XLambda(params, _, body) => emitctl.lambda(mut m, e, params, body, t),
         XMutArg(_) => panic("emit: mut arguments are handled at calls"),
         XFmt(_, _) => panic("emit: format specs are handled in strings"),
+        XDyn(_, x) => emittrait.dyn_value(mut m, x, t),
     }
 }
 
@@ -824,54 +827,64 @@ fn method(m: mut emit.Em, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr
             m.line(tn + "_show(&" + b + ", " + cv.code + ", true);")
             m.tmp_owned(cktypes.t_str(), "tn_buf_finish(&" + b + ")")
         }
-        RMethod(fi, targs0) => {
-            match m.note_prelude_call(fi, e.sp) {
-                Some(l) => m.line(l),
-                None => {}
+        RMethod(fi, targs0) => method_fn(mut m, e, recv, args, t, fi, m.subs(targs0)),
+        RTrait(tr, mi, rt0, mt0) => {
+            let rt = m.sub(rt0)
+            if emittrait.is_dyn(rt) { return emittrait.dyn_call(mut m, recv, args, tr, mi, t) }
+            match m.c.env.method_for(tr, mi, rt, m.subs(mt0)) {
+                Some((fi, targs)) => method_fn(mut m, e, recv, args, t, fi, targs),
+                None => panic("emit: no impl of " + m.c.env.traits[tr].name + " for " + rt.show()),
             }
-            let targs = m.subs(targs0)
-            let ptys = m.sig(fi, targs).0
-            let info = m.c.env.fns[fi]
-            let rest = ptys.slice(1, ptys.len())
-            if info.self_kind == MutSelf {
-                let p = place(mut m, recv)
-                if not info.is_extern {
-                    let codes = mut_args(mut m, args, rest)
-                    let ptr = place_ptr(mut m, p, p.steps.len(), recv.sp)
-                    let f = fn_inst(mut m, fi, targs)
-                    return m.tmp_owned(t, f + "(" + ([ptr] + codes).join(", ") + ")")
-                }
-                let vs = eval_list(mut m, args)
-                // Arguments are owned so they cannot alias the receiver being mutated.
-                var owned: List[emit.CV] = []
-                for i in 0..vs.len() {
-                    let code = m.own(vs[i], rest[i])
-                    owned.push(m.tmp_owned(rest[i], code))
-                }
-                let ptr = place_ptr(mut m, p, p.steps.len(), recv.sp)
-                return emitbi.extern_mut(mut m, info.name, ptr, ptys, owned, t, e.sp)
-            }
-            if info.muts.any(fn(b) => b) {
-                let rv = expr(mut m, recv)
-                let rt = ptys[0]
-                let rcode = m.own(rv, rt)
-                let r = m.tmp_owned(rt, rcode).code
-                let codes = [r] + mut_args(mut m, args, rest)
-                let f = fn_inst(mut m, fi, targs)
-                return m.tmp_owned(t, f + "(" + codes.join(", ") + ")")
-            }
-            let vs = eval_list(mut m, [recv] + args)
-            if info.is_extern { return emitbi.extern_call(mut m, info.name, vs, ptys, t, e.sp) }
-            let f = fn_inst(mut m, fi, targs)
-            m.tmp_owned(t, f + "(" + codes_of(vs).join(", ") + ")")
         }
         _ => panic("emit: unexpected resolution of a method"),
     }
 }
 
+// A method call of function fi (type arguments already substituted).
+fn method_fn(m: mut emit.Em, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr], t: cktypes.Ty, fi: Int, targs: List[cktypes.Ty]) -> emit.CV {
+    match m.note_prelude_call(fi, e.sp) {
+        Some(l) => m.line(l),
+        None => {}
+    }
+    let ptys = m.sig(fi, targs).0
+    let info = m.c.env.fns[fi]
+    let rest = ptys.slice(1, ptys.len())
+    if info.self_kind == MutSelf {
+        let p = place(mut m, recv)
+        if not info.is_extern {
+            let codes = mut_args(mut m, args, rest)
+            let ptr = place_ptr(mut m, p, p.steps.len(), recv.sp)
+            let f = fn_inst(mut m, fi, targs)
+            return m.tmp_owned(t, f + "(" + ([ptr] + codes).join(", ") + ")")
+        }
+        let vs = eval_list(mut m, args)
+        // Arguments are owned so they cannot alias the receiver being mutated.
+        var owned: List[emit.CV] = []
+        for i in 0..vs.len() {
+            let code = m.own(vs[i], rest[i])
+            owned.push(m.tmp_owned(rest[i], code))
+        }
+        let ptr = place_ptr(mut m, p, p.steps.len(), recv.sp)
+        return emitbi.extern_mut(mut m, info.name, ptr, ptys, owned, t, e.sp)
+    }
+    if info.muts.any(fn(b) => b) {
+        let rv = expr(mut m, recv)
+        let rt = ptys[0]
+        let rcode = m.own(rv, rt)
+        let r = m.tmp_owned(rt, rcode).code
+        let codes = [r] + mut_args(mut m, args, rest)
+        let f = fn_inst(mut m, fi, targs)
+        return m.tmp_owned(t, f + "(" + codes.join(", ") + ")")
+    }
+    let vs = eval_list(mut m, [recv] + args)
+    if info.is_extern { return emitbi.extern_call(mut m, info.name, vs, ptys, t, e.sp) }
+    let f = fn_inst(mut m, fi, targs)
+    m.tmp_owned(t, f + "(" + codes_of(vs).join(", ") + ")")
+}
+
 // Arguments for a call with `mut` parameters: places become pointers, and
 // every other argument is owned so nothing aliases a place being changed.
-fn mut_args(m: mut emit.Em, args: List[ckast.Expr], ptys: List[cktypes.Ty]) -> List[Str] {
+pub fn mut_args(m: mut emit.Em, args: List[ckast.Expr], ptys: List[cktypes.Ty]) -> List[Str] {
     var places: List[Option[Place]] = []
     var codes: List[Str] = []
     for i in 0..args.len() {

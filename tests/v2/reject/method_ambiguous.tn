@@ -1,0 +1,22 @@
+// error: method 'name' of Circle is ambiguous: it is in traits Named and Titled
+trait Named {
+    fn name(self) -> Str
+}
+
+trait Titled {
+    fn name(self) -> Str
+}
+
+struct Circle { r: Int }
+
+impl Named for Circle {
+    fn name(self) -> Str { "circle" }
+}
+
+impl Titled for Circle {
+    fn name(self) -> Str { "Circle" }
+}
+
+fn main() {
+    let _ = Circle { r: 1 }.name()
+}

@@ -1,0 +1,8 @@
+// error: 'Circle' is already defined as a type
+struct Circle { r: Int }
+
+trait Circle {
+    fn area(self) -> Int
+}
+
+fn main() {}

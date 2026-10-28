@@ -1,0 +1,12 @@
+// error: expected fn(self) -> Int, found fn(mut self) -> Int
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl Shape for Circle {
+    fn area(mut self) -> Int { self.r }
+}
+
+fn main() {}

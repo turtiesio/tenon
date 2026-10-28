@@ -1,0 +1,194 @@
+// module (imported by emit.tn)
+// Self-hosted C backend, part 6: traits. Calls of trait methods on type
+// parameters are resolved per instance (monomorphization: the call is the
+// impl's method for the instance's type, no indirection); `dyn Trait` values
+// and their vtables; Show impls that override formatting.
+//
+// A `dyn T` value is `{ tn_env *o; const void *vt; }`: `o` is a reference-
+// counted box holding the value (a `struct dboxN { tn_env h; V v; }`, the
+// closure environment header, so retain/release are the closures'), `vt` a
+// static table per (trait, type): the box's formatter, then one entry per
+// trait method, each a wrapper calling the impl's method on the boxed value.
+// Arguments are borrowed and results owned, as for every function instance.
+import ckast
+import cktypes
+import ckenv
+import emit
+import emitbody
+
+// Is t a `dyn` type?
+pub fn is_dyn(t: cktypes.Ty) -> Bool {
+    match t {
+        Con(n, _) => ckenv.is_dyn(n),
+        _ => false,
+    }
+}
+
+// ---- layout and helpers of a dyn type (emitlayout.assemble) ----
+
+pub fn dyn_value_def(n: Str) -> Str { "struct " + n + " \{ tn_env *o; const void *vt; };\n" }
+
+fn param_c(m: mut emit.Em, t: cktypes.Ty, by_mut: Bool) -> Str {
+    let c = m.cty(t)
+    if by_mut { c + " *" } else { c }
+}
+
+pub fn dyn_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, b: mut Str) {
+    let tr = m.c.env.dyn_trait(t).unwrap()
+    var vt = "struct " + n + "_vt \{ void (*show)(tn_buf *, tn_env *, int);"
+    let ms = vt_methods(m.c.env, tr)
+    for i in 0..ms.len() {
+        let rn = m.cty(ms[i].ret)
+        var ps = ["tn_env *"]
+        for j in 0..ms[i].params.len() { ps.push(param_c(mut m, ms[i].params[j].1, ms[i].muts[j])) }
+        vt += " " + rn + " (*m{i})(" + ps.join(", ") + ");"
+    }
+    vt += " };\n"
+    b += vt
+    b += "static TN_UNUSED {n} {n}_retain({n} x) \{ x.o->rc++; return x; }\n"
+    b += "static TN_UNUSED void {n}_release({n} x) \{ if (--x.o->rc == 0) x.o->drop(x.o); }\n"
+    b += "static TN_UNUSED bool {n}_eq({n} a, {n} b) \{ (void)a; (void)b; return false; }\n"
+    b += "static TN_UNUSED int {n}_cmp({n} a, {n} b) \{ (void)a; (void)b; return 0; }\n"
+    b += "static TN_UNUSED uint64_t {n}_hash({n} x) \{ (void)x; return 0; }\n"
+    b += "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode) \{ ((const struct {n}_vt *)x.vt)->show(b, x.o, mode); }\n"
+    b += "static TN_UNUSED bool {n}_dec(tn_dec *d, {n} *out) \{ (void)d; (void)out; return false; }\n"
+}
+
+// The methods in a vtable: a derived trait's (Show's `to_str`) are not
+// called through it (`to_str()` formats, and formatting uses `show`).
+fn vt_methods(env: ckenv.Env, tr: Int) -> List[ckenv.TMethod] {
+    if env.is_builtin_trait(tr) { [] } else { env.traits[tr].methods }
+}
+
+// ---- dyn values ----
+
+// The box type for values of type v (defined once, in the helpers).
+fn dbox(m: mut emit.Em, v: cktypes.Ty) -> Str {
+    match m.dboxes.get(v) {
+        Some(n) => return n,
+        None => {}
+    }
+    let vn = m.cty(v)
+    let n = m.fresh("dbox")
+    m.dboxes[v] = n
+    let rel = if m.trivial(v) { "" } else { vn + "_release(B->v); " }
+    m.helpers += "struct " + n + " \{ tn_env h; " + vn + " v; };\n"
+    m.helpers += "static void " + n + "_drop(tn_env *e) \{ struct " + n + " *B = (void *)e; " + rel + "tn_free(B); }\n"
+    m.helpers += "static void " + n + "_show(tn_buf *b, tn_env *e, int mode) \{ " + vn + "_show(b, ((struct " + n + " *)e)->v, mode); }\n"
+    n
+}
+
+// The vtable of trait tr for values of type v.
+fn vtable(m: mut emit.Em, dt: cktypes.Ty, tr: Int, v: cktypes.Ty) -> Str {
+    let key = "{tr}:" + v.show()
+    match m.vtables.get(key) {
+        Some(n) => return n,
+        None => {}
+    }
+    let dn = m.cty(dt)
+    let bx = dbox(mut m, v)
+    let n = m.fresh("vt")
+    m.vtables[key] = n
+    var entries = [bx + "_show"]
+    let ms = vt_methods(m.c.env, tr)
+    for i in 0..ms.len() {
+        let (fi, targs) = match m.c.env.method_for(tr, i, v, []) {
+            Some(x) => x,
+            None => {
+                m.err = "emit: no impl of " + m.c.env.traits[tr].name + " for " + v.show()
+                return n
+            }
+        }
+        let f = emitbody.fn_inst(mut m, fi, targs)
+        let rn = m.cty(ms[i].ret)
+        var ps = ["tn_env *e"]
+        var args = ["((struct " + bx + " *)e)->v"]
+        for j in 0..ms[i].params.len() {
+            ps.push(param_c(mut m, ms[i].params[j].1, ms[i].muts[j]) + " a{j}")
+            args.push("a{j}")
+        }
+        let w = m.fresh("vm")
+        m.helpers += "static " + rn + " " + w + "(" + ps.join(", ") + ") \{ return " + f + "(" + args.join(", ") + "); }\n"
+        entries.push(w)
+    }
+    m.helpers += "static const struct " + dn + "_vt " + n + " = \{ " + entries.join(", ") + " };\n"
+    n
+}
+
+// `dyn Trait(x)`.
+pub fn dyn_value(m: mut emit.Em, x: ckast.Expr, t: cktypes.Ty) -> emit.CV {
+    let xt = m.ety(x)
+    let cv = emitbody.expr(mut m, x)
+    if xt == t { return cv }
+    let tr = m.c.env.dyn_trait(t).unwrap()
+    let code = m.own(cv, xt)
+    let vt = vtable(mut m, t, tr, xt)
+    let bx = dbox(mut m, xt)
+    let tn = m.cty(t)
+    let v = m.fresh("dyn")
+    m.line("struct {bx} *{v} = tn_alloc(sizeof *{v}); {v}->h.rc = 1; {v}->h.drop = {bx}_drop; {v}->v = {code};")
+    m.tmp_owned(t, "(({tn})\{ &{v}->h, &{vt} })")
+}
+
+// A trait method called on a `dyn` value: through its vtable.
+pub fn dyn_call(m: mut emit.Em, recv: ckast.Expr, args: List[ckast.Expr], tr: Int, mi: Int, t: cktypes.Ty) -> emit.CV {
+    let tm = m.c.env.traits[tr].methods[mi]
+    let dt = m.ety(recv)
+    let dn = m.cty(dt)
+    var codes: List[Str] = []
+    if tm.muts.any(fn(b) => b) {
+        let rv = emitbody.expr(mut m, recv)
+        let rcode = m.own(rv, dt)
+        codes.push(m.tmp_owned(dt, rcode).code)
+        codes.extend(emitbody.mut_args(mut m, args, tm.params.map(fn(p) => p.1)))
+    } else {
+        let vs = emitbody.eval_list(mut m, [recv] + args)
+        for v in vs { codes.push(v.code) }
+    }
+    let d = codes[0]
+    let rest = codes.slice(1, codes.len())
+    m.tmp_owned(t, "((const struct " + dn + "_vt *)(" + d + ").vt)->m{mi}(" + (["(" + d + ").o"] + rest).join(", ") + ")")
+}
+
+// ---- Show impls ----
+
+// The index of the prelude's Show if the program implements it anywhere, else -1.
+pub fn show_trait(env: ckenv.Env) -> Int {
+    match env.trait_ix.get("Show") {
+        Some(tr) if env.traits[tr].file == 0 and env.impls.any(fn(im) => im.tr == tr) => tr,
+        _ => -1,
+    }
+}
+
+// When a declared type gets its C name: the instance of its Show impl's
+// `to_str`, if it has one (its formatter calls it, see emitlayout.helpers_for).
+pub fn note_type(m: mut emit.Em, t: cktypes.Ty) {
+    if m.show_tr < 0 { return }
+    match t {
+        Con(n, _) if m.c.env.type_decl(n).is_some() => match m.c.env.method_for(m.show_tr, 0, t, []) {
+            Some((fi, targs)) => {
+                let f = emitbody.fn_inst(mut m, fi, targs)
+                m.show_ovs[t] = f
+            }
+            None => {}
+        },
+        _ => {}
+    }
+}
+
+// The prototype of a type's Show impl (the helpers come before the functions).
+pub fn show_proto(m: mut emit.Em, t: cktypes.Ty) -> Str {
+    match m.show_ovs.get(t) {
+        Some(f) => "static tn_Str " + f + "(" + m.tnames[t] + " v_self);\n",
+        None => "",
+    }
+}
+
+// The start of a formatter's body: a type with a Show impl formats with it
+// (but encoding, TN_FULL, stays structural).
+pub fn show_prefix(m: mut emit.Em, t: cktypes.Ty) -> Str {
+    match m.show_ovs.get(t) {
+        Some(f) => "if (!(mode & TN_FULL)) \{ tn_Str s_ = " + f + "(x); tn_buf_str(b, s_); tn_Str_release(s_); return; } ",
+        None => "",
+    }
+}

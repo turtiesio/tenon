@@ -1,0 +1,6 @@
+// error: type Float does not implement Hash (needed by bound K: Hash of keys)
+fn keys[K: Hash](k: K) -> Int { 1 }
+
+fn main() {
+    let _ = keys(1.5)
+}

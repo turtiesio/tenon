@@ -1,0 +1,27 @@
+// The v2 prelude: the self-hosted compiler appends this file to lib/prelude.tn
+// (selfhost/front.tn), so its items are prelude items. The bootstrap never
+// reads it, so it may use syntax the bootstrap cannot parse (traits). The
+// rule: lib/prelude.tn and lib/std stay bootstrap-compatible; tenonc-only
+// code lives under a v2/ directory (lib/v2, tests/v2), which the tools that
+// compare tenonc with the bootstrap skip.
+
+// The derived traits. Every type satisfies them structurally, as `==`,
+// ordering, hashing and `to_str()` have always worked; as bounds
+// (`fn f[T: Ord](xs: List[T])`) they say which of these a type parameter
+// needs. Eq: no functions, capabilities or `dyn` values inside. Ord: Eq and
+// no maps. Hash (a map key): Eq and no Float. Show: no functions or
+// capabilities. A type parameter satisfies a bound only if it declares it.
+//
+// Only Show can be implemented: `impl Show for Point { fn to_str(self) -> Str { ... } }`
+// replaces the derived text wherever a Point is formatted (`"{p}"`,
+// `p.to_str()`, inside lists, maps and other values, `dyn` values, error
+// messages), but not in `encode`, which stays structural.
+pub trait Eq {}
+
+pub trait Ord {}
+
+pub trait Hash {}
+
+pub trait Show {
+    fn to_str(self) -> Str
+}

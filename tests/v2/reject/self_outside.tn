@@ -1,0 +1,4 @@
+// error: 'Self' is only defined inside a trait or an impl
+fn f(x: Self) {}
+
+fn main() {}

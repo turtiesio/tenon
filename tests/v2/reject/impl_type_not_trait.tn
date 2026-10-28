@@ -1,0 +1,10 @@
+// error: unknown trait 'Circle' ('Circle' is a type, not a trait)
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+fn f[T: Circle](x: T) {}
+
+fn main() {}

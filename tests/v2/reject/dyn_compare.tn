@@ -1,0 +1,15 @@
+// error: cannot be compared: they contain the trait object type dyn Shape
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+impl Shape for Circle {
+    fn area(self) -> Int { self.r }
+}
+
+fn main() {
+    let a = dyn Shape(Circle { r: 1 })
+    let _ = a == a
+}

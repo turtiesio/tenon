@@ -1,0 +1,24 @@
+// Traits across modules: a module's public trait implemented in the main
+// file for the main file's type (the type's module), `dyn module.Trait`,
+// bounds naming a module's trait, the module's own impls used from outside.
+import geo
+
+struct Tile { w: Int }
+
+impl geo.Shape for Tile {
+    fn area(self) -> Int { self.w * self.w }
+    fn label(self) -> Str { "tile {self.w}" }
+}
+
+fn describe_all[T: geo.Shape](xs: List[T]) -> List[Str] { xs.map(fn(x) => x.label()) }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let c = geo.Circle { r: 2 }
+    let t = Tile { w: 3 }
+    let all: List[dyn geo.Shape] = [dyn geo.Shape(c), dyn geo.Shape(t)]
+    con.println("{geo.total(all)} {c.area()} {c.label()} {t.label()}")
+    con.println(describe_all([t, Tile { w: 1 }]).join(", "))
+    con.println("{geo.biggest([c, geo.Circle { r: 5 }])} {geo.biggest([t])} {geo.code_of(c)}")
+    for s in all { con.println(s.label()) }
+}

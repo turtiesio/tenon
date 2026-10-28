@@ -6,6 +6,7 @@
 
 import cktypes
 import emit
+import emittrait
 
 // By-value dependencies (types that must be complete before t).
 fn value_deps(m: mut emit.Em, t: cktypes.Ty) -> List[cktypes.Ty] {
@@ -140,6 +141,10 @@ fn define_value(m: mut emit.Em, t: cktypes.Ty, done: mut Map[cktypes.Ty, Bool], 
     done[t] = true
     for d in value_deps(mut m, t) { define_value(mut m, d, mut done, mut out) }
     let n = m.tnames[t]
+    if emittrait.is_dyn(t) {
+        out += emittrait.dyn_value_def(n)
+        return
+    }
     match m.enum_variants(t) {
         Some(vs) => {
             let u = union_def(mut m, vs)
@@ -181,6 +186,11 @@ fn helpers_for(m: mut emit.Em, t: cktypes.Ty, protos: mut Str, b: mut Str) {
         "static TN_UNUSED uint64_t {n}_hash({n} x); static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode); " +
         "static inline TN_UNUSED bool {n}_same({n} a, {n} b) \{ (void)a; (void)b; return false; } " +
         "static TN_UNUSED bool {n}_dec(tn_dec *d, {n} *out);\n"
+    if emittrait.is_dyn(t) {
+        emittrait.dyn_helpers(mut m, t, n, mut b)
+        return
+    }
+    protos += emittrait.show_proto(mut m, t)
     decoder_for(mut m, t, n, mut b)
     match m.enum_variants(t) {
         Some(vs) => {
@@ -205,6 +215,7 @@ fn helpers_for(m: mut emit.Em, t: cktypes.Ty, protos: mut Str, b: mut Str) {
         Con(x, _) => emit.display(x),
         _ => "",
     }
+    sh += emittrait.show_prefix(mut m, t)
     if is_tuple {
         sh += "tn_buf_add(b, \"(\", 1); "
     } else if fs.is_empty() {
@@ -332,7 +343,8 @@ fn enum_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, vs: List[(Str, List[cktyp
         }
         sh += "break; "
     }
-    b += "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode) \{ (void)mode; switch (x{acc}tag) \{ {sh}} }\n"
+    let pre = emittrait.show_prefix(mut m, t)
+    b += "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode) \{ (void)mode; {pre}switch (x{acc}tag) \{ {sh}} }\n"
 }
 
 fn ex(l: Str) -> Str { "if (!tn_dec_expect(d, " + emit.c_string(l) + ")) goto fail; " }

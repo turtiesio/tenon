@@ -1,0 +1,15 @@
+// error: trait Counter cannot be used with 'dyn': method 'bump' takes 'mut self'
+trait Counter {
+    fn bump(mut self) -> Int
+}
+
+impl Counter for Int {
+    fn bump(mut self) -> Int {
+        self += 1
+        self
+    }
+}
+
+fn main() {
+    let _ = dyn Counter(1)
+}

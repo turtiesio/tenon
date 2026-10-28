@@ -1,0 +1,10 @@
+// error: type parameter 'T' has no method 'perimeter' (its traits: Shape)
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+fn f[T: Shape](x: T) -> Int { x.perimeter() }
+
+fn main() {}

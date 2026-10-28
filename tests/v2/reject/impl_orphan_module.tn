@@ -1,0 +1,8 @@
+// error: impl geo.Shape for geo.Circle is not allowed here: it is neither in the module of geo.Shape nor in that of geo.Circle
+import geo
+
+impl geo.Shape for geo.Circle {
+    fn area(self) -> Int { 0 }
+}
+
+fn main() {}

@@ -1,0 +1,9 @@
+$12.05 $12.05 [$12.05, $0.07] ($12.05, 1)
+Plain { m: $12.05, n: 2 } <$12.05> <[stop, go]>
+price=$12.05 n=3
+["tea": $12.05]
+[stop: 1] Some(go) $12.05
+Plain { m: Money { cents: 1205 }, n: 2 }
+exit: 70
+stderr: trap: unwrap on Err($12.05)
+stderr:   at trait_show.tn:47:20

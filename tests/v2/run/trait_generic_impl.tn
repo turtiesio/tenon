@@ -1,0 +1,59 @@
+// Impls for generic types, with bounds on their type parameters; impls for
+// specific instantiations; a generic method of a trait.
+trait Describe {
+    fn describe(self) -> Str
+}
+
+trait Pairs {
+    fn pair_with[U](self, u: U) -> (Self, U)
+}
+
+struct Point { x: Int, y: Int }
+
+struct Wrap[T] { inner: T, note: Str }
+
+impl Describe for Point {
+    fn describe(self) -> Str { "({self.x}, {self.y})" }
+}
+
+impl Describe for Str {
+    fn describe(self) -> Str { "'" + self + "'" }
+}
+
+// every list of describable things is describable
+impl[T: Describe] Describe for List[T] {
+    fn describe(self) -> Str { "[" + self.map(fn(x) => x.describe()).join(" ") + "]" }
+}
+
+impl[T: Describe] Describe for Wrap[T] {
+    fn describe(self) -> Str { self.note + ":" + self.inner.describe() }
+}
+
+// a specific instantiation: does not overlap the generic impl above
+impl Describe for Option[Int] {
+    fn describe(self) -> Str {
+        match self {
+            Some(n) => "some {n}",
+            None => "nothing",
+        }
+    }
+}
+
+impl Pairs for Point {
+    fn pair_with[U](self, u: U) -> (Point, U) { (self, u) }
+}
+
+fn show_it[T: Describe](x: T) -> Str { "<" + x.describe() + ">" }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let p = Point { x: 1, y: 2 }
+    con.println([p, Point { x: 3, y: 4 }].describe())
+    con.println(show_it([[p], []]))
+    con.println(show_it(Wrap { inner: ["a", "b"], note: "strs" }))
+    con.println(show_it(Wrap { inner: Wrap { inner: p, note: "in" }, note: "out" }))
+    let none: Option[Int] = None
+    con.println(Some(5).describe() + " " + show_it(none))
+    let (q, s) = p.pair_with("tag")
+    con.println("{q} {s} {p.pair_with(7).1}")
+}

@@ -1,0 +1,48 @@
+// impl Show overrides formatting everywhere a value is formatted: string
+// interpolation, to_str, inside lists, tuples, maps (keys and values),
+// structs and enums, dyn values, generic code, an unwrap trap; encode stays
+// structural. A generic type's impl and an enum's impl.
+struct Money { cents: Int }
+
+struct Tagged[T] { tag: Str, value: T }
+
+enum Light { Red, Green }
+
+struct Plain { m: Money, n: Int }
+
+impl Show for Money {
+    fn to_str(self) -> Str { "${self.cents / 100}.{(self.cents % 100).to_str().pad_left(2, "0")}" }
+}
+
+impl[T: Show] Show for Tagged[T] {
+    fn to_str(self) -> Str { self.tag + "=" + self.value.to_str() }
+}
+
+impl Show for Light {
+    fn to_str(self) -> Str {
+        match self {
+            Red => "stop",
+            Green => "go",
+        }
+    }
+}
+
+fn describe[T](x: T) -> Str { "<{x}>" }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let m = Money { cents: 1205 }
+    con.println("{m} {m.to_str()} {[m, Money { cents: 7 }]} {(m, 1)}")
+    let p = Plain { m, n: 2 }
+    con.println("{p} {describe(m)} {describe([Red, Green])}")
+    con.println("{Tagged { tag: "price", value: m }} {Tagged { tag: "n", value: 3 }}")
+    var prices: Map[Str, Money] = [:]
+    prices["tea"] = m
+    con.println("{prices}")
+    var lights: Map[Light, Int] = [:]
+    lights[Red] = 1
+    con.println("{lights} {Some(Green)} {dyn Show(m)}")
+    con.println(encode(p))
+    let r: Result[Int, Money] = Err(m)
+    con.println("{r.unwrap()}")
+}

@@ -4,8 +4,9 @@
 #   stage2 = stage1 compiling tenonc.tn              (stage1 build)
 # Then stage1's and stage2's `emit selfhost/tenonc.tn` must be byte-identical
 # to each other and to `tenon emit selfhost/tenonc.tn`, and stage2 must emit
-# the same C as stage1 for every corpus file the bootstrap accepts (stage1
-# itself is compared with the bootstrap on the corpus by tools/selfhost.sh).
+# the same C as stage1 for every corpus file stage1 accepts, the tenonc-only
+# files under v2/ directories included (stage1 itself is compared with the
+# bootstrap on the rest of the corpus by tools/selfhost.sh).
 # Built with -O0 (fast to build); the C is the same at any -O level.
 set -euo pipefail
 cd "$(dirname "$0")/.."

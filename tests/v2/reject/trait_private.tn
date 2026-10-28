@@ -1,0 +1,6 @@
+// error: trait 'geo.Secret' is private to module 'geo'
+import geo
+
+fn f[T: geo.Secret](x: T) {}
+
+fn main() {}

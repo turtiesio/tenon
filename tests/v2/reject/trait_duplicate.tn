@@ -1,0 +1,12 @@
+// error: trait 'Shape' is already defined
+trait Shape {
+    fn area(self) -> Int
+}
+
+struct Circle { r: Int }
+
+trait Shape {
+    fn area(self) -> Int
+}
+
+fn main() {}

@@ -61,7 +61,13 @@ fn Walk.walk_fn(mut self, fi: Int, assume: List[Str]) -> Result[Unit, ckast.Diag
 fn Walk.walk_body(mut self, fi: Int, f: ckast.FnDecl, body: ckast.Block) -> Result[Unit, ckast.Diag] {
     // Only a type declared linear/unique decides how its own values end; a plain
     // generic type (`struct Wrap[A]`) holding a linear A gets no exemption.
-    let self_exempt = match self.env.fns[fi].owner {
+    // (An impl method is exempt only in the type's own module: an impl in the
+    // trait's module cannot finish another module's linear values.)
+    let own_module = match self.env.fns[fi].owner {
+        Some(Con(n, _)) => self.env.type_decl(n).map_or(false, fn(d) => d.0 == self.env.fns[fi].sp.file),
+        _ => false,
+    }
+    let self_exempt = own_module and match self.env.fns[fi].owner {
         Some(Con(n, _)) => match self.env.struct_idx(n) {
             Some(i) => self.env.structs[i].kind != Plain,
             None => match self.env.enum_idx(n) {
@@ -472,6 +478,10 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
                     self.expr(recv, f.self_kind == ValSelf and not handle)?
                     refs = self.ref_params(fi)
                 }
+                Some(RTrait(tr, mi, _, _)) => {
+                    let tm = self.env.traits[tr].methods[mi]
+                    self.expr(recv, tm.self_kind == ValSelf)?
+                }
                 _ => self.expr(recv, false)?,
             }
             self.args(args, refs)
@@ -564,6 +574,11 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
         }
         XMutArg(x) => self.expr(x, false),
         XFmt(x, _) => self.expr(x, false),
+        XDyn(_, x) => {
+            let k = self.kind(x.id)
+            if k != Plain { return ckast.fail(e.sp, "a 'dyn' value cannot hold the " + word(k) + " type " + self.types.get(x.id).map_or("?", fn(t) => t.show())) }
+            self.expr(x, true)
+        }
         XLambda(params, _, body) => {
             for c in self.caps.get(e.id).unwrap_or([]) {
                 let k = self.kind_ty(c.1)
@@ -605,6 +620,7 @@ fn codec_ok(env: ckenv.Env, t: cktypes.Ty, file: Int, seen0: List[cktypes.Ty]) -
         }
         Con(n, args) => {
             if cktypes.is_capability(n) { return Err(n + " is a capability") }
+            if ckenv.is_dyn(n) { return Err(n + " values cannot be encoded") }
             let k = env.kind_of(t)
             if k != Plain { return Err(n + " is " + word(k)) }
             match env.struct_idx(n) {

@@ -26,7 +26,7 @@ def corpus():
     for d in DIRS:
         for dp, _, fs in os.walk(os.path.join(ROOT, d)):
             for f in fs:
-                if f.endswith(".tn"):
+                if f.endswith(".tn") and "/v2/" not in os.path.join(dp, f):  # v2/: tenonc-only syntax
                     files.append(os.path.relpath(os.path.join(dp, f), ROOT))
     return sorted(files)
 

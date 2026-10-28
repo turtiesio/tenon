@@ -1,0 +1,6 @@
+// error: Eq is derived structurally for every type that supports it and cannot be implemented; only Show can be
+struct Point { x: Int }
+
+impl Eq for Point {}
+
+fn main() {}

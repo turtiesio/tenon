@@ -1,0 +1,15 @@
+// error: a 'dyn' value cannot hold the linear type Job
+trait Finish {
+    fn finish(self) -> Int
+}
+
+linear struct Job { id: Int }
+
+impl Finish for Job {
+    fn finish(self) -> Int { self.id }
+}
+
+fn main() {
+    let d = dyn Finish(Job { id: 1 })
+    let _ = d.finish()
+}
