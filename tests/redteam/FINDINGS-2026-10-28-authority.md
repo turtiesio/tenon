@@ -25,9 +25,9 @@ comparison, deep-stack, path, wrapper and temporary findings; the weak package h
 | 7 | Low | "killed" on timeout (library, `Proc`); tenon.md §2.4 process groups | `run_with` kills only the direct child on timeout; its descendants live on | `06` |
 | 8 | **High** | unique values are never copied (§12) | A method of a declared `unique` wrapper can copy `self`, duplicating a contained `Listener` | `v2/08` |
 
-Everything else in scope held (list at the end). All seven are fixed (each section names the commit
+Everything else in scope held (list at the end). All eight are fixed (each section names the commit
 and the regression test); the repros of findings whose fix the frozen seed does not share moved to
-`repros-2026-10-28-authority/v2/`. Findings 1, 2, 4 and 6 are checker holes (accepted
+`repros-2026-10-28-authority/v2/`. Findings 1, 2, 4, 6 and 8 are checker holes (accepted
 programs break a documented promise) and behave identically in `run` and `build`; 3 is a backend
 difference; 5 is a privacy hole; 7 is a resource-control gap.
 
@@ -315,6 +315,14 @@ The same method on a plain `struct Wrap[A]` is rejected after the earlier generi
 `unique`. Declaring a wrapper is therefore an unchecked escape hatch for copying any unique value
 it contains. ASan/UBSan on this repro is clean; the failure is the static ownership guarantee, not
 an observed memory error.
+
+Fixed in c33c7cf, test tests/v2/reject/self_copy_unique_wrapper.tn (also
+tests/v2/reject/self_copy_linear_wrapper.tn, tests/v2/reject/self_copy_unique_enum.tn,
+tests/v2/reject/self_move_mut_unique.tn; finishing methods still accepted:
+tests/v2/run/self_finish_ok.tn). Rule (reference §12): an own method's `self` need not be consumed
+but is moved at most once, and a `mut self` cannot be moved (that was the same copy through the
+caller's value); `programs/chat` relied on the copy and now takes `mut self` in `send` and
+`broadcast`.
 
 ## Held up (no bug found)
 
