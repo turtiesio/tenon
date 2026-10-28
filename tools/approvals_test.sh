@@ -14,8 +14,8 @@ for f in tools/approvals.py $(cd "$src" && echo governance/*) "$victim" "$seed";
 git add -A && git commit -qm base
 base=$(git rev-parse HEAD)
 fail=0
-expect() { # expect OK|REFUSE description
-  if python3 tools/approvals.py "$base" > "$tmp/out.txt"; then got=OK; else got=REFUSE; fi
+expect() { # expect OK|REFUSE description [--pr]
+  if python3 tools/approvals.py ${3:-} "$base" > "$tmp/out.txt"; then got=OK; else got=REFUSE; fi
   if [ "$got" != "$1" ]; then echo "approvals_test: FAIL: $2 (got $got)"; cat "$tmp/out.txt"; fail=1; fi
   git reset -q --hard "$base"
 }
@@ -40,5 +40,14 @@ echo "// one more line" >> "$seed" && echo "2026-10-28 | tester | bootstrap/* | 
 expect REFUSE "growing the frozen bootstrap's line count, even with an approval"
 git rm -q "$seed" && echo "2026-10-28 | tester | bootstrap/* | remove a file" >> governance/approvals.log && git add -A && git commit -qm "approved removal"
 expect OK "removing a frozen file with an approval covering it"
-[ $fail = 0 ] && echo "approvals_test: refuses unapproved weakening and unapproved or growing changes to the frozen bootstrap (10 scenarios)"
+# an unattended pull request (--pr, CI): approvals only from the owner, rules only added
+git rm -q "$victim" && echo "2026-10-28 | agent | $victim | looks redundant" >> governance/approvals.log && git add -A && git commit -qm "self-approved removal"
+expect REFUSE "a pull request that adds its own approval line" --pr
+sed -i.bak '/^tests\/reject/d' governance/guarded.txt && rm -f governance/guarded.txt.bak && git rm -q "$victim" && git commit -qam "unguard, then delete"
+expect REFUSE "a pull request that removes a rule from guarded.txt" --pr
+echo "more" >> governance/README.md && git commit -qam "edit an owner path"
+expect REFUSE "a pull request that changes a path under an owner rule" --pr
+echo "// x" > tests/new_guard.tn && echo "tests/new_guard.tn" >> governance/guarded.txt && git add -A && git commit -qm "guard a new regression test"
+expect OK "a pull request that adds a guarded regression test" --pr
+[ $fail = 0 ] && echo "approvals_test: refuses unapproved weakening, unapproved or growing changes to the frozen bootstrap, and self-approval in pull requests (14 scenarios)"
 exit $fail

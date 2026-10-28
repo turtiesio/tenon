@@ -10,8 +10,8 @@ built is in [compiler.md](compiler.md); the user reference of `tenon` is
 | Loop | Command | Budget (tenon.md §4, §5) | Who runs it |
 |---|---|---|---|
 | the gate | `./check` (`--fast` is accepted and means the same) | 60 s | every landing (`tools/land.sh`), CI on Linux and macOS (`.github/workflows/ci.yml`) |
-| landing | `tools/land.sh "MESSAGE" [NEW_PATH...]` | 5 min | everyone: nothing reaches main another way |
-| evidence | `tools/evidence.sh` | none (asynchronous) | daily, in a dedicated clone (`$EVIDENCE_DIR`, default `~/.tenon-evidence`) |
+| landing | `tools/land.sh "MESSAGE" [NEW_PATH...]` | 5 min | everyone at a machine; unattended agents land through pull requests that merge when CI passes ([automation.md](automation.md)) |
+| evidence | `tools/evidence.sh` | none (asynchronous) | nightly on GitHub (`.github/workflows/nightly.yml`, [automation.md](automation.md)); locally in a dedicated clone (`$EVIDENCE_DIR`, default `~/.tenon-evidence`) |
 
 The current time of each step is printed at the end of every `./check` and
 recorded in [STATUS.md](../../STATUS.md) ("Loops"), which is generated
@@ -42,7 +42,8 @@ far. The binaries are passed to the tools as `$SEED`, `$TENON0` and
 | `tools/approvals_test.sh` | the approvals checker refuses real weakenings and changes to the frozen seed |
 
 `tools/land.sh` also runs `python3 tools/approvals.py origin/main` before
-the check (governance/README.md).
+the check (governance/README.md); CI runs `tools/approvals.py --pr` on pull
+requests (automation.md).
 
 ### The cross-check and the fixpoint
 
@@ -142,6 +143,12 @@ does, and runs, each writing `.evidence/NAME.json` (`corpus.record`):
 | `tools/mutate.py N SEED` | mutants of the trusted compile path and the runtime; survivors (the tests did not notice) become tasks |
 | `tools/bench.py` | the benchmarks against C, Rust, Python and TypeScript (`--parallel`: the worker speedups) |
 
-Then `tools/status.py` regenerates STATUS.md from that data (the only way it
-changes; the hand-written notes come from `tools/unmet.md`) and lands it
-with `tools/land.sh`.
+Each tool's whole output is kept in `.evidence/NAME.log`. The sizes come
+from `FUZZ_N`, `CHECKFUZZ_N`, `MUTATE_N` and `BENCH_RUNS` (the nightly run
+uses smaller ones). Then `tools/status.py` regenerates STATUS.md from that
+data (the only way it changes; the hand-written notes come from
+`tools/unmet.md`), appends the run to `.evidence/history.jsonl` (STATUS.md,
+"Correctness over time"), writes the open regressions with stable keys to
+`.evidence/regressions.json` (the nightly run keeps one issue per key), and
+the result is landed with `tools/land.sh` (`EVIDENCE_LAND=0`: not landed;
+the nightly run opens a pull request instead).

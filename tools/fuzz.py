@@ -287,13 +287,15 @@ def main():
     base = int(sys.argv[2]) if len(sys.argv) > 2 else random.randrange(1 << 30)
     fails = os.path.join(ROOT, ".evidence", "fuzz-failures")
     os.makedirs(fails, exist_ok=True)
-    stats = {}
+    stats, failures = {}, []
     with tempfile.TemporaryDirectory() as tmp, cf.ThreadPoolExecutor(max_workers=corpus.JOBS) as ex:
         for seed, kind, src, msg in ex.map(lambda s: run_one(s, tmp), range(base, base + count)):
             stats[kind] = stats.get(kind, 0) + 1
             if kind != "ok":
                 open(os.path.join(fails, f"{kind}-{seed}.tn"), "w").write(src + "\n/*\n" + msg + "\n*/\n")
                 print(f"{kind}: seed {seed}: {msg.strip().splitlines()[0] if msg.strip() else ''}")
+                if kind != "rejected":
+                    failures.append(f"{kind}-{seed}.tn: {msg.strip().splitlines()[0][:200] if msg.strip() else ''}")
     print(f"fuzz: {count} programs from seed {base}: {stats}")
     path = os.path.join(ROOT, ".evidence", "fuzz.json")
     old = json.load(open(path)) if os.path.exists(path) else {}
@@ -303,7 +305,8 @@ def main():
     old["disagreements"] = old.get("disagreements", 0) + stats.get("disagree", 0) + stats.get("build", 0)
     old["rejected"] = old.get("rejected", 0) + stats.get("rejected", 0)
     bad = stats.get("disagree", 0) + stats.get("build", 0)
-    old["last"] = {"programs": count, "seed": base, "disagreements": bad, "rejected": stats.get("rejected", 0)}
+    old["last"] = {"programs": count, "seed": base, "disagreements": bad, "rejected": stats.get("rejected", 0),
+                   "failures": failures[:20]}
     corpus.record("fuzz", old)
     return 0 if not (stats.get("disagree") or stats.get("build")) else 1
 

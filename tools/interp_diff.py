@@ -88,7 +88,8 @@ def main():
     count = lambda k: len([r for r in rs if r[1] == k])
     print(f"interp_diff: {count('same')} of {len(rs)} corpus files give the same stdout, stderr and exit status"
           f" under tenon-seed run and tenon run; {count('diff')} differ; {count('skip')} skipped (tenon-seed run > {TIMEOUT}s)")
-    corpus.record("interp_diff", {"files": len(rs), "same": count("same"), "diff": count("diff"), "skipped": count("skip")})
+    corpus.record("interp_diff", {"files": len(rs), "same": count("same"), "diff": count("diff"), "skipped": count("skip"),
+                                  "differ": [os.path.relpath(p, ROOT) for p, k, _ in rs if k == "diff"]})
     return 1 if count("diff") else 0
 
 

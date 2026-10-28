@@ -1,0 +1,20 @@
+name: hygiene
+# The weekly hygiene review (tenon.md §6 "No staleness"; docs/dev/automation.md):
+# Claude audits for drift; small fixes as a pull request, larger items as
+# issues labeled `hygiene`.
+on:
+  schedule:
+    - cron: "0 18 * * 3" # Thursday 03:00 in Seoul
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
+jobs:
+  hygiene:
+    uses: ./.github/workflows/agent.yml
+    with:
+      role: hygiene
+      engine: claude
+    secrets: inherit

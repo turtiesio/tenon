@@ -100,6 +100,7 @@ def main():
         old["survived"] += results["survived"]
         t = old["killed"] + len(old["survived"])
         old["score"] = round(old["killed"] / t, 2) if t else None
+        old["last"] = results
         corpus.record("mutation", old)
         print(f"mutation: {results['killed']} killed, {len(results['survived'])} survived, {results['nobuild']} did not build")
     finally:

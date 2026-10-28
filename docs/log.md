@@ -601,3 +601,31 @@ four later "2026-10-28" entries because those were landed after it.
   `target/` and `.evidence/`; the quickstart says how to run, build and test
   a program; user docs no longer mention the seed except docs/tools.md's
   note on it.
+
+## 25. 2026-10-28 — unattended automation on GitHub
+
+- **Decision** (user, 2026-10-28; docs/dev/automation.md): improvement goes
+  on while the owner's laptop is off. GitHub runs the evidence loop nightly
+  (Linux only), the weekly correctness review (conformance on Codex
+  gpt-6.1-sol, authority on Claude, after Codex declined a security-worded
+  brief), the weekly hygiene review (Claude) and a fixer seven times a day
+  (Claude and Codex alternating), within about 10 agent runs a day. The
+  task queue is GitHub issues with six labels; one issue per distinct
+  problem, keyed in its title. Agents land only through pull requests that
+  merge themselves when CI passes; branch protection requires the gate on
+  Linux and macOS and the job `approvals`; administrators bypass it, so
+  `tools/land.sh` is unchanged.
+- **Guard:** `tools/approvals.py --pr`, run in CI from the base commit:
+  a pull request cannot add an approval line, remove a guard rule or change
+  an `owner` path (the gate, the checker, CI); four new scenarios in
+  `tools/approvals_test.sh` (14 in all). Every fix of a regression or
+  red-team finding adds a guarded regression test.
+- **Mechanisms:** still five (gate, landing, approvals, evidence, the queue
+  and its agents); the local scheduled tasks remain until the cloud runs
+  are verified, GitHub is primary.
+- **Evidence changes:** tools/status.py keeps one regression per stable key
+  (`.evidence/regressions.json`), loop times per machine (the 60 s budget is
+  the development machine's; the runner's `./check` takes about 140 s), and
+  a history (`.evidence/history.jsonl`) shown as "Correctness over time" in
+  STATUS.md with findings opened and fixed; asan.sh, tsan.sh, fuzz.py,
+  interp_diff.py and mutate.py name their failures in their JSON.

@@ -11,15 +11,16 @@ cd "$(dirname "$0")/.."
 C=${TENON:-$PWD/target/tenon}
 export TENON_ROOT=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-n=0; fail=0
+n=0; fail=0; failures=""
+bad() { echo "FAIL $1"; failures+="\"$1\","; fail=$((fail+1)); } # a failure, also named in the JSON
 run() { # run NAME DIR FILE.tn COMPILER STDIN ARGS
   local name=$1 dir=$2 tn=$3 T=$4 stdin=$5 args=$6
   n=$((n+1))
-  ( cd "$dir" && TENON_KEEP_C=1 "$T" build "$tn" -o "$tmp/$name" -O0 ) > /dev/null 2>&1 || { echo "FAIL $name: build"; fail=$((fail+1)); return; }
-  cc -g -O0 -DTN_POOL_MAX=0 -fsanitize=address,undefined -fno-sanitize-recover=undefined -w -pthread "$tmp/$name.c" -o "$tmp/$name.asan" -lm 2>/dev/null || { echo "FAIL $name: sanitizer build"; fail=$((fail+1)); return; }
+  ( cd "$dir" && TENON_KEEP_C=1 "$T" build "$tn" -o "$tmp/$name" -O0 ) > /dev/null 2>&1 || { bad "$name: build"; return; }
+  cc -g -O0 -DTN_POOL_MAX=0 -fsanitize=address,undefined -fno-sanitize-recover=undefined -w -pthread "$tmp/$name.c" -o "$tmp/$name.asan" -lm 2>/dev/null || { bad "$name: sanitizer build"; return; }
   ( cd "$dir" && printf '%b' "$stdin" | ASAN_OPTIONS=detect_leaks=0 "$tmp/$name.asan" $args ) > "$tmp/out" 2> "$tmp/err"
   if grep -q "ERROR: AddressSanitizer\|runtime error:" "$tmp/err"; then
-    echo "FAIL $name: sanitizer report"; grep -m3 "ERROR\|runtime error" "$tmp/err"; fail=$((fail+1))
+    bad "$name: sanitizer report"; grep -m3 "ERROR\|runtime error" "$tmp/err"
   fi
 }
 for tn in tests/run/*.tn tests/v2/run/*.tn; do
@@ -36,5 +37,5 @@ for d in programs/v2/*/; do
 done
 echo "asan: $n programs under ASan+UBSan, $fail failed"
 mkdir -p .evidence
-printf '{"programs": %d, "failed": %d, "date": "%s", "commit": "%s"}\n' "$n" "$fail" "$(date +%F)" "$(git rev-parse --short HEAD)" > .evidence/asan.json
+printf '{"programs": %d, "failed": %d, "failures": [%s], "date": "%s", "commit": "%s"}\n' "$n" "$fail" "${failures%,}" "$(date +%F)" "$(git rev-parse --short HEAD)" > .evidence/asan.json
 [ $fail = 0 ]
