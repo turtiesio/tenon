@@ -12,19 +12,22 @@
 // and keywords; after `.`, fields and methods of the receiver's type, or a
 // module's or type's members). Buffers are checked from their unsaved text;
 // the modules they import are read from disk. A file without `fn main` is
-// treated as a module: "program has no 'fn main'" is not reported.
+// treated as a module: "program has no 'fn main'" is not reported. A file
+// inside a package (a tenon.toml above it) resolves `import` to the
+// dependencies in its tenon.lock, as tenonc does (docs/packages.md).
 // Build: target/release/tenon build selfhost/tenonlsp.tn -o target/tenonlsp
 // Tests: tools/lsp_test.py.
 import front
 import json
 import lspquery
 import lsppos
+import pkg
 
 // An open buffer: its latest analysis, and the latest one that produced side
 // tables (used while the buffer does not parse).
 struct Doc { uri: Str, path: Str, text: Str, an: front.Analysis, good: Option[front.Analysis] }
 
-struct Server { con: Console, fs: Fs, root: Str, docs: Map[Str, Doc], up: Bool, down: Bool }
+struct Server { con: Console, fs: Fs, proc: Proc, root: Str, docs: Map[Str, Doc], up: Bool, down: Bool }
 
 fn main(sys: Sys) -> Int {
     let con = sys.console
@@ -33,7 +36,7 @@ fn main(sys: Sys) -> Int {
         if sys.args[i] == "--root" and i + 1 < sys.args.len() { root = sys.args[i + 1] }
     }
     if not root.starts_with("/") { root = front.join(sys.proc.env("PWD").unwrap_or("/"), root) }
-    var s = Server { con, fs: sys.fs, root, docs: [:], up: false, down: false }
+    var s = Server { con, fs: sys.fs, proc: sys.proc, root, docs: [:], up: false, down: false }
     while true {
         let msg = match read_message(con) {
             Some(m) => m,
@@ -160,7 +163,7 @@ fn Server.notification(mut self, method: Str, params: json.Json) {
         "textDocument/didOpen" => {
             let text = params.at(["textDocument", "text"]).and_then(fn(t) => t.str()).unwrap_or("")
             let path = lsppos.uri_path(uri).unwrap_or(uri)
-            let an = front.analyze(self.fs, self.root, path, text)
+            let an = self.analyze(path, text)
             self.docs[uri] = Doc { uri, path, text, an, good: None }
             self.refresh(uri, an)
         }
@@ -168,7 +171,7 @@ fn Server.notification(mut self, method: Str, params: json.Json) {
             let changes = params.get("contentChanges").map(fn(c) => c.items()).unwrap_or([])
             match (self.docs.get(uri), changes.last().and_then(fn(c) => c.get("text")).and_then(fn(t) => t.str())) {
                 (Some(d), Some(text)) => {
-                    let an = front.analyze(self.fs, self.root, d.path, text)
+                    let an = self.analyze(d.path, text)
                     self.docs[uri] = Doc { text, an, ..d }
                     self.refresh(uri, an)
                 }
@@ -178,7 +181,7 @@ fn Server.notification(mut self, method: Str, params: json.Json) {
         "textDocument/didSave" => {
             // a saved module may change what its importers see
             for (u, d) in self.docs {
-                let an = front.analyze(self.fs, self.root, d.path, d.text)
+                let an = self.analyze(d.path, d.text)
                 self.docs[u] = Doc { an, ..d }
                 self.refresh(u, an)
             }
@@ -188,6 +191,16 @@ fn Server.notification(mut self, method: Str, params: json.Json) {
             self.publish(uri, [])
         }
         _ => {}
+    }
+}
+
+// The analysis of buffer `text` of file `path`, inside its package if it is
+// in one; a problem with the package (its manifest, lock or cache) is the
+// diagnostic, at the start of the file.
+fn Server.analyze(self, path: Str, text: Str) -> front.Analysis {
+    match pkg.context(self.fs, self.proc, self.root, path) {
+        Ok(pk) => front.analyze_in(self.fs, self.root, path, text, pk),
+        Err(msg) => front.Analysis { files: [(path, text)], failure: Some(front.Failure { fatal: false, file: path, line: 1, col: 1, msg, text }), checked: None },
     }
 }
 
@@ -293,7 +306,7 @@ fn Server.completion(self, d: Doc, line: Int, ch: Int) -> json.Json {
 // the buffer is checked with a placeholder member name there.
 fn Server.members(self, d: Doc, dot: Int, empty: Bool) -> List[json.Json] {
     let probe = if empty { d.text.slice(0, dot + 1) + "x" + d.text.slice(dot + 1, d.text.len()) } else { d.text }
-    let an = if empty { front.analyze(self.fs, self.root, d.path, probe) } else { d.an }
+    let an = if empty { self.analyze(d.path, probe) } else { d.an }
     match an.checked {
         Some(c) => {
             let items = lspquery.complete_member(lspquery.new_q(c, an.files, self.root), dot)

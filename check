@@ -19,6 +19,7 @@ TENON=$TENONC python3 tools/doctest.py
 TENON=$TENONC python3 tools/vscode_grammar_check.py
 TENON=$TENONC tools/programs.sh
 tools/cache_test.sh
+tools/pkg_test.sh
 tools/selfhost.sh
 tools/fmt_check.sh
 python3 tools/lsp_test.py

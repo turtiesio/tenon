@@ -29,7 +29,7 @@ selfhost/     the compiler written in Tenon (tenonc: checker, C backend, interpr
 tests/        run/ reject/ lex/ parse/ selfhost/ corpus; redteam/ findings and repros
 programs/     real programs with scenario tests (tools/programs.sh)
 bench/        benchmarks against C, Rust, Python, TypeScript (tools/bench.py)
-docs/         reference, quickstart, decision log
+docs/         reference, quickstart, packages, decision log
 editors/      editor support: vscode/ (syntax highlighting, no build step)
 governance/   guarded tests and the append-only approvals log
 tools/        landing, evidence, study and status tooling

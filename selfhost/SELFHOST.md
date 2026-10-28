@@ -11,6 +11,12 @@
 | `check FILE` | `check` | checker.tn (CHECKER_NOTES.md) |
 | `test DIR... [--bless]` | `test` | testrun.tn |
 | `tokens FILE`, `ast FILE` | `tokens`, `ast` | lexer.tn `dump`, astdump.tn |
+| `fetch [DIR]` | (none: tenonc only) | pkg.tn, pkgtoml.tn (docs/packages.md; test: tools/pkg_test.sh) |
+
+Inside a package (a `tenon.toml` at or above the file's directory), `run`,
+`build`, `emit`, `check` and `test` resolve `import` also to the dependencies
+pinned in `tenon.lock`, offline, from the cache (pkg.tn `context`, front.tn
+`load_in`); the language server does the same.
 
 Each prints and exits with what the `tenon` subcommand does; tenonc's own
 messages (unreadable files, a failing C compiler) start with `tenonc:`.

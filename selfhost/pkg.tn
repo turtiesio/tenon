@@ -1,0 +1,483 @@
+// module (imported by front.tn, tenonc.tn and tenonlsp.tn)
+// Packages (docs/packages.md): the tenon.toml manifest, the tenon.lock
+// lockfile, dependency resolution and the git cache.
+//
+// A package is a directory with a tenon.toml; a dependency's entry module is
+// its src/NAME.tn. `context` finds the package a file belongs to and resolves
+// its dependencies offline, from tenon.lock and the cache; front.tn then
+// resolves `import name` to a module next to the importing file, else the
+// entry module of a dependency `name` of the importing file's package, else
+// the standard library. `fetch` (tenonc fetch) resolves with the network: it
+// clones git dependencies into $TENON_HOME/cache/git/ (default ~/.tenon) and
+// writes tenon.lock.
+import pkgtoml
+
+// A dependency as declared: `name = { path = "..." }` or `name = { git = "...", tag = "..." }`.
+pub struct Dep { pub name: Str, pub path: Str, pub git: Str, pub tag: Str, pub line: Int }
+
+pub struct Manifest { pub file: Str, pub name: Str, pub version: Str, pub deps: List[Dep] }
+
+// One [package.NAME] table of tenon.lock. `source` is "path" (then `path`,
+// relative to the root package) or "git" (then `git`, `tag`, `commit`).
+pub struct Locked { pub name: Str, pub version: Str, pub source: Str, pub path: Str, pub git: Str, pub tag: Str, pub commit: Str, pub hash: Str }
+
+// A package as front.tn sees it: its directory and, for each dependency
+// name, the file of that dependency's entry module.
+pub struct Pkg { pub name: Str, pub dir: Str, pub deps: Map[Str, Str] }
+
+pub struct Ctx { pub root: Pkg, pub deps: List[Pkg] }
+
+// The entry module for `import name` in file `importer`, if `name` is a
+// dependency of the package `importer` belongs to (the dependency whose
+// directory is the longest prefix of its path, else the root package).
+pub fn entry(c: Option[Ctx], importer: Str, name: Str) -> Option[Str] {
+    let cx = c?
+    var best = cx.root
+    var len = -1
+    for p in cx.deps {
+        if importer.starts_with(p.dir + "/") and p.dir.len() > len {
+            best = p
+            len = p.dir.len()
+        }
+    }
+    best.deps.get(name)
+}
+
+// ---------------------------------------------------------------- paths
+
+// Lexical normal form: no "." or empty components, ".." folded where it
+// follows a named component ("a/../b" is "b"); "" becomes ".".
+pub fn norm(p: Str) -> Str {
+    let abs = p.starts_with("/")
+    var out: List[Str] = []
+    for c in p.split("/") {
+        if c == "" or c == "." { continue }
+        if c == ".." {
+            if out.len() > 0 and out[out.len() - 1] != ".." {
+                let _ = out.pop()
+                continue
+            }
+            if abs { continue }
+        }
+        out.push(c)
+    }
+    let s = out.join("/")
+    if abs { "/" + s } else if s == "" { "." } else { s }
+}
+
+// `name` in directory `dir`, without a leading "./".
+fn at(dir: Str, name: Str) -> Str { if dir == "." or dir == "" { name } else { path_join(dir, name) } }
+
+// The directory of the nearest tenon.toml at or above the directory of
+// `file`. A relative path is followed upward with "..", so the search also
+// leaves the current directory (bounded: 64 levels).
+pub fn find_root(fs: Fs, file: Str) -> Option[Str] {
+    var d = path_parent(file)
+    for _ in 0..64 {
+        if fs.exists(at(d, "tenon.toml")) { return Some(d) }
+        if d.starts_with("/") {
+            if d == "/" { return None }
+            d = path_parent(d)
+        } else if d == "." {
+            d = ".."
+        } else if path_base(d) == ".." {
+            d = d + "/.."
+        } else {
+            d = path_parent(d)
+        }
+    }
+    None
+}
+
+// $TENON_HOME, else ~/.tenon.
+pub fn home(p: Proc) -> Str {
+    match p.env("TENON_HOME") {
+        Some(h) if h != "" => h,
+        _ => path_join(p.env("HOME").unwrap_or("/tmp"), ".tenon"),
+    }
+}
+
+// ---------------------------------------------------------------- manifest and lock
+
+fn is_ident(s: Str) -> Bool {
+    s.len() > 0 and not s.byte(0).is_digit() and s.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_')
+}
+
+fn parse_toml(file: Str, text: Str) -> Result[List[pkgtoml.Table], Str] {
+    pkgtoml.parse(text).map_err(fn(e) => "{file}:{e.line}: {e.msg}")
+}
+
+fn str_of(file: Str, e: pkgtoml.Entry) -> Result[Str, Str] {
+    match e.value {
+        VStr(s) => Ok(s),
+        VTable(_) => Err("{file}:{e.line}: '{e.key}' must be a string"),
+    }
+}
+
+pub fn read_manifest(fs: Fs, file: Str) -> Result[Manifest, Str] {
+    let text = fs.read(file).map_err(fn(e) => "cannot read {file}: {e}")?
+    var m = Manifest { file, name: "", version: "", deps: [] }
+    var seen_pkg = false
+    for t in parse_toml(file, text)? {
+        if t.name == "package" {
+            seen_pkg = true
+            for e in t.entries {
+                let v = str_of(file, e)?
+                if e.key == "name" {
+                    if not is_ident(v) { return Err("{file}:{e.line}: package name '{v}' must be a module name (lowercase letters, digits and '_', not starting with a digit)") }
+                    m.name = v
+                } else if e.key == "version" {
+                    if v == "" { return Err("{file}:{e.line}: empty version") }
+                    m.version = v
+                } else {
+                    return Err("{file}:{e.line}: unknown key '{e.key}' in [package] (expected name, version)")
+                }
+            }
+            if m.name == "" { return Err("{file}:{t.line}: [package] needs name = \"...\"") }
+            if m.version == "" { return Err("{file}:{t.line}: [package] needs version = \"...\"") }
+        } else if t.name == "dependencies" {
+            for e in t.entries {
+                if not is_ident(e.key) { return Err("{file}:{e.line}: dependency name '{e.key}' must be a module name (lowercase letters, digits and '_', not starting with a digit)") }
+                let fields = match e.value {
+                    VTable(f) => f,
+                    VStr(_) => return Err("{file}:{e.line}: dependency '{e.key}' must be \{ path = \"...\" } or \{ git = \"...\", tag = \"...\" }"),
+                }
+                var d = Dep { name: e.key, path: "", git: "", tag: "", line: e.line }
+                for (k, v) in fields {
+                    if v == "" { return Err("{file}:{e.line}: empty '{k}' for dependency '{e.key}'") }
+                    if k == "path" { d.path = v } else if k == "git" { d.git = v } else if k == "tag" { d.tag = v } else {
+                        return Err("{file}:{e.line}: unknown key '{k}' for dependency '{e.key}' (expected path, or git and tag)")
+                    }
+                }
+                let ok = if d.path != "" { d.git == "" and d.tag == "" } else { d.git != "" and d.tag != "" }
+                if not ok { return Err("{file}:{e.line}: dependency '{e.key}' must have either path, or git and tag") }
+                m.deps.push(d)
+            }
+        } else {
+            return Err("{file}:{t.line}: unknown table [{t.name}] (expected [package] and [dependencies])")
+        }
+    }
+    if not seen_pkg { return Err("{file}:1: missing [package] table") }
+    Ok(m)
+}
+
+pub fn read_lock(fs: Fs, file: Str) -> Result[List[Locked], Str] {
+    let text = fs.read(file).map_err(fn(e) => "cannot read {file}: {e}")?
+    var out: List[Locked] = []
+    for t in parse_toml(file, text)? {
+        let name = match t.name.strip_prefix("package.") {
+            Some(n) if is_ident(n) => n,
+            _ => return Err("{file}:{t.line}: unexpected table [{t.name}] (expected [package.NAME]); run `tenonc fetch`"),
+        }
+        var l = Locked { name, version: "", source: "", path: "", git: "", tag: "", commit: "", hash: "" }
+        for e in t.entries {
+            let v = str_of(file, e)?
+            match e.key {
+                "version" => { l.version = v }
+                "source" => { l.source = v }
+                "path" => { l.path = v }
+                "git" => { l.git = v }
+                "tag" => { l.tag = v }
+                "commit" => { l.commit = v }
+                "hash" => { l.hash = v }
+                _ => return Err("{file}:{e.line}: unknown key '{e.key}'; run `tenonc fetch`"),
+            }
+        }
+        let ok = if l.source == "path" { l.path != "" } else { l.source == "git" and l.git != "" and l.tag != "" and l.commit != "" }
+        if not ok or l.hash == "" { return Err("{file}:{t.line}: incomplete entry for package '{name}'; run `tenonc fetch`") }
+        out.push(l)
+    }
+    Ok(out)
+}
+
+pub fn render_lock(pkgs: List[Locked]) -> Str {
+    var ps = pkgs
+    ps.sort_with(fn(a, b) => if a.name < b.name { -1 } else if a.name > b.name { 1 } else { 0 })
+    var s = "# tenon.lock: written by `tenonc fetch` (docs/packages.md); do not edit.\n"
+    for p in ps {
+        s += "\n[package.{p.name}]\n"
+        s += "version = " + pkgtoml.quote(p.version) + "\n"
+        s += "source = " + pkgtoml.quote(p.source) + "\n"
+        if p.source == "path" {
+            s += "path = " + pkgtoml.quote(p.path) + "\n"
+        } else {
+            s += "git = " + pkgtoml.quote(p.git) + "\n"
+            s += "tag = " + pkgtoml.quote(p.tag) + "\n"
+            s += "commit = " + pkgtoml.quote(p.commit) + "\n"
+        }
+        s += "hash = " + pkgtoml.quote(p.hash) + "\n"
+    }
+    s
+}
+
+// ---------------------------------------------------------------- content hash
+
+// The source files of the package in `dir`: every *.tn and tenon.toml file,
+// recursively, skipping names that start with '.' (.git); paths relative to
+// `dir`, sorted bytewise.
+fn source_files(fs: Fs, dir: Str, rel: Str, out: List[Str]) -> Result[List[Str], Str] {
+    var acc = out
+    let here = at(dir, rel)
+    var names = fs.list(here).map_err(fn(e) => "cannot list {here}: {e}")?
+    names.sort()
+    for n in names {
+        if n.starts_with(".") { continue }
+        let r = at(rel, n)
+        if fs.is_dir(at(dir, r)) {
+            acc = source_files(fs, dir, r, acc)?
+        } else if n.ends_with(".tn") or n == "tenon.toml" {
+            acc.push(r)
+        }
+    }
+    Ok(acc)
+}
+
+// The content hash of a package (docs/packages.md "Content hash"): four
+// polynomial hashes modulo primes below 2^31 over, for each source file in
+// sorted order, "PATH\nLENGTH\n" and its bytes; 32 hex digits. It detects
+// corruption and edits, it is not a cryptographic hash.
+pub fn content_hash(fs: Fs, dir: Str) -> Result[Str, Str] {
+    var files = source_files(fs, dir, "", [])?
+    files.sort()
+    var a = 1
+    var b = 2
+    var c = 3
+    var d = 4
+    for f in files {
+        let text = fs.read(at(dir, f)).map_err(fn(e) => "cannot read {at(dir, f)}: {e}")?
+        let s = f + "\n{text.len()}\n" + text
+        for i in 0..s.len() {
+            let x = s.byte(i) + 1
+            a = (a * 31 + x) % 2147483629
+            b = (b * 37 + x) % 2147483587
+            c = (c * 131 + x) % 2147483563
+            d = (d * 257 + x) % 2147483399
+        }
+    }
+    Ok("{a:08x}{b:08x}{c:08x}{d:08x}")
+}
+
+fn hash_name(s: Str) -> Str {
+    var a = 5
+    var b = 7
+    for i in 0..s.len() {
+        let x = s.byte(i) + 1
+        a = (a * 31 + x) % 2147483629
+        b = (b * 37 + x) % 2147483587
+    }
+    "{a:08x}{b:08x}"
+}
+
+// The cache directory of a git package at a commit.
+pub fn cache_dir(home: Str, git: Str, commit: Str) -> Str { path_join(home, "cache/git/" + hash_name(git + "@" + commit)) }
+
+// ---------------------------------------------------------------- resolution
+
+// A resolved package. `rel`: a path package's directory relative to the root
+// package; `dir`: its directory as the file system sees it; `by`: where it
+// was first required (FILE:LINE), for error messages.
+struct Node { name: Str, version: Str, is_git: Bool, rel: Str, git: Str, tag: Str, commit: Str, hash: Str, dir: Str, by: Str, deps: List[Dep], resolved: Map[Str, Str] }
+
+fn Node.source(self) -> Str { if self.is_git { "git {self.git} tag {self.tag}" } else { "path {self.rel}" } }
+
+// `online`: fetch (clone what the cache lacks, hash path packages) rather than
+// check against the lock.
+struct Rs { fs: Fs, proc: Proc, online: Bool, top: Str, tool: Str, home: Str, lock: List[Locked], nodes: List[Node], stack: List[Str] }
+
+fn stale(detail: Str) -> Str { "tenon.lock is out of date with tenon.toml ({detail}); run `tenonc fetch`" }
+
+fn Rs.locked(self, name: Str) -> Option[Locked] {
+    for l in self.lock {
+        if l.name == name { return Some(l) }
+    }
+    None
+}
+
+fn Rs.find(self, name: Str) -> Option[Int] {
+    for i in 0..self.nodes.len() {
+        if self.nodes[i].name == name { return Some(i) }
+    }
+    None
+}
+
+fn Rs.sh(self, args: List[Str], dir: Str) -> Result[Str, Str] {
+    let o = self.proc.run_with(args[0], args.slice(1, args.len()), dir, [], 300000).map_err(fn(e) => "cannot run {args[0]}: {e}")?
+    if o.status != 0 {
+        return Err("`{args.join(" ")}` failed (status {o.status}): " + Str.from_utf8_lossy(o.err).trim())
+    }
+    Ok(Str.from_utf8_lossy(o.out).trim())
+}
+
+// Clone `git` at `rev` (a tag, or a locked commit) into the cache: the
+// files without .git, in the directory for the commit. Gives (commit, dir).
+fn Rs.clone(self, git: Str, rev: Str) -> Result[(Str, Str), Str] {
+    let base = path_join(self.home, "cache/git")
+    self.fs.mkdir(base).map_err(fn(e) => "cannot create {base}: {e}")?
+    let tmp = path_join(base, "tmp-" + hash_name(git + "#" + rev))
+    let _ = self.sh(["rm", "-rf", tmp], "")?
+    let _ = self.sh(["git", "clone", "-q", "--no-checkout", git, tmp], "")?
+    let _ = self.sh(["git", "-c", "advice.detachedHead=false", "checkout", "-q", rev], tmp)?
+    let commit = self.sh(["git", "rev-parse", "HEAD"], tmp)?
+    let _ = self.sh(["rm", "-rf", path_join(tmp, ".git")], "")?
+    let dir = cache_dir(self.home, git, commit)
+    let _ = self.sh(["rm", "-rf", dir], "")?
+    self.fs.rename(tmp, dir).map_err(fn(e) => "cannot move {tmp} to {dir}: {e}")?
+    Ok((commit, dir))
+}
+
+// The node for dependency `d` of node `from` (not yet visited).
+fn Rs.node(self, from: Int, d: Dep, by: Str) -> Result[Node, Str] {
+    let f = self.nodes[from]
+    var n = Node { name: d.name, version: "", is_git: d.git != "", rel: "", git: d.git, tag: d.tag, commit: "", hash: "", dir: "", by, deps: [], resolved: [:] }
+    let l = self.locked(d.name)
+    if not n.is_git {
+        n.rel = norm(path_join(f.rel, d.path))
+        n.dir = norm(path_join(self.top, n.rel))
+        if not self.fs.is_dir(n.dir) { return Err("{by}: path dependency '{d.name}': no directory {n.dir}") }
+        if self.online {
+            n.hash = content_hash(self.fs, n.dir)?
+        } else {
+            match l {
+                Some(x) if x.source == "path" and x.path == n.rel => n.hash = x.hash,
+                _ => return Err(stale("{d.name}: path {n.rel}")),
+            }
+        }
+    } else {
+        let pinned = match l {
+            Some(x) if x.source == "git" and x.git == d.git and x.tag == d.tag => Some(x),
+            _ => None,
+        }
+        match pinned {
+            Some(x) => {
+                n.commit = x.commit
+                n.dir = cache_dir(self.home, d.git, x.commit)
+                let have = if self.fs.is_dir(n.dir) { Some(content_hash(self.fs, n.dir)?) } else { None }
+                if have == Some(x.hash) {
+                    n.hash = x.hash
+                } else if self.online {
+                    let (commit, dir) = self.clone(d.git, x.commit)?
+                    n.commit = commit
+                    n.dir = dir
+                    n.hash = content_hash(self.fs, dir)?
+                } else if have.is_none() {
+                    return Err("package '{d.name}' ({n.source()}, commit {x.commit}) is not in the cache ({n.dir}); run `tenonc fetch`")
+                } else {
+                    return Err("package '{d.name}' in the cache ({n.dir}) does not match tenon.lock (content hash {have.unwrap_or("")}, locked {x.hash}): the cache is corrupt or was modified; delete that directory and run `tenonc fetch`")
+                }
+            }
+            None => {
+                if not self.online { return Err(stale("{d.name}: git {d.git} tag {d.tag}")) }
+                let (commit, dir) = self.clone(d.git, "refs/tags/" + d.tag)?
+                n.commit = commit
+                n.dir = dir
+                n.hash = content_hash(self.fs, dir)?
+            }
+        }
+    }
+    let m = read_manifest(self.fs, at(n.dir, "tenon.toml"))?
+    if m.name != d.name { return Err("{by}: dependency '{d.name}' ({n.source()}) is the package '{m.name}'") }
+    let entry = at(n.dir, "src/" + d.name + ".tn")
+    if not self.fs.exists(entry) { return Err("package '{d.name}' ({n.source()}) has no entry module src/{d.name}.tn") }
+    n.version = m.version
+    n.deps = m.deps
+    Ok(n)
+}
+
+fn Rs.visit(mut self, i: Int) -> Result[Unit, Str] {
+    self.stack.push(self.nodes[i].name)
+    let file = at(self.nodes[i].dir, "tenon.toml")
+    for d in self.nodes[i].deps {
+        let by = "{file}:{d.line}"
+        if self.nodes[i].is_git and d.git == "" {
+            return Err("{by}: git package '{self.nodes[i].name}' has a path dependency '{d.name}'; a git package can only depend on git packages")
+        }
+        if self.fs.exists(path_join(self.tool, "lib/std/" + d.name + ".tn")) {
+            return Err("{by}: dependency '{d.name}' has the name of a standard library module")
+        }
+        let j = match self.find(d.name) {
+            Some(0) => return Err("dependency cycle: " + (self.stack + [d.name]).join(" -> ") + " (at {by})"),
+            Some(j) => {
+                let o = self.nodes[j]
+                let same = if d.git != "" { o.is_git and o.git == d.git and o.tag == d.tag } else {
+                    not o.is_git and not self.nodes[i].is_git and o.rel == norm(path_join(self.nodes[i].rel, d.path))
+                }
+                if not same {
+                    let want = if d.git != "" { "git {d.git} tag {d.tag}" } else { "path " + norm(path_join(self.nodes[i].rel, d.path)) }
+                    return Err("package '{d.name}' is required from two sources: {o.source()} (by {o.by}) and {want} (by {by})")
+                }
+                match self.stack.index_of(d.name) {
+                    Some(k) => return Err("dependency cycle: " + (self.stack.slice(k, self.stack.len()) + [d.name]).join(" -> ") + " (at {by})"),
+                    None => {}
+                }
+                j
+            }
+            None => {
+                let n = self.node(i, d, by)?
+                self.nodes.push(n)
+                let j = self.nodes.len() - 1
+                self.visit(j)?
+                j
+            }
+        }
+        self.nodes[i].resolved[d.name] = at(self.nodes[j].dir, "src/" + d.name + ".tn")
+    }
+    let _ = self.stack.pop()
+    Ok(())
+}
+
+fn resolve(fs: Fs, p: Proc, online: Bool, top: Str, tool: Str, hm: Str) -> Result[Rs, Str] {
+    let m = read_manifest(fs, at(top, "tenon.toml"))?
+    let lock_file = at(top, "tenon.lock")
+    let lock = if fs.exists(lock_file) {
+        read_lock(fs, lock_file)?
+    } else if online or m.deps.is_empty() {
+        []
+    } else {
+        return Err("no {lock_file} for {at(top, "tenon.toml")}; run `tenonc fetch`")
+    }
+    let root = Node { name: m.name, version: m.version, is_git: false, rel: ".", git: "", tag: "", commit: "", hash: "", dir: norm(top), by: at(top, "tenon.toml"), deps: m.deps, resolved: [:] }
+    var rs = Rs { fs, proc: p, online, top, tool, home: hm, lock, nodes: [root], stack: [] }
+    rs.visit(0)?
+    if not online {
+        for l in lock {
+            if rs.find(l.name).is_none() or l.name == m.name { return Err(stale("tenon.lock lists '{l.name}', which is no longer a dependency")) }
+        }
+    }
+    Ok(rs)
+}
+
+fn Rs.ctx(self) -> Ctx {
+    let pk = self.nodes.map(fn(n) => Pkg { name: n.name, dir: n.dir, deps: n.resolved })
+    Ctx { root: pk[0], deps: pk.slice(1, pk.len()) }
+}
+
+// The package context of `file`: None outside a package; Err (the message)
+// if the manifest, the lock or the cache is wrong. Offline: git packages come
+// from the cache, verified against their locked content hash.
+pub fn context(fs: Fs, p: Proc, tool: Str, file: Str) -> Result[Option[Ctx], Str] {
+    let top = match find_root(fs, file) {
+        Some(d) => d,
+        None => return Ok(None),
+    }
+    let rs = resolve(fs, p, false, top, tool, home(p))?
+    Ok(Some(rs.ctx()))
+}
+
+// tenonc fetch: resolve the package in `top` with the network and write its
+// tenon.lock. Gives the lines to print.
+pub fn fetch(fs: Fs, p: Proc, tool: Str, top: Str) -> Result[List[Str], Str] {
+    let rs = resolve(fs, p, true, top, tool, home(p))?
+    var locked: List[Locked] = []
+    var lines: List[Str] = []
+    for n in rs.nodes.slice(1, rs.nodes.len()) {
+        let src = if n.is_git { "git" } else { "path" }
+        locked.push(Locked { name: n.name, version: n.version, source: src, path: if n.is_git { "" } else { n.rel }, git: n.git, tag: n.tag, commit: n.commit, hash: n.hash })
+        lines.push("  {n.name} {n.version} ({n.source()}" + (if n.is_git { ", commit " + n.commit.slice(0, 12.min(n.commit.len())) } else { "" }) + ")")
+    }
+    let file = at(top, "tenon.lock")
+    let text = render_lock(locked)
+    let old = fs.read(file).unwrap_or("")
+    if old != text { fs.write(file, text).map_err(fn(e) => "cannot write {file}: {e}")? }
+    lines.sort()
+    Ok(["tenonc: {file}: {locked.len()} packages" + (if old == text { " (unchanged)" } else { "" })] + lines)
+}

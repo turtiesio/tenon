@@ -1,0 +1,174 @@
+// module (imported by pkg.tn)
+// The TOML subset that tenon.toml and tenon.lock are written in (the exact
+// rules are in docs/packages.md "The TOML subset"). One construct per line:
+//
+//   # a comment                       (also after a header or a value)
+//   [name]  or  [name.sub]            a table header: bare keys joined by '.'
+//   key = "string"                    a basic string: \" \\ \n \t escapes
+//   key = { k = "v", k2 = "v2" }      an inline table of strings, on one line
+//
+// Bare keys are ASCII letters, digits, '_' and '-'. Every key/value pair
+// belongs to the table opened above it; a key or a table given twice is an
+// error. Anything else (numbers, booleans, arrays, multi-line or literal
+// strings, dotted or quoted keys, keys before the first header) is refused
+// with the line number.
+
+pub enum Value { VStr(Str), VTable(List[(Str, Str)]) }
+
+// One `key = value` line.
+pub struct Entry { pub key: Str, pub value: Value, pub line: Int }
+
+// A table: its header (`package` or `package.json`), the header's line and its entries in order.
+pub struct Table { pub name: Str, pub line: Int, pub entries: List[Entry] }
+
+pub struct TomlError { pub line: Int, pub msg: Str }
+
+struct Ln { s: Str, i: Int, line: Int }
+
+fn is_bare(c: Int) -> Bool { c.is_alnum() or c == '_' or c == '-' }
+
+fn Ln.fail[T](self, msg: Str) -> Result[T, TomlError] { Err(TomlError { line: self.line, msg }) }
+
+fn Ln.peek(self) -> Int { if self.i < self.s.len() { self.s.byte(self.i) } else { -1 } }
+
+fn Ln.ws(mut self) {
+    while self.peek() == ' ' or self.peek() == '\t' { self.i += 1 }
+}
+
+// After the construct: only spaces and an optional comment.
+fn Ln.end(mut self) -> Result[Unit, TomlError] {
+    self.ws()
+    if self.peek() == -1 or self.peek() == '#' { Ok(()) } else { self.fail("unexpected text '{self.s.slice(self.i, self.s.len())}'") }
+}
+
+fn Ln.key(mut self) -> Result[Str, TomlError] {
+    let start = self.i
+    while self.i < self.s.len() and is_bare(self.s.byte(self.i)) { self.i += 1 }
+    if self.i == start {
+        return if self.peek() == '"' or self.peek() == '\'' { self.fail("quoted keys are not supported") } else { self.fail("expected a key") }
+    }
+    Ok(self.s.slice(start, self.i))
+}
+
+fn Ln.string(mut self) -> Result[Str, TomlError] {
+    if self.peek() != '"' {
+        let c = self.peek()
+        if c == '\'' { return self.fail("literal strings ('...') are not supported; use \"...\"") }
+        if c == '[' { return self.fail("arrays are not supported") }
+        if c == -1 { return self.fail("expected a value") }
+        return self.fail("expected a string in double quotes")
+    }
+    if self.s.slice(self.i, (self.i + 3).min(self.s.len())) == "\"\"\"" { return self.fail("multi-line strings are not supported") }
+    self.i += 1
+    var out = ""
+    var from = self.i
+    while true {
+        let c = self.peek()
+        if c == -1 { return self.fail("unterminated string") }
+        if c == '"' {
+            out += self.s.slice(from, self.i)
+            self.i += 1
+            return Ok(out)
+        }
+        if c < 32 or c == 127 { return self.fail("control character in a string") }
+        if c == '\\' {
+            out += self.s.slice(from, self.i)
+            let e = if self.i + 1 < self.s.len() { self.s.byte(self.i + 1) } else { -1 }
+            out += match e {
+                '"' => "\"",
+                '\\' => "\\",
+                'n' => "\n",
+                't' => "\t",
+                _ => return self.fail("unsupported escape in a string (only \\\" \\\\ \\n \\t)"),
+            }
+            self.i += 2
+            from = self.i
+        } else {
+            self.i += 1
+        }
+    }
+    Ok(out)
+}
+
+fn Ln.inline(mut self) -> Result[List[(Str, Str)], TomlError] {
+    self.i += 1
+    var out: List[(Str, Str)] = []
+    self.ws()
+    if self.peek() == '}' {
+        self.i += 1
+        return Ok(out)
+    }
+    while true {
+        let k = self.key()?
+        if out.any(fn(e) => e.0 == k) { return self.fail("key '{k}' given twice") }
+        self.ws()
+        if self.peek() != '=' { return self.fail("expected '=' after '{k}'") }
+        self.i += 1
+        self.ws()
+        if self.peek() == '{' { return self.fail("nested inline tables are not supported") }
+        out.push((k, self.string()?))
+        self.ws()
+        match self.peek() {
+            ',' => {
+                self.i += 1
+                self.ws()
+                if self.peek() == '}' { return self.fail("trailing comma in an inline table") }
+            }
+            '}' => {
+                self.i += 1
+                return Ok(out)
+            }
+            _ => return self.fail("expected ',' or '}' in an inline table (it must fit on one line)"),
+        }
+    }
+    Ok(out)
+}
+
+pub fn parse(text: Str) -> Result[List[Table], TomlError] {
+    var tables: List[Table] = []
+    var n = 0
+    for raw in text.split("\n") {
+        n += 1
+        var l = Ln { s: raw.trim_end_chars("\r"), i: 0, line: n }
+        l.ws()
+        let c = l.peek()
+        if c == -1 or c == '#' { continue }
+        if c == '[' {
+            l.i += 1
+            if l.peek() == '[' { return l.fail("arrays of tables ([[...]]) are not supported") }
+            l.ws()
+            var name = l.key()?
+            l.ws()
+            while l.peek() == '.' {
+                l.i += 1
+                l.ws()
+                name += "." + l.key()?
+                l.ws()
+            }
+            if l.peek() != ']' { return l.fail("expected ']' to close the table header") }
+            l.i += 1
+            l.end()?
+            if tables.any(fn(t) => t.name == name) { return l.fail("table [{name}] given twice") }
+            tables.push(Table { name, line: n, entries: [] })
+            continue
+        }
+        let k = l.key()?
+        l.ws()
+        if l.peek() == '.' { return l.fail("dotted keys are not supported") }
+        if l.peek() != '=' { return l.fail("expected '=' after '{k}'") }
+        l.i += 1
+        l.ws()
+        let v = if l.peek() == '{' { VTable(l.inline()?) } else { VStr(l.string()?) }
+        l.end()?
+        if tables.is_empty() { return l.fail("key '{k}' outside a table (start with a [table] header)") }
+        let t = tables.len() - 1
+        if tables[t].entries.any(fn(e) => e.key == k) { return l.fail("key '{k}' given twice in [{tables[t].name}]") }
+        tables[t].entries.push(Entry { key: k, value: v, line: n })
+    }
+    Ok(tables)
+}
+
+// A string for a basic TOML string literal (the inverse of the reader).
+pub fn quote(s: Str) -> Str {
+    "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\t", "\\t") + "\""
+}

@@ -346,3 +346,23 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 - **Freeze:** `frozen bootstrap/*` in governance/guarded.txt: tools/approvals.py
   refuses any unapproved change to the bootstrap and any growth of its line
   count (governance/README.md).
+
+## 2026-10-28 — packages (tenon.md §5, milestone 2)
+
+- **`tenon.toml`, `tenon.lock`, `tenonc fetch`** (selfhost/pkg.tn,
+  pkgtoml.tn; docs/packages.md). A strict TOML subset parsed in Tenon. A
+  dependency is used through its entry module `src/NAME.tn`, so its own
+  modules sit next to it and need no new import syntax. Import order: next
+  to the file, then a dependency of the file's package, then std. Module names
+  stay global: a clash between packages is an error, not a namespace, so
+  the checker is unchanged.
+- **Pinned and live:** git dependencies are cloned through `git` (Proc) into
+  `$TENON_HOME/cache/git/` at a locked commit and verified against a content
+  hash (four polynomial hashes, 128 bits; detects corruption, not
+  cryptographic) on every build. Path dependencies are read as they are.
+  Builds are offline; a missing or stale lock asks for `tenonc fetch`.
+- **Package root:** the nearest tenon.toml above the file, found lexically
+  with `..` (no getcwd), so `tenonc test` works with each test run from its
+  own directory. The language server uses the same resolver.
+- tools/pkg_test.sh (47 checks, ~1.5 s, local `file://` repositories) in
+  ./check.

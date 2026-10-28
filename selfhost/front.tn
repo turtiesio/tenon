@@ -5,6 +5,7 @@
 import parser
 import ckast
 import checker
+import pkg
 
 // Standard library modules (bootstrap/src/main.rs `STD`).
 fn std_modules() -> List[Str] { ["journal", "regex"] }
@@ -50,8 +51,12 @@ pub fn join(dir: Str, name: Str) -> Str {
 
 // Load the program (the prelude, the main file, then every imported module)
 // and check it.
-pub fn load(fs: Fs, root: Str, path: Str) -> Result[Front, Failure] {
-    let (files, parsed, modules) = gather(fs, root, path, None)?
+pub fn load(fs: Fs, root: Str, path: Str) -> Result[Front, Failure] { load_in(fs, root, path, None) }
+
+// `load` inside a package: `import` also finds the dependencies in `pk`
+// (pkg.context, docs/packages.md).
+pub fn load_in(fs: Fs, root: Str, path: Str, pk: Option[pkg.Ctx]) -> Result[Front, Failure] {
+    let (files, parsed, modules) = gather(fs, root, path, None, pk)?
     match checker.check(ckast.convert(parsed, modules)) {
         Ok(c) => Ok(Front { files, checked: c }),
         Err(d) => Err(diag(files, d.sp.file, d.sp.line, d.sp.col, d.msg)),
@@ -65,8 +70,10 @@ pub fn load(fs: Fs, root: Str, path: Str) -> Result[Front, Failure] {
 // set; it is None only if the declarations themselves fail.
 pub struct Analysis { pub files: List[(Str, Str)], pub failure: Option[Failure], pub checked: Option[checker.Checked] }
 
-pub fn analyze(fs: Fs, root: Str, path: Str, src: Str) -> Analysis {
-    let (files, parsed, modules) = match gather(fs, root, path, Some(src)) {
+pub fn analyze(fs: Fs, root: Str, path: Str, src: Str) -> Analysis { analyze_in(fs, root, path, src, None) }
+
+pub fn analyze_in(fs: Fs, root: Str, path: Str, src: Str, pk: Option[pkg.Ctx]) -> Analysis {
+    let (files, parsed, modules) = match gather(fs, root, path, Some(src), pk) {
         Ok(x) => x,
         Err(f) => return Analysis { files: [(path, src)], failure: Some(f), checked: None },
     }
@@ -80,8 +87,10 @@ pub fn analyze(fs: Fs, root: Str, path: Str, src: Str) -> Analysis {
 
 // Read and parse the prelude, the main file (its text `src`, if given) and
 // every imported module (from the importing file's directory, else the
-// standard library): the files, their trees and the module name of each.
-fn gather(fs: Fs, root: Str, path: Str, given: Option[Str]) -> Result[(List[(Str, Str)], List[parser.Program], List[Str]), Failure] {
+// standard library; inside a package `pk`, else a dependency's entry module,
+// and a module name must then name one file): the files, their trees and the
+// module name of each.
+fn gather(fs: Fs, root: Str, path: Str, given: Option[Str], pk: Option[pkg.Ctx]) -> Result[(List[(Str, Str)], List[parser.Program], List[Str]), Failure] {
     let prelude = match fs.read(join(root, "lib/prelude.tn")) {
         Ok(s) => s,
         Err(e) => return Err(io_fail("cannot read the prelude: {e}")),
@@ -105,26 +114,47 @@ fn gather(fs: Fs, root: Str, path: Str, given: Option[Str]) -> Result[(List[(Str
         parsed.push(prog)
         for im in prog.imports {
             let name = im.0
-            if not modules.contains(name) {
+            let known = modules.index_of(name)
+            if known.is_none() or pk.is_some() {
                 let local = join(parent(files[i].0), name + ".tn")
                 // A file never imports itself: `regex.tn` doing `import regex` gets the std module.
                 let me = files[i].0
                 let is_self = me == name + ".tn" or me.ends_with("/" + name + ".tn")
-                let found = if is_self { None } else { fs.read(local).ok() }
-                match found {
-                    Some(text) => files.push((local, text)),
+                var at = local
+                var found = if is_self { None } else { fs.read(local).ok() }
+                if found.is_none() {
+                    match pkg.entry(pk, me, name) {
+                        Some(e) => {
+                            at = e
+                            found = Some(fs.read(e).map_err(fn(x) => io_fail("cannot read {e}: {x}"))?)
+                        }
+                        None => {}
+                    }
+                }
+                let file = match found {
+                    Some(text) => (at, text),
                     None => {
                         if not std_modules().contains(name) {
+                            let place = if pk.is_some() { local + ", a dependency in tenon.toml" } else { local }
                             return Err(diag(files, i, im.1.line, im.1.col,
-                                "cannot find module '{name}' ({local} or the standard library)"))
+                                "cannot find module '{name}' ({place} or the standard library)"))
                         }
                         match fs.read(join(root, "lib/std/" + name + ".tn")) {
-                            Ok(text) => files.push(("<std>/" + name + ".tn", text)),
+                            Ok(text) => ("<std>/" + name + ".tn", text),
                             Err(e) => return Err(io_fail("cannot read the standard library: {e}")),
                         }
                     }
                 }
-                modules.push(name)
+                match known {
+                    Some(k) => if files[k].0 != file.0 {
+                        return Err(diag(files, i, im.1.line, im.1.col,
+                            "module '{name}' is both {files[k].0} and {file.0}; module names must be unique in a program"))
+                    },
+                    None => {
+                        files.push(file)
+                        modules.push(name)
+                    }
+                }
             }
         }
         i += 1
