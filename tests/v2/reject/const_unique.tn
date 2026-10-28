@@ -1,0 +1,9 @@
+// error: constant 'HANDLES' has the unique type Option[Handle]: every use would copy it; return a new value from a function instead
+// Authority finding 4 (2026-10-28): a unique value is never copied, also not through a constant.
+unique struct Handle { fd: Int }
+const HANDLES: Option[Handle] = Some(Handle { fd: 3 })
+fn main(sys: Sys) {
+    let a = HANDLES
+    let b = HANDLES
+    sys.console.println("{a.is_some()} {b.is_some()}")
+}

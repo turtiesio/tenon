@@ -215,6 +215,11 @@ fn declare_fns(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.Di
             Some(t) => env.lower_type(t, tparams)?,
             None => cktypes.t_unit(),
         }
+        // A constant is evaluated at each use, so a linear or unique one would be copied.
+        let ck = env.kind_of(ret)
+        if f.is_const and ck != Plain {
+            return ckast.fail(f.sp, "constant '{f.name}' has the {ckenv.word(ck)} type {ret.show()}: every use would copy it; return a new value from a function instead")
+        }
         if not derived and not env.fn_ix.contains(full) { env.fn_ix[full] = env.fns.len() }
         env.fns.push(ckenv.FnInfo {
             name: full, tparams, owner, params, muts: f.params.map(fn(p) => p.by_mut), ret, self_kind: f.self_kind,

@@ -1,0 +1,11 @@
+// error: constant 'CLAIM' has the linear type Claim: every use would copy it; return a new value from a function instead
+// Authority finding 4 (2026-10-28): three uses of one constant were three independent obligations.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+const CLAIM: Claim = Claim { id: 1 }
+fn main(sys: Sys) {
+    let a = CLAIM
+    let b = CLAIM
+    a.complete(sys.console)
+    b.complete(sys.console)
+}

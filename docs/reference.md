@@ -553,7 +553,10 @@ lock). The compiler rejects any program that copies one or loses one:
 - a value from outside a loop cannot be consumed inside the loop;
 - `_` patterns and `let _ =` cannot discard it, and it cannot be overwritten;
 - closures cannot capture it; `List`/`Map` cannot hold it; generic functions
-  other than `unwrap`/`expect` cannot take it (they might copy or drop).
+  other than `unwrap`/`expect` cannot take it (they might copy or drop);
+- a constant cannot have a linear or unique type: every use of a constant
+  evaluates it again, so each use would be a copy (write a function that
+  returns a new value).
 
 Inside a method of the type itself, `self` is exempt: the type's own methods
 (`fn Claim.complete(self)`) decide how a value is finished, and only the type's

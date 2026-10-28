@@ -240,6 +240,9 @@ A hung build step that forks therefore outlives its timeout. The repro kills the
 
 **Expected:** kill the process group (or document that only the direct child is killed).
 
+Fixed in cf14aaf, test tests/v2/run/proc_timeout_kills_group.tn (the command runs in a process group
+of its own and the whole group is killed on timeout; docs/library.md, `Proc`).
+
 ## Held up (no bug found)
 
 * **Fs jail:** 35 read-side paths × `exists/is_dir/read/list/read_bytes` and 20 write-side paths ×
