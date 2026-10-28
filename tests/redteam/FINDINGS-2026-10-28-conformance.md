@@ -106,6 +106,8 @@ with `let m: Map[T, Int] = [self.x: 1]; "{m.len()}"` also passes and prints
 new implicit-Show-instantiation path, rather than the old direct/generic
 function-comparison findings. The checked-in marker is the smaller repro.
 
+Fixed in 91f006e (C backend; the interpreter already chose by ckenv.show_impl from 01e9677), test tests/v2/run/trait_show_impl_bound.tn.
+
 ## 3. Euclidean arithmetic has avoidable intermediate overflow
 
 `03a-div-euclid.tn`:
