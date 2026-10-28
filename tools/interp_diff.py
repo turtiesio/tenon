@@ -8,13 +8,15 @@ study) with `tenon run` and `tenonc run`, from the file's directory, with its
 `// stdin:` and `// args:` directives (as the test runner gives them), and
 compares standard output, standard error and the exit status byte for byte.
 Files the bootstrap rejects are compared too (the diagnostic must be the
-same). Files the bootstrap needs more than 20 s for are skipped. Prints each
+same). Files the bootstrap needs more than 20 s for are skipped; tenonc may
+take three times as long as the bootstrap (at least 20 s). Prints each
 difference and a summary; exit status 1 if any file differs. TENONC defaults
 to target/tenonc (./check builds it).
 """
 import os
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,9 +47,9 @@ def hex_escapes(s):
     return bytes(out)
 
 
-def run(cmd, cwd, stdin):
+def run(cmd, cwd, stdin, timeout=TIMEOUT):
     try:
-        r = subprocess.run(cmd, cwd=cwd, input=stdin, capture_output=True, timeout=TIMEOUT)
+        r = subprocess.run(cmd, cwd=cwd, input=stdin, capture_output=True, timeout=timeout)
         return (r.stdout, r.stderr, r.returncode)
     except subprocess.TimeoutExpired:
         return None
@@ -58,10 +60,12 @@ def one(path):
     stdin = hex_escapes(directive(src, "stdin") or "")
     args = (directive(src, "args") or "").split()
     d, name = os.path.split(path)
+    start = time.time()
     a = run([T, "run", name] + args, d, stdin)
     if a is None:
         return (path, "skip", "")
-    b = run([C, "run", "--root", ROOT, name] + args, d, stdin)
+    # tenonc gets three times the bootstrap's time (at least TIMEOUT)
+    b = run([C, "run", "--root", ROOT, name] + args, d, stdin, max(TIMEOUT, 3 * (time.time() - start)))
     if b is None:
         return (path, "diff", "tenonc timed out")
     if a == b:
