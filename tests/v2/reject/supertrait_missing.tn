@@ -1,0 +1,15 @@
+// error: impl Greeter for Cat needs Cat to implement Named (Named is a supertrait of Greeter)
+// An impl of a trait needs impls of its supertraits.
+trait Named {
+    fn name(self) -> Str
+}
+
+trait Greeter: Named {
+    fn greet(self) -> Str { "hi " + self.name() }
+}
+
+struct Cat {}
+
+impl Greeter for Cat {}
+
+fn main() {}

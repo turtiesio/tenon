@@ -20,9 +20,14 @@ pub struct FnInfo {
     pub refs: List[Bool], // per explicit (non-self) parameter: `x: ref T`
     pub ret: cktypes.Ty, pub self_kind: ckast.SelfK, pub is_extern: Bool, pub is_const: Bool, pub public: Bool,
     pub sp: ckast.Span,
-    pub bounds: List[List[Int]], // per type parameter: the traits it must implement
+    pub bounds: List[List[TB]], // per type parameter: the traits it must implement (with their supertraits)
     pub origin: ckast.Origin,
 }
+
+// A trait with its type arguments (`Into[Int]`): a bound, a supertrait.
+pub struct TB { pub tr: Int, pub args: List[cktypes.Ty] }
+
+pub fn has_tr(bs: List[TB], tr: Int) -> Bool { bs.any(fn(b) => b.tr == tr) }
 
 // A trait method's signature; `Self` is Par("Self"). `default`: the function
 // of its default body, or -1.
@@ -31,12 +36,18 @@ pub struct TMethod {
     pub muts: List[Bool], pub refs: List[Bool], pub ret: cktypes.Ty, pub default: Int, pub sp: ckast.Span,
 }
 // `unsafe_why`: why `dyn` cannot be used with it ("" when it can).
+// `tparams`: its type parameters (`trait Into[T]`); `supers`: its
+// supertraits, their arguments in terms of Self and `tparams`. Method
+// signatures mention them as Par("Self") and Par(T).
 pub struct TraitInfo {
-    pub name: Str, pub file: Int, pub public: Bool, pub methods: List[TMethod], pub unsafe_why: Str, pub sp: ckast.Span,
+    pub name: Str, pub file: Int, pub public: Bool, pub tparams: List[Str], pub supers: List[TB], pub methods: List[TMethod],
+    pub unsafe_why: Str, pub sp: ckast.Span,
 }
-// `fns[m]`: the function implementing method m of the trait (the impl's own or the default).
+// `targs`: the trait's arguments (`impl Into[Int] for C`), in terms of
+// `tparams`; `fns[m]`: the function implementing method m of the trait (the
+// impl's own or the default).
 pub struct ImplInfo {
-    pub tr: Int, pub tparams: List[Str], pub bounds: List[List[Int]], pub target: cktypes.Ty, pub file: Int,
+    pub tr: Int, pub targs: List[cktypes.Ty], pub tparams: List[Str], pub bounds: List[List[TB]], pub target: cktypes.Ty, pub file: Int,
     pub fns: List[Int], pub sp: ckast.Span,
 }
 
@@ -51,7 +62,7 @@ pub enum Res {
     RConst(Int), // a `const`: evaluate its function
     RToStr,
     RCallValue,
-    RTrait(Int, Int, cktypes.Ty, List[cktypes.Ty]), // trait, method, receiver type, the method's own type args
+    RTrait(Int, Int, cktypes.Ty, List[cktypes.Ty]), // trait, method, receiver type, the trait's then the method's own type args
 }
 
 pub struct Env {
@@ -420,8 +431,8 @@ pub fn Env.object_safe(self, ti: Int, sp: ckast.Span) -> Result[Unit, ckast.Diag
 }
 
 // Bounds of the type parameters in scope, by name.
-pub fn Env.bound_map(self, fi: Int) -> Map[Str, List[Int]] {
-    var out: Map[Str, List[Int]] = [:]
+pub fn Env.bound_map(self, fi: Int) -> Map[Str, List[TB]] {
+    var out: Map[Str, List[TB]] = [:]
     if fi < 0 { return out }
     let f = self.fns[fi]
     for i in 0..f.tparams.len().min(f.bounds.len()) { out[f.tparams[i]] = f.bounds[i] }
@@ -469,12 +480,12 @@ fn match_all(a: List[cktypes.Ty], ps: List[Str], c: List[cktypes.Ty], b: mut Map
     true
 }
 
-// The impl of trait tr for type t, and its type arguments.
-pub fn Env.find_impl(self, tr: Int, t: cktypes.Ty) -> Option[(Int, List[cktypes.Ty])] {
+// The impl of trait tr[args] for type t, and its type arguments.
+pub fn Env.find_impl(self, tr: Int, args: List[cktypes.Ty], t: cktypes.Ty) -> Option[(Int, List[cktypes.Ty])] {
     for ii in 0..self.impls.len() {
         let im = self.impls[ii]
         if im.tr == tr {
-            match match_ty(im.target, im.tparams, t) {
+            match match_ty(Tup([im.target] + im.targs), im.tparams, Tup([t] + args)) {
                 Some(ts) => return Some((ii, ts)),
                 None => {}
             }
@@ -483,10 +494,10 @@ pub fn Env.find_impl(self, tr: Int, t: cktypes.Ty) -> Option[(Int, List[cktypes.
     None
 }
 
-// Does t implement trait tr? `pb`: the bounds of the type parameters in scope.
-pub fn Env.implements(self, t: cktypes.Ty, tr: Int, pb: Map[Str, List[Int]]) -> Bool {
+// Does t implement trait tr[args]? `pb`: the bounds of the type parameters in scope.
+pub fn Env.implements(self, t: cktypes.Ty, tr: Int, args: List[cktypes.Ty], pb: Map[Str, List[TB]]) -> Bool {
     match t {
-        Par(p) => return pb.get(p).map_or(false, fn(bs) => bs.contains(tr)),
+        Par(p) => return pb.get(p).map_or(false, fn(bs) => bs.any(fn(b) => b.tr == tr and b.args == args)),
         _ => {}
     }
     if self.is_builtin_trait(tr) {
@@ -494,7 +505,7 @@ pub fn Env.implements(self, t: cktypes.Ty, tr: Int, pb: Map[Str, List[Int]]) -> 
         if n == "Show" { return self.unshowable_part(t, pb).is_none() }
         // every type parameter inside needs the bound itself
         if t.any(fn(x) => match x {
-            Par(p) => not pb.get(p).map_or(false, fn(bs) => bs.contains(tr)),
+            Par(p) => not pb.get(p).map_or(false, fn(bs) => has_tr(bs, tr)),
             _ => false,
         }) {
             return false
@@ -508,18 +519,21 @@ pub fn Env.implements(self, t: cktypes.Ty, tr: Int, pb: Map[Str, List[Int]]) -> 
         Some(d) => return d == tr,
         None => {}
     }
-    match self.find_impl(tr, t) {
-        Some((ii, ts)) => {
-            let im = self.impls[ii]
-            for i in 0..ts.len().min(im.bounds.len()) {
-                for b in im.bounds[i] {
-                    if not self.implements(ts[i], b, pb) { return false }
-                }
-            }
-            true
-        }
+    match self.find_impl(tr, args, t) {
+        Some((ii, ts)) => self.impl_bounds_hold(ii, ts, pb),
         None => false,
     }
+}
+
+// Do the bounds of impl ii hold for its type arguments ts?
+pub fn Env.impl_bounds_hold(self, ii: Int, ts: List[cktypes.Ty], pb: Map[Str, List[TB]]) -> Bool {
+    let im = self.impls[ii]
+    for i in 0..ts.len().min(im.bounds.len()) {
+        for b in im.bounds[i] {
+            if not self.implements(ts[i], b.tr, b.args.map(fn(a) => a.subst(im.tparams, ts)), pb) { return false }
+        }
+    }
+    true
 }
 
 // The prelude's Show.
@@ -533,15 +547,10 @@ pub fn Env.show_ix(self) -> Option[Int] {
 // The Show impl that formats t, and its type arguments, if one applies: its
 // target matches t and the impl's bounds hold for them (else t is formatted
 // structurally). `pb`: the bounds of the type parameters in scope.
-pub fn Env.show_impl(self, t: cktypes.Ty, pb: Map[Str, List[Int]]) -> Option[(Int, List[cktypes.Ty])] {
+pub fn Env.show_impl(self, t: cktypes.Ty, pb: Map[Str, List[TB]]) -> Option[(Int, List[cktypes.Ty])] {
     let Some(tr) = self.show_ix() else { return None }
-    let Some((ii, ts)) = self.find_impl(tr, t) else { return None }
-    let im = self.impls[ii]
-    for i in 0..ts.len().min(im.bounds.len()) {
-        for b in im.bounds[i] {
-            if not self.implements(ts[i], b, pb) { return None }
-        }
-    }
+    let Some((ii, ts)) = self.find_impl(tr, [], t) else { return None }
+    if not self.impl_bounds_hold(ii, ts, pb) { return None }
     Some((ii, ts))
 }
 
@@ -549,9 +558,9 @@ pub fn Env.show_impl(self, t: cktypes.Ty, pb: Map[Str, List[Int]]) -> Option[(In
 // function, a capability or a type parameter without the bound, looking
 // through tuples, struct fields, enum payloads and type arguments. A part
 // with a Show impl that applies is shown by it, whatever it contains.
-pub fn Env.unshowable_part(self, t: cktypes.Ty, pb: Map[Str, List[Int]]) -> Option[Str] { self.unshowable_walk(t, pb, []).0 }
+pub fn Env.unshowable_part(self, t: cktypes.Ty, pb: Map[Str, List[TB]]) -> Option[Str] { self.unshowable_walk(t, pb, []).0 }
 
-fn Env.unshowable_walk(self, t: cktypes.Ty, pb: Map[Str, List[Int]], seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
+fn Env.unshowable_walk(self, t: cktypes.Ty, pb: Map[Str, List[TB]], seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
     // polymorphic recursion (enum Poly[T] { A(T), B(Poly[List[T]]) }) unfolds
     // without end; no backend builds types deeper than 48 (emit.ty_depth)
     if seen0.contains(t) or deeper(t, 48) { return (None, seen0) }
@@ -560,7 +569,7 @@ fn Env.unshowable_walk(self, t: cktypes.Ty, pb: Map[Str, List[Int]], seen0: List
     match t {
         Par(p) => {
             let ok = match self.show_ix() {
-                Some(tr) => pb.get(p).map_or(false, fn(bs) => bs.contains(tr)),
+                Some(tr) => pb.get(p).map_or(false, fn(bs) => has_tr(bs, tr)),
                 None => false,
             }
             return (if ok { None } else { Some("the type parameter " + p + " without the bound Show") }, seen)
@@ -608,17 +617,36 @@ pub fn deeper(t: cktypes.Ty, n: Int) -> Bool {
 
 // The function (and its type arguments) that method mi of trait tr is for
 // the concrete type t (not a `dyn`): the impl's method, or the default.
-pub fn Env.method_for(self, tr: Int, mi: Int, t: cktypes.Ty, mtargs: List[cktypes.Ty]) -> Option[(Int, List[cktypes.Ty])] {
-    match self.find_impl(tr, t) {
+// `targs`: the trait's type arguments, then the method's own.
+pub fn Env.method_for(self, tr: Int, mi: Int, t: cktypes.Ty, targs: List[cktypes.Ty]) -> Option[(Int, List[cktypes.Ty])] {
+    let n = self.traits[tr].tparams.len().min(targs.len())
+    match self.find_impl(tr, targs.slice(0, n), t) {
         Some((ii, ts)) => {
             let fi = self.impls[ii].fns[mi]
             match self.fns[fi].origin {
-                ODefault(_, _) => Some((fi, [t] + mtargs)),
-                _ => Some((fi, ts + mtargs)),
+                ODefault(_, _) => Some((fi, [t] + targs)),
+                _ => Some((fi, ts + targs.slice(n, targs.len()))),
             }
         }
         None => None,
     }
+}
+
+// A bound and the supertraits it gives, transitively (`T: Ord` gives
+// `T: Eq`), for the type parameter p: the bound first, each trait once.
+pub fn Env.with_supers(self, b: TB, p: cktypes.Ty, out: mut List[TB]) {
+    if out.any(fn(x) => x.tr == b.tr and x.args == b.args) { return }
+    out.push(b)
+    let t = self.traits[b.tr]
+    for s in t.supers {
+        self.with_supers(TB { tr: s.tr, args: s.args.map(fn(a) => a.subst(["Self"] + t.tparams, [p] + b.args)) }, p, mut out)
+    }
+}
+
+// A trait with its arguments, for messages: `Into[Int]`.
+pub fn Env.tb_show(self, b: TB) -> Str {
+    let n = self.traits[b.tr].name
+    if b.args.is_empty() { n } else { n + "[" + b.args.map(fn(a) => a.show()).join(", ") + "]" }
 }
 
 pub fn Env.visible(self, fi: Int, sp: ckast.Span) -> Result[Unit, ckast.Diag] {

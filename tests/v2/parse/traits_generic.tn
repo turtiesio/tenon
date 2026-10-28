@@ -1,0 +1,21 @@
+// Trait type parameters, supertraits and trait arguments: in a trait
+// declaration, an impl, bounds and a default method.
+pub trait Into[T] {
+    fn into(self) -> T
+}
+
+trait Pairs[A, B]: Into[A] + geo.Shape {
+    fn pair(self, b: B) -> (A, B) { (self.into(), b) }
+}
+
+trait Named: Show {}
+
+impl Into[Int] for Celsius {
+    fn into(self) -> Int { self.deg }
+}
+
+impl[T: Into[Str] + Show] Into[List[Str]] for Box[T] {
+    fn into(self) -> List[Str] { [self.x.into()] }
+}
+
+fn ints[T: Into[Int], U: Pairs[Int, Str]](xs: List[T], u: U) -> Int { 0 }

@@ -1,0 +1,17 @@
+// error: method 'into' of Cel is ambiguous: impls Into[Int] and Into[Str] apply
+// With impls of one trait at several arguments, a call whose result type is not known is ambiguous.
+trait Into[T] {
+    fn into(self) -> T
+}
+
+struct Cel { d: Int }
+
+impl Into[Int] for Cel {
+    fn into(self) -> Int { self.d }
+}
+
+impl Into[Str] for Cel {
+    fn into(self) -> Str { "c" }
+}
+
+fn main(sys: Sys) { sys.console.println("{Cel { d: 1 }.into()}") }

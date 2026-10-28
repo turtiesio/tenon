@@ -144,29 +144,40 @@ with a minimal reproduction.
 The language: docs/reference.md §17. Tested by `tenon test tests/v2`, never
 cross-checked (the seed cannot parse them).
 
-- **Front end.** parser.tn: `trait`, `impl[..] T for Type`, bounds in
-  `[T: A + B]` (`FnDecl.bounds`), `dyn Name` types (a `Named("dyn Name")`)
-  and `dyn Name(x)` (`EDyn`). ckast.convert turns every impl method into a
-  function (`Origin` `OImpl(i)`: owner the impl's type, type parameters the
-  impl's then its own, bounds the impl's then its own) and every default
-  body into a function generic in `Self` bounded by its trait
-  (`ODefault(t, m)`), appended after the file's functions. lib/v2/prelude.tn
-  (Eq, Ord, Hash, Show) is appended to the prelude's text by front.gather.
+- **Front end.** parser.tn: `trait Name[T]: Super + Other[T]`,
+  `impl[..] Trait[Args] for Type`, bounds in `[T: A + B[Int]]`
+  (`FnDecl.bounds`; a trait as written is a `TraitRef`: name and type
+  arguments), `dyn Name` types (a `Named("dyn Name")`) and `dyn Name(x)`
+  (`EDyn`). ckast.convert turns every impl method into a function (`Origin`
+  `OImpl(i)`: owner the impl's type, type parameters the impl's then its
+  own, bounds the impl's then its own) and every default body into a
+  function generic in `Self` and the trait's type parameters, bounded by
+  `Self: Trait[T..]` (`ODefault(t, m)`), appended after the file's
+  functions. lib/v2/prelude.tn (Eq, Ord, Hash, Show) is appended to the
+  prelude's text by front.gather.
 - **Declarations** (ckenv, ckdecl): traits are a namespace of their own
   (`trait_ix`, internal names like types'), registered before the types (a
-  field may be `dyn T`), their methods' signatures lowered after them;
-  `declare_impls` checks each impl (the trait's methods and signatures,
-  missing and extra methods, the orphan rule, overlap with every earlier
-  impl by unifying the targets with their parameters renamed apart) and
-  records `ImplInfo.fns`: per trait method the function, the impl's or the
-  default. Impl and default functions are not in `fn_ix`, so they never
-  clash with a type's own methods (which win at a call).
+  field may be `dyn T`), their supertraits (`TraitInfo.supers`, checked for
+  cycles) and methods' signatures lowered after them (`Self` is `Par("Self")`,
+  the trait's parameters `Par(T)`). A bound is a `ckenv.TB` (trait and type
+  arguments); `lower_bounds` closes every type parameter's bounds under
+  supertraits (`Env.with_supers`). `declare_impls` checks each impl (the
+  trait's arguments, its methods and signatures, missing and extra methods,
+  the orphan rule, overlap with every earlier impl by unifying the targets
+  and trait arguments with their parameters renamed apart) and records
+  `ImplInfo.fns`: per trait method the function, the impl's or the default;
+  once all impls are known, every impl's supertraits must be implemented,
+  given its bounds. Impl and default functions are not in `fn_ix`, so they
+  never clash with a type's own methods (which win at a call).
 - **Bodies** (ckinfer, ckcall): a method call on a type parameter looks in its
   bounds, on a `dyn` value in its trait (`RTrait(trait, method, receiver
   type, method type args)`: resolved per instance by the backends); on any
   other type, when the type has no method of the name, in the impls whose
   target unifies with the receiver (on a copy of the substitution: exactly
-  one may), giving an ordinary `RMethod` of the impl's function. Bounds are
+  one may, or, for impls of one trait at different arguments, exactly one
+  whose result type fits the expected type, `impl_fits`), giving an
+  ordinary `RMethod` of the impl's function; `RTrait`'s type arguments are
+  the trait's then the method's own. Bounds are
   checked after the body (`pbounds`), when the types are known:
   `ckenv.implements` (a type parameter has the bounds it declares; derived
   traits structurally, Show through fields and payloads with

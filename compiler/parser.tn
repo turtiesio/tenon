@@ -164,15 +164,20 @@ pub struct FnDecl {
     pub bounds: List[Bound], // `[T: Show + Eq]`: the traits each bounded type parameter needs
 }
 
-// A type parameter's bounds: `T: Show + Eq` (trait names as written, `mod.Trait` included).
-pub struct Bound { pub param: Str, pub traits: List[(Str, Pos)], pub at: Pos }
+// A trait as written where it is used: `Show`, `mod.Shape`, `Into[Int]`.
+pub struct TraitRef { pub name: Str, pub args: List[Ty], pub at: Pos }
 
-// `trait Name { fn m(self, ...) -> T; fn d(self) -> T { default body } }`
-pub struct TraitDecl { pub public: Bool, pub name: Str, pub methods: List[FnDecl], pub at: Pos }
+// A type parameter's bounds: `T: Show + Into[Int]` (traits as written, `mod.Trait` included).
+pub struct Bound { pub param: Str, pub traits: List[TraitRef], pub at: Pos }
 
-// `impl[T: Show] Trait for Type { fn m(self, ...) -> T { ... } }`
+// `trait Name[T]: Super + Other[T] { fn m(self, ...) -> T; fn d(self) -> T { default body } }`
+pub struct TraitDecl {
+    pub public: Bool, pub name: Str, pub tparams: List[Str], pub supers: List[TraitRef], pub methods: List[FnDecl], pub at: Pos,
+}
+
+// `impl[T: Show] Trait[Args] for Type { fn m(self, ...) -> T { ... } }`
 pub struct ImplDecl {
-    pub tparams: List[Str], pub bounds: List[Bound], pub trait_name: Str, pub trait_at: Pos, pub target: Ty,
+    pub tparams: List[Str], pub bounds: List[Bound], pub trait_name: Str, pub trait_args: List[Ty], pub trait_at: Pos, pub target: Ty,
     pub methods: List[FnDecl], pub at: Pos,
 }
 
@@ -338,8 +343,8 @@ fn Parser.tparams_bounded(mut self) -> Result[(List[Str], List[Bound]), ParseErr
             let n = self.ident()?
             v.push(n)
             if self.eat_sym(":") {
-                var ts = [self.trait_name()?]
-                while self.eat_sym("+") { ts.push(self.trait_name()?) }
+                var ts = [self.trait_ref()?]
+                while self.eat_sym("+") { ts.push(self.trait_ref()?) }
                 bs.push(Bound { param: n, traits: ts, at })
             }
             if not self.is_sym("]") { self.expect_sym(",")? }
@@ -365,6 +370,13 @@ pub fn Parser.trait_name(mut self) -> Result[(Str, Pos), ParseError] {
     Ok((n, at))
 }
 
+// A trait with its type arguments, if any: `Show`, `mod.Shape`, `Into[Int]`.
+pub fn Parser.trait_ref(mut self) -> Result[TraitRef, ParseError] {
+    let (name, at) = self.trait_name()?
+    let args = if self.eat_sym("[") { self.type_list("]")? } else { [] }
+    Ok(TraitRef { name, args, at })
+}
+
 // The methods of a trait (bodies optional: defaults) or an impl (bodies required).
 fn Parser.methods(mut self, in_trait: Bool) -> Result[List[FnDecl], ParseError] {
     self.expect_sym("\{")?
@@ -385,20 +397,27 @@ fn Parser.trait_decl(mut self) -> Result[TraitDecl, ParseError] {
     let at = self.here()
     self.advance()
     let name = self.ident()?
-    if self.is_sym("[") { return Err(err_at(self.here(), "traits have no type parameters; put them on the methods")) }
+    let bat = self.here()
+    let (tparams, bounds) = self.tparams_bounded()?
+    if not bounds.is_empty() { return Err(err_at(bat, "the type parameters of a trait cannot have bounds (bound those of its methods, or give the trait a supertrait)")) }
+    var supers: List[TraitRef] = []
+    if self.eat_sym(":") {
+        supers.push(self.trait_ref()?)
+        while self.eat_sym("+") { supers.push(self.trait_ref()?) }
+    }
     let methods = self.methods(true)?
-    Ok(TraitDecl { public: false, name, methods, at })
+    Ok(TraitDecl { public: false, name, tparams, supers, methods, at })
 }
 
 fn Parser.impl_decl(mut self) -> Result[ImplDecl, ParseError] {
     let at = self.here()
     self.advance()
     let (tparams, bounds) = self.tparams_bounded()?
-    let (trait_name, trait_at) = self.trait_name()?
+    let tref = self.trait_ref()?
     if not self.eat_kw("for") { return Err(self.fail("'for' (impl TRAIT for TYPE)")) }
     let target = self.type_expr()?
     let methods = self.methods(false)?
-    Ok(ImplDecl { tparams, bounds, trait_name, trait_at, target, methods, at })
+    Ok(ImplDecl { tparams, bounds, trait_name: tref.name, trait_args: tref.args, trait_at: tref.at, target, methods, at })
 }
 
 pub fn Parser.sep_or_close(self) -> Bool { self.is_sym("}") or self.is_sym(",") or self.is_sym(";") }
@@ -539,6 +558,7 @@ pub fn Parser.type_expr(mut self) -> Result[Ty, ParseError] {
     if self.eat_kw("dyn") {
         // a trait object type: `dyn Show`, `dyn module.Shape`
         let (n, _) = self.trait_name()?
+        if self.is_sym("[") { return Err(err_at(self.here(), "a trait with type parameters cannot be used with 'dyn'")) }
         return Ok(Named("dyn " + n, [], at))
     }
     if self.eat_kw("fn") {

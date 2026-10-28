@@ -63,6 +63,11 @@ tests/pkg/*.toml
 # Mutation survivor #15: constants using constants (tests/reject/const_self_cycle.tn is under tests/reject/*.tn)
 tests/run/const_chain.tn
 tests/run/const_chain.out
+# milestone 3 item 3: trait type parameters and supertraits (docs/reference.md §17)
+tests/v2/run/trait_params.tn
+tests/v2/run/trait_params.out
+tests/v2/run/trait_supers.tn
+tests/v2/run/trait_supers.out
 # The guarantees as Lean theorems (tenon.md §6, formal/README.md): changing or
 # removing a theorem statement needs an approval line, like weakening a test.
 theorems formal/TenonCore/Theorems.lean

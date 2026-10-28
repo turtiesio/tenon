@@ -1,0 +1,7 @@
+// error: type parameter 'T' shadows a type parameter of trait Into
+// A method's own type parameters are distinct from its trait's.
+trait Into[T] {
+    fn into[T](self) -> T
+}
+
+fn main() {}

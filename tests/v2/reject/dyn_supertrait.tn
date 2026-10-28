@@ -1,0 +1,11 @@
+// error: trait Greeter cannot be used with 'dyn': it has supertraits
+// A dyn value calls only its own trait's methods, so a trait with supertraits is not a dyn trait.
+trait Named {
+    fn name(self) -> Str
+}
+
+trait Greeter: Named {}
+
+fn f(g: dyn Greeter) {}
+
+fn main() {}

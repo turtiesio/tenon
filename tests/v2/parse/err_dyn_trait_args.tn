@@ -1,0 +1,2 @@
+// a trait with type parameters cannot be a dyn type
+fn f(x: dyn Into[Int]) {}

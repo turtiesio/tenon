@@ -1,0 +1,17 @@
+// error: duplicate impl Into[Int] for Cel (line 9); a type can implement a trait only once
+// Coherence counts the trait arguments: Into[Int] twice for one type is a duplicate.
+trait Into[T] {
+    fn into(self) -> T
+}
+
+struct Cel { d: Int }
+
+impl Into[Int] for Cel {
+    fn into(self) -> Int { self.d }
+}
+
+impl Into[Int] for Cel {
+    fn into(self) -> Int { 0 }
+}
+
+fn main() {}

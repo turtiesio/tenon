@@ -55,6 +55,10 @@ pub fn nodes(prog: ckast.Program, file: Int) -> List[(Int, Node)] {
     }
     for t in prog.traits {
         if t.sp.file == file {
+            for r in t.supers {
+                w.out.push((-1, NTrait(r.name, r.sp)))
+                for a in r.args { w.ty(a) }
+            }
             for m in t.methods {
                 for p in m.params { w.ty(p.ty) }
                 w.opt_ty(m.ret)
@@ -62,14 +66,20 @@ pub fn nodes(prog: ckast.Program, file: Int) -> List[(Int, Node)] {
         }
     }
     for im in prog.impls {
-        if im.sp.file == file { w.out.push((-1, NTrait(im.trait_name, im.trait_sp))) }
+        if im.sp.file == file {
+            w.out.push((-1, NTrait(im.trait_name, im.trait_sp)))
+            for a in im.trait_args { w.ty(a) }
+        }
     }
     for i in 0..prog.fns.len() {
         let f = prog.fns[i]
         if f.sp.file != file { continue }
         w.fi = i
         for b in f.bounds {
-            for t in b.traits { w.out.push((i, NTrait(t.0, t.1))) }
+            for t in b.traits {
+                w.out.push((i, NTrait(t.name, t.sp)))
+                for a in t.args { w.ty(a) }
+            }
         }
         match f.owner {
             Some(o) => w.ty(o),

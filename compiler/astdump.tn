@@ -11,11 +11,13 @@ fn btps(ps: List[Str], bs: List[parser.Bound]) -> Str {
     "[" + ps.map(fn(p) => {
         var s = p
         for b in bs {
-            if b.param == p { s += ": " + b.traits.map(fn(t) => t.0).join(" + ") }
+            if b.param == p { s += ": " + b.traits.map(tref).join(" + ") }
         }
         s
     }).join(", ") + "]"
 }
+// A trait as written: `Show`, `Into[Int]`.
+fn tref(r: parser.TraitRef) -> Str { if r.args.is_empty() { r.name } else { r.name + "[" + r.args.map(ty).join(", ") + "]" } }
 fn vis(p: Bool) -> Str { if p { " pub" } else { "" } }
 fn kind(k: Str) -> Str { if k == "" { "" } else { " " + k } }
 fn at(p: parser.Pos) -> Str { "@{p.line}:{p.col}" }
@@ -148,9 +150,13 @@ fn dump(p: parser.Program) -> Str {
         out.push("(enum" + vis(e.public) + kind(e.kind) + " " + e.name + tps(e.tparams) + vs.join("") + ")")
     }
     for f in p.fns { out.push(fn_decl(f, " extern")) }
-    for t in p.traits { out.push("(trait" + vis(t.public) + " " + t.name + list(t.methods.map(fn(f) => fn_decl(f, ""))) + ")") }
+    for t in p.traits {
+        let sups = if t.supers.is_empty() { "" } else { ": " + t.supers.map(tref).join(" + ") }
+        out.push("(trait" + vis(t.public) + " " + t.name + tps(t.tparams) + sups + list(t.methods.map(fn(f) => fn_decl(f, ""))) + ")")
+    }
     for i in p.impls {
-        out.push("(impl" + btps(i.tparams, i.bounds) + " " + i.trait_name + " for " + ty(i.target) + list(i.methods.map(fn(f) => fn_decl(f, ""))) + ")")
+        let tr = tref(parser.TraitRef { name: i.trait_name, args: i.trait_args, at: i.trait_at })
+        out.push("(impl" + btps(i.tparams, i.bounds) + " " + tr + " for " + ty(i.target) + list(i.methods.map(fn(f) => fn_decl(f, ""))) + ")")
     }
     out.map(fn(l) => l + "\n").join("")
 }

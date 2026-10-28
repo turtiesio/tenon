@@ -1,0 +1,6 @@
+(fn ints[T: Into[Int], U: Pairs[Int, Str]] (xs List[T]) (u U) -> Int (block (@21:71 expr (@21:71 int 0))))
+(trait pub Into[T] (fn into self -> T))
+(trait Pairs[A, B]: Into[A] + geo.Shape (fn pair self (b B) -> (A, B) (block (@8:37 expr (@8:37 tuple (@8:42 method (@8:38 name self) into) (@8:51 name b))))))
+(trait Named: Show)
+(impl Into[Int] for Celsius (fn into self -> Int (block (@14:28 expr (@14:32 field (@14:28 name self) deg)))))
+(impl[T: Into[Str] + Show] Into[List[Str]] for Box[T] (fn into self -> List[Str] (block (@18:34 expr (@18:34 list (@18:41 method (@18:39 field (@18:35 name self) x) into))))))

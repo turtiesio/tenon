@@ -1,0 +1,1 @@
+error 2:10 the type parameters of a trait cannot have bounds (bound those of its methods, or give the trait a supertrait)

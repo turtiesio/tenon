@@ -1,0 +1,60 @@
+// Supertraits: an impl of Greeter needs one of Named; a bound T: Greeter
+// gives T's Named methods, also to Greeter's default methods, and satisfies
+// a bound T: Named; supertraits with type arguments.
+trait Named {
+    fn name(self) -> Str
+}
+
+trait Greeter: Named {
+    fn greet(self) -> Str { "hello, " + self.name() }
+}
+
+trait Source[T] {
+    fn get(self) -> T
+}
+
+trait Labeled[T]: Source[T] + Named {
+    fn label(self) -> Str
+}
+
+struct Dog { age: Int }
+
+struct Robot { id: Int }
+
+impl Named for Dog {
+    fn name(self) -> Str { "dog" }
+}
+
+impl Greeter for Dog {}
+
+impl Named for Robot {
+    fn name(self) -> Str { "robot {self.id}" }
+}
+
+impl Greeter for Robot {
+    fn greet(self) -> Str { "beep, " + self.name() }
+}
+
+impl Source[Int] for Dog {
+    fn get(self) -> Int { self.age }
+}
+
+impl Labeled[Int] for Dog {
+    fn label(self) -> Str { "{self.name()} aged {self.get()}" }
+}
+
+fn names[T: Named](xs: List[T]) -> List[Str] { xs.map(fn(x) => x.name()) }
+
+fn intro[T: Greeter](x: T) -> Str { x.name() + ": " + x.greet() + " " + names([x]).join("") }
+
+fn describe[T: Labeled[Int]](x: T) -> Str {
+    let n: Int = x.get()
+    "{x.label()} ({x.name()}, {n + 1})"
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    con.println(intro(Dog { age: 3 }))
+    con.println(intro(Robot { id: 7 }))
+    con.println(describe(Dog { age: 3 }))
+}

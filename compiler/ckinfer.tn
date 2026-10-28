@@ -30,8 +30,8 @@ pub struct Ck {
     pub types: Map[Int, cktypes.Ty],
     pub res: Map[Int, ckenv.Res],
     pub captures: Map[Int, List[(Str, cktypes.Ty)]],
-    pub bmap: Map[Str, List[Int]],                         // bounds of the type parameters in scope
-    pub pbounds: List[(ckast.Span, cktypes.Ty, Int, Str)], // pending: type, trait it must implement, what needs it
+    pub bmap: Map[Str, List[ckenv.TB]],                         // bounds of the type parameters in scope
+    pub pbounds: List[(ckast.Span, cktypes.Ty, ckenv.TB, Str)], // pending: type, trait it must implement, what needs it
 }
 
 pub fn new_ck(env: ckenv.Env) -> Ck {
@@ -99,12 +99,13 @@ pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Di
     }
     for pb in self.pbounds {
         let t = self.sub.finish(pb.1)
-        if not self.env.implements(t, pb.2, self.bmap) {
+        let need = ckenv.TB { tr: pb.2.tr, args: finish_all(self.sub, pb.2.args) }
+        if not self.env.implements(t, need.tr, need.args, self.bmap) {
             let kind = self.env.kind_of(t)
             if pb.3.starts_with("dyn ") and kind != Plain {
                 return ckast.fail(pb.0, "a 'dyn' value cannot hold the " + ckenv.kind_word(kind) + " type " + t.show())
             }
-            let derived = if self.env.is_builtin_trait(pb.2) { self.env.traits[pb.2].name } else { "" }
+            let derived = if self.env.is_builtin_trait(need.tr) { self.env.traits[need.tr].name } else { "" }
             let why = if derived == "Send" {
                 match self.env.unsendable_part(t) {
                     Some(w) => ": " + w,
@@ -118,7 +119,7 @@ pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Di
             } else {
                 ""
             }
-            return ckast.fail(pb.0, "type " + t.show() + " does not implement " + self.env.traits[pb.2].name + " (needed by " + pb.3 + ")" + why)
+            return ckast.fail(pb.0, "type " + t.show() + " does not implement " + self.env.tb_show(need) + " (needed by " + pb.3 + ")" + why)
         }
     }
     self.flush()
@@ -131,7 +132,8 @@ pub fn Ck.need_bounds(mut self, fi: Int, targs: List[cktypes.Ty], sp: ckast.Span
     for i in 0..f.bounds.len().min(targs.len()) {
         for b in f.bounds[i] {
             let p = f.tparams[i]
-            self.pbounds.push((sp, targs[i], b, "bound " + p + ": " + self.env.traits[b].name + " of " + f.name))
+            let need = ckenv.TB { tr: b.tr, args: b.args.map(fn(a) => a.subst(f.tparams, targs)) }
+            self.pbounds.push((sp, targs[i], need, "bound " + p + ": " + self.env.tb_show(b) + " of " + f.name))
         }
     }
 }
@@ -484,7 +486,7 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
         XName(n) => self.name(e, n),
         XPath(t0, m) => self.path(e, t0, m),
         XCall(callee, args) => ckcall.call(mut self, e, callee, args, exp),
-        XMethod(recv, m, args) => ckcall.method(mut self, e, recv, m, args),
+        XMethod(recv, m, args) => ckcall.method(mut self, e, recv, m, args, exp),
         XField(b, f) => self.field(e, b, f),
         XTField(b, i) => {
             let t0 = self.sub.fresh()
@@ -548,7 +550,7 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
             let t0 = self.sub.fresh()
             let xt = self.expr(x, t0)?
             let name = self.env.traits[tr].name
-            self.pbounds.push((e.sp, xt, tr, "dyn " + name))
+            self.pbounds.push((e.sp, xt, ckenv.TB { tr, args: [] }, "dyn " + name))
             Ok(Con("dyn " + name, []))
         }
     }

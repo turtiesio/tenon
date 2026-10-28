@@ -1,0 +1,15 @@
+// error: type Cel does not implement Into[Str] (needed by bound T: Into[Str] of f)
+// A bound with trait arguments needs an impl at those arguments.
+trait Into[T] {
+    fn into(self) -> T
+}
+
+struct Cel { d: Int }
+
+impl Into[Int] for Cel {
+    fn into(self) -> Int { self.d }
+}
+
+fn f[T: Into[Str]](x: T) -> Str { x.into() }
+
+fn main() { let _ = f(Cel { d: 1 }) }

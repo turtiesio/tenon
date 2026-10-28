@@ -1,0 +1,7 @@
+trait Into [ T ] { fn into(self) -> T }
+trait Labeled[T]:Into[T]+Show{
+  fn label(self)->Str
+}
+impl Into[ Int ] for Celsius { fn into(self) -> Int { self.deg } }
+impl[T:Into[Str]+Show] Into[List[Str]] for Box[T]{fn into(self)->List[Str]{[self.x.into()]}}
+fn ints[T:Into[Int],U:Labeled[Int]](xs:List[T],u:U)->Int{0}

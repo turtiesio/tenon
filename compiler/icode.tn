@@ -164,7 +164,7 @@ fn needs_types(env: ckenv.Env, fi: Int) -> Bool {
         ODefault(_, _) => return true,
         _ => {}
     }
-    f.bounds.any(fn(bs) => bs.any(fn(b) => not env.is_builtin_trait(b)))
+    f.bounds.any(fn(bs) => bs.any(fn(b) => not env.is_builtin_trait(b.tr)))
 }
 
 // Lower the whole program. `exts` numbers the builtins that take their

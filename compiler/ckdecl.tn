@@ -284,7 +284,7 @@ fn fn_owner(env: mut ckenv.Env, f: ckast.FnDecl, derived: Bool) -> Result[(List[
 
 // The function's own type parameters after `tparams0` (checked), and the traits
 // each one is bounded by.
-fn fn_tparams(env: mut ckenv.Env, f: ckast.FnDecl, derived: Bool, tparams0: List[Str]) -> Result[(List[Str], List[List[Int]]), ckast.Diag] {
+fn fn_tparams(env: mut ckenv.Env, f: ckast.FnDecl, derived: Bool, tparams0: List[Str]) -> Result[(List[Str], List[List[ckenv.TB]]), ckast.Diag] {
     var tparams = tparams0
     for ti in 0..f.tparams.len() {
         let t = f.tparams[ti]
@@ -299,19 +299,41 @@ fn fn_tparams(env: mut ckenv.Env, f: ckast.FnDecl, derived: Bool, tparams0: List
         if tparams.contains(t) { return ckast.fail(f.sp, "type parameter '{t}' shadows another type") }
         tparams.push(t)
     }
-    var bounds: List[List[Int]] = tparams.map(fn(_) => [])
-    for b in f.bounds {
+    let bounds = lower_bounds(env, f.bounds, tparams, "'{f.name}'")?
+    Ok((tparams, bounds))
+}
+
+// A trait as written with its arguments (`Into[Int]`), resolved in the
+// current module; `tparams`: the type parameters its arguments may mention.
+fn lower_tref(env: ckenv.Env, r: ckast.TRef, tparams: List[Str]) -> Result[ckenv.TB, ckast.Diag] {
+    let tr = env.resolve_trait(r.name, r.sp)?
+    let want = env.traits[tr].tparams.len()
+    if r.args.len() != want {
+        let n = env.traits[tr].name
+        let hint = if want == 0 { "" } else { " (write {n}[" + env.traits[tr].tparams.join(", ") + "])" }
+        return ckast.fail(r.sp, "trait {n} takes {want} type argument" + (if want == 1 { "" } else { "s" }) + ", found {r.args.len()}" + hint)
+    }
+    var args: List[cktypes.Ty] = []
+    for a in r.args { args.push(env.lower_type(a, tparams)?) }
+    Ok(ckenv.TB { tr, args })
+}
+
+// The bounds of each of `tparams` (`what` names their owner in messages),
+// each with the supertraits it gives (a bound T: Ord also gives T: Eq).
+fn lower_bounds(env: ckenv.Env, bs: List[ckast.Bound], tparams: List[Str], what: Str) -> Result[List[List[ckenv.TB]], ckast.Diag] {
+    var bounds: List[List[ckenv.TB]] = tparams.map(fn(_) => [])
+    for b in bs {
         var pi = -1
         for i in 0..tparams.len() {
             if tparams[i] == b.param { pi = i }
         }
-        if pi < 0 { return ckast.fail(b.sp, "'{b.param}' is not a type parameter of '{f.name}'") }
-        for tn in b.traits {
-            let tr = env.resolve_trait(tn.0, tn.1)?
-            if not bounds[pi].contains(tr) { bounds[pi].push(tr) }
+        if pi < 0 { return ckast.fail(b.sp, "'{b.param}' is not a type parameter of " + what) }
+        for r in b.traits {
+            let tb = lower_tref(env, r, tparams)?
+            env.with_supers(tb, Par(b.param), mut bounds[pi])
         }
     }
-    Ok((tparams, bounds))
+    Ok(bounds)
 }
 
 fn mentions_self(t: ckast.TExpr) -> Bool {
@@ -324,6 +346,8 @@ fn mentions_self(t: ckast.TExpr) -> Bool {
 
 // Why `dyn` cannot be used with a trait ("" if it can), from its methods' signatures.
 fn unsafe_why(t: ckast.TraitDecl) -> Str {
+    if not t.tparams.is_empty() { return "it has type parameters" }
+    if not t.supers.is_empty() { return "it has supertraits" }
     for m in t.methods {
         if not m.tparams.is_empty() { return "method '{m.name}' is generic" }
         if m.self_kind == MutSelf { return "method '{m.name}' takes 'mut self'" }
@@ -342,7 +366,9 @@ fn register_traits(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckas
         let full = env.trait_internal(t.sp.file, t.name)
         if env.trait_ix.contains(full) { return ckast.fail(t.sp, "trait '{full}' is already defined") }
         env.trait_ix[full] = env.traits.len()
-        env.traits.push(ckenv.TraitInfo { name: full, file: t.sp.file, public: t.public, methods: [], unsafe_why: unsafe_why(t), sp: t.sp })
+        env.traits.push(ckenv.TraitInfo {
+            name: full, file: t.sp.file, public: t.public, tparams: t.tparams, supers: [], methods: [], unsafe_why: unsafe_why(t), sp: t.sp,
+        })
     }
     Ok(())
 }
@@ -356,6 +382,37 @@ fn declare_traits(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast
     for ti in 0..prog.traits.len() {
         let t = prog.traits[ti]
         env.cur = t.sp.file
+        for i in 0..t.tparams.len() {
+            let p = t.tparams[i]
+            if not ckenv.is_tparam_name(p) { return ckast.fail(t.sp, "type parameter '{p}' must be one capital letter, optionally followed by digits") }
+            if t.tparams.slice(0, i).contains(p) { return ckast.fail(t.sp, "type parameter '{p}' shadows another type") }
+        }
+        var sups: List[ckenv.TB] = []
+        for r in t.supers {
+            let b = lower_tref(env, r, ["Self"] + t.tparams)?
+            if b.tr == ti { return ckast.fail(r.sp, "trait {t.name} cannot be its own supertrait") }
+            sups.push(b)
+        }
+        env.traits[ti].supers = sups
+    }
+    // supertraits form no cycle (a trait is not among its own supertraits, transitively)
+    for ti in 0..prog.traits.len() {
+        var seen: List[Int] = []
+        var todo = env.traits[ti].supers.map(fn(b) => b.tr)
+        while not todo.is_empty() {
+            let x = todo.pop().unwrap()
+            if x == ti {
+                let t = prog.traits[ti]
+                return ckast.fail(t.sp, "trait {t.name} is its own supertrait, through " + seen.map(fn(i) => env.traits[i].name).join(", "))
+            }
+            if seen.contains(x) { continue }
+            seen.push(x)
+            todo.extend(env.traits[x].supers.map(fn(b) => b.tr))
+        }
+    }
+    for ti in 0..prog.traits.len() {
+        let t = prog.traits[ti]
+        env.cur = t.sp.file
         var ms: List[ckenv.TMethod] = []
         for mi in 0..t.methods.len() {
             let m = t.methods[mi]
@@ -363,11 +420,12 @@ fn declare_traits(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast
             if ckast.upper(m.name) { return ckast.fail(m.sp, "function names start with a lowercase letter: '{m.name}'") }
             if m.self_kind == NoSelf { return ckast.fail(m.sp, "trait method '{m.name}' must take 'self' or 'mut self' first") }
             if not m.bounds.is_empty() { return ckast.fail(m.sp, "the type parameters of a trait method cannot have bounds") }
-            let tps = ["Self"] + m.tparams
+            let tps = ["Self"] + t.tparams + m.tparams
             for p in m.tparams {
                 if not ckenv.is_tparam_name(p) {
                     return ckast.fail(m.sp, "type parameter '{p}' must be one capital letter, optionally followed by digits")
                 }
+                if t.tparams.contains(p) { return ckast.fail(m.sp, "type parameter '{p}' shadows a type parameter of trait {t.name}") }
             }
             var params: List[(Str, cktypes.Ty)] = []
             for p in m.params {
@@ -407,9 +465,8 @@ fn declare_impls(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.
         env.cur = im.sp.file
         let tr = env.resolve_trait(im.trait_name, im.trait_sp)?
         let tinfo = env.traits[tr]
-        let tname = tinfo.name
-        if env.is_builtin_trait(tr) and tname != "Show" {
-            return ckast.fail(im.trait_sp, "{tname} is derived structurally for every type that supports it and cannot be implemented; only Show can be (to change how a type is formatted)")
+        if env.is_builtin_trait(tr) and tinfo.name != "Show" {
+            return ckast.fail(im.trait_sp, "{tinfo.name} is derived structurally for every type that supports it and cannot be implemented; only Show can be (to change how a type is formatted)")
         }
         for p in im.tparams {
             if not ckenv.is_tparam_name(p) {
@@ -418,6 +475,8 @@ fn declare_impls(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.
         }
         let target = env.lower_type(im.target, im.tparams)?
         let tshow = target.show()
+        let tb = lower_tref(env, ckast.TRef { name: im.trait_name, args: im.trait_args, sp: im.trait_sp }, im.tparams)?
+        let tname = env.tb_show(tb)
         match target {
             Par(p) => return ckast.fail(im.target.sp, "an impl must name a type, not the type parameter '{p}'"),
             _ => {}
@@ -438,40 +497,51 @@ fn declare_impls(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.
             let where = if type_file < 0 { tshow + " has no module of its own" } else { "it is neither in the module of " + tname + " nor in that of " + tshow }
             return ckast.fail(im.sp, "impl {tname} for {tshow} is not allowed here: {where} (an impl must be in the module of its trait or of its type)")
         }
-        var bounds: List[List[Int]] = im.tparams.map(fn(_) => [])
         for b in im.bounds {
-            var pi = -1
-            for i in 0..im.tparams.len() {
-                if im.tparams[i] == b.param { pi = i }
-            }
-            if pi < 0 { return ckast.fail(b.sp, "'{b.param}' is not a type parameter of the impl") }
-            for tn in b.traits {
-                let btr = env.resolve_trait(tn.0, tn.1)?
+            for r in b.traits {
+                let btr = env.resolve_trait(r.name, r.sp)?
                 if env.is_show(tr) and not env.is_builtin_trait(btr) {
-                    return ckast.fail(tn.1, "an impl of Show can only bound its type parameters by Eq, Ord, Hash or Show")
+                    return ckast.fail(r.sp, "an impl of Show can only bound its type parameters by Eq, Ord, Hash or Show")
                 }
-                if not bounds[pi].contains(btr) { bounds[pi].push(btr) }
             }
         }
-        let fns = impl_fns(env, prog, im, tr, target)?
-        // coherence: at most one impl per trait and type
+        let bounds = lower_bounds(env, im.bounds, im.tparams, "the impl")?
+        let fns = impl_fns(env, prog, im, tr, tb.args, target, tname)?
+        // coherence: at most one impl per trait (and trait arguments) and type
         for jj in 0..env.impls.len() {
             let other = env.impls[jj]
-            if other.tr == tr and overlap(other.target, other.tparams, target, im.tparams) {
-                let what = if other.target == target { "duplicate impl {tname} for {tshow}" } else { "impl {tname} for {tshow} overlaps impl {tname} for {other.target.show()}" }
+            if other.tr == tr and overlap(Tup([other.target] + other.targs), other.tparams, Tup([target] + tb.args), im.tparams) {
+                let oname = env.tb_show(ckenv.TB { tr, args: other.targs })
+                let what = if other.target == target and other.targs == tb.args { "duplicate impl {tname} for {tshow}" } else { "impl {tname} for {tshow} overlaps impl {oname} for {other.target.show()}" }
                 return ckast.fail(im.sp, what + " (line {other.sp.line}); a type can implement a trait only once")
             }
         }
-        env.impls.push(ckenv.ImplInfo { tr, tparams: im.tparams, bounds, target, file: im.sp.file, fns, sp: im.sp })
+        env.impls.push(ckenv.ImplInfo { tr, targs: tb.args, tparams: im.tparams, bounds, target, file: im.sp.file, fns, sp: im.sp })
+    }
+    // supertraits: an impl of a trait needs impls of its supertraits, given
+    // its own bounds (checked once every impl is known)
+    for ii in 0..env.impls.len() {
+        let im = env.impls[ii]
+        env.cur = im.file
+        let t = env.traits[im.tr]
+        var pb: Map[Str, List[ckenv.TB]] = [:]
+        for i in 0..im.tparams.len() { pb[im.tparams[i]] = im.bounds[i] }
+        for s in t.supers {
+            let args = s.args.map(fn(a) => a.subst(["Self"] + t.tparams, [im.target] + im.targs))
+            if not env.implements(im.target, s.tr, args, pb) {
+                let sup = env.tb_show(ckenv.TB { tr: s.tr, args })
+                let tname = env.tb_show(ckenv.TB { tr: im.tr, args: im.targs })
+                return ckast.fail(im.sp, "impl {tname} for {im.target.show()} needs {im.target.show()} to implement {sup} ({sup} is a supertrait of {t.name})")
+            }
+        }
     }
     Ok(())
 }
 
 // The function of each method of trait `tr` in impl `im` for `target` (the
 // trait's default where the impl gives none), each with the trait's signature.
-fn impl_fns(env: ckenv.Env, prog: ckast.Program, im: ckast.ImplDecl, tr: Int, target: cktypes.Ty) -> Result[List[Int], ckast.Diag] {
+fn impl_fns(env: ckenv.Env, prog: ckast.Program, im: ckast.ImplDecl, tr: Int, targs: List[cktypes.Ty], target: cktypes.Ty, tname: Str) -> Result[List[Int], ckast.Diag] {
     let tinfo = env.traits[tr]
-    let tname = tinfo.name
     let tshow = target.show()
     var fns: List[Int] = tinfo.methods.map(fn(m) => m.default)
     var given: List[Bool] = tinfo.methods.map(fn(_) => false)
@@ -488,8 +558,10 @@ fn impl_fns(env: ckenv.Env, prog: ckast.Program, im: ckast.ImplDecl, tr: Int, ta
         fns[mi] = fi
         let tm = tinfo.methods[mi]
         let own = f.tparams.slice(im.tparams.len(), f.tparams.len())
-        let want_ps = tm.params.map(fn(p) => p.1.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x))))
-        let want_ret = tm.ret.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x)))
+        let ps = ["Self"] + tinfo.tparams + tm.tparams
+        let ts = [target] + targs + own.map(fn(x) => Par(x))
+        let want_ps = tm.params.map(fn(p) => p.1.subst(ps, ts))
+        let want_ret = tm.ret.subst(ps, ts)
         let have_ps = f.params.slice(if f.self_kind == NoSelf { 0 } else { 1 }, f.params.len()).map(fn(p) => p.1)
         let ok = f.self_kind == tm.self_kind and own.len() == tm.tparams.len() and have_ps == want_ps and f.muts == tm.muts and f.refs == tm.refs and
             f.ret == want_ret

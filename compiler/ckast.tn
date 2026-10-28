@@ -84,21 +84,29 @@ pub struct FnDecl {
     pub bounds: List[Bound], pub origin: Origin,
 }
 
-// `T: Show + Eq`: the trait names as written.
-pub struct Bound { pub param: Str, pub traits: List[(Str, Span)], pub sp: Span }
+// A trait as written where it is used (`Show`, `mod.Shape`, `Into[Int]`).
+pub struct TRef { pub name: Str, pub args: List[TExpr], pub sp: Span }
+
+// `T: Show + Eq`: the traits as written.
+pub struct Bound { pub param: Str, pub traits: List[TRef], pub sp: Span }
 
 // Where a function comes from: an item, a method of impl I (its owner is the
 // impl's type, its type parameters the impl's then its own), or the default
-// body of method M of trait T (generic in `Self`, bounded by T).
+// body of method M of trait T (generic in `Self` and T's type parameters,
+// then its own; bounded by `Self: T[...]`).
 pub enum Origin { OFn, OImpl(Int), ODefault(Int, Int) }
 
 // A trait: its methods' signatures (bodies are in Program.fns, `defaults`
 // gives the function of each method's default body, -1 if none).
-pub struct TraitDecl { pub name: Str, pub public: Bool, pub methods: List[FnDecl], pub defaults: List[Int], pub sp: Span }
+// `tparams`: the trait's type parameters; `supers`: its supertraits.
+pub struct TraitDecl {
+    pub name: Str, pub public: Bool, pub tparams: List[Str], pub supers: List[TRef], pub methods: List[FnDecl], pub defaults: List[Int],
+    pub sp: Span,
+}
 
 // An impl: `methods` are its functions in Program.fns, in source order.
 pub struct ImplDecl {
-    pub trait_name: Str, pub trait_sp: Span, pub target: TExpr, pub tparams: List[Str], pub bounds: List[Bound],
+    pub trait_name: Str, pub trait_args: List[TExpr], pub trait_sp: Span, pub target: TExpr, pub tparams: List[Str], pub bounds: List[Bound],
     pub methods: List[Int], pub sp: Span,
 }
 pub struct StructDecl {
@@ -326,8 +334,10 @@ fn self_kind(s: Str) -> SelfK {
     if s == "self" { ValSelf } else if s == "mut-self" { MutSelf } else { NoSelf }
 }
 
+fn Conv.tref(self, r: parser.TraitRef) -> TRef { TRef { name: r.name, args: r.args.map(fn(a) => self.ty(a)), sp: self.sp(r.at) } }
+
 fn Conv.bounds(self, bs: List[parser.Bound]) -> List[Bound] {
-    bs.map(fn(b) => Bound { param: b.param, traits: b.traits.map(fn(t) => (t.0, self.sp(t.1))), sp: self.sp(b.at) })
+    bs.map(fn(b) => Bound { param: b.param, traits: b.traits.map(fn(t) => self.tref(t)), sp: self.sp(b.at) })
 }
 
 fn Conv.fn_decl(mut self, f: parser.FnDecl) -> FnDecl {
@@ -358,16 +368,20 @@ fn Conv.traits_impls(mut self, f: parser.Program, prog: mut Program) {
                 Some(_) => {
                     defaults.push(prog.fns.len())
                     let self_t = TExpr { sp: d.sp, k: TNamed("Self", []) }
-                    let b = Bound { param: "Self", traits: [(t.name, d.sp)], sp: d.sp }
+                    let targs = t.tparams.map(fn(p) => TExpr { sp: d.sp, k: TNamed(p, []) })
+                    let b = Bound { param: "Self", traits: [TRef { name: t.name, args: targs, sp: d.sp }], sp: d.sp }
                     prog.fns.push(FnDecl {
-                        owner: Some(self_t), tparams: ["Self"] + d.tparams, bounds: [b] + d.bounds, origin: ODefault(ti, mi),
+                        owner: Some(self_t), tparams: ["Self"] + t.tparams + d.tparams, bounds: [b] + d.bounds, origin: ODefault(ti, mi),
                         public: t.public, ..d
                     })
                 }
                 None => defaults.push(-1),
             }
         }
-        prog.traits.push(TraitDecl { name: t.name, public: t.public, methods: sigs, defaults, sp: self.sp(t.at) })
+        prog.traits.push(TraitDecl {
+            name: t.name, public: t.public, tparams: t.tparams, supers: t.supers.map(fn(r) => self.tref(r)), methods: sigs, defaults,
+            sp: self.sp(t.at),
+        })
     }
     for im in f.impls {
         let ii = prog.impls.len()
@@ -382,7 +396,8 @@ fn Conv.traits_impls(mut self, f: parser.Program, prog: mut Program) {
             })
         }
         prog.impls.push(ImplDecl {
-            trait_name: im.trait_name, trait_sp: self.sp(im.trait_at), target, tparams: im.tparams, bounds: bs, methods: ms,
+            trait_name: im.trait_name, trait_args: im.trait_args.map(fn(a) => self.ty(a)), trait_sp: self.sp(im.trait_at), target,
+            tparams: im.tparams, bounds: bs, methods: ms,
             sp: self.sp(im.at),
         })
     }

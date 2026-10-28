@@ -849,8 +849,8 @@ fn main(sys: Sys) {
 `mut self`) first and may have a default body, which can call the trait's
 other methods. Methods may be generic (`fn pair[U](self, u: U) -> (Self, U)`).
 `Self` in a trait or impl is the implementing type. A trait may be `pub`;
-traits have no type parameters of their own, no supertraits and no
-functions without `self` (yet).
+it may have type parameters and supertraits (below), but no functions
+without `self` (yet).
 
 **Implementing.** `impl Trait for Type { ... }` gives every method that has
 no default, with exactly the trait's signature (`Self` replaced by the
@@ -863,7 +863,9 @@ types (`Int`, `Str`, `List[T]`, ...), tuples and function types can have impls.
 **Calling.** A method of a trait implemented for a type is called like the
 type's own methods: `sq.area()`, also from other modules. If the type has its
 own method of that name, that one wins; two traits giving one type the same
-method name make the call ambiguous (an error).
+method name make the call ambiguous (an error). Impls of one trait at
+different arguments (below) are told apart by the type the call's result
+must have.
 
 **Bounds.** `fn f[T: A + B](x: T)` accepts any type implementing A and B, and
 inside f the methods of A and B can be called on `x`. A call of f with a type
@@ -945,6 +947,87 @@ value through `self`; an impl elsewhere must consume it like any other
 code. `dyn` values cannot hold linear or unique values (`a 'dyn' value
 cannot hold the linear type Job`): a table call could not tell whether the
 value was finished.
+
+### Trait type parameters and supertraits
+
+<!-- test: tests/v2/run/trait_params.tn tests/v2/run/trait_supers.tn tests/v2/reject/trait_args_ambiguous.tn tests/v2/reject/trait_args_count.tn tests/v2/reject/supertrait_missing.tn tests/v2/reject/supertrait_cycle.tn tests/v2/reject/dyn_supertrait.tn tests/v2/reject/impl_duplicate_args.tn tests/v2/reject/bound_args_mismatch.tn -->
+
+```tenon
+trait Into[T] {
+    fn into(self) -> T
+}
+
+struct Celsius { deg: Int }
+
+impl Into[Int] for Celsius {
+    fn into(self) -> Int { self.deg }
+}
+
+impl Into[Str] for Celsius {
+    fn into(self) -> Str { "{self.deg} C" }
+}
+
+trait Named {
+    fn name(self) -> Str
+}
+
+trait Greeter: Named {
+    fn greet(self) -> Str { "hello, " + self.name() }   // Named's method
+}
+
+impl Named for Celsius {
+    fn name(self) -> Str { "celsius" }
+}
+
+impl Greeter for Celsius {}
+
+fn total[T: Into[Int]](xs: List[T]) -> Int {
+    var t = 0
+    for x in xs { t += x.into() }
+    t
+}
+
+fn intro[T: Greeter](x: T) -> Str { x.name() + ": " + x.greet() }
+
+fn main(sys: Sys) {
+    let c = Celsius { deg: 21 }
+    let n: Int = c.into()
+    let s: Str = c.into()
+    sys.console.println("{n} {s} {total([c, c])}")   // 21 21 C 42
+    sys.console.println(intro(c))                     // celsius: hello, celsius
+}
+```
+
+**Type parameters.** `trait Into[T] { ... }` has type parameters, which its
+methods' signatures may use (one capital letter each, as for functions;
+bounds go on the methods' own parameters or into a supertrait). Every use
+names the arguments: `impl Into[Int] for Celsius`, `T: Into[Int]`; `Into`
+alone is `trait Into takes 1 type argument, found 0 (write Into[T])`. A type
+may implement one trait at several arguments (`Into[Int]` and `Into[Str]`
+for Celsius); a type and its arguments are implemented at most once, and
+impls for different instantiations of one type (`impl Into[Int] for
+Box[Int]` and `impl Into[Int] for Box[Str]`) are separate impls. A call
+picks the impl by the receiver's type and, when one trait is implemented at
+several arguments, by the type the result must have (`let n: Int =
+c.into()`, or a parameter or return type); without one it is `method 'into'
+of Celsius is ambiguous: impls Into[Int] and Into[Str] apply`. Bounds work
+the same way: `T: Into[Int] + Into[Str]` allows both, told apart the same
+way.
+
+**Supertraits.** `trait Greeter: Named { ... }` makes Named a supertrait of
+Greeter (several: `trait Pet: Named + Show`; with arguments: `trait
+Labeled[T]: Source[T]`). An impl of Greeter needs one of Named for the same
+type (`impl Greeter for Cat needs Cat to implement Named (Named is a
+supertrait of Greeter)`), so a bound `T: Greeter` also gives Named's
+methods on `T`, in generic functions and in Greeter's default methods, and
+satisfies a bound `T: Named` when `T` is passed on. Supertraits form no
+cycle. A trait with supertraits or type parameters cannot be used with
+`dyn` (a table holds the trait's own methods only).
+
+The rules are those of formal/TenonCore/Traits.lean (`TraitDecl.tparams`,
+`supers`, coherence over the trait's arguments, `Overlap`, the supertrait
+rule checked per impl, `ImplSupersOk`, and its consequence for bounds,
+`super_entails`).
 
 ## 18. Workers and channels
 

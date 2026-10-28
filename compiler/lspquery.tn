@@ -540,7 +540,7 @@ pub fn members_in(q: Query, t: cktypes.Ty, fi: Int) -> List[json.Json] {
     var seen: Map[Str, Bool] = [:]
     let env = q.c.env
     let trs = match t {
-        Par(p) => env.bound_map(fi).get(p).unwrap_or([]),
+        Par(p) => env.bound_map(fi).get(p).unwrap_or([]).map(fn(b) => b.tr),
         _ => match env.dyn_trait(t) {
             Some(tr) => [tr],
             None => [],

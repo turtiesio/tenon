@@ -757,3 +757,14 @@ stay where they were. Earlier entries keep the old paths.
   it, so a clone at an older layout runs main's script. The local scheduled
   tasks name the old paths (`tools/evidence.sh`, `tools/land.sh`); their
   prompts are the owner's to update.
+
+## 27. 2026-10-28 — trait type parameters and supertraits (milestone 3, item 3)
+
+- **Decision: trait type parameters pick impls by the expected type.** With
+  `Into[Int]` and `Into[Str]` for one type, a call's result type chooses;
+  without one the call is ambiguous (an error), no defaulting. Coherence
+  counts the trait's arguments (Traits.lean `Overlap`).
+- **Decision: supertraits close bounds.** `T: Sub` also gives `T: Super`
+  (ckdecl.lower_bounds), and an impl needs its supertraits' impls given its
+  bounds (Traits.lean `ImplSupersOk`); traits with supertraits or type
+  parameters are not `dyn` traits (yet).

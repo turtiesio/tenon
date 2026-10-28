@@ -1,0 +1,66 @@
+// Trait type parameters: one trait implemented for a type at several
+// arguments (the expected type picks the impl), impls for several
+// instantiations of one type, bounds with arguments, and a default method of
+// a generic trait.
+struct Celsius { deg: Int }
+
+struct Box[T] { x: T }
+
+trait Into[T] {
+    fn into(self) -> T
+}
+
+impl Into[Int] for Celsius {
+    fn into(self) -> Int { self.deg }
+}
+
+impl Into[Str] for Celsius {
+    fn into(self) -> Str { "{self.deg} C" }
+}
+
+impl Into[Int] for Box[Int] {
+    fn into(self) -> Int { self.x }
+}
+
+impl Into[Int] for Box[Str] {
+    fn into(self) -> Int { self.x.len() }
+}
+
+trait Convert[T] {
+    fn convert(self) -> T
+    fn twice(self) -> (T, T) { (self.convert(), self.convert()) }
+}
+
+impl Convert[Str] for Int {
+    fn convert(self) -> Str { "#{self}" }
+}
+
+impl Convert[Float] for Int {
+    fn convert(self) -> Float { self.to_float() / 2.0 }
+}
+
+fn total[T: Into[Int]](xs: List[T]) -> Int {
+    var t = 0
+    for x in xs { t += x.into() }
+    t
+}
+
+fn both[T: Into[Int] + Into[Str]](x: T) -> Str {
+    let n: Int = x.into()
+    let s: Str = x.into()
+    "{n} and {s}"
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let c = Celsius { deg: 21 }
+    let n: Int = c.into()
+    let s: Str = c.into()
+    con.println("{n} {s}")
+    con.println("{total([Celsius { deg: 1 }, Celsius { deg: 2 }])}")
+    con.println("{total([Box { x: 40 }, Box { x: 2 }])} {total([Box { x: "abc" }])}")
+    con.println(both(c))
+    let pair: (Str, Str) = 7.twice()
+    let half: Float = 7.convert()
+    con.println("{pair} {half}")
+}

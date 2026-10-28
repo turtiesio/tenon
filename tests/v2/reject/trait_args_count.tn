@@ -1,0 +1,13 @@
+// error: trait Into takes 1 type argument, found 0 (write Into[T])
+// A trait with type parameters is always used with its arguments.
+trait Into[T] {
+    fn into(self) -> T
+}
+
+struct Cel { d: Int }
+
+impl Into for Cel {
+    fn into(self) -> Int { self.d }
+}
+
+fn main() {}

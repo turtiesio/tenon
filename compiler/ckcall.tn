@@ -284,7 +284,7 @@ pub fn struct_lit(ck: mut ckinfer.Ck, e: ckast.Expr, name0: Str, fields: List[(S
     Ok(st)
 }
 
-pub fn method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast.Expr]) -> Result[cktypes.Ty, ckast.Diag] {
+pub fn method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args: List[ckast.Expr], exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
     let rt0 = ck.sub.fresh()
     let rt1 = ck.expr(recv, rt0)?
     let rt = ck.known(rt1, recv.sp, "the receiver")?
@@ -297,12 +297,12 @@ pub fn method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args:
         Par(p) => {
             let bs = ck.bmap.get(p).unwrap_or([])
             if bs.is_empty() { return ckast.fail(e.sp, "no methods are available on generic type '" + p + "'") }
-            return trait_call(mut ck, e, recv, rt, bs, m, args, "type parameter '" + p + "'")
+            return trait_call(mut ck, e, recv, rt, bs, m, args, "type parameter '" + p + "'", exp)
         }
         _ => {}
     }
     match ck.env.dyn_trait(rt) {
-        Some(tr) => return trait_call(mut ck, e, recv, rt, [tr], m, args, rt.show()),
+        Some(tr) => return trait_call(mut ck, e, recv, rt, [ckenv.TB { tr, args: [] }], m, args, rt.show(), exp),
         None => {}
     }
     let owner = match rt {
@@ -313,7 +313,7 @@ pub fn method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args:
     let fi = match found {
         Some(i) => i,
         None => {
-            match impl_method(mut ck, e, recv, rt, m)? {
+            match impl_method(mut ck, e, recv, rt, m, exp)? {
                 Some(i) => return method_call(mut ck, e, recv, m, args, i.0, i.1, owner),
                 None => {}
             }
@@ -358,8 +358,10 @@ fn method_call(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args
 }
 
 // A method of a trait implemented for the receiver's type: the function and
-// its type arguments, if exactly one impl provides `m`.
-fn impl_method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, m: Str) -> Result[Option[(Int, List[cktypes.Ty])], ckast.Diag] {
+// its type arguments, if exactly one impl provides `m`. Impls of one trait
+// with different arguments (`Into[Int]` and `Into[Str]` for one type) are
+// told apart by the type expected of the call's result.
+fn impl_method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, m: Str, exp: cktypes.Ty) -> Result[Option[(Int, List[cktypes.Ty])], ckast.Diag] {
     var cands: List[(Int, Int)] = []
     for ii in 0..ck.env.impls.len() {
         let im = ck.env.impls[ii]
@@ -377,10 +379,40 @@ fn impl_method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.
     if cands.len() > 1 {
         let r = ck.sub.resolve(rt)
         if r.any(fn(x) => ckinfer.is_var(x)) { return ckast.fail(recv.sp, "the type of the receiver must be known here; add a type annotation") }
+        let tr0 = ck.env.impls[cands[0].0].tr
+        if cands.all(fn(c) => ck.env.impls[c.0].tr == tr0) {
+            // one trait, several arguments: the expected result type picks one
+            let fits = cands.filter(fn(c) => impl_fits(ck, c.0, c.1, rt, exp))
+            if fits.len() == 1 { return Ok(Some(impl_targs(mut ck, fits[0].0, fits[0].1, rt))) }
+            let names = cands.map(fn(c) => ck.env.tb_show(ckenv.TB { tr: tr0, args: ck.env.impls[c.0].targs }))
+            return ckast.fail(e.sp, "method '" + m + "' of " + r.show() + " is ambiguous: impls " + names.join(" and ") +
+                " apply; give the result a type to pick one (`let x: TYPE = value." + m + "()`)")
+        }
         let names = cands.map(fn(c) => ck.env.traits[ck.env.impls[c.0].tr].name)
         return ckast.fail(e.sp, "method '" + m + "' of " + r.show() + " is ambiguous: it is in traits " + names.join(" and "))
     }
-    let (ii, mi) = cands[0]
+    Ok(Some(impl_targs(mut ck, cands[0].0, cands[0].1, rt)))
+}
+
+// Can method mi of impl ii, called on rt, give the expected type exp?
+fn impl_fits(ck: ckinfer.Ck, ii: Int, mi: Int, rt: cktypes.Ty, exp: cktypes.Ty) -> Bool {
+    var trial = ck.sub
+    if ckinfer.is_var(trial.shallow(exp)) { return false }
+    let im = ck.env.impls[ii]
+    let t = ck.env.traits[im.tr]
+    let tm = t.methods[mi]
+    var vs: List[cktypes.Ty] = []
+    for _ in im.tparams { vs.push(trial.fresh()) }
+    var own: List[cktypes.Ty] = []
+    for _ in tm.tparams { own.push(trial.fresh()) }
+    let target = im.target.subst(im.tparams, vs)
+    if not trial.unify(target, rt) { return false }
+    let ret = tm.ret.subst(["Self"] + t.tparams + tm.tparams, [target] + im.targs.map(fn(a) => a.subst(im.tparams, vs)) + own)
+    trial.unify(ret, exp)
+}
+
+// The function of method mi of impl ii called on rt, and its type arguments.
+fn impl_targs(ck: mut ckinfer.Ck, ii: Int, mi: Int, rt: cktypes.Ty) -> (Int, List[cktypes.Ty]) {
     let im = ck.env.impls[ii]
     let vs = ck.fresh_list(im.tparams.len())
     let _ = ck.sub.unify(im.target.subst(im.tparams, vs), rt)
@@ -388,34 +420,44 @@ fn impl_method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.
     let tm = ck.env.traits[im.tr].methods[mi]
     let own = ck.fresh_list(tm.tparams.len())
     let targs = match ck.env.fns[fi].origin {
-        ODefault(_, _) => [rt] + own,
+        ODefault(_, _) => [rt] + im.targs.map(fn(a) => a.subst(im.tparams, vs)) + own,
         _ => vs + own,
     }
-    Ok(Some((fi, targs)))
+    (fi, targs)
 }
 
-// A call of a method of the traits `trs` on a type parameter (its bounds) or a `dyn` value.
-fn trait_call(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, trs: List[Int], m: Str, args: List[ckast.Expr], what: Str) -> Result[cktypes.Ty, ckast.Diag] {
+// A call of a method of the traits `bs` on a type parameter (its bounds,
+// with their supertraits) or a `dyn` value. Bounds of one trait with
+// different arguments (`T: Into[Int] + Into[Str]`) are told apart by the type
+// expected of the call's result.
+fn trait_call(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.Ty, bs: List[ckenv.TB], m: Str, args: List[ckast.Expr], what: Str, exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
     var cands: List[(Int, Int)] = []
-    for tr in trs {
-        let ms = ck.env.traits[tr].methods
+    for bi in 0..bs.len() {
+        let ms = ck.env.traits[bs[bi].tr].methods
         for mi in 0..ms.len() {
-            if ms[mi].name == m { cands.push((tr, mi)) }
+            if ms[mi].name == m { cands.push((bi, mi)) }
         }
     }
     if cands.is_empty() {
-        let names = trs.map(fn(t) => ck.env.traits[t].name).join(" + ")
+        let names = bs.map(fn(b) => ck.env.tb_show(b)).join(" + ")
         return ckast.fail(e.sp, what + " has no method '" + m + "' (its traits: " + names + ")")
     }
     if cands.len() > 1 {
-        let names = cands.map(fn(c) => ck.env.traits[c.0].name)
-        return ckast.fail(e.sp, "method '" + m + "' of " + what + " is ambiguous: it is in traits " + names.join(" and "))
+        let tr0 = bs[cands[0].0].tr
+        let fits = if cands.all(fn(c) => bs[c.0].tr == tr0) { cands.filter(fn(c) => bound_fits(ck, bs[c.0], c.1, rt, exp)) } else { [] }
+        if fits.len() != 1 {
+            let names = cands.map(fn(c) => ck.env.tb_show(bs[c.0]))
+            return ckast.fail(e.sp, "method '" + m + "' of " + what + " is ambiguous: it is in traits " + names.join(" and "))
+        }
+        cands = fits
     }
-    let (tr, mi) = cands[0]
-    let tm = ck.env.traits[tr].methods[mi]
+    let (bi, mi) = cands[0]
+    let tr = bs[bi].tr
+    let t = ck.env.traits[tr]
+    let tm = t.methods[mi]
     let mtargs = ck.fresh_list(tm.tparams.len())
-    let ps = ["Self"] + tm.tparams
-    let ts = [rt] + mtargs
+    let ps = ["Self"] + t.tparams + tm.tparams
+    let ts = [rt] + bs[bi].args + mtargs
     let params = tm.params.map(fn(p) => p.1.subst(ps, ts))
     let ret = tm.ret.subst(ps, ts)
     if tm.self_kind == MutSelf {
@@ -424,8 +466,19 @@ fn trait_call(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.T
             Err(d) => return ckast.fail(d.sp, "'" + m + "' mutates its receiver: " + d.msg),
         }
     }
-    ck.pres[e.id] = RTrait(tr, mi, rt, mtargs)
+    ck.pres[e.id] = RTrait(tr, mi, rt, bs[bi].args + mtargs)
     let roots0 = if tm.self_kind == MutSelf { [place_root(recv)] } else { [] }
     call_args_mut(mut ck, e.sp, params, tm.muts, args, "method '" + m + "'", roots0)?
     Ok(ret)
+}
+
+// Can method mi of bound b, called on rt, give the expected type exp?
+fn bound_fits(ck: ckinfer.Ck, b: ckenv.TB, mi: Int, rt: cktypes.Ty, exp: cktypes.Ty) -> Bool {
+    var trial = ck.sub
+    if ckinfer.is_var(trial.shallow(exp)) { return false }
+    let t = ck.env.traits[b.tr]
+    let tm = t.methods[mi]
+    var own: List[cktypes.Ty] = []
+    for _ in tm.tparams { own.push(trial.fresh()) }
+    trial.unify(tm.ret.subst(["Self"] + t.tparams + tm.tparams, [rt] + b.args + own), exp)
 }

@@ -1,0 +1,9 @@
+// error: trait Aa is its own supertrait, through Bb, Cc
+// Supertraits form no cycle.
+trait Aa: Bb {}
+
+trait Bb: Cc {}
+
+trait Cc: Aa {}
+
+fn main() {}

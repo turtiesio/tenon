@@ -1,0 +1,2 @@
+// the type parameters of a trait take no bounds (a supertrait or the methods do)
+trait Box[T: Show] {}
