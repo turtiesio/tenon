@@ -460,6 +460,32 @@ def pKind : PM String := do
   if ← tryLit " unique" then return "unique"
   return ""
 
+def pFn : PM SFn := do
+  let isConst ← if ← tryLit "(const" then pure true else do expect "(fn"; pure false
+  let pub ← tryLit " pub"
+  expect " "
+  let (owner, name, tps) ← pFnName
+  let selfKind ← if ← tryLit " mut-self" then pure "mut-self"
+    else if ← tryLit " ref-self" then pure "ref-self"
+    else if ← tryLit " self" then pure "self" else pure ""
+  let mut ps := #[]
+  repeat
+    if (← lookLit " (block (") || (← lookLit " (block)") then break  -- the body
+    if !(← tryLit " (") then break
+    let x ← ident
+    let r ← tryLit " ref"
+    let m ← tryLit " mut"
+    expect " "
+    let t ← pTy
+    expect ")"
+    ps := ps.push { name := x, byRef := r, byMut := m, ty := t }
+  let ret ← if ← tryLit " -> " then pure (some (← pTy)) else pure none
+  let (body, ext) ← if ← tryLit " extern" then pure (none, true)
+    else if ← tryLit " " then pure (some (← pBlock), false)
+    else pure (none, false)
+  expect ")"
+  return { isConst, pub, owner, name, tparams := tps, selfKind, params := ps.toList, ret, body, isExtern := ext }
+
 def pItem : PM SItem := do
   if ← tryLit "(import " then
     let n ← qident
@@ -497,33 +523,50 @@ def pItem : PM SItem := do
       vs := vs.push (v, ts.toList)
     expect ")"
     return .enum { kind := k, name := n, tparams := tps, variants := vs.toList }
-  let isConst ← if ← tryLit "(const" then pure true else do expect "(fn"; pure false
-  let pub ← tryLit " pub"
-  expect " "
-  let (owner, name, tps) ← pFnName
-  let selfKind ← if ← tryLit " mut-self" then pure "mut-self"
-    else if ← tryLit " ref-self" then pure "ref-self"
-    else if ← tryLit " self" then pure "self" else pure ""
-  let mut ps := #[]
+  return .fn (← pFn)
+
+/-- `T: Show + Eq, U` (the bounds of type parameters). -/
+def boundsOf (raw : String) : List (String × List String) :=
+  (raw.splitOn ", ").map fun p => match p.splitOn ": " with
+    | [n, bs] => (trimS n, (bs.splitOn " + ").map trimS)
+    | _ => (trimS p, [])
+
+def pMethods : PM (List SFn) := do
+  let mut ms := #[]
   repeat
-    if (← lookLit " (block (") || (← lookLit " (block)") then break  -- the body
-    if !(← tryLit " (") then break
-    let x ← ident
-    let r ← tryLit " ref"
-    let m ← tryLit " mut"
+    if !(← lookLit " (fn") && !(← lookLit " (const") then break
     expect " "
-    let t ← pTy
+    ms := ms.push (← pFn)
+  return ms.toList
+
+def pTraitImpl : PM SItem := do
+  if ← tryLit "(trait" then
+    let _ ← tryLit " pub"
+    expect " "
+    let n ← qident
+    let ms ← pMethods
     expect ")"
-    ps := ps.push { name := x, byRef := r, byMut := m, ty := t }
-  let ret ← if ← tryLit " -> " then pure (some (← pTy)) else pure none
-  let (body, ext) ← if ← tryLit " extern" then pure (none, true)
-    else if ← tryLit " " then pure (some (← pBlock), false)
-    else pure (none, false)
+    return .trait n ms
+  expect "(impl"
+  let tps ← if (← peekC) == some '[' then do
+      let _ ← nextC
+      let r ← takeWhileP (· != ']')
+      expect "]"
+      pure (boundsOf r)
+    else pure []
+  expect " "
+  let tr ← qident
+  expect " for "
+  let target ← pTy
+  let ms ← pMethods
   expect ")"
-  return .fn { isConst, pub, owner, name, tparams := tps, selfKind, params := ps.toList, ret, body, isExtern := ext }
+  return .impl tps tr target ms
 
 def parseLine (line : String) : SItem :=
-  if line.startsWith "(trait" || line.startsWith "(impl" then .other line
+  if line.startsWith "(trait" || line.startsWith "(impl" then
+    match (pTraitImpl.run line.toList.toArray).run 0 with
+    | .ok (it, _) => it
+    | .error msg => .bad line msg
   else match (pItem.run line.toList.toArray).run 0 with
     | .ok (it, _) => it
     | .error msg => .bad line msg

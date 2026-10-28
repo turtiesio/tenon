@@ -63,7 +63,12 @@ def run (preludes : List String) (progFile : String) (args : List String) : IO U
       return 70
     | .adt "Result" 0 _ _ => return 0
     | .adt "Result" 1 _ [e] =>
-      IO.eprintln s!"error: {showTop e}"
+      -- with Show impls, the error is formatted by the core's `%show`
+      let text := if !tp.shows then showTop e else
+        match eval tp.prog fuel [("%e", some e)] st (.call (.fnref "%show") [.place "%e" [], .lit (.bool true)]) with
+        | .ok (.str s) _ _ => s
+        | _ => showTop e
+      IO.eprintln s!"error: {text}"
       return 1
     | _ => outside "main returned an unexpected value"
   | .ctl _ _ _ => outside "stuck: main ended with a break or continue"

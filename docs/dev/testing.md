@@ -115,13 +115,16 @@ in [ops/governance/README.md](../../ops/governance/README.md).
 formal/ is a Lean 4 project (tenon.md §6, [formal/README.md](../../formal/README.md)): Tenon Core, a
 core calculus with a computable evaluator, and proofs about it of capability
 safety, obligation soundness (each linear value consumed exactly once,
-unique values never duplicated) and worker isolation. The toolchain is
+unique values never duplicated), worker isolation, type soundness (a
+well-typed program never gets stuck) and its substitution lemma, traits and
+coherence, and the specification of milestone-3 item 3 (user Eq/Ord/Hash). The toolchain is
 pinned in `formal/lean-toolchain`; elan installs it (CI caches it).
 
 - `ops/gates/formal_check.sh` (a `./check` step) builds formal/ and fails on
   a proof that no longer checks, on `sorry`, `admit` or a new `axiom` in a
   built file, and on a guarded theorem that depends on an axiom beyond
-  `propext`, `Classical.choice` and `Quot.sound` (`formal/Axioms.lean`).
+  `propext`, `Classical.choice` and `Quot.sound` (`formal/Axioms.lean`; at
+  least the 25 statements of `Theorems.lean` must be audited).
   Statements that are not proved yet live in `formal/Todo/`, which the gate
   does not build.
 - The statements in `formal/TenonCore/Theorems.lean` are guarded like tests

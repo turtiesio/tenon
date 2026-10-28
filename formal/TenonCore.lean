@@ -9,4 +9,15 @@ import TenonCore.Linear
 import TenonCore.LinearSafe
 import TenonCore.Workers
 import TenonCore.Typing
+import TenonCore.TypingLemmas
+import TenonCore.TypingPaths
+import TenonCore.TypeSafeHelpers
+import TenonCore.TypeSafe
+import TenonCore.TypeSafeEval
+import TenonCore.TypeSafeRest
+import TenonCore.Subst
+import TenonCore.SubstTyping
 import TenonCore.Theorems
+import TenonCore.TypeExamples
+import TenonCore.Traits
+import TenonCore.TypeGaps

@@ -28,13 +28,36 @@ structure Ctx where
   scope : Scope
   adts : Std.HashMap String AdtDecl
   tparams : List String := []
+  /-- The program has Show impls: formatting goes through `%show` (Prims.lean, "Show impls"). -/
+  shows : Bool := false
 
-abbrev TM := StateM Nat
+/-- The state: a counter for hidden names, and whether a `dyn` value is built. -/
+abbrev TM := StateM (Nat × Bool)
 
 def fresh (base : String) : TM String := do
-  let n ← get
-  set (n + 1)
+  let (n, d) ← get
+  set (n + 1, d)
   return s!"%{base}{n}"
+
+/-- A place whose index steps have no effect (it can be read twice). -/
+def purePlace : Expr → Bool
+  | .place _ ps => ps.all fun st => match st with
+    | .idx (.place _ []) | .idx (.lit _) => true
+    | .idx _ => false
+    | _ => true
+  | _ => false
+
+/-- `"{p}"` when the program has Show impls: the builtin text, unless the
+value contains a type with a Show impl; then the core function `%show`. -/
+def showAt (p : Expr) (s : String) (top : Bool) : Expr :=
+  .mtch (.prim "%showq" [p, .lit (.bool top)])
+    [(.con "Ok" [.bind s], none, .place s []), (.wild, none, .call (.fnref "%show") [p, .lit (.bool top)])]
+
+def showE (x : Expr) : TM Expr := do
+  let s ← fresh "s"
+  if purePlace x then return showAt x s true
+  let t ← fresh "t"
+  return .letE t false x (showAt (.place t []) s true)
 
 def Ctx.tyKey (c : Ctx) (n : String) : String :=
   if builtinTypes.contains n then n else (c.scope.types.get? n).getD n
@@ -112,13 +135,14 @@ def Ctx.qvariant (c : Ctx) (t v : String) : Option (String × Nat) :=
 mutual
 partial def tE (c : Ctx) (ls : List String) : SExpr → TM Expr
   | .int i => pure (.lit (.int i))
-  | .float _ => pure (.unsup "Float")
+  | .float s => pure (.prim "%float" [.lit (.str s)])
   | .bool b => pure (.lit (.bool b))
   | .unit => pure unitE
   | .str segs => do
     let parts ← segs.mapM fun s => match s with
       | .lit l => pure (Expr.lit (.str l))
-      | .expr e => do return .prim "%show" [← tE c ls e]
+      | .expr e => do
+        if c.shows then showE (← tE c ls e) else return .prim "%show" [← tE c ls e]
       | .fmt e spec => do return .prim "%fmt" [← tE c ls e, .lit (.str spec)]
     match parts with
     | [Expr.lit (.str l)] => pure (.lit (.str l))
@@ -199,7 +223,10 @@ partial def tE (c : Ctx) (ls : List String) : SExpr → TM Expr
   | .lambda ps _ body => do
     let names := ps.map (·.1)
     return .lam names (← tE c (ls ++ names) body)
-  | .dyn _ _ => pure (.unsup "dyn")
+  | .dyn _ e => do
+    -- a `dyn` value is the value: methods dispatch on its head at run time
+    modify fun (n, _) => (n, true)
+    tE c ls e
 
 partial def tName (c : Ctx) (ls : List String) (n : String) : Expr :=
   if ls.contains n then .place n []
@@ -326,6 +353,8 @@ structure Program where
   mainArity : Nat
   /-- Constructs the program uses that the core does not model (top level). -/
   unsupported : List String
+  /-- Formatting goes through `%show` (the program has Show impls). -/
+  shows : Bool := false
 
 /-- Core definitions of the prelude externs that consume their receiver. -/
 def coreExterns : List (String × FnDecl) :=
@@ -376,6 +405,23 @@ def adtDecls (sc : Scope) (items : List SItem) (adts : Std.HashMap String AdtDec
     | _ => pure ()
   return adts
 
+/-- A function or method body (`f`'s parameters; `c` has its type parameters). -/
+def declOf (c : Ctx) (f : SFn) (b : List SStmt) (owner : Option String) : TM FnDecl := do
+  let selfP := match f.selfKind with
+    | "self" => [("self", Mode.val)]
+    | "mut-self" => [("self", Mode.mut)]
+    | "ref-self" => [("self", Mode.ref)]
+    | _ => []
+  let ps := selfP ++ f.params.map fun p => (p.name, if p.byMut then Mode.mut else if p.byRef then Mode.ref else Mode.val)
+  let body ← tBlock c (ps.map (·.1)) b
+  return {
+    params := ps
+    body := body
+    owner := owner
+    tparams := c.tparams.length
+    ptys := f.params.map (fun p => c.ty p.ty)
+    ret := (f.ret.map c.ty).getD .unit }
+
 def fnDecls (c0 : Ctx) (pfx : String) (items : List SItem) : TM (List (String × FnDecl) × List String) := do
   let mut out : List (String × FnDecl) := []
   let mut bad : List String := []
@@ -395,26 +441,130 @@ def fnDecls (c0 : Ctx) (pfx : String) (items : List SItem) : TM (List (String ×
             (k ++ "." ++ f.name, if builtinTypes.contains n then none else some k)
           | some _ => ("%bad." ++ f.name, none)
           | none => (pfx ++ f.name, none)
-        let selfP := match f.selfKind with
-          | "self" => [("self", Mode.val)]
-          | "mut-self" => [("self", Mode.mut)]
-          | "ref-self" => [("self", Mode.ref)]
-          | _ => []
-        let ps := selfP ++ f.params.map fun p => (p.name, if p.byMut then Mode.mut else if p.byRef then Mode.ref else Mode.val)
-        let body ← tBlock c (ps.map (·.1)) b
-        let d : FnDecl := {
-          params := ps
-          body := body
-          owner := owner
-          tparams := c.tparams.length
-          ptys := f.params.map (fun p => c.ty p.ty)
-          ret := (f.ret.map c.ty).getD .unit }
-        out := out ++ [(key, d)]
+        out := out ++ [(key, ← declOf c f b owner)]
     | .bad line msg => bad := bad ++ [s!"{msg}: {line.take 60}"]
-    | .other line => if pfx == "m:" then bad := bad ++ [s!"{(line.splitOn " ").headD "item"} (traits and impls)"]
     | .imp n => bad := bad ++ [s!"import {n}"]
     | _ => pure ()
   return (out, bad)
+
+/-! ## Traits and impls (reference §17)
+
+An impl's methods become methods of the target type's head (`Square.area`,
+`List.describe`, `Tuple.m`, `Fn.m`), with the trait's default bodies for the
+methods the impl does not give: a call dispatches on the receiver's value,
+which is what static dispatch and a `dyn` table select for a well-typed
+program. The type's own methods win (reference §17, "Calling"). Two impls of
+one trait for instantiations of one type (`Option[Int]`, `Option[Str]`)
+would share a key: their methods are unsupported. A Show impl's `to_str` is
+a function the formatting calls (`%show`, Prims.lean "Show impls"). -/
+
+def targetKey (c : Ctx) (tps : List String) : STy → Option (String × List STy)
+  | .named n as =>
+    if tps.contains n || n.startsWith "dyn " then none else some (c.tyKey n, as)
+  | .tup [] => some ("Unit", [])
+  | .tup ts => some ("Tuple", ts)
+  | .fn .. => some ("Fn", [])
+
+/-- The impl's parameters as markers (`.adt "%tp<i>" []`) for `ShowImpl.args`. -/
+partial def markTy : Ty → Ty
+  | .var i => .adt s!"%tp{i}" []
+  | .tup ts => .tup (ts.map markTy)
+  | .list t => .list (markTy t)
+  | .map k v => .map (markTy k) (markTy v)
+  | .adt n ts => .adt n (ts.map markTy)
+  | .fn ps r => .fn (ps.map markTy) (markTy r)
+  | t => t
+
+structure Impls where
+  fns : List (String × FnDecl) := []
+  shows : List Prims.ShowImpl := []
+  bad : List String := []
+
+/-- The impls of `items` (`own`: the types this file declares, whose impls finish
+a linear `self`; `taken`: keys of the types' own methods). -/
+def implDecls (c0 : Ctx) (items : List SItem) (traits : Std.HashMap String (List SFn))
+    (own : List String) (taken : String → Bool) (acc : Impls) : TM Impls := do
+  let mut acc := acc
+  for it in items do
+    match it with
+    | .impl tps tr target ms =>
+      let names := tps.map (·.1)
+      match targetKey c0 names target, traits.get? tr with
+      | some (k, as), some tms =>
+        let c := { c0 with tparams := names }
+        let owner := match target with
+          | .named n _ => if own.contains n then some k else none
+          | _ => none
+        let defaults := tms.filter fun m => m.body.isSome && !ms.any (·.name == m.name)
+        for m in ms ++ defaults do
+          let some b := m.body | continue
+          let cm := { c with tparams := names ++ m.tparams }
+          let d ← declOf cm m b owner
+          if tr == "Show" && m.name == "to_str" then
+            let fk := s!"%show#{k}#{acc.shows.length}"
+            acc := { acc with fns := acc.fns ++ [(fk, d)],
+                              shows := acc.shows ++ [{ key := k, fn := fk, bounds := tps.map (·.2),
+                                                       args := as.map fun a => markTy (c.ty a) }] }
+          else
+            let key := k ++ "." ++ m.name
+            -- the type's own method wins on a direct call, the trait's through a
+            -- bound or `dyn` (static types decide): outside the subset
+            if taken key then
+              acc := { acc with bad := acc.bad ++ [s!"{key}: a type's own method and a trait method of one name"] }
+              continue
+            if acc.fns.any (·.1 == key) then
+              let u : FnDecl := { d with body := .unsup s!"impls of {key} for several instantiations" }
+              acc := { acc with fns := (acc.fns.filter (·.1 != key)) ++ [(key, u)] }
+            else acc := { acc with fns := acc.fns ++ [(key, d)] }
+      | none, _ => acc := { acc with bad := acc.bad ++ [s!"impl {tr} for this type"] }
+      | _, none => acc := { acc with bad := acc.bad ++ [s!"trait {tr}"] }
+    | _ => pure ()
+  return acc
+
+def traitsOf (items : List SItem) (m : Std.HashMap String (List SFn)) : Std.HashMap String (List SFn) :=
+  items.foldl (fun m it => match it with | .trait n ms => m.insert n ms | _ => m) m
+
+def ownTypes (items : List SItem) : List String :=
+  items.filterMap fun it => match it with
+    | .struct s => some s.name
+    | .enum e => some e.name
+    | _ => none
+
+/-- `%show(ref x, top)`: the text of `x` when it contains a type with a Show impl. -/
+def showWalker : FnDecl :=
+  let p (x : String) : Expr := .place x []
+  let i1 : Expr := .prim "%add" [p "%i", .lit (.int 1)]
+  let loop : Expr :=
+    .letE "%acc" true (.place "%seps" [.idx (.lit (.int 0))])
+      (.letE "%i" true (.lit (.int 0))
+        (.seqE (.while (.prim "%lt" [p "%i", .prim "List.len" [p "%kids"]])
+            (.seqE (.assign "%acc" [] (.prim "%concat" [p "%acc",
+                      .call (.fnref "%show") [.place "%kids" [.idx (p "%i")], .lit (.bool false)],
+                      .place "%seps" [.idx i1]]))
+              (.assign "%i" [] i1)))
+          (p "%acc")))
+  { params := [("x", .ref), ("top", .val)],
+    body := .mtch (.prim "%showparts" [p "x", p "top"])
+      [(.con "Ok" [.bind "%f"], none, .call (p "%f") [p "x"]),
+       (.con "Err" [.tup [.bind "%seps", .bind "%kids"]], none, loop)] }
+
+/-- `x.to_str()` when the program has Show impls (for the heads that can contain one). -/
+def toStrDecl : FnDecl :=
+  { params := [("self", .val)], body := showAt (.place "self" []) "%s" true, ret := .str }
+
+/-- `xs.sort_by(key)`, `xs.sort_by_desc(key)` (compiler/ieval.tn: the keys first,
+element by element, then the interpreter's merge sort). -/
+def sortByDecl (desc : Bool) : FnDecl :=
+  let p (x : String) : Expr := .place x []
+  let i1 : Expr := .prim "%add" [p "%i", .lit (.int 1)]
+  { params := [("self", .mut), ("key", .val)],
+    body :=
+      .letE "%ks" true (.seq .list [])
+        (.letE "%i" true (.lit (.int 0))
+          (.seqE (.while (.prim "%lt" [p "%i", .prim "List.len" [p "self"]])
+              (.seqE (.mcall "push" (p "%ks") [.call (p "key") [.place "self" [.idx (p "%i")]]])
+                (.assign "%i" [] i1)))
+            (.assign "self" [] (.prim "%sortby" [p "self", p "%ks", .lit (.bool desc)])))) }
 
 def externNames (items : List SItem) (sc : Scope) : List String :=
   items.filterMap fun it => match it with
@@ -429,15 +579,31 @@ def translate (prelude prog : List SItem) (input : List UInt8) : Program :=
   let msc := declare psc "m:" prog psc
   let adts := adtDecls psc prelude {}
   let adts := adtDecls msc prog adts
-  let ((pfns, _), n) := (fnDecls { scope := psc, adts } "p:" prelude).run 0
-  let ((mfns, bad), _) := (fnDecls { scope := msc, adts } "m:" prog).run n
-  let fns : Std.HashMap String FnDecl := Std.HashMap.ofList (pfns ++ coreExterns ++ mfns)
+  let isShow (it : SItem) := match it with | .impl _ "Show" _ _ => true | _ => false
+  let shows := prelude.any isShow || prog.any isShow
+  let ((pfns, _), n) := (fnDecls { scope := psc, adts, shows } "p:" prelude).run (0, false)
+  let ((mfns, bad), n) := (fnDecls { scope := msc, adts, shows } "m:" prog).run n
+  let externs := externNames prelude psc
+  let base : Std.HashMap String FnDecl :=
+    Std.HashMap.ofList (pfns ++ coreExterns ++ [("List.sort_by", sortByDecl false), ("List.sort_by_desc", sortByDecl true)] ++ mfns)
+  let taken (k : String) : Bool :=
+    base.contains k || externs.contains k || (Prims.pureTable adts.get? k).isSome
+  let ptraits := traitsOf prelude {}
+  let mtraits := traitsOf prog ptraits
+  let (im, n) := (implDecls { scope := psc, adts, shows } prelude ptraits (ownTypes prelude) taken {}).run n
+  let (im, (_, hasDyn)) := (implDecls { scope := msc, adts, shows } prog mtraits (ownTypes prog) taken im).run n
+  let fns := im.fns.foldl (fun m (k, d) => m.insert k d) base
+  let fns := if !shows then fns else
+    let heads := ["List", "Map", "Tuple"] ++ adts.toList.map (·.1)
+    let fns := fns.insert "%show" showWalker
+    heads.foldl (fun m h => if m.contains (h ++ ".to_str") then m else m.insert (h ++ ".to_str") toStrDecl) fns
   let main : Option SFn := prog.findSome? fun it => match it with
     | .fn f => if f.name == "main" && f.owner.isNone && f.body.isSome then some f else none
     | _ => none
-  { prog := { fns := fns.get?, adts := adts.get?, prim := Prims.table adts.get? (externNames prelude psc) input },
+  { prog := { fns := fns.get?, adts := adts.get?, prim := Prims.table adts.get? externs input im.shows hasDyn },
     main := main.map fun _ => "m:main",
     mainArity := (main.map (·.params.length)).getD 0,
-    unsupported := bad }
+    unsupported := bad ++ im.bad,
+    shows := shows }
 
 end Front

@@ -111,7 +111,8 @@ inductive SItem where
   | struct (s : SStruct)
   | enum (e : SEnum)
   | fn (f : SFn)
-  | other (what : String)    -- traits, impls: not translated
+  | trait (name : String) (methods : List SFn)   -- a method without a body has no default
+  | impl (tparams : List (String × List String)) (trait : String) (target : STy) (methods : List SFn)
   | bad (line : String) (msg : String)
   deriving Inhabited
 
