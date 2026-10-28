@@ -68,7 +68,7 @@ enum Node {
     Cls(Int),
     Bol,
     Eol,
-    Boundary(Bool),            // true: \b, false: \B
+    Boundary(Bool), // true: \b, false: \B
     Cat(List[Node]),
     Alt(List[Node]),
     Group(Int, Node),          // capture number, or 0 for (?: )
@@ -79,17 +79,17 @@ enum Inst {
     IChar(Int),
     IAny,
     IClass(Int),
-    ISplit(Int, Int),          // try the first target, on failure the second
+    ISplit(Int, Int), // try the first target, on failure the second
     IJmp(Int),
-    ISave(Int),                // slots[k] = position (undone on backtrack)
-    IProgress(Int, Int),       // if no input was consumed since slots[r], go to the target
+    ISave(Int),          // slots[k] = position (undone on backtrack)
+    IProgress(Int, Int), // if no input was consumed since slots[r], go to the target
     IBol,
     IEol,
     IBound(Bool),
     IMatch,
 }
 
-struct Frame { pc: Int, v: Int }   // pc >= 0: a branch to resume at position v; else restore slot -1 - pc to v
+struct Frame { pc: Int, v: Int } // pc >= 0: a branch to resume at position v; else restore slot -1 - pc to v
 
 const MAX_CP: Int = 1114111
 const MAX_COUNT: Int = 1000
@@ -584,9 +584,9 @@ pub struct Regex {
     cend: List[Int],
     rlo: List[Int],
     rhi: List[Int],
-    ascii: List[Bool],   // class i, ASCII character c: ascii[i * 128 + c]
-    anchored: Bool,      // begins with ^: only position 0 can match
-    prefix: Str,         // every match begins with this ASCII character, or ""
+    ascii: List[Bool], // class i, ASCII character c: ascii[i * 128 + c]
+    anchored: Bool,    // begins with ^: only position 0 can match
+    prefix: Str,       // every match begins with this ASCII character, or ""
 }
 
 pub fn compile(pattern: Str) -> Result[Regex, Str] {

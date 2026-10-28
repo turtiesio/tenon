@@ -1,3 +1,3 @@
 // error: missing field 'console' in 'Sys'
 fn mk() -> Sys { Sys { args: [] } }
-fn main(sys: Sys) { }
+fn main(sys: Sys) {}

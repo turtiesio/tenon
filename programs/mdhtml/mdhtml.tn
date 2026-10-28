@@ -157,7 +157,7 @@ fn try_inline(s: Str, i: Int) -> Option[(Str, Int)] {
 fn inline(s: Str) -> Str {
     let n = s.len()
     var out = ""
-    var run = 0   // start of the pending plain text
+    var run = 0 // start of the pending plain text
     var i = 0
     while i < n {
         match try_inline(s, i) {

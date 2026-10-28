@@ -17,13 +17,13 @@ pub struct Ck {
     pub sub: cktypes.Subst,
     pub scopes: List[List[Local]],
     pub ctx: List[Ctx],
-    pub ptypes: Map[Int, cktypes.Ty],              // pending types of the current function
-    pub pres: Map[Int, ckenv.Res],                 // pending resolutions
-    pub pcaps: Map[Int, List[(Str, cktypes.Ty)]],  // pending captures
-    pub lambdas: List[(Int, Int)],                 // (lambda id, scope index where it starts)
+    pub ptypes: Map[Int, cktypes.Ty],             // pending types of the current function
+    pub pres: Map[Int, ckenv.Res],                // pending resolutions
+    pub pcaps: Map[Int, List[(Str, cktypes.Ty)]], // pending captures
+    pub lambdas: List[(Int, Int)],                // (lambda id, scope index where it starts)
     pub tparams: List[Str],
     pub self_mut: Bool,
-    pub in_callee: Bool, // checking the callee of a call (functions with `mut` params allowed)
+    pub in_callee: Bool,                                // checking the callee of a call (functions with `mut` params allowed)
     pub let_types: List[(ckast.Span, Str, cktypes.Ty)], // `let` bindings, checked for unresolved types
     pub types: Map[Int, cktypes.Ty],
     pub res: Map[Int, ckenv.Res],

@@ -2,4 +2,4 @@
 struct Ctr { h: Int }
 fn Ctr.absorb(mut self, o: mut Ctr) {}
 fn main() { var a = Ctr { h: 1 }
- a.absorb(mut a) }
+    a.absorb(mut a) }

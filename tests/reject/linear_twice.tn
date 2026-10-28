@@ -3,5 +3,5 @@ linear struct Claim { job: Str }
 fn take(c: Claim) { c.done() }
 fn Claim.done(self) {}
 fn main() { let c = Claim { job: "x" }
- take(c)
- c.done() }
+    take(c)
+    c.done() }

@@ -1,0 +1,443 @@
+// module (imported by fmt.tn)
+// The formatter's layout engine, on fmtlex.tn tokens. The rules are listed in
+// docs/reference.md ("Formatting"). Line breaks are the author's: the only
+// lines added are the ones that split `a; b` in a multi-line block, so the
+// statement structure (lexer.tn `insert_semis`) cannot change. Within a line
+// the spacing is recomputed from the tokens; the indentation is recomputed
+// from the brackets and from statement continuation.
+
+import fmtlex
+
+// Bracket kinds: the top level, ( ), [ ], a block { }, and a list in braces
+// (match arms, struct literal fields, struct and enum declarations).
+const TOP: Int = 0
+const PAREN: Int = 1
+const BRACK: Int = 2
+const BLOCK: Int = 3
+const LIST: Int = 4
+
+fn is_sym(t: fmtlex.FTok, s: Str) -> Bool { t.kind == FSym and t.text == s }
+fn is_code(t: fmtlex.FTok) -> Bool { t.kind != FNl and t.kind != FComment }
+fn is_open(t: fmtlex.FTok) -> Bool { t.kind == FSym and (t.text == "(" or t.text == "[" or t.text == "\{") }
+fn is_close(t: fmtlex.FTok) -> Bool { t.kind == FSym and (t.text == ")" or t.text == "]" or t.text == "}") }
+fn upper(s: Str) -> Bool { s.byte(0) >= 'A' and s.byte(0) <= 'Z' }
+
+// A token after which a newline ends the statement (lexer.tn `is_ender`).
+fn ends_expr(t: fmtlex.FTok) -> Bool {
+    match t.kind {
+        FWord | FAtom | FStr => true,
+        FSym => [")", "]", "}", "?", "_"].contains(t.text),
+        FKey => ["return", "break", "continue", "true", "false", "self"].contains(t.text),
+        _ => false,
+    }
+}
+
+// A token that, first on a line, continues the previous line (lexer.tn `continues`).
+fn continues(t: fmtlex.FTok) -> Bool {
+    match t.kind {
+        FSym => [".", "+", "*", "/", "%", "==", "!=", "<", "<=", ">", ">="].contains(t.text),
+        FKey => t.text == "else" or t.text == "and" or t.text == "or",
+        _ => false,
+    }
+}
+
+// The last token of a line after which the next line starts a new item.
+fn ends_item(t: fmtlex.FTok) -> Bool {
+    ends_expr(t) or is_sym(t, ",") or is_sym(t, ";") or is_open(t)
+}
+
+// `head`: the keyword (`if`, `match`, `fn`, ..., or "decl" for `struct` and
+// `enum`) whose `{` is pending at this level; `head_at`: its index.
+struct Frame { kind: Int, open: Int, head: Str, head_at: Int }
+
+// For each bracket its kind and the index of its partner; for each token the
+// index of the innermost enclosing opening bracket (-1 at the top level); for
+// a `{` that ends a head, the index of the head's keyword (else -1).
+struct Brackets { kind: List[Int], mate: List[Int], encl: List[Int], head: List[Int] }
+
+fn next_code(toks: List[fmtlex.FTok], i: Int) -> Int {
+    var j = i + 1
+    while j < toks.len() and not is_code(toks[j]) { j += 1 }
+    if j < toks.len() { j } else { -1 }
+}
+
+// Is `{` after these code tokens (the last three) a struct literal: after
+// `Name` or `module.Name`, but not after a path `Enum.Variant`?
+fn struct_name_before(toks: List[fmtlex.FTok], recent: List[Int]) -> Bool {
+    let n = recent.len()
+    if n == 0 { return false }
+    let t = toks[recent[n - 1]]
+    if t.kind != FWord or not upper(t.text) { return false }
+    if n >= 2 and is_sym(toks[recent[n - 2]], ".") {
+        return n >= 3 and toks[recent[n - 3]].kind == FWord and not upper(toks[recent[n - 3]].text)
+    }
+    true
+}
+
+// Classify the brackets. A `{` is a block or a list by what precedes it, as
+// the parser decides: after the head of `match` (arms) or `struct`/`enum`
+// (declarations) it is a list; after the head of `if`, `while`, `for` or `fn`
+// it is a block (no struct literal in a head); otherwise after a type name it
+// is a struct literal, and anything else is a block.
+fn classify(toks: List[fmtlex.FTok]) -> Brackets {
+    let n = toks.len()
+    var kind = List.filled(n, TOP)
+    var mate = List.filled(n, -1)
+    var encl = List.filled(n, -1)
+    var heads = List.filled(n, -1)
+    var stack = [Frame { kind: TOP, open: -1, head: "", head_at: -1 }]
+    var recent: List[Int] = []
+    for i in 0..n {
+        let t = toks[i]
+        let top = stack.len() - 1
+        encl[i] = stack[top].open
+        if t.kind == FNl {
+            // a statement ends here: no head is pending any more
+            let k = stack[top].kind
+            if (k == TOP or k == BLOCK or k == LIST) and not recent.is_empty() and ends_expr(toks[recent[recent.len() - 1]]) {
+                let nx = next_code(toks, i)
+                if nx < 0 or not continues(toks[nx]) { stack[top].head = "" }
+            }
+            continue
+        }
+        if t.kind == FComment { continue }
+        let head = stack[top].head
+        if t.kind == FKey {
+            if head == "" and ["if", "while", "for", "match", "fn"].contains(t.text) {
+                stack[top].head = t.text
+                stack[top].head_at = i
+            } else if t.text == "struct" or t.text == "enum" {
+                stack[top].head = "decl"
+                stack[top].head_at = i
+            }
+        } else if t.kind == FSym {
+            let s = t.text
+            if (s == "=" or s == "=>") and head == "fn" {
+                // `let f: fn(A) -> B = ...`, `fn(x) => Point { ... }`
+                stack[top].head = ""
+            } else if s == "," or s == ";" {
+                stack[top].head = ""
+            } else if s == "(" or s == "[" {
+                kind[i] = if s == "(" { PAREN } else { BRACK }
+                stack.push(Frame { kind: kind[i], open: i, head: "", head_at: -1 })
+            } else if s == "\{" {
+                kind[i] = if head == "match" or head == "decl" {
+                    LIST
+                } else if head != "" {
+                    BLOCK
+                } else if struct_name_before(toks, recent) {
+                    LIST
+                } else {
+                    BLOCK
+                }
+                if head != "" { heads[i] = stack[top].head_at }
+                stack[top].head = ""
+                stack.push(Frame { kind: kind[i], open: i, head: "", head_at: -1 })
+            } else if (s == ")" or s == "]" or s == "}") and stack.len() > 1 {
+                let f = stack.pop().unwrap()
+                kind[i] = f.kind
+                mate[i] = f.open
+                mate[f.open] = i
+            }
+        }
+        recent.push(i)
+        if recent.len() > 3 { let _ = recent.remove(0) }
+    }
+    Brackets { kind, mate, encl, head: heads }
+}
+
+// Does the bracket pair o..c hold a `,` or `:` of its own (a list or a map,
+// not an index)?
+fn has_sep(toks: List[fmtlex.FTok], br: Brackets, o: Int, c: Int) -> Bool {
+    var j = o + 1
+    while j < c {
+        if is_open(toks[j]) and br.mate[j] > j {
+            j = br.mate[j] + 1
+        } else if is_sym(toks[j], ",") or is_sym(toks[j], ":") {
+            return true
+        } else {
+            j += 1
+        }
+    }
+    false
+}
+
+// The first token of the last item in the bracket pair o..c.
+fn last_item(toks: List[fmtlex.FTok], br: Brackets, o: Int, c: Int) -> Int {
+    var j = o + 1
+    var start = j
+    while j < c {
+        if is_open(toks[j]) and br.mate[j] > j {
+            j = br.mate[j] + 1
+        } else {
+            if is_sym(toks[j], ",") or is_sym(toks[j], ";") { start = j + 1 }
+            j += 1
+        }
+    }
+    while start < c and not is_code(toks[start]) { start += 1 }
+    start
+}
+
+// The token-level edits: a trailing comma after the last item of a list
+// whose closing bracket starts a line (not after a block's `}` or a struct
+// literal's `..base`); no trailing comma before a closing bracket on the
+// same line; a line break instead of a `;` that separates two statements in
+// a multi-line block; no `;` at the end of a line where the newline ends the
+// statement anyway (lexer.tn inserts the same `;`).
+pub fn edit(toks: List[fmtlex.FTok]) -> List[fmtlex.FTok] {
+    let br = classify(toks)
+    let n = toks.len()
+    var line = List.filled(n, 0)
+    var prev = List.filled(n, -1)
+    var next = List.filled(n, -1)
+    var ln = 0
+    var last = -1
+    for i in 0..n {
+        line[i] = ln
+        prev[i] = last
+        if toks[i].kind == FNl { ln += 1 }
+        if is_code(toks[i]) { last = i }
+    }
+    last = -1
+    for i in rev_range(0, n) {
+        next[i] = last
+        if is_code(toks[i]) { last = i }
+    }
+    var ins = List.filled(n, false)
+    var del = List.filled(n, false)
+    var brk = List.filled(n, false)
+    for i in 0..n {
+        let t = toks[i]
+        let k = br.kind[i]
+        if is_close(t) and (k == PAREN or k == BRACK or k == LIST) {
+            let p = prev[i]
+            if p >= 0 and p != br.mate[i] {
+                let pt = toks[p]
+                if line[p] < line[i] {
+                    // (a `;` that is removed is replaced by the comma)
+                    let sep = is_sym(pt, ",") or (is_sym(pt, ";") and not del[p])
+                    let ok = if k == PAREN {
+                        true
+                    } else if k == BRACK {
+                        // a list or map, not an index or type arguments
+                        let o = br.mate[i]
+                        has_sep(toks, br, o, i) or prev[o] < 0 or not call_like(toks[prev[o]])
+                    } else {
+                        not is_sym(pt, "}") and not is_sym(toks[last_item(toks, br, br.mate[i], i)], "..")
+                    }
+                    if ok and not sep { ins[p] = true }
+                } else if is_sym(pt, ",") {
+                    del[p] = true
+                }
+            }
+        }
+        if is_sym(t, ";") {
+            let o = br.encl[i]
+            let same_line = next[i] >= 0 and line[next[i]] == line[i]
+            if same_line and (o < 0 or (br.kind[o] == BLOCK and line[o] < line[i])) { brk[i] = true }
+            // a `;` that ends a line where the newline ends the statement anyway
+            let in_braces = o < 0 or br.kind[o] == BLOCK or br.kind[o] == LIST
+            let redundant = prev[i] >= 0 and ends_expr(toks[prev[i]]) and (next[i] < 0 or not continues(toks[next[i]]))
+            if in_braces and (brk[i] or not same_line) and redundant { del[i] = true }
+        }
+    }
+    var out: List[fmtlex.FTok] = []
+    for i in 0..n {
+        if not del[i] { out.push(toks[i]) }
+        if ins[i] { out.push(fmtlex.FTok { kind: FSym, text: "," }) }
+        if brk[i] { out.push(fmtlex.FTok { kind: FNl, text: "\n" }) }
+    }
+    out
+}
+
+// ---- spacing ----
+
+fn call_like(a: fmtlex.FTok) -> Bool {
+    match a.kind {
+        FWord => true,
+        FKey => a.text == "fn" or a.text == "self",
+        FSym => a.text == ")" or a.text == "]" or a.text == "?",
+        _ => false,
+    }
+}
+
+// Is a `-` after `before` (None: first on the line) a negation?
+fn unary_after(before: Option[fmtlex.FTok]) -> Bool {
+    match before {
+        None => true,
+        Some(p) => match p.kind {
+            FSym => not [")", "]", "}", "?", "_"].contains(p.text),
+            FKey => not ["self", "true", "false"].contains(p.text),
+            _ => false,
+        },
+    }
+}
+
+// Is there a space between `a` and `b` (`pa` is the token before `a`)?
+fn space_between(a: fmtlex.FTok, b: fmtlex.FTok, pa: Option[fmtlex.FTok]) -> Bool {
+    if b.kind == FSym and [")", "]", ",", ";", "?", ".", ":"].contains(b.text) { return false }
+    if a.kind == FSym and ["(", "[", ".", ".."].contains(a.text) { return false }
+    if is_sym(b, "..") { return is_sym(a, ",") or is_sym(a, "\{") }
+    if is_sym(a, "\{") { return not is_sym(b, "}") }
+    if is_sym(a, "-") and unary_after(pa) { return false }
+    if is_sym(b, "(") or is_sym(b, "[") { return not call_like(a) }
+    true
+}
+
+// ---- lines ----
+
+struct Line { code: List[Int], comment: Str }
+
+// `stmt`: the indentation of the line the current statement started on;
+// `stmt_if`: that line starts with `if`.
+struct LFrame { kind: Int, base: Int, stmt: Int, stmt_if: Bool }
+
+fn Line.blank(self) -> Bool { self.code.is_empty() and self.comment == "" }
+
+fn render(toks: List[fmtlex.FTok], l: Line) -> Str {
+    var s = ""
+    for k in 0..l.code.len() {
+        let t = toks[l.code[k]]
+        if k > 0 {
+            let pa = if k >= 2 { Some(toks[l.code[k - 2]]) } else { None }
+            if space_between(toks[l.code[k - 1]], t, pa) { s += " " }
+        }
+        s += t.text
+    }
+    s
+}
+
+fn Line.has_eol_comment(self) -> Bool { not self.code.is_empty() and self.comment != "" }
+
+// Indentation: 4 spaces per line that opened a bracket still open (several
+// brackets opened on one line count once); a line starting with a closing
+// bracket is indented as the line that opened it. Inside a block, a line that
+// continues the previous one (lexer.tn: it starts with `.`, `and`, a binary
+// operator..., or the previous line ends with `=`, `=>`, `->`, an operator...)
+// is indented 4 more than the line its statement started on; a line starting
+// with `else` as that line if it starts with `if`, else 4 more. The block of
+// a head that spans lines (`if a` / `and b {`) is indented from the line of
+// the head's keyword.
+fn indents(toks: List[fmtlex.FTok], br: Brackets, lines: List[Line]) -> List[Int] {
+    var indent = List.filled(lines.len(), 0)
+    var line_of = List.filled(toks.len(), 0)
+    for li in 0..lines.len() {
+        for i in lines[li].code { line_of[i] = li }
+    }
+    var stack = [LFrame { kind: TOP, base: -4, stmt: 0, stmt_if: false }]
+    var prev_last = -1
+    for li in 0..lines.len() {
+        let l = lines[li]
+        if l.code.is_empty() { continue }
+        let first = toks[l.code[0]]
+        let top = stack.len() - 1
+        let f = stack[top]
+        var ind = f.base + 4
+        if is_close(first) {
+            ind = f.base
+        } else if f.kind == TOP or f.kind == BLOCK or f.kind == LIST {
+            if first.kind == FKey and first.text == "else" {
+                ind = if f.stmt_if { f.stmt } else { f.stmt + 4 }
+            } else if prev_last >= 0 and (continues(first) or not ends_item(toks[prev_last])) {
+                ind = f.stmt + 4
+            } else {
+                stack[top].stmt = ind
+                stack[top].stmt_if = first.kind == FKey and first.text == "if"
+            }
+        }
+        indent[li] = ind
+        for i in l.code {
+            if is_open(toks[i]) {
+                let base = if br.head[i] >= 0 { indent[line_of[br.head[i]]] } else { ind }
+                stack.push(LFrame { kind: br.kind[i], base, stmt: base + 4, stmt_if: false })
+            } else if is_close(toks[i]) and stack.len() > 1 {
+                let _ = stack.pop()
+            }
+        }
+        prev_last = l.code[l.code.len() - 1]
+    }
+    // A comment line is indented as the next code line, or one level deeper
+    // when that line starts with a closing bracket.
+    var after = 0
+    for li in rev_range(0, lines.len()) {
+        if lines[li].code.is_empty() {
+            indent[li] = after
+        } else {
+            let deeper = if is_close(toks[lines[li].code[0]]) { 4 } else { 0 }
+            after = indent[li] + deeper
+        }
+    }
+    indent
+}
+
+pub fn layout(toks: List[fmtlex.FTok]) -> Str {
+    let br = classify(toks)
+    var lines: List[Line] = []
+    var cur = Line { code: [], comment: "" }
+    for i in 0..toks.len() {
+        let t = toks[i]
+        if t.kind == FNl {
+            lines.push(cur)
+            cur = Line { code: [], comment: "" }
+        } else if t.kind == FComment {
+            cur.comment = t.text
+        } else {
+            cur.code.push(i)
+        }
+    }
+    lines.push(cur)
+    let indent = indents(toks, br, lines)
+    // At most one blank line in a row; none at the start or end of the file,
+    // after a line ending with an opening bracket or before a line starting
+    // with a closing one.
+    var keep: List[Line] = []
+    var code: List[Str] = []
+    var gap: List[Bool] = []
+    var blank = false
+    var after_open = false
+    for li in 0..lines.len() {
+        let l = lines[li]
+        if l.blank() {
+            blank = true
+            continue
+        }
+        let closes = not l.code.is_empty() and is_close(toks[l.code[0]])
+        gap.push(blank and not keep.is_empty() and not after_open and not closes)
+        keep.push(l)
+        code.push(" ".repeat(indent[li]) + render(toks, l))
+        blank = false
+        after_open = not l.code.is_empty() and is_open(toks[l.code[l.code.len() - 1]])
+    }
+    // End-of-line comments on consecutive lines are aligned, one space after
+    // the longest line of code.
+    var col = List.filled(keep.len(), 0)
+    var k = 0
+    while k < keep.len() {
+        if not keep[k].has_eol_comment() {
+            k += 1
+            continue
+        }
+        var e = k
+        var w = 0
+        while e < keep.len() and keep[e].has_eol_comment() and (e == k or not gap[e]) {
+            w = w.max(code[e].char_count())
+            e += 1
+        }
+        for m in k..e { col[m] = w + 1 }
+        k = e
+    }
+    var out = ""
+    for m in 0..keep.len() {
+        if gap[m] { out += "\n" }
+        let l = keep[m]
+        if l.code.is_empty() {
+            out += code[m] + l.comment
+        } else if l.comment == "" {
+            out += code[m]
+        } else {
+            out += code[m] + " ".repeat(col[m] - code[m].char_count()) + l.comment
+        }
+        out += "\n"
+    }
+    out
+}

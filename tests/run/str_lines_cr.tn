@@ -13,19 +13,19 @@ fn show(c: Console, s: Str) {
 
 fn main(sys: Sys) {
     let c = sys.console
-    show(c, "a\r\nb\r\n")       // CRLF
-    show(c, "a\r\nb")           // CRLF, last line without "\n"
-    show(c, "a\nb\r")           // "\r" only at the very end
-    show(c, "a\r\r\nb\r")       // only one "\r" is removed
-    show(c, "\r")               // a lone "\r" is an empty line
+    show(c, "a\r\nb\r\n") // CRLF
+    show(c, "a\r\nb")     // CRLF, last line without "\n"
+    show(c, "a\nb\r")     // "\r" only at the very end
+    show(c, "a\r\r\nb\r") // only one "\r" is removed
+    show(c, "\r")         // a lone "\r" is an empty line
     show(c, "\r\n")
-    show(c, "\n\r")             // the last piece is "\r": a line, not dropped
-    show(c, "a\rb\n")           // a "\r" inside a line stays
-    show(c, "")                 // empty
+    show(c, "\n\r")   // the last piece is "\r": a line, not dropped
+    show(c, "a\rb\n") // a "\r" inside a line stays
+    show(c, "")       // empty
     show(c, "\n")
     show(c, "\n\n")
     show(c, "a\n\nb\n")
-    show(c, "a\r\n\r\n")        // a final empty line after CRLF lines
+    show(c, "a\r\n\r\n") // a final empty line after CRLF lines
     // the same lines as reading the same text (stdin above) with read_line
     var by_read: List[Str] = []
     while let Some(l) = c.read_line() { by_read.push(l) }

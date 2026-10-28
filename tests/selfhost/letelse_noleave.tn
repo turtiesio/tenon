@@ -1,3 +1,3 @@
 fn main() {
-    let Some(x) = Some(1) else { }
+    let Some(x) = Some(1) else {}
 }

@@ -1,2 +1,2 @@
 // error: 'Proc' is not a struct
-fn main(sys: Sys) { let p = Proc { } }
+fn main(sys: Sys) { let p = Proc {} }

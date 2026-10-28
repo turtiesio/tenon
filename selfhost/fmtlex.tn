@@ -1,0 +1,194 @@
+// module (imported by fmt.tn)
+// The formatter's scanner. Unlike lexer.tn it keeps everything the formatter
+// must reproduce: every code token with its exact source text (a string token
+// is its whole literal, interpolations and specs included), `//` comments and
+// newlines. Only spaces, tabs and carriage returns are dropped. Token
+// boundaries follow lexer.tn; fmt.tn checks the result against lexer.tn.
+
+pub enum FK { FWord, FKey, FAtom, FStr, FSym, FComment, FNl }
+
+// `text` is the token's source text (a comment without trailing spaces).
+pub struct FTok { pub kind: FK, pub text: Str }
+
+struct Sc { src: Str, kws: List[Str], syms: List[Str] }
+
+// As lexer.tn `keywords` and `symbols` (longest symbols first).
+fn keywords() -> List[Str] {
+    [
+        "fn", "let", "var", "if", "else", "while", "for", "in", "match", "return", "break",
+        "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
+        "unique", "import", "extern", "pub", "ref", "const",
+    ]
+}
+
+fn symbols() -> List[Str] {
+    [
+        "..", "==", "!=", "<=", ">=", "->", "=>", "+=", "-=", "*=", "/=", "%=", "+", "-", "*", "/",
+        "%", "<", ">", "=", "(", ")", "[", "]", "\{", "}", ",", ":", ";", ".", "?", "|", "_",
+    ]
+}
+
+fn is_digit(c: Int) -> Bool { c >= '0' and c <= '9' }
+fn is_alpha(c: Int) -> Bool { (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') }
+fn is_ident_char(c: Int) -> Bool { is_alpha(c) or is_digit(c) or c == '_' }
+
+// The byte at `i`, or 0 past the end.
+fn Sc.at(self, i: Int) -> Int { if i < self.src.len() { self.src.byte(i) } else { 0 } }
+
+// "LINE:COL: msg" for the byte offset `i`.
+fn Sc.fail(self, i: Int, msg: Str) -> Str {
+    var line = 1
+    var start = 0
+    for k in 0..i.min(self.src.len()) {
+        if self.src.byte(k) == '\n' {
+            line += 1
+            start = k + 1
+        }
+    }
+    "{line}:{i - start + 1}: {msg}"
+}
+
+// The kind and end offset of the code token starting at `i`. `after_dot`:
+// digits right after `.` are a tuple index (`t.0.1`), never a float.
+fn Sc.token(self, i: Int, after_dot: Bool) -> Result[(FK, Int), Str] {
+    let c = self.at(i)
+    if is_digit(c) { return Ok((FAtom, self.number_end(i, after_dot))) }
+    if is_alpha(c) or (c == '_' and is_ident_char(self.at(i + 1))) {
+        var j = i
+        while is_ident_char(self.at(j)) { j += 1 }
+        let w = self.src.slice(i, j)
+        if w == "r" and self.at(j) == '"' { return Ok((FStr, self.raw_end(i, j)?)) }
+        return Ok((if self.kws.contains(w) { FKey } else { FWord }, j))
+    }
+    if c == '\'' { return Ok((FAtom, self.char_end(i)?)) }
+    if c == '"' { return Ok((FStr, self.string_end(i)?)) }
+    for s in self.syms {
+        if self.src.slice(i, (i + s.len()).min(self.src.len())) == s { return Ok((FSym, i + s.len())) }
+    }
+    Err(self.fail(i, "unexpected character"))
+}
+
+fn Sc.number_end(self, i0: Int, int_only: Bool) -> Int {
+    var i = i0
+    let p = self.at(i + 1)
+    if not int_only and self.at(i) == '0' and (p == 'x' or p == 'b' or p == 'o' or p == 'X' or p == 'B' or p == 'O') {
+        i += 2
+        while is_ident_char(self.at(i)) { i += 1 }
+        return i
+    }
+    while is_digit(self.at(i)) or self.at(i) == '_' { i += 1 }
+    if int_only { return i }
+    if self.at(i) == '.' and is_digit(self.at(i + 1)) {
+        i += 1
+        while is_digit(self.at(i)) or self.at(i) == '_' { i += 1 }
+    }
+    if self.at(i) == 'e' or self.at(i) == 'E' {
+        var j = i + 1
+        if self.at(j) == '-' or self.at(j) == '+' { j += 1 }
+        if is_digit(self.at(j)) {
+            while is_digit(self.at(j)) { j += 1 }
+            i = j
+        }
+    }
+    i
+}
+
+fn Sc.char_end(self, i: Int) -> Result[Int, Str] {
+    let c = self.at(i + 1)
+    let n = if c == '\\' { 2 } else if c < 128 { 1 } else if c < 224 { 2 } else if c < 240 { 3 } else { 4 }
+    if c == 0 or c == '\n' or self.at(i + 1 + n) != '\'' { return Err(self.fail(i, "malformed character literal")) }
+    Ok(i + 2 + n)
+}
+
+// `r"..."`: `i` is the `r`, `q` the opening quote.
+fn Sc.raw_end(self, i: Int, q: Int) -> Result[Int, Str] {
+    var k = q + 1
+    while k < self.src.len() and self.src.byte(k) != '"' and self.src.byte(k) != '\n' { k += 1 }
+    if self.at(k) != '"' { return Err(self.fail(i, "unterminated raw string")) }
+    Ok(k + 1)
+}
+
+fn Sc.string_end(self, i: Int) -> Result[Int, Str] {
+    var k = i + 1
+    while true {
+        if k >= self.src.len() { return Err(self.fail(i, "unterminated string")) }
+        let c = self.src.byte(k)
+        if c == '"' { return Ok(k + 1) }
+        if c == '\n' { return Err(self.fail(i, "unterminated string")) }
+        if c == '\\' {
+            k += 2
+        } else if c == '{' {
+            k = self.interp_end(k + 1)?
+        } else {
+            k += 1
+        }
+    }
+    Ok(k)
+}
+
+// After the `{` of an interpolation: the offset after its closing `}`
+// (after the format spec, if any). Same rules as lexer.tn `tokens(true)`.
+fn Sc.interp_end(self, k0: Int) -> Result[Int, Str] {
+    var k = k0
+    var depth = 0
+    var nest = 0
+    var after_dot = false
+    while true {
+        if k >= self.src.len() { return Err(self.fail(k0, "unterminated interpolation")) }
+        let c = self.src.byte(k)
+        if c == ' ' or c == '\t' or c == '\r' or c == '\n' {
+            k += 1
+            continue
+        }
+        if c == '/' and self.at(k + 1) == '/' {
+            while k < self.src.len() and self.src.byte(k) != '\n' { k += 1 }
+            continue
+        }
+        if c == '}' and depth == 0 { return Ok(k + 1) }
+        if c == ':' and nest == 0 {
+            k += 1
+            while self.at(k) != '}' {
+                if k >= self.src.len() or self.at(k) == '\n' or self.at(k) == '"' { return Err(self.fail(k0, "unterminated format spec")) }
+                k += 1
+            }
+            return Ok(k + 1)
+        }
+        let (kind, e) = self.token(k, after_dot)?
+        let t = self.src.slice(k, e)
+        if kind == FSym {
+            if t == "\{" { depth += 1 } else if t == "}" { depth = (depth - 1).max(0) }
+            if t == "(" or t == "[" or t == "\{" { nest += 1 } else if t == ")" or t == "]" or t == "}" { nest = (nest - 1).max(0) }
+        }
+        after_dot = kind == FSym and t == "."
+        k = e
+    }
+    Ok(k)
+}
+
+pub fn scan(src: Str) -> Result[List[FTok], Str] {
+    let sc = Sc { src, kws: keywords(), syms: symbols() }
+    var out: List[FTok] = []
+    var i = 0
+    var after_dot = false
+    while i < src.len() {
+        let c = src.byte(i)
+        if c == '\n' {
+            out.push(FTok { kind: FNl, text: "\n" })
+            i += 1
+        } else if c == ' ' or c == '\t' or c == '\r' {
+            i += 1
+        } else if c == '/' and sc.at(i + 1) == '/' {
+            var j = i
+            while j < src.len() and src.byte(j) != '\n' { j += 1 }
+            out.push(FTok { kind: FComment, text: src.slice(i, j).trim_end() })
+            i = j
+        } else {
+            let (kind, e) = sc.token(i, after_dot)?
+            let text = src.slice(i, e)
+            out.push(FTok { kind, text })
+            after_dot = kind == FSym and text == "."
+            i = e
+        }
+    }
+    Ok(out)
+}
