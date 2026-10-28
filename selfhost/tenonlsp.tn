@@ -1,0 +1,325 @@
+// tenonlsp: the Tenon language server (Language Server Protocol 3.17, JSON-RPC
+// 2.0 over standard input and output, Content-Length framing).
+//
+//   tenonlsp [--root DIR]
+//
+// DIR is the toolchain root holding lib/prelude.tn and lib/std/ (default
+// $TENON_ROOT, else the current directory). Features: diagnostics (the
+// checker's first diagnostic, parse errors included, on open, change and
+// save), hover (the type of the name under the cursor; signatures for
+// functions), go to definition (locals, functions, types, fields, variants,
+// modules, prelude items in lib/prelude.tn) and completion (names in scope
+// and keywords; after `.`, fields and methods of the receiver's type, or a
+// module's or type's members). Buffers are checked from their unsaved text;
+// the modules they import are read from disk. A file without `fn main` is
+// treated as a module: "program has no 'fn main'" is not reported.
+// Build: target/release/tenon build selfhost/tenonlsp.tn -o target/tenonlsp
+// Tests: tools/lsp_test.py.
+import front
+import json
+import lspquery
+import lsppos
+
+// An open buffer: its latest analysis, and the latest one that produced side
+// tables (used while the buffer does not parse).
+struct Doc { uri: Str, path: Str, text: Str, an: front.Analysis, good: Option[front.Analysis] }
+
+struct Server { con: Console, fs: Fs, root: Str, docs: Map[Str, Doc], up: Bool, down: Bool }
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var root = sys.proc.env("TENON_ROOT").unwrap_or(".")
+    for i in 0..sys.args.len() {
+        if sys.args[i] == "--root" and i + 1 < sys.args.len() { root = sys.args[i + 1] }
+    }
+    if not root.starts_with("/") { root = front.join(sys.proc.env("PWD").unwrap_or("/"), root) }
+    var s = Server { con, fs: sys.fs, root, docs: [:], up: false, down: false }
+    while true {
+        let msg = match read_message(con) {
+            Some(m) => m,
+            None => return if s.down { 0 } else { 1 },
+        }
+        let req = match msg.and_then(fn(text) => json.parse(text).map_err(fn(e) => "invalid JSON at byte {e.pos}: {e.msg}")) {
+            Ok(j) => j,
+            Err(why) => {
+                s.send_error(JNull, -32700, why)
+                continue
+            }
+        }
+        match s.handle(req) {
+            Some(status) => return status,
+            None => {}
+        }
+    }
+    0
+}
+
+// One message body; None at the end of input, Err if it is not valid UTF-8 or the header is broken.
+fn read_message(con: Console) -> Option[Result[Str, Str]] {
+    var len = -1
+    while true {
+        let line = con.read_line()?
+        if line == "" { break }
+        match line.split_once(":") {
+            Some((k, v)) if k.lower() == "content-length" => len = v.trim().to_int().unwrap_or(-1),
+            _ => {}
+        }
+    }
+    if len < 0 { return Some(Err("missing Content-Length header")) }
+    let body = con.read_bytes(len)
+    if body.len() < len { return None }
+    Some(Str.from_utf8(body).ok_or("message is not valid UTF-8"))
+}
+
+fn Server.send(self, msg: json.Json) {
+    let body = json.encode(msg)
+    self.con.print("Content-Length: {body.len()}\r\n\r\n" + body)
+    self.con.flush()
+}
+
+fn Server.reply(self, id: json.Json, result: json.Json) {
+    self.send(JObj([("jsonrpc", JStr("2.0")), ("id", id), ("result", result)]))
+}
+
+fn Server.send_error(self, id: json.Json, code: Int, msg: Str) {
+    let err = JObj([("code", JInt(code)), ("message", JStr(msg))])
+    self.send(JObj([("jsonrpc", JStr("2.0")), ("id", id), ("error", err)]))
+}
+
+fn Server.notify(self, method: Str, params: json.Json) {
+    self.send(JObj([("jsonrpc", JStr("2.0")), ("method", JStr(method)), ("params", params)]))
+}
+
+fn capabilities() -> json.Json {
+    let sync = JObj([
+        ("openClose", JBool(true)),
+        ("change", JInt(1)),
+        ("save", JObj([("includeText", JBool(false))])),
+    ])
+    JObj([
+        ("capabilities", JObj([
+            ("textDocumentSync", sync),
+            ("hoverProvider", JBool(true)),
+            ("definitionProvider", JBool(true)),
+            ("completionProvider", JObj([("triggerCharacters", JArr([JStr(".")]))])),
+        ])),
+        ("serverInfo", JObj([("name", JStr("tenonlsp"))])),
+    ])
+}
+
+// Handle one message; Some(status) when the server must exit.
+fn Server.handle(mut self, req: json.Json) -> Option[Int] {
+    let method = req.get("method").and_then(fn(m) => m.str()).unwrap_or("")
+    let id = req.get("id")
+    let params = req.get("params").unwrap_or(JNull)
+    if method == "exit" { return Some(if self.down { 0 } else { 1 }) }
+    match id {
+        Some(i) => {
+            if not self.up and method != "initialize" {
+                self.send_error(i, -32002, "the server is not initialized")
+            } else if self.down {
+                self.send_error(i, -32600, "the server is shutting down")
+            } else {
+                self.request(i, method, params)
+            }
+        }
+        None => if self.up and not self.down { self.notification(method, params) },
+    }
+    None
+}
+
+fn Server.request(mut self, id: json.Json, method: Str, params: json.Json) {
+    match method {
+        "initialize" => {
+            self.up = true
+            self.reply(id, capabilities())
+        }
+        "shutdown" => {
+            self.down = true
+            self.reply(id, JNull)
+        }
+        "textDocument/hover" | "textDocument/definition" | "textDocument/completion" => {
+            let uri = params.at(["textDocument", "uri"]).and_then(fn(u) => u.str()).unwrap_or("")
+            let line = params.at(["position", "line"]).and_then(fn(u) => u.int()).unwrap_or(0)
+            let ch = params.at(["position", "character"]).and_then(fn(u) => u.int()).unwrap_or(0)
+            let result = match self.docs.get(uri) {
+                Some(d) if method == "textDocument/hover" => self.hover(d, line, ch),
+                Some(d) if method == "textDocument/definition" => self.definition(d, line, ch),
+                Some(d) => self.completion(d, line, ch),
+                None => JNull,
+            }
+            self.reply(id, result)
+        }
+        _ => self.send_error(id, -32601, "method not supported: " + method),
+    }
+}
+
+fn Server.notification(mut self, method: Str, params: json.Json) {
+    let uri = params.at(["textDocument", "uri"]).and_then(fn(u) => u.str()).unwrap_or("")
+    match method {
+        "textDocument/didOpen" => {
+            let text = params.at(["textDocument", "text"]).and_then(fn(t) => t.str()).unwrap_or("")
+            let path = lsppos.uri_path(uri).unwrap_or(uri)
+            let an = front.analyze(self.fs, self.root, path, text)
+            self.docs[uri] = Doc { uri, path, text, an, good: None }
+            self.refresh(uri, an)
+        }
+        "textDocument/didChange" => {
+            let changes = params.get("contentChanges").map(fn(c) => c.items()).unwrap_or([])
+            match (self.docs.get(uri), changes.last().and_then(fn(c) => c.get("text")).and_then(fn(t) => t.str())) {
+                (Some(d), Some(text)) => {
+                    let an = front.analyze(self.fs, self.root, d.path, text)
+                    self.docs[uri] = Doc { text, an, ..d }
+                    self.refresh(uri, an)
+                }
+                _ => {}
+            }
+        }
+        "textDocument/didSave" => {
+            // a saved module may change what its importers see
+            for (u, d) in self.docs {
+                let an = front.analyze(self.fs, self.root, d.path, d.text)
+                self.docs[u] = Doc { an, ..d }
+                self.refresh(u, an)
+            }
+        }
+        "textDocument/didClose" => {
+            let _ = self.docs.remove(uri)
+            self.publish(uri, [])
+        }
+        _ => {}
+    }
+}
+
+// Record a new analysis of a buffer and publish its diagnostics.
+fn Server.refresh(mut self, uri: Str, an: front.Analysis) {
+    let Some(d) = self.docs.get(uri) else { return }
+    if an.checked.is_some() { self.docs[uri] = Doc { good: Some(an), ..d } }
+    self.publish(uri, diagnostics(d, an))
+}
+
+fn Server.publish(self, uri: Str, diags: List[json.Json]) {
+    self.notify("textDocument/publishDiagnostics", JObj([("uri", JStr(uri)), ("diagnostics", JArr(diags))]))
+}
+
+fn lsp_pos(p: (Int, Int)) -> json.Json { JObj([("line", JInt(p.0)), ("character", JInt(p.1))]) }
+
+fn range(text: Str, starts: List[Int], a: Int, b: Int) -> json.Json {
+    let (l1, c1) = lsppos.line_col(starts, a)
+    let (l2, c2) = lsppos.line_col(starts, b)
+    JObj([("start", lsp_pos(lsppos.to_lsp(text, starts, l1, c1))), ("end", lsp_pos(lsppos.to_lsp(text, starts, l2, c2)))])
+}
+
+fn diagnostics(d: Doc, an: front.Analysis) -> List[json.Json] {
+    let Some(f) = an.failure else { return [] }
+    if f.msg == "program has no 'fn main'" { return [] }
+    let starts = lsppos.line_starts(d.text)
+    let here = not f.fatal and f.file == d.path and f.line >= 1
+    let (a, msg) = if here {
+        (lsppos.offset(d.text, starts, f.line, f.col), f.msg)
+    } else if f.fatal {
+        (0, f.msg)
+    } else {
+        (0, f.line_text())
+    }
+    let b = if here { lsppos.token_end(d.text, a) } else { 0 }
+    [JObj([
+        ("range", range(d.text, starts, a, b)),
+        ("severity", JInt(1)),
+        ("source", JStr("tenon")),
+        ("message", JStr(msg)),
+    ])]
+}
+
+// The analysis to answer a question about line `line` (0-based) with: the
+// current one if it has side tables, else the last one that had, if the
+// buffer is unchanged up to the end of that line.
+fn Server.query(self, d: Doc, line: Int) -> Option[lspquery.Query] {
+    match d.an.checked {
+        Some(c) => return Some(lspquery.new_q(c, d.an.files, self.root)),
+        None => {}
+    }
+    let g = d.good?
+    let old = g.files[1].1
+    let a = lsppos.line_starts(old)
+    let b = lsppos.line_starts(d.text)
+    let n = line + 2
+    let ea = if n <= a.len() { a[n - 1] } else { old.len() }
+    let eb = if n <= b.len() { b[n - 1] } else { d.text.len() }
+    if old.slice(0, ea) != d.text.slice(0, eb) { return None }
+    Some(lspquery.new_q(g.checked?, g.files, self.root))
+}
+
+fn Server.hover(self, d: Doc, line: Int, ch: Int) -> json.Json {
+    let Some(q) = self.query(d, line) else { return JNull }
+    let (l, c) = lsppos.from_lsp(q.text, q.starts, line, ch)
+    let Some(f) = lspquery.find(q, lsppos.offset(q.text, q.starts, l, c)) else { return JNull }
+    JObj([
+        ("contents", JObj([("kind", JStr("markdown")), ("value", JStr(lspquery.hover_text(q, f)))])),
+        ("range", range(q.text, q.starts, f.start, f.end)),
+    ])
+}
+
+fn Server.definition(self, d: Doc, line: Int, ch: Int) -> json.Json {
+    let Some(q) = self.query(d, line) else { return JNull }
+    let (l, c) = lsppos.from_lsp(q.text, q.starts, line, ch)
+    let Some(f) = lspquery.find(q, lsppos.offset(q.text, q.starts, l, c)) else { return JNull }
+    let Some((fi, dl, dc)) = lspquery.definition(q, f) else { return JNull }
+    let path = q.file_path(fi)
+    let uri = if fi == 1 { d.uri } else { self.uri_of(path) }
+    let text = q.files[fi].1
+    let starts = lsppos.line_starts(text)
+    let a = lsppos.offset(text, starts, dl, dc)
+    JObj([("uri", JStr(uri)), ("range", range(text, starts, a, lsppos.token_end(text, a)))])
+}
+
+// The URI of a file: the one the client uses if it is open.
+fn Server.uri_of(self, path: Str) -> Str {
+    for (u, d) in self.docs { if d.path == path { return u } }
+    lsppos.path_uri(path)
+}
+
+fn Server.completion(self, d: Doc, line: Int, ch: Int) -> json.Json {
+    let starts = lsppos.line_starts(d.text)
+    let (l, c) = lsppos.from_lsp(d.text, starts, line, ch)
+    let off = lsppos.offset(d.text, starts, l, c)
+    var a = off
+    while a > 0 and lsppos.is_ident_byte(d.text.byte(a - 1)) { a -= 1 }
+    let items = if a > 0 and d.text.byte(a - 1) == '.' { self.members(d, a - 1, a == off) } else { self.names(d, a, line) }
+    JObj([("isIncomplete", JBool(false)), ("items", JArr(items))])
+}
+
+// Completion after the `.` at offset `dot`. With nothing typed after it yet,
+// the buffer is checked with a placeholder member name there.
+fn Server.members(self, d: Doc, dot: Int, empty: Bool) -> List[json.Json] {
+    let probe = if empty { d.text.slice(0, dot + 1) + "x" + d.text.slice(dot + 1, d.text.len()) } else { d.text }
+    let an = if empty { front.analyze(self.fs, self.root, d.path, probe) } else { d.an }
+    match an.checked {
+        Some(c) => {
+            let items = lspquery.complete_member(lspquery.new_q(c, an.files, self.root), dot)
+            if not items.is_empty() { return items }
+        }
+        None => {}
+    }
+    let Some(g) = d.good else { return [] }
+    let Some(c) = g.checked else { return [] }
+    let Some((a, b)) = lsppos.ident_at(d.text, dot) else { return [] }
+    if b != dot { return [] }
+    lspquery.complete_after_name(lspquery.new_q(c, g.files, self.root), d.text.slice(a, b))
+}
+
+fn Server.names(self, d: Doc, at: Int, line: Int) -> List[json.Json] {
+    match self.query(d, line) {
+        Some(q) => lspquery.complete_name(q, at),
+        None => match d.good {
+            Some(g) => match g.checked {
+                Some(c) => {
+                    let q = lspquery.new_q(c, g.files, self.root)
+                    lspquery.complete_name(q, at.min(q.text.len()))
+                }
+                None => [],
+            },
+            None => [],
+        },
+    }
+}

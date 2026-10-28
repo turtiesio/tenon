@@ -1,8 +1,8 @@
 {
   "name": "tenon",
   "displayName": "Tenon",
-  "description": "Syntax highlighting for the Tenon language (.tn)",
-  "version": "0.1.0",
+  "description": "Tenon language (.tn): syntax highlighting, and diagnostics, hover, go to definition and completion from the Tenon language server",
+  "version": "0.2.0",
   "publisher": "tenon-local",
   "license": "UNLICENSED",
   "private": true,
@@ -11,6 +11,10 @@
   },
   "categories": [
     "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:tenon"
   ],
   "contributes": {
     "languages": [
@@ -31,6 +35,27 @@
         "language": "tenon",
         "scopeName": "source.tenon",
         "path": "./syntaxes/tenon.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Tenon",
+      "properties": {
+        "tenon.serverPath": {
+          "type": "string",
+          "default": "tenonlsp",
+          "description": "The Tenon language server executable (built from selfhost/tenonlsp.tn); a name is looked up on PATH."
+        },
+        "tenon.root": {
+          "type": "string",
+          "default": "",
+          "description": "The Tenon toolchain root, the directory holding lib/prelude.tn and lib/std/ (passed as --root). Empty: a workspace folder that contains lib/prelude.tn, else $TENON_ROOT."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "tenon.restartServer",
+        "title": "Tenon: Restart Language Server"
       }
     ]
   }

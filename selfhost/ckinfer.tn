@@ -103,6 +103,9 @@ fn Ck.flush(mut self) {
     for (id, caps) in pc { self.captures[id] = caps.map(fn(c) => (c.0, sub.finish(c.1))) }
 }
 
+// After a function failed (checker.check_lenient): keep what it recorded so far.
+pub fn Ck.keep_pending(mut self) { self.flush() }
+
 fn Ck.record(mut self, id: Int, t: cktypes.Ty) { self.ptypes[id] = t }
 
 fn Ck.show(self, t: cktypes.Ty) -> Str { self.sub.resolve(t).show() }

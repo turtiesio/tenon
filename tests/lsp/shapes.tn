@@ -1,0 +1,10 @@
+// module (imported by tests/lsp/main.tn)
+pub enum Shape { Square(Int), Circle(Int) }
+
+// The area, rounded down.
+pub fn area(s: Shape) -> Int {
+    match s {
+        Square(n) => n * n,
+        Circle(r) => 3 * r * r,
+    }
+}

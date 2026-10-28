@@ -1,0 +1,339 @@
+// module (imported by tenonlsp.tn)
+// JSON (RFC 8259), strict: exactly one value with optional whitespace around
+// it; no comments, trailing commas, single quotes, leading zeros, `+`, NaN or
+// bare control characters in strings; `\u` escapes must pair surrogates. The
+// text is UTF-8 (a Tenon Str always is). Numbers without a fraction or an
+// exponent that fit in an Int are `JInt`, all others `JFloat`. Objects keep
+// their members in order (duplicates too; `get` finds the first).
+// Tests: selfhost/jsontest.tn.
+
+pub enum Json { JNull, JBool(Bool), JInt(Int), JFloat(Float), JStr(Str), JArr(List[Json]), JObj(List[(Str, Json)]) }
+
+// `pos`: byte offset in the text.
+pub struct JsonError { pub pos: Int, pub msg: Str }
+
+const MAX_DEPTH: Int = 500
+
+struct Rd { s: Str, i: Int, depth: Int }
+
+pub fn parse(s: Str) -> Result[Json, JsonError] {
+    var p = Rd { s, i: 0, depth: 0 }
+    p.ws()
+    let v = p.value()?
+    p.ws()
+    if p.i < s.len() { return p.fail("unexpected text after the value") }
+    Ok(v)
+}
+
+fn Rd.fail[T](self, msg: Str) -> Result[T, JsonError] { Err(JsonError { pos: self.i, msg }) }
+
+fn Rd.peek(self) -> Int { if self.i < self.s.len() { self.s.byte(self.i) } else { -1 } }
+
+fn Rd.ws(mut self) {
+    while self.i < self.s.len() {
+        let c = self.s.byte(self.i)
+        if c != ' ' and c != '\t' and c != '\n' and c != '\r' { return }
+        self.i += 1
+    }
+}
+
+fn Rd.word(mut self, w: Str, v: Json) -> Result[Json, JsonError] {
+    if self.s.slice(self.i, (self.i + w.len()).min(self.s.len())) != w { return self.fail("invalid literal") }
+    self.i += w.len()
+    Ok(v)
+}
+
+fn Rd.value(mut self) -> Result[Json, JsonError] {
+    match self.peek() {
+        '{' => self.object(),
+        '[' => self.array(),
+        '"' => Ok(JStr(self.string()?)),
+        't' => self.word("true", JBool(true)),
+        'f' => self.word("false", JBool(false)),
+        'n' => self.word("null", JNull),
+        -1 => self.fail("unexpected end of input"),
+        c if c == '-' or c.is_digit() => self.number(),
+        _ => self.fail("unexpected character"),
+    }
+}
+
+fn Rd.enter(mut self) -> Result[Unit, JsonError] {
+    self.depth += 1
+    if self.depth > MAX_DEPTH { return self.fail("nested too deeply") }
+    self.i += 1
+    self.ws()
+    Ok(())
+}
+
+fn Rd.array(mut self) -> Result[Json, JsonError] {
+    self.enter()?
+    var out: List[Json] = []
+    if self.peek() == ']' {
+        self.i += 1
+        self.depth -= 1
+        return Ok(JArr(out))
+    }
+    while true {
+        out.push(self.value()?)
+        self.ws()
+        match self.peek() {
+            ',' => {
+                self.i += 1
+                self.ws()
+            }
+            ']' => {
+                self.i += 1
+                self.depth -= 1
+                return Ok(JArr(out))
+            }
+            _ => return self.fail("expected ',' or ']'"),
+        }
+    }
+}
+
+fn Rd.object(mut self) -> Result[Json, JsonError] {
+    self.enter()?
+    var out: List[(Str, Json)] = []
+    if self.peek() == '}' {
+        self.i += 1
+        self.depth -= 1
+        return Ok(JObj(out))
+    }
+    while true {
+        if self.peek() != '"' { return self.fail("expected a string key") }
+        let k = self.string()?
+        self.ws()
+        if self.peek() != ':' { return self.fail("expected ':'") }
+        self.i += 1
+        self.ws()
+        out.push((k, self.value()?))
+        self.ws()
+        match self.peek() {
+            ',' => {
+                self.i += 1
+                self.ws()
+            }
+            '}' => {
+                self.i += 1
+                self.depth -= 1
+                return Ok(JObj(out))
+            }
+            _ => return self.fail("expected ',' or '}'"),
+        }
+    }
+}
+
+fn Rd.digits(mut self) -> Int {
+    let start = self.i
+    while self.peek().is_digit() { self.i += 1 }
+    self.i - start
+}
+
+fn Rd.number(mut self) -> Result[Json, JsonError] {
+    let start = self.i
+    if self.peek() == '-' { self.i += 1 }
+    if self.peek() == '0' {
+        self.i += 1
+        if self.peek().is_digit() { return self.fail("leading zero in a number") }
+    } else if self.digits() == 0 {
+        return self.fail("expected a digit")
+    }
+    var integral = true
+    if self.peek() == '.' {
+        self.i += 1
+        integral = false
+        if self.digits() == 0 { return self.fail("expected a digit after '.'") }
+    }
+    if self.peek() == 'e' or self.peek() == 'E' {
+        self.i += 1
+        integral = false
+        if self.peek() == '+' or self.peek() == '-' { self.i += 1 }
+        if self.digits() == 0 { return self.fail("expected a digit in the exponent") }
+    }
+    let text = self.s.slice(start, self.i)
+    if integral {
+        match text.to_int() {
+            Some(n) => return Ok(JInt(n)),
+            None => {}
+        }
+    }
+    match text.to_float() {
+        Some(f) => Ok(JFloat(f)),
+        None => Err(JsonError { pos: start, msg: "invalid number" }),
+    }
+}
+
+fn hex4(s: Str, i: Int) -> Option[Int] {
+    if i + 4 > s.len() { return None }
+    var v = 0
+    for k in i..i + 4 {
+        let c = s.byte(k)
+        let d = if c.is_digit() { c - '0' } else if c >= 'a' and c <= 'f' { c - 'a' + 10 } else if c >= 'A' and c <= 'F' { c - 'A' + 10 } else { return None }
+        v = v * 16 + d
+    }
+    Some(v)
+}
+
+// After the opening quote; returns the decoded text and leaves `i` after the closing quote.
+fn Rd.string(mut self) -> Result[Str, JsonError] {
+    self.i += 1
+    var out = ""
+    var run = self.i
+    while true {
+        let c = self.peek()
+        if c == -1 { return self.fail("unterminated string") }
+        if c == '"' {
+            out += self.s.slice(run, self.i)
+            self.i += 1
+            return Ok(out)
+        }
+        if c < 32 { return self.fail("control character in a string") }
+        if c != '\\' {
+            self.i += 1
+            continue
+        }
+        out += self.s.slice(run, self.i)
+        self.i += 1
+        let e = self.peek()
+        self.i += 1
+        match e {
+            '"' => out += "\"",
+            '\\' => out += "\\",
+            '/' => out += "/",
+            'b' => out += 8.char(),
+            'f' => out += 12.char(),
+            'n' => out += "\n",
+            'r' => out += "\r",
+            't' => out += "\t",
+            'u' => out += self.unicode()?,
+            _ => {
+                self.i -= 1
+                return self.fail("invalid escape")
+            }
+        }
+        run = self.i
+    }
+    Ok(out)
+}
+
+// After `\u`: one code point (two escapes for a surrogate pair).
+fn Rd.unicode(mut self) -> Result[Str, JsonError] {
+    let Some(u) = hex4(self.s, self.i) else { return self.fail("expected 4 hex digits after \\u") }
+    self.i += 4
+    if u >= 0xDC00 and u <= 0xDFFF { return self.fail("unpaired surrogate") }
+    if u < 0xD800 or u > 0xDBFF { return Ok(u.char()) }
+    if self.s.slice(self.i, (self.i + 2).min(self.s.len())) != "\\u" { return self.fail("unpaired surrogate") }
+    let Some(lo) = hex4(self.s, self.i + 2) else { return self.fail("unpaired surrogate") }
+    if lo < 0xDC00 or lo > 0xDFFF { return self.fail("unpaired surrogate") }
+    self.i += 6
+    Ok((0x10000 + (u - 0xD800) * 1024 + (lo - 0xDC00)).char())
+}
+
+// ---- printing (compact; strings escaped minimally, non-ASCII kept as UTF-8) ----
+
+pub fn encode(v: Json) -> Str {
+    var out = ""
+    enc(mut out, v)
+    out
+}
+
+pub fn quote(s: Str) -> Str {
+    var out = ""
+    enc_str(mut out, s)
+    out
+}
+
+fn enc(out: mut Str, v: Json) {
+    match v {
+        JNull => out += "null",
+        JBool(b) => out += if b { "true" } else { "false" },
+        JInt(n) => out += n.to_str(),
+        JFloat(f) => {
+            let t = f.to_str()
+            out += if t == "nan" or t == "inf" or t == "-inf" { "null" } else { t }
+        }
+        JStr(s) => enc_str(mut out, s),
+        JArr(xs) => {
+            out += "["
+            for i in 0..xs.len() {
+                if i > 0 { out += "," }
+                enc(mut out, xs[i])
+            }
+            out += "]"
+        }
+        JObj(ms) => {
+            out += "\{"
+            for i in 0..ms.len() {
+                if i > 0 { out += "," }
+                enc_str(mut out, ms[i].0)
+                out += ":"
+                enc(mut out, ms[i].1)
+            }
+            out += "}"
+        }
+    }
+}
+
+fn enc_str(out: mut Str, s: Str) {
+    out += "\""
+    var run = 0
+    for i in 0..s.len() {
+        let c = s.byte(i)
+        if c >= 32 and c != '"' and c != '\\' { continue }
+        out += s.slice(run, i)
+        out += match c {
+            '"' => "\\\"",
+            '\\' => "\\\\",
+            '\n' => "\\n",
+            '\r' => "\\r",
+            '\t' => "\\t",
+            _ => "\\u" + c.to_str_radix(16).pad_left(4, "0"),
+        }
+        run = i + 1
+    }
+    out += s.slice(run, s.len())
+    out += "\""
+}
+
+// ---- access ----
+
+pub fn Json.get(self, key: Str) -> Option[Json] {
+    match self {
+        JObj(ms) => {
+            for m in ms { if m.0 == key { return Some(m.1) } }
+            None
+        }
+        _ => None,
+    }
+}
+
+// The value at a path of object keys (`j.at(["params", "textDocument", "uri"])`).
+pub fn Json.at(self, keys: List[Str]) -> Option[Json] {
+    var cur = self
+    for k in keys { cur = cur.get(k)? }
+    Some(cur)
+}
+
+pub fn Json.str(self) -> Option[Str] {
+    match self {
+        JStr(s) => Some(s),
+        _ => None,
+    }
+}
+
+pub fn Json.int(self) -> Option[Int] {
+    match self {
+        JInt(n) => Some(n),
+        _ => None,
+    }
+}
+
+// The elements of an array; [] for any other value.
+pub fn Json.items(self) -> List[Json] {
+    match self {
+        JArr(xs) => xs,
+        _ => [],
+    }
+}
+
+pub fn Json.is_null(self) -> Bool { self == JNull }

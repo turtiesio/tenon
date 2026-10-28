@@ -1,0 +1,347 @@
+// module (imported by the language server, selfhost/tenonlsp.tn)
+// Finding things in the checker's tree (selfhost/ckast.tn) by source
+// position: every node of a file, the extent of blocks (the tree keeps only
+// start positions, so a block ends at the `}` matching its `{`), and the
+// local names visible at a position. Positions are (line, col) as the
+// checker reports them (1-based, byte columns); tuples compare in order.
+
+import ckast
+import lexer
+import lsppos
+
+pub fn key(line: Int, col: Int) -> Int { line * 1_000_000 + col }
+
+pub fn at(sp: ckast.Span) -> (Int, Int) { (sp.line, sp.col) }
+
+// Where each `{` of the text is closed, by key(line, col) of the `{`.
+pub fn braces(text: Str) -> Map[Int, (Int, Int)] {
+    var out: Map[Int, (Int, Int)] = [:]
+    let toks = match lexer.lex(text) {
+        Ok(t) => t,
+        Err(_) => return out,
+    }
+    var open: List[(Int, Int)] = []
+    for t in toks {
+        match t.tok {
+            Sym(s) if s == "\{" => open.push((t.line, t.col)),
+            Sym(s) if s == "}" => match open.pop() {
+                Some(o) => out[key(o.0, o.1)] = (t.line, t.col),
+                None => {}
+            },
+            _ => {}
+        }
+    }
+    out
+}
+
+// ---- every node of a file ----
+
+pub enum Node { NExpr(ckast.Expr), NPat(ckast.Pat), NType(ckast.TExpr) }
+
+struct Walk { out: List[(Int, Node)], fi: Int }
+
+// Every expression, pattern and type expression written in `file`, with the
+// index of the function it is in (-1 in a struct or enum declaration).
+pub fn nodes(prog: ckast.Program, file: Int) -> List[(Int, Node)] {
+    var w = Walk { out: [], fi: -1 }
+    for s in prog.structs {
+        if s.sp.file == file { for f in s.fields { w.ty(f.1) } }
+    }
+    for e in prog.enums {
+        if e.sp.file == file {
+            for v in e.variants { for t in v.fields { w.ty(t) } }
+        }
+    }
+    for i in 0..prog.fns.len() {
+        let f = prog.fns[i]
+        if f.sp.file != file { continue }
+        w.fi = i
+        match f.owner {
+            Some(o) => w.ty(o),
+            None => {}
+        }
+        for p in f.params { w.ty(p.ty) }
+        w.opt_ty(f.ret)
+        match f.body {
+            Some(b) => w.block(b),
+            None => {}
+        }
+    }
+    w.out
+}
+
+fn Walk.opt_ty(mut self, t: Option[ckast.TExpr]) {
+    match t {
+        Some(x) => self.ty(x),
+        None => {}
+    }
+}
+
+fn Walk.ty(mut self, t: ckast.TExpr) {
+    self.out.push((self.fi, NType(t)))
+    match t.k {
+        TNamed(_, args) | TTuple(args) => for a in args { self.ty(a) },
+        TFn(args, r) => {
+            for a in args { self.ty(a) }
+            self.ty(r)
+        }
+    }
+}
+
+fn Walk.pat(mut self, p: ckast.Pat) {
+    self.out.push((self.fi, NPat(p)))
+    match p.k {
+        QTuple(ps) | QVariant(_, _, ps) | QOr(ps) => for q in ps { self.pat(q) },
+        _ => {}
+    }
+}
+
+fn Walk.block(mut self, b: ckast.Block) {
+    for s in b.stmts { self.stmt(s) }
+}
+
+fn Walk.stmt(mut self, s: ckast.Stmt) {
+    match s.k {
+        KLet(p, _, t, v, els) => {
+            self.pat(p)
+            self.opt_ty(t)
+            self.expr(v)
+            match els {
+                Some(b) => self.block(b),
+                None => {}
+            }
+        }
+        KExpr(e) => self.expr(e),
+        KAssign(t, _, v) => {
+            self.expr(t)
+            self.expr(v)
+        }
+        KWhile(c, b) => {
+            self.expr(c)
+            self.block(b)
+        }
+        KFor(p, it, b) => {
+            self.pat(p)
+            match it {
+                FRange(a, z) => {
+                    self.expr(a)
+                    self.expr(z)
+                }
+                FEach(x) => self.expr(x),
+            }
+            self.block(b)
+        }
+        KReturn(Some(e)) => self.expr(e),
+        _ => {}
+    }
+}
+
+fn Walk.expr(mut self, e: ckast.Expr) {
+    self.out.push((self.fi, NExpr(e)))
+    match e.k {
+        XIf(c, b, els) => {
+            self.expr(c)
+            self.block(b)
+            match els {
+                Some(x) => self.expr(x),
+                None => {}
+            }
+        }
+        XMatch(s, arms) => {
+            self.expr(s)
+            for a in arms {
+                self.pat(a.pat)
+                match a.guard {
+                    Some(g) => self.expr(g),
+                    None => {}
+                }
+                self.expr(a.body)
+            }
+        }
+        XBlock(b) => self.block(b),
+        XLambda(ps, r, b) => {
+            for p in ps { self.opt_ty(p.1) }
+            self.opt_ty(r)
+            self.expr(b)
+        }
+        _ => for c in ckast.children(e) { self.expr(c) },
+    }
+}
+
+// ---- local names in scope ----
+
+// A local name: where it is bound, the pattern that binds it (-1 for
+// parameters) and the parameter index (-1 for others).
+pub struct Binding { pub name: Str, pub at: (Int, Int), pub pat: Int, pub param: Int }
+
+struct Scope { pos: (Int, Int), br: Map[Int, (Int, Int)], text: Str, starts: List[Int], out: List[Binding] }
+
+// The function of `file` whose body contains `pos`, if any.
+pub fn fn_at(prog: ckast.Program, file: Int, pos: (Int, Int), br: Map[Int, (Int, Int)]) -> Option[Int] {
+    var best = -1
+    for i in 0..prog.fns.len() {
+        let f = prog.fns[i]
+        if f.sp.file == file and f.body.is_some() and at(f.sp) <= pos and (best < 0 or at(f.sp) > at(prog.fns[best].sp)) {
+            best = i
+        }
+    }
+    if best < 0 { return None }
+    let s = Scope { pos, br, text: "", starts: [], out: [] }
+    if pos <= s.block_end(prog.fns[best].body.unwrap()) { Some(best) } else { None }
+}
+
+// The locals visible at `pos` in function `f`, in the order they are bound.
+pub fn visible(f: ckast.FnDecl, pos: (Int, Int), br: Map[Int, (Int, Int)], text: Str) -> List[Binding] {
+    var s = Scope { pos, br, text, starts: lsppos.line_starts(text), out: [] }
+    for i in 0..f.params.len() {
+        let p = f.params[i]
+        s.out.push(Binding { name: p.name, at: at(p.sp), pat: -1, param: i })
+    }
+    match f.body {
+        Some(b) => s.block(b),
+        None => {}
+    }
+    s.out
+}
+
+fn Scope.block_end(self, b: ckast.Block) -> (Int, Int) {
+    match self.br.get(key(b.sp.line, b.sp.col)) {
+        Some(e) => e,
+        None => {
+            var l = b.sp.line
+            for st in b.stmts {
+                for e in ckast.stmt_exprs(st) { l = l.max(self.end_line(e)) }
+            }
+            (l, 1_000_000)
+        }
+    }
+}
+
+// The last line of an expression (blocks end at their `}`).
+fn Scope.end_line(self, e: ckast.Expr) -> Int {
+    match e.k {
+        XBlock(b) => self.block_end(b).0,
+        XIf(c, b, els) => {
+            let l = self.block_end(b).0.max(self.end_line(c))
+            match els {
+                Some(x) => l.max(self.end_line(x)),
+                None => l,
+            }
+        }
+        XMatch(s, arms) => {
+            var l = self.end_line(s)
+            for a in arms { l = l.max(self.end_line(a.body)) }
+            l
+        }
+        _ => {
+            var l = e.sp.line
+            for c in ckast.children(e) { l = l.max(self.end_line(c)) }
+            l
+        }
+    }
+}
+
+fn Scope.inside(self, b: ckast.Block) -> Bool { at(b.sp) <= self.pos and self.pos <= self.block_end(b) }
+
+fn Scope.bind(mut self, p: ckast.Pat) {
+    match p.k {
+        QBind(n) => self.out.push(Binding { name: n, at: at(p.sp), pat: p.id, param: -1 }),
+        QTuple(ps) | QVariant(_, _, ps) => for q in ps { self.bind(q) },
+        QOr(ps) => if not ps.is_empty() { self.bind(ps[0]) },
+        _ => {}
+    }
+}
+
+fn Scope.block(mut self, b: ckast.Block) {
+    if not self.inside(b) { return }
+    for st in b.stmts {
+        if at(st.sp) > self.pos { return }
+        self.stmt(st)
+    }
+}
+
+fn Scope.stmt(mut self, st: ckast.Stmt) {
+    match st.k {
+        KLet(p, _, _, v, els) => {
+            self.expr(v)
+            match els {
+                Some(b) => self.block(b),
+                None => {}
+            }
+            self.bind(p)
+        }
+        KExpr(e) | KReturn(Some(e)) => self.expr(e),
+        KAssign(t, _, v) => {
+            self.expr(t)
+            self.expr(v)
+        }
+        KWhile(c, b) => {
+            self.expr(c)
+            self.block(b)
+        }
+        KFor(p, it, b) => {
+            match it {
+                FRange(a, z) => {
+                    self.expr(a)
+                    self.expr(z)
+                }
+                FEach(x) => self.expr(x),
+            }
+            if self.inside(b) {
+                self.bind(p)
+                self.block(b)
+            }
+        }
+        _ => {}
+    }
+}
+
+fn Scope.expr(mut self, e: ckast.Expr) {
+    match e.k {
+        XBlock(b) => self.block(b),
+        XIf(c, b, els) => {
+            self.expr(c)
+            self.block(b)
+            match els {
+                Some(x) => self.expr(x),
+                None => {}
+            }
+        }
+        XMatch(s, arms) => {
+            self.expr(s)
+            for i in 0..arms.len() {
+                let a = arms[i]
+                let started = at(a.pat.sp) <= self.pos
+                let ended = if i + 1 < arms.len() {
+                    at(arms[i + 1].pat.sp) <= self.pos
+                } else {
+                    self.pos.0 > self.end_line(a.body)
+                }
+                if started and not ended {
+                    self.bind(a.pat)
+                    match a.guard {
+                        Some(g) => self.expr(g),
+                        None => {}
+                    }
+                    self.expr(a.body)
+                }
+            }
+        }
+        XLambda(ps, _, body) => {
+            if at(e.sp) > self.pos or self.pos.0 > self.end_line(body) { return }
+            // parameters have no positions of their own: find their names after `fn`
+            var off = lsppos.offset(self.text, self.starts, e.sp.line, e.sp.col)
+            for p in ps {
+                match lsppos.find_word(self.text, p.0, off) {
+                    Some(o) => {
+                        self.out.push(Binding { name: p.0, at: lsppos.line_col(self.starts, o), pat: -1, param: -1 })
+                        off = o + p.0.len()
+                    }
+                    None => {}
+                }
+            }
+            self.expr(body)
+        }
+        _ => for c in ckast.children(e) { self.expr(c) },
+    }
+}

@@ -21,5 +21,6 @@ TENON=$TENONC tools/programs.sh
 tools/cache_test.sh
 tools/selfhost.sh
 tools/fmt_check.sh
+python3 tools/lsp_test.py
 tools/fixpoint.sh
 tools/approvals_test.sh
