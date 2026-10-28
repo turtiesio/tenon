@@ -74,7 +74,7 @@ whole program while it is being edited.
 | `ckexh.tn` | exhaust.rs | exhaustiveness and reachability |
 | `cklin.tn` | linear.rs | linear/unique analysis, codec restrictions |
 
-The parser (`parser.tn`) records the positions the checker reports: type
+The parser (`parser.tn`, expressions in `parsexpr.tn`) records the positions the checker reports: type
 expressions, declarations, variants, parameters and imports.
 
 ### Fidelity rules that matter for exact messages
