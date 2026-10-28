@@ -1,0 +1,5 @@
+ROOM r 1
+BOOK r 12:00 13:00 a
+BOOK r 09:00 10:00 b
+BOOK r 08:00 14:00 c
+BOOK r 09:30 12:30 c

@@ -1,0 +1,4 @@
+LOCK z r S
+LOCK a r S
+LOCK a0 r S
+STATUS r

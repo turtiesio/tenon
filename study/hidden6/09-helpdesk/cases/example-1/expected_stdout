@@ -1,0 +1,21 @@
+T1
+T2
+OK
+UNCHANGED
+OK
+OK
+OK
+ERR closed
+ERR closed
+ERR not closed
+OK
+ERR bad command
+ERR bad command
+T1 open acme lee Printer on 3rd floor jams
+T2 open bolt lee VPN drops  every hour
+ERR no such ticket
+T1 T2
+-
+T3
+T3
+ERR bad command

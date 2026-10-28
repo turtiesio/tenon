@@ -1,0 +1,3 @@
+OPEN T1 a X
+CLOSE T1
+ASSIGN T1 z

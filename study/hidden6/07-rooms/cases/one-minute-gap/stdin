@@ -1,0 +1,5 @@
+ROOM r 1
+BOOK r 08:00 10:00 x
+BOOK r 10:01 18:00 x
+FIND 1 1
+FIND 1 2

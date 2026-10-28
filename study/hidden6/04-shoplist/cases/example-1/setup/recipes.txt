@@ -1,0 +1,14 @@
+# weekly recipes
+[pancakes] 4
+flour 250 g
+milk 1 l
+egg 3
+butter 30 g
+
+[omelette] 2
+egg 5
+milk 50 ml
+salt 2 g
+[salad] 3
+lettuce 1
+olive-oil 45 ml

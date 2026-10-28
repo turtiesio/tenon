@@ -1,0 +1,6 @@
+LOCK a z S
+LOCK b a X
+LOCK a a S
+HELD a
+LOCK a c X
+HELD a

@@ -1,0 +1,10 @@
+ERR no such room
+OK
+ERR bad time
+OK B1
+ERR conflict B1
+OK B2
+OK
+OK B3
+ERR no such booking
+ERR no such booking

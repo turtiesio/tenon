@@ -1,0 +1,12 @@
+OPEN abcdefghijkl !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+SHOW T1
+OPEN a A  B !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+SHOW T2
+OPEN a !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+OPEN a x 
+OPEN a  x
+OPEN a 
+OPEN a x	x
+OPEN abcdefghijklm x
+ASSIGN T1 123456789012
+SHOW T1

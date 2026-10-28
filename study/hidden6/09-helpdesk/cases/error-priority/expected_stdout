@@ -1,0 +1,11 @@
+ERR bad command
+ERR no such ticket
+ERR no such ticket
+ERR no such ticket
+T1
+OK
+ERR closed
+ERR bad command
+ERR closed
+OK
+ERR not closed

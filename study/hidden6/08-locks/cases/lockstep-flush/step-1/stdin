@@ -1,0 +1,3 @@
+LOCK a r X
+LOCK b r S
+UNLOCK a r

@@ -1,0 +1,21 @@
+OPEN acme Printer on 3rd floor jams
+OPEN bolt VPN drops  every hour
+ASSIGN T1 kim
+ASSIGN T1 kim
+ASSIGN T2 lee
+ASSIGN T1 lee
+CLOSE T1
+CLOSE T1
+ASSIGN T1 kim
+REOPEN T2
+REOPEN T1
+OPEN acme  leading space
+OPEN Acme Upper
+SHOW T1
+SHOW T2
+SHOW T9
+QUEUE lee
+QUEUE kim
+OPEN cog Email
+QUEUE -
+open x y

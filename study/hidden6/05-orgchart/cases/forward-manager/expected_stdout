@@ -1,0 +1,2 @@
+Root [r] reports=1 cost=3
+  Child [c] reports=0 cost=2

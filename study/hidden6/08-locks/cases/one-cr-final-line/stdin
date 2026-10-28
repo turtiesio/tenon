@@ -1,0 +1,3 @@
+LOCK a r S
+STATUS r
+HELD a

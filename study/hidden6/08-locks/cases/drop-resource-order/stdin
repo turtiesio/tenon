@@ -1,0 +1,6 @@
+LOCK p z X
+LOCK p a X
+LOCK b z S
+LOCK a z S
+LOCK c a S
+DROP p

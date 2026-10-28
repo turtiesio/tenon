@@ -1,0 +1,15 @@
+GRANTED
+GRANTED
+WAITING
+WAITING
+ERR already held
+ERR already waiting
+db holders=ann:S,bob:S queue=cy:X,dee:S
+OK
+OK cy:db:X
+db holders=cy:X queue=dee:S
+OK dee:db:S
+ERR not held
+db:S
+db holders=dee:S queue=-
+nothing holders=- queue=-

@@ -1,0 +1,13 @@
+
+ LOCK a r S
+LOCK  a r S
+LOCK a r S 
+LOCK	a r S
+lock a r S
+LOCK a r s
+LOCK a r W
+LOCK A r S
+LOCK a abcdefghijklm S
+DROP a x
+STATUS
+HELD a x

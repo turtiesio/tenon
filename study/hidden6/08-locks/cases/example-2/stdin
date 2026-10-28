@@ -1,0 +1,15 @@
+LOCK ann a X
+LOCK ann b S
+LOCK bob b S
+LOCK cy b X
+LOCK dee b S
+LOCK cy a S
+LOCK eve a S
+HELD ann
+DROP cy
+STATUS b
+DROP ann
+STATUS a
+STATUS b
+HELD eve
+DROP zed

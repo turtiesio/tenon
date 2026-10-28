@@ -1,0 +1,17 @@
+ROOM atlas 8
+ROOM nile 4
+ROOM atlas 6
+BOOK atlas 09:00 10:30 ann
+BOOK atlas 10:30 11:00 bob
+BOOK atlas 08:00 09:30 cy
+BOOK atlas 10:00 12:00 dee
+BOOK nile 11:00 11:00 eve
+BOOK mars 09:00 10:00 eve
+BOOK nile 23:00 24:00 eve
+BOOK nile 07:00 25:00 eve
+SCHEDULE atlas
+SCHEDULE nile
+CANCEL B1
+CANCEL B1
+SCHEDULE atlas
+book atlas 09:00 10:00 x

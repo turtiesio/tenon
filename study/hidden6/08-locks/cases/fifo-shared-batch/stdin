@@ -1,0 +1,9 @@
+LOCK h r X
+LOCK z r S
+LOCK a r S
+LOCK x r X
+LOCK b r S
+UNLOCK h r
+UNLOCK a r
+UNLOCK z r
+UNLOCK x r

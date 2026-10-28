@@ -1,0 +1,15 @@
+LOCK ann db S
+LOCK bob db S
+LOCK cy db X
+LOCK dee db S
+LOCK ann db X
+LOCK cy db S
+STATUS db
+UNLOCK ann db
+UNLOCK bob db
+STATUS db
+UNLOCK cy db
+UNLOCK cy db
+HELD dee
+STATUS db
+STATUS nothing

@@ -1,0 +1,7 @@
+GRANTED
+WAITING
+WAITING
+WAITING
+r holders=a:X queue=b:S,c:X,d:S
+OK b:r:S
+r holders=b:S queue=c:X,d:S
