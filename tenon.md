@@ -219,3 +219,37 @@ Leave these out until milestone 1 is done:
 - The approvals log and its checker exist, and have refused at least one real weakening in a test.
 
 Only then decide which further governance, scale or infrastructure mechanisms are worth their cost, and only with measurements showing they pay for themselves.
+
+## 5. Second milestone: definition of done
+
+Scope chosen by the user after milestone 1 (decisions in docs/log.md). Order of
+construction: repository layout, then self-hosting, so that every later feature
+is built once, in Tenon, not mirrored in two front ends.
+
+- **Fully self-hosted compiler.** The Tenon compiler (selfhost/) checks and
+  compiles itself to C. Fixpoint: the compiler built by stage 1 and the one built
+  by stage 2 emit byte-identical C for themselves and the full corpus. Every test
+  and program passes on the self-hosted compiler on both backends. The Rust
+  bootstrap becomes a frozen seed: changing it requires an approvals entry, and
+  its line count only shrinks. Self-hosted compile time stays within 3x of the
+  bootstrap's.
+- **Traits.** `trait`, `impl Trait for Type`, generic bounds (`fn f[T: Show](x: T)`)
+  compiled by monomorphization, and explicit `dyn Trait` values for heterogeneous
+  collections. The derived eq/ord/hash/show become ordinary traits. Coherence (at
+  most one impl per trait and type, in the trait's or the type's module) is checked.
+- **Multi-core: isolated workers and channels.** `spawn` runs a function on another
+  core with its own heap; workers share nothing and communicate through typed
+  channels; sent values are moved or copied, unique and linear types move, and
+  capabilities are passed only explicitly. No data races by construction (checked,
+  with reject tests). A `par_map` helper. A parallel benchmark reaches at least 3x
+  speedup on 4 cores, and a real program uses workers. Coexists with the event loop.
+- **Tooling for human users.**
+  - `tenon fmt`: one canonical layout, idempotent, the whole corpus formatted.
+  - Language server: diagnostics, hover types, go-to-definition, completion, with tests.
+  - Packages: a `tenon.toml` manifest, dependencies by local path or git URL and tag,
+    a lockfile with content hashes, offline builds from a cache; no registry.
+  - VS Code: editors/vscode with a TextMate grammar (checked against the whole
+    corpus) and a language-server client, built as a local .vsix.
+- **Evidence.** A new blind usability wave on fresh tasks shows no regression
+  against wave 6 on lines and time. Benchmarks stay within 1.5x of C. `check --fast`
+  stays at or under 60 s and landing at or under 5 min.

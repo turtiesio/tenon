@@ -173,6 +173,12 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Milestone 2 scope (after milestone 1):** repository layout cleanup; fully
+  self-hosted compiler; traits with generic bounds and explicit `dyn`; multi-core
+  via isolated workers and typed channels; tooling: fmt, language server, packages
+  (path + git dependencies, lockfile, no registry), VS Code extension as a local
+  .vsix with syntax highlighting. Definition of done: tenon.md section 5.
+
 - **Goal closed (after wave 6):** the user accepted the current state and cleared
   the goal. Milestone 1 stands as reported in STATUS.md: study time unmet (1.47x
   Python), human sample review and a week of loop history still open.
