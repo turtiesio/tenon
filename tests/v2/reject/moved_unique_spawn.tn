@@ -1,0 +1,9 @@
+// error: 'b' was already used: a unique value cannot be used after it is moved
+// Authority finding 6 (2026-10-28): a unique value moved to a worker is the worker's.
+unique struct Buf { items: List[Int], name: Str }
+fn consume(b: Buf) -> Int { b.items.len() }
+fn main(sys: Sys) {
+    let b = Buf { items: [1, 2, 3], name: "x" }
+    let h = sys.workers().spawn(consume, b)
+    sys.console.println("{h.join()} {b.items.len()}")
+}

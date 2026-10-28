@@ -547,7 +547,11 @@ lock). The compiler rejects any program that copies one or loses one:
 - it is *consumed* by passing it by value: as an argument, as the receiver of
   a method taking `self`, by returning it, by storing it in a struct or variant
   field, or by destructuring it with `match`;
-- reading fields (`c.job`), comparing and formatting do not consume it;
+- reading fields (`c.job`), comparing, formatting, passing it to a `ref`
+  parameter and the methods of a builtin handle (`l.port()`) do not consume
+  it; but once it is consumed, the name cannot be used at all, not even to
+  inspect it (`'c' was already used: ...`), until it is assigned a new value
+  (a unique variable declared with `var`);
 - every path must consume it: both branches of an `if`, every `match` arm,
   and before `return`, `break`, `continue` or `?`;
 - a value from outside a loop cannot be consumed inside the loop;

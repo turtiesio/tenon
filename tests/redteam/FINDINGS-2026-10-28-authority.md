@@ -213,6 +213,12 @@ print `is_admin(guest) = false`, `is_admin(decode) = true`, `matched private var
 Structs with private fields are protected (`decode`, `encode`, literal, update and field access are
 all rejected, 33 variants tried), so this is specific to enums, whose payloads count as visible.
 
+Fixed in a35a3f5, tests tests/v2/reject/enum_private_decode.tn, tests/v2/reject/enum_private_match.tn,
+tests/v2/reject/struct_private_decode.tn (module tests/v2/reject/privlevel.tn). Rule (reference §13,
+§14): a pattern cannot name a variant of another module's private enum, and a private type (struct or
+enum without `pub`) of another module cannot be encoded or decoded; the same forging was open for a
+private struct whose fields are all `pub`.
+
 ## 6. A consumed linear/unique value can still be inspected (Medium)
 
 **Property:** reference §18: "a unique value is moved: after `tx.send(t)` or `w.spawn(f, t)` the

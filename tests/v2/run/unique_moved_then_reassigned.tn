@@ -1,0 +1,18 @@
+// A moved unique variable cannot be used (authority finding 6, 2026-10-28), until it is assigned a
+// new value; a moved value's parts are not read either, and a use before the move is fine.
+unique struct Handle { fd: Int }
+fn take(h: Handle) -> Int { h.fd }
+fn peek(h: ref Handle) -> Int { h.fd }
+fn main(sys: Sys) {
+    var h = Handle { fd: 3 }
+    let before = peek(h) + h.fd
+    let n = take(h)
+    h = Handle { fd: 4 }
+    sys.console.println("{before} {n} {h.fd} {peek(h)} {take(h)}")
+    var w = Handle { fd: 5 }
+    if n > 0 {
+        let m = take(w)
+        w = Handle { fd: m + 1 }
+    }
+    sys.console.println("{w.fd}")
+}

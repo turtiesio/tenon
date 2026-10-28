@@ -1,0 +1,9 @@
+// error: 'c' was already used: a linear value cannot be used after it is moved
+// Authority finding 6 (2026-10-28): a field read of a linear value after it was finished.
+linear struct Claim { id: Int }
+fn Claim.fin(self) -> Int { self.id }
+fn main(sys: Sys) {
+    let c = Claim { id: 7 }
+    let n = c.fin()
+    sys.console.println("{n} {c.id}")
+}

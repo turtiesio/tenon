@@ -1,0 +1,10 @@
+// error: 'b' was already used: a unique value cannot be used after it is moved
+// Authority finding 6 (2026-10-28): a unique value sent through a channel is the receiver's.
+unique struct Buf { items: List[Int], name: Str }
+fn main(sys: Sys) {
+    let (tx, rx) = channel()
+    let b = Buf { items: [1, 2, 3], name: "ab" }
+    tx.send(b)
+    let got = rx.recv().unwrap()
+    sys.console.println("{got.name} {b.name}")
+}

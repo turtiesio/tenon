@@ -1,0 +1,10 @@
+// error: 'h' was already used: a unique value cannot be used after it is moved
+// Authority finding 6 (2026-10-28): a `ref` argument only inspects, but there is nothing left to inspect.
+unique struct Handle { fd: Int }
+fn take(h: Handle) -> Int { h.fd }
+fn peek(h: ref Handle) -> Int { h.fd }
+fn main(sys: Sys) {
+    let h = Handle { fd: 3 }
+    let n = take(h)
+    sys.console.println("{n} {peek(h)}")
+}

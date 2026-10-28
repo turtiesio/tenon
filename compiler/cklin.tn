@@ -128,6 +128,17 @@ fn Walk.consume(mut self, name: Str, sp: ckast.Span) -> Result[Unit, ckast.Diag]
     Ok(())
 }
 
+// A use that does not consume (a field read, a `ref` argument, a handle
+// method, `==`, formatting) still needs the value: it must not have moved.
+fn Walk.inspect(self, name: Str, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+    var i = self.vars.len() - 1
+    while i >= 0 and self.vars[i].name != name { i -= 1 }
+    if i >= 0 and self.vars[i].moved.is_some() {
+        return ckast.fail(sp, "'" + name + "' was already used: a " + word(self.vars[i].kind) + " value cannot be used after it is moved")
+    }
+    Ok(())
+}
+
 // Every linear value declared at or after `from` must have been consumed.
 fn Walk.live_check(self, from: Int, sp: ckast.Span, why: Str) -> Result[Unit, ckast.Diag] {
     if self.diverged { return Ok(()) }
@@ -286,7 +297,19 @@ fn Walk.assign(mut self, target: ckast.Expr, value: ckast.Expr) -> Result[Unit, 
             self.expr(b, false)?
             self.expr(i, true)?
         }
+        XField(b, _) | XTField(b, _) => self.expr(b, false)?, // updating a part of a moved value
         _ => {}
+    }
+    // A unique variable that was moved holds a value again after `x = v`.
+    if self.kind(target.id) == Unique {
+        match target.k {
+            XName(n) => {
+                var i = self.vars.len() - 1
+                while i >= 0 and self.vars[i].name != n { i -= 1 }
+                if i >= 0 { self.vars[i].moved = None }
+            }
+            _ => {}
+        }
     }
     if self.kind(target.id) == Linear {
         let n = match target.k {
@@ -447,7 +470,7 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
         XName(n) => {
             match self.res.get(e.id) {
                 Some(RFn(fi, targs)) => return self.generic_args_ok(fi, targs, e.sp),
-                Some(RLocal(_)) => if consume and self.kind(e.id) != Plain { return self.consume(n, e.sp) },
+                Some(RLocal(_)) => if self.kind(e.id) != Plain { return if consume { self.consume(n, e.sp) } else { self.inspect(n, e.sp) } },
                 _ => {}
             }
             Ok(())

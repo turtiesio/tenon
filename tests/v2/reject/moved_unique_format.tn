@@ -1,0 +1,9 @@
+// error: 'h' was already used: a unique value cannot be used after it is moved
+// Authority finding 6 (2026-10-28): formatting a moved unique value.
+unique struct Handle { fd: Int }
+fn take(h: Handle) -> Int { h.fd }
+fn main(sys: Sys) {
+    let h = Handle { fd: 3 }
+    let n = take(h)
+    sys.console.println("{n} {h}")
+}

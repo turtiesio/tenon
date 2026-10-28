@@ -1,0 +1,9 @@
+// error: 'l' was already used: a unique value cannot be used after it is moved
+// Authority finding 6 (2026-10-28): after close_it(l) the listener is gone (dropped and closed), yet
+// l.port() worked and kept the socket open.
+fn close_it(l: Listener) {}
+fn main(sys: Sys) {
+    let l = sys.net.listen(0).unwrap()
+    close_it(l)
+    sys.console.println("{l.port()}")
+}
