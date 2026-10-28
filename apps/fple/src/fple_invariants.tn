@@ -1,0 +1,86 @@
+// Executable structural GuardIR, shared by all 163 source entities.
+import fple_model
+
+pub fn evaluate(expression: fple_model.Value, row: fple_model.Value) -> Result[Bool, fple_model.Failure] {
+    Ok(truthy(interpret(expression, row, 0)?))
+}
+fn truthy(value: fple_model.Value) -> Bool {
+    match value { VNull => false, VBool(flag) => flag, VInt(number) => number != 0, VDecimal(number) => number != 0.0 and number == number, VText(text) => text != "", _ => true }
+}
+fn interpret(expression: fple_model.Value, row: fple_model.Value, depth: Int) -> Result[fple_model.Value, fple_model.Failure] {
+    if depth > 128 { return Err(Unsupported("guard nesting limit")) }
+    let kind = fple_model.text(expression, "kind")?
+    match kind {
+        "literal" => fple_model.field(expression, "value"),
+        "field" => {
+            let parts = fple_model.field(expression, "path")?.list().ok_or(Unsupported("guard field path"))?
+            var path: List[Str] = []
+            for part in parts { path.push(part.text().ok_or(Unsupported("guard path component"))?) }
+            row.at(path).ok_or(StateConflict("invariant field absent: {path}"))
+        },
+        "and" | "or" => {
+            let checks = fple_model.field(expression, "checks")?.list().ok_or(Unsupported("guard checks"))?
+            var result = kind == "and"
+            for check in checks {
+                let found = truthy(interpret(check, row, depth + 1)?)
+                result = if kind == "and" { result and found } else { result or found }
+            }
+            Ok(VBool(result))
+        },
+        "add" => {
+            let values = fple_model.field(expression, "values")?.list().ok_or(Unsupported("guard sum"))?
+            var total = VInt(0)
+            for item in values { total = arithmetic("add", total, interpret(item, row, depth + 1)?)? }
+            Ok(total)
+        },
+        "sub" | "mul" | "floorDiv" => arithmetic(kind, interpret(fple_model.field(expression, "left")?, row, depth + 1)?, interpret(fple_model.field(expression, "right")?, row, depth + 1)?),
+        "eq" | "neq" | "gt" | "gte" | "lt" | "lte" => compare(kind, interpret(fple_model.field(expression, "left")?, row, depth + 1)?, interpret(fple_model.field(expression, "right")?, row, depth + 1)?),
+        "in" => {
+            let value = interpret(fple_model.field(expression, "value")?, row, depth + 1)?
+            let options = fple_model.field(expression, "values")?.list().ok_or(Unsupported("guard membership"))?
+            Ok(VBool(options.contains(value)))
+        },
+        "isArray" | "isNumber" | "isString" | "nonEmptyString" => {
+            let item = interpret(fple_model.field(expression, "value")?, row, depth + 1)?
+            let result = match kind {
+                "isArray" => item.list() != None,
+                "isNumber" => item.decimal() != None,
+                "isString" => item.text() != None,
+                _ => item.text().map_or(false, fn(text) => text != ""),
+            }
+            Ok(VBool(result))
+        },
+        "if" => {
+            let condition = truthy(interpret(fple_model.field(expression, "condition")?, row, depth + 1)?)
+            interpret(fple_model.field(expression, if condition { "then" } else { "else" })?, row, depth + 1)
+        },
+        _ => Err(Unsupported("structural guard {kind}")),
+    }
+}
+fn compare(kind: Str, left: fple_model.Value, right: fple_model.Value) -> Result[fple_model.Value, fple_model.Failure] {
+    if kind == "eq" or kind == "neq" {
+        let equal = match (left.decimal(), right.decimal()) { (Some(a), Some(b)) => a == b, _ => left == right }
+        return Ok(VBool(if kind == "eq" { equal } else { not equal }))
+    }
+    let a = left.decimal().ok_or(StateConflict("numeric invariant operand"))?
+    let b = right.decimal().ok_or(StateConflict("numeric invariant operand"))?
+    Ok(VBool(match kind { "gt" => a > b, "gte" => a >= b, "lt" => a < b, _ => a <= b }))
+}
+fn arithmetic(kind: Str, left: fple_model.Value, right: fple_model.Value) -> Result[fple_model.Value, fple_model.Failure] {
+    if let (VInt(a), VInt(b)) = (left, right) {
+        let result = match kind {
+            "add" => a.checked_add(b), "sub" => a.checked_sub(b), "mul" => a.checked_mul(b),
+            _ => {
+                let quotient = a.checked_div(b).ok_or(StateConflict("invariant division"))?
+                if a % b != 0 and ((a < 0 and b > 0) or (a > 0 and b < 0)) { quotient.checked_sub(1) } else { Some(quotient) }
+            },
+        }
+        return Ok(VInt(result.ok_or(StateConflict("invariant arithmetic overflow"))?))
+    }
+    let a = left.decimal().ok_or(StateConflict("numeric invariant operand"))?
+    let b = right.decimal().ok_or(StateConflict("numeric invariant operand"))?
+    if kind == "floorDiv" and b == 0.0 { return Err(StateConflict("invariant division")) }
+    let result = match kind { "add" => a + b, "sub" => a - b, "mul" => a * b, _ => (a / b).floor() }
+    if result - result != 0.0 { return Err(StateConflict("non-finite invariant arithmetic")) }
+    Ok(VDecimal(result))
+}

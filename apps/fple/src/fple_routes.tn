@@ -1,0 +1,58 @@
+// Pure route matching; HTTP/browser adapters supply a decoded URL pathname.
+import fple_model
+
+pub struct Match { pub key: Str, pub parameters: Map[Str, Str], pub specificity: Int }
+pub fn url_pattern(route: Str) -> Str {
+    var parts: List[Str] = []
+    for part in route.split("/") {
+        if part == "" or part.starts_with("_") { continue }
+        parts.push(if part.ends_with("_") { part.slice(0, part.len() - 1) } else { part })
+    }
+    "/" + parts.join("/")
+}
+pub fn pattern_match(pattern: Str, pathname: Str, key: Str) -> Option[Match] {
+    if not pathname.starts_with("/") or pathname.contains("?") or pathname.contains("#") { return None }
+    let expected = pattern.split("/").filter(fn(p) => p != "")
+    let actual = pathname.split("/").filter(fn(p) => p != "")
+    var parameters: Map[Str, Str] = [:]
+    var score = 0
+    for index in 0..expected.len() {
+        let part = expected[index]
+        if part == "$" {
+            parameters["_splat"] = actual.slice(index.min(actual.len()), actual.len()).join("/")
+            return Some(Match { key, parameters, specificity: score })
+        }
+        let value = actual.get(index)?
+        if value == "." or value == ".." { return None }
+        if part.starts_with("$") {
+            let name = part.slice(1, part.len())
+            if name == "" { return None }
+            parameters[name] = value
+            score += 1
+        } else {
+            if value != part { return None }
+            score += 100
+        }
+    }
+    if actual.len() != expected.len() { return None }
+    Some(Match { key, parameters, specificity: score + 10 })
+}
+pub fn http(routes: List[fple_model.HttpRoute], pathname: Str, method: Str) -> Option[Match] {
+    var best: Option[Match] = None
+    for route in routes {
+        if not route.methods.contains(method) and not route.methods.contains("ANY") { continue }
+        if let Some(found) = pattern_match(route.path, pathname, route.key) {
+            if best.map_or(true, fn(previous) => found.specificity > previous.specificity) { best = Some(found) }
+        }
+    }
+    best
+}
+pub fn page(pages: List[fple_model.Page], pathname: Str) -> Option[Match] {
+    var best: Option[Match] = None
+    for screen in pages {
+        if let Some(found) = pattern_match(url_pattern(screen.path), pathname, screen.path) {
+            if best.map_or(true, fn(previous) => found.specificity > previous.specificity) { best = Some(found) }
+        }
+    }
+    best
+}

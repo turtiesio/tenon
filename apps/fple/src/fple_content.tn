@@ -1,0 +1,131 @@
+// Concrete source-compatible content operations. No generic record patching.
+import fple_model
+import fple_store
+
+pub fn implementations() -> List[Str] {
+    ["announcement.notice.create-draft", "announcement.notice.edit", "announcement.notice.publish", "announcement.notice.archive",
+        "terms.version.create-draft", "terms.version.publish", "terms.version.archive", "terms.agreement.accept",
+        "support.inquiry.create", "support.inquiry.check", "support.inquiry.answer"]
+}
+pub fn plan(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    match context.operation.id {
+        "announcement.notice.create-draft" => create_notice(context),
+        "announcement.notice.edit" | "announcement.notice.publish" | "announcement.notice.archive" => change_notice(view, context),
+        "terms.version.create-draft" => create_terms(context),
+        "terms.version.publish" | "terms.version.archive" => change_terms(view, context),
+        "terms.agreement.accept" => accept_terms(view, context),
+        "support.inquiry.create" => create_inquiry(context),
+        "support.inquiry.check" | "support.inquiry.answer" => change_inquiry(view, context),
+        _ => Err(Unsupported(context.operation.id)),
+    }
+}
+fn checked(result: fple_model.Value, change: fple_model.Change, rules: List[Str]) -> fple_model.CheckedPlan {
+    fple_model.CheckedPlan { checked: rules, plan: fple_model.Plan { result, changes: [change], signals: [], calls: [] } }
+}
+fn subject(context: fple_model.Context) -> Result[Str, fple_model.Failure] {
+    Ok(context.actor.ok_or(AccessDenied("actor is required"))?.subject)
+}
+fn required(view: fple_store.View, entity: Str, id: Str, reason: Str) -> Result[fple_model.Record, fple_model.Failure] {
+    view.read(entity, id)?.ok_or(NotFound(reason))
+}
+fn notice_window(value: fple_model.Value) -> Result[Unit, fple_model.Failure] {
+    let start = fple_model.text(value, "publishFrom")?
+    if let Some(until) = value.field("publishUntil").and_then(fn(v) => v.text()) {
+        // Deliberately source's string ordering, not instant ordering.
+        if until < start { return Err(StateConflict("announcement.notice_window_inverted")) }
+    }
+    Ok(())
+}
+fn create_notice(context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    notice_window(context.input)?
+    let category = context.input.field("category").unwrap_or(VText("news"))
+    let row = context.input.with_fields([("id", VText(context.id)), ("category", category),
+        ("authorSubjectId", VText(subject(context)?)), ("status", VText("draft")),
+        ("publishedAt", VNull), ("createdAt", VText(context.now)), ("updatedAt", VText(context.now))])?
+    Ok(checked(row, CreateRecord("announcement.notice", context.id, row), ["announcement.notice_window_inverted"]))
+}
+fn change_notice(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    let id = fple_model.text(context.input, "noticeId")?
+    let record = required(view, "announcement.notice", id, "announcement.notice_required")?
+    var row = record.data
+    var rules = ["announcement.notice_required"]
+    match context.operation.id {
+        "announcement.notice.edit" => {
+            if row.field("status") == Some(VText("archived")) { return Err(StateConflict("announcement.notice_archived")) }
+            notice_window(context.input)?
+            for field in ["title", "body", "level", "displayOrder", "publishFrom", "publishUntil"] { row = row.with(field, fple_model.field(context.input, field)?)? }
+            let category = context.input.field("category").unwrap_or(row.field("category").unwrap_or(VText("news")))
+            row = row.with("category", category)?
+            rules.extend(["announcement.notice_archived", "announcement.notice_window_inverted"])
+        },
+        "announcement.notice.publish" => {
+            if row.field("status") != Some(VText("draft")) { return Err(StateConflict("announcement.notice_not_draft")) }
+            row = row.with_fields([("status", VText("published")), ("publishedAt", VText(context.now))])?
+            rules.push("announcement.notice_not_draft")
+        },
+        _ => row = row.with("status", VText("archived"))?,
+    }
+    row = row.with("updatedAt", VText(context.now))?
+    Ok(checked(row, ReplaceRecord(record.entity, id, record.revision, row), rules))
+}
+fn create_terms(context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    let row = context.input.with_fields([("id", VText(context.id)), ("status", VText("draft")),
+        ("publishedAt", VNull), ("createdAt", VText(context.now)), ("updatedAt", VText(context.now))])?
+    Ok(checked(row.without(["createdAt"])?, CreateRecord("terms.version", context.id, row), []))
+}
+fn change_terms(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    let id = fple_model.text(context.input, "termsVersionId")?
+    let record = required(view, "terms.version", id, "terms.terms_required")?
+    var row = record.data
+    var rules = ["terms.terms_required"]
+    if context.operation.id == "terms.version.publish" {
+        if row.field("status") != Some(VText("draft")) { return Err(StateConflict("terms.terms_not_draft")) }
+        row = row.with_fields([("status", VText("published")), ("publishedAt", VText(context.now))])?
+        rules.push("terms.terms_not_draft")
+    } else { row = row.with("status", VText("archived"))? }
+    row = row.with("updatedAt", VText(context.now))?
+    Ok(checked(row.without(["createdAt"])?, ReplaceRecord(record.entity, id, record.revision, row), rules))
+}
+fn accept_terms(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    let version_id = fple_model.text(context.input, "termsVersionId")?
+    let version = required(view, "terms.version", version_id, "terms.terms_required")?.data
+    if version.field("status") != Some(VText("published")) { return Err(StateConflict("terms.terms_not_published")) }
+    let actor = subject(context)?
+    for agreement in view.list("terms.agreement")? {
+        if agreement.data.field("subjectId") == Some(VText(actor)) and agreement.data.field("termsVersionId") == Some(VText(version_id)) {
+            return Err(StateConflict("terms.agreement_already_exists"))
+        }
+    }
+    let row = fple_model.object([("id", VText(context.id)), ("subjectId", VText(actor)),
+        ("termsVersionId", VText(version_id)), ("kind", fple_model.field(version, "kind")?),
+        ("version", fple_model.field(version, "version")?), ("agreedAt", VText(context.now)), ("revokedAt", VNull)])
+    Ok(checked(row, CreateRecord("terms.agreement", context.id, row),
+        ["terms.terms_required", "terms.terms_not_published", "terms.agreement_already_exists"]))
+}
+fn create_inquiry(context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    let row = context.input.with_fields([("id", VText(context.id)), ("status", VText("received")),
+        ("checkedAt", VNull), ("checkedBySubjectId", VNull), ("answer", VNull),
+        ("answeredAt", VNull), ("answeredBySubjectId", VNull), ("createdAt", VText(context.now)), ("updatedAt", VText(context.now))])?
+    Ok(checked(row, CreateRecord("support.inquiry", context.id, row), []))
+}
+fn change_inquiry(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    let id = fple_model.text(context.input, "inquiryId")?
+    let record = required(view, "support.inquiry", id, "support.inquiry_required")?
+    var row = record.data
+    if row.field("status") == Some(VText("answered")) { return Err(StateConflict("support.inquiry_already_answered")) }
+    var rules = ["support.inquiry_required", "support.inquiry_already_answered"]
+    if context.operation.id == "support.inquiry.check" {
+        if row.field("status") != Some(VText("checking")) {
+            row = row.with_fields([("status", VText("checking")), ("checkedAt", VText(context.now)),
+                ("checkedBySubjectId", VText(subject(context)?)), ("updatedAt", VText(context.now))])?
+        }
+    } else {
+        let answer = fple_model.text(context.input, "answer")?.trim()
+        if answer == "" { return Err(BadInput("answer", "support.inquiry_answer_required")) }
+        rules.push("support.inquiry_answer_required")
+        if row.field("checkedAt") == Some(VNull) { row = row.with_fields([("checkedAt", VText(context.now)), ("checkedBySubjectId", VText(subject(context)?))])? }
+        row = row.with_fields([("status", VText("answered")), ("answer", VText(answer)),
+            ("answeredAt", VText(context.now)), ("answeredBySubjectId", VText(subject(context)?)), ("updatedAt", VText(context.now))])?
+    }
+    Ok(checked(row, ReplaceRecord(record.entity, id, record.revision, row), rules))
+}

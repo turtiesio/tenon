@@ -1,0 +1,3 @@
+execution: frontend proposal -> permission -> schema -> owner policy -> atomic store -> result
+behavior coverage: 18 source operations executable; 693 explicitly reject as unported
+exit: 0

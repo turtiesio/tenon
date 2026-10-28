@@ -1,0 +1,168 @@
+import fple_model
+import fple_calendar
+import regex
+
+pub struct Validator {
+    schemas: List[fple_model.Value], patterns: Map[Str, regex.Regex],
+    url: fn(Str) -> Bool,
+}
+const TRACKING_PATTERN: Str = r"^(?!(?:[Rr][Ee][Aa][Dd][Yy]|[Tt][Bb][Dd])(?:$|[-_\s]))[A-Za-z0-9-]+$"
+
+pub fn Validator.new(schemas: List[fple_model.Value], url: fn(Str) -> Bool) -> Result[Validator, fple_model.Failure] {
+    var patterns: Map[Str, regex.Regex] = [:]
+    for node in schemas {
+        if let Some(pattern) = node.field("pattern").and_then(fn(v) => v.text()) {
+            if patterns.contains(pattern) or pattern == TRACKING_PATTERN { continue }
+            patterns[pattern] = regex.compile(pattern).map_err(fn(e) => Unsupported("schema pattern: {e}"))?
+        }
+    }
+    Ok(Validator { schemas, patterns, url })
+}
+pub fn Validator.validate(self, id: Int, input: fple_model.Value, constraints: List[fple_model.Value], path: Str) -> Result[fple_model.Value, fple_model.Failure] {
+    self.check(id, input, constraints, [], path, 0)
+}
+fn constraint_for(constraints: List[fple_model.Value], path: List[Str]) -> fple_model.Value {
+    let target = VList(path.map(VText))
+    for constraint in constraints { if constraint.field("path") == Some(target) { return constraint } }
+    VObject([:])
+}
+fn normalize(value: fple_model.Value, constraint: fple_model.Value) -> fple_model.Value {
+    let Some(text) = value.text() else { return value }
+    match constraint.field("normalize").and_then(fn(v) => v.text()).unwrap_or("") {
+        "trim" => VText(text.trim()),
+        "digits" => VText(text.chars().filter(fn(c) => c.len() == 1 and c.byte(0).is_digit()).join("")),
+        _ => value,
+    }
+}
+fn utf16_length(text: Str) -> Int {
+    var length = 0
+    for character in text.chars() { length += if character.len() == 4 { 2 } else { 1 } }
+    length
+}
+fn fail(path: Str, message: Str) -> Result[fple_model.Value, fple_model.Failure] { Err(BadInput(path, message)) }
+fn Validator.check(self, id: Int, input: fple_model.Value, constraints: List[fple_model.Value], at: List[Str], path: Str, depth: Int) -> Result[fple_model.Value, fple_model.Failure] {
+    if depth > 128 { return fail(path, "input nesting limit") }
+    let schema = self.schemas.get(id).ok_or(Unsupported("schema {id}"))?
+    let constraint = constraint_for(constraints, at)
+    let value = normalize(input, constraint)
+    if let Some(alternatives) = schema.field("anyOf").and_then(fn(v) => v.list()) {
+        var error = BadInput(path, "no union alternative matches")
+        for alternative in alternatives {
+            let target = alternative.integer().ok_or(Unsupported("union schema reference"))?
+            match self.check(target, value, constraints, at, path, depth + 1) {
+                Ok(found) => return Ok(found),
+                Err(reason) => { if value == VNull or self.schemas[target].field("type") != Some(VText("null")) { error = reason } },
+            }
+        }
+        return Err(error)
+    }
+    if let Some(expected) = schema.field("const") { if value != expected { return fail(path, "expected constant") } }
+    if let Some(options) = schema.field("enum").and_then(fn(v) => v.list()) {
+        if not options.contains(value) { return fail(path, "expected enum value") }
+    }
+    let kind = schema.field("type").and_then(fn(v) => v.text()).unwrap_or("")
+    match kind {
+        "null" => { if value != VNull { return fail(path, "expected null") } },
+        "boolean" => { if value.boolean() == None { return fail(path, "expected boolean") } },
+        "integer" | "number" => return self.number(schema, value, kind, path),
+        "string" => return self.string(schema, value, constraint, path),
+        "object" => return self.object(schema, value, constraints, at, path, depth + 1),
+        "array" => return self.array(schema, value, constraint, constraints, at, path, depth + 1),
+        "" => {},
+        _ => return Err(Unsupported("schema type {kind}")),
+    }
+    Ok(value)
+}
+fn Validator.number(self, schema: fple_model.Value, value: fple_model.Value, kind: Str, path: Str) -> Result[fple_model.Value, fple_model.Failure] {
+    let number = value.decimal().ok_or(BadInput(path, "expected number"))?
+    if number - number != 0.0 { return fail(path, "expected finite number") }
+    if kind == "integer" and number.floor() != number { return fail(path, "expected integer") }
+    if let Some(minimum) = schema.field("minimum").and_then(fn(v) => v.decimal()) { if number < minimum { return fail(path, "below minimum") } }
+    if let Some(maximum) = schema.field("maximum").and_then(fn(v) => v.decimal()) { if number > maximum { return fail(path, "above maximum") } }
+    Ok(value)
+}
+fn Validator.string(self, schema: fple_model.Value, value: fple_model.Value, constraint: fple_model.Value, path: Str) -> Result[fple_model.Value, fple_model.Failure] {
+    let text = value.text().ok_or(BadInput(path, "expected string"))?
+    let length = utf16_length(text)
+    if let Some(minimum) = schema.field("minLength").and_then(fn(v) => v.integer()) { if length < minimum { return fail(path, "string too short") } }
+    if let Some(maximum) = schema.field("maxLength").and_then(fn(v) => v.integer()) { if length > maximum { return fail(path, "string too long") } }
+    if let Some(pattern) = schema.field("pattern").and_then(fn(v) => v.text()) { if not self.matches(pattern, text) { return fail(path, "expected string matching pattern") } }
+    let format_value = match constraint.field("format") { Some(found) => Some(found), None => schema.field("format") }
+    let format = format_value.and_then(fn(v) => v.text()).unwrap_or("")
+    let valid = match format {
+        "date-time" => fple_calendar.parse(text).is_some(),
+        "url" => (self.url)(text),
+        "email" => email(text),
+        _ => true,
+    }
+    if not valid { return fail(path, "expected {format}") }
+    Ok(value)
+}
+fn Validator.matches(self, pattern: Str, text: Str) -> Bool {
+    if pattern == TRACKING_PATTERN {
+        let candidate = if text.ends_with("\n") or text.ends_with("\r") { text.slice(0, text.len() - 1) } else { text }
+        let upper = candidate.upper()
+        return not candidate.is_empty() and candidate.chars().all(fn(c) => c.len() == 1 and (c.byte(0).is_alnum() or c == "-"))
+            and upper != "READY" and upper != "TBD" and not upper.starts_with("READY-") and not upper.starts_with("TBD-")
+    }
+    let Some(compiled) = self.patterns.get(pattern) else { return false }
+    if compiled.find(text).is_some() { return true }
+    if pattern.ends_with("$") and (text.ends_with("\n") or text.ends_with("\r")) { return compiled.find(text.slice(0, text.len() - 1)).is_some() }
+    false
+}
+fn email(text: Str) -> Bool {
+    let parts = text.split("@")
+    if parts.len() != 2 or parts[0] == "" or parts[1] == "" { return false }
+    if text.chars().any(fn(c) => c.len() == 1 and c.byte(0).is_space()) { return false }
+    let domain = parts[1].split(".")
+    domain.len() >= 2 and domain[0] != "" and domain.last().unwrap_or("") != ""
+}
+fn Validator.object(self, schema: fple_model.Value, value: fple_model.Value, constraints: List[fple_model.Value], at: List[Str], path: Str, depth: Int) -> Result[fple_model.Value, fple_model.Failure] {
+    let fields = value.object().ok_or(BadInput(path, "expected object"))?
+    let properties = schema.field("properties").and_then(fn(v) => v.object()).unwrap_or([:])
+    let required = schema.field("required").and_then(fn(v) => v.list()).unwrap_or([])
+    var result: Map[Str, fple_model.Value] = [:]
+    for (key, child) in properties {
+        match fields.get(key) {
+            Some(item) => { result[key] = self.check(child.integer().ok_or(Unsupported("property schema"))?, item, constraints, at + [key], "{path}.{key}", depth)? },
+            None => { if required.contains(VText(key)) { return fail("{path}.{key}", "missing required field") } },
+        }
+    }
+    for (key, item) in fields {
+        if properties.contains(key) { continue }
+        // Source runtime closes every schema declaring properties.
+        if schema.field("properties") != None or schema.field("additionalProperties") == Some(VBool(false)) { return fail("{path}.{key}", "unknown field") }
+        if let Some(child) = schema.field("additionalProperties").and_then(fn(v) => v.integer()) {
+            result[key] = self.check(child, item, constraints, at + [key], "{path}.{key}", depth)?
+        } else { result[key] = item }
+    }
+    Ok(VObject(result))
+}
+fn Validator.array(self, schema: fple_model.Value, value: fple_model.Value, constraint: fple_model.Value, constraints: List[fple_model.Value], at: List[Str], path: Str, depth: Int) -> Result[fple_model.Value, fple_model.Failure] {
+    let items = value.list().ok_or(BadInput(path, "expected array"))?
+    if let Some(minimum) = schema.field("minItems").and_then(fn(v) => v.integer()) { if items.len() < minimum { return fail(path, "array too short") } }
+    if let Some(maximum) = schema.field("maxItems").and_then(fn(v) => v.integer()) { if items.len() > maximum { return fail(path, "array too long") } }
+    let child = schema.field("items").and_then(fn(v) => v.integer()).ok_or(Unsupported("array item schema"))?
+    var result: List[fple_model.Value] = []
+    var seen: List[fple_model.Value] = []
+    var keys: Set[Str] = Set.new()
+    for index in 0..items.len() {
+        let item = self.check(child, items[index], constraints, at + ["*"], "{path}[{index}]", depth)?
+        if schema.field("uniqueItems") == Some(VBool(true)) and seen.contains(item) { return fail(path, "duplicate array item") }
+        seen.push(item)
+        if let Some(fields) = constraint.field("uniqueBy").and_then(fn(v) => v.list()) {
+            var parts: List[Str] = []
+            for field in fields {
+                let name = field.text().ok_or(Unsupported("uniqueBy field"))?
+                let scalar = item.field(name).ok_or(BadInput(path, "uniqueBy field missing"))?
+                parts.push(scalar_key(scalar).ok_or(BadInput(path, "uniqueBy field must be scalar"))?)
+            }
+            if not keys.insert(parts.join(31.char())) { return fail(path, "duplicate uniqueBy value") }
+        }
+        result.push(item)
+    }
+    Ok(VList(result))
+}
+fn scalar_key(value: fple_model.Value) -> Option[Str] {
+    match value { VText(text) => Some(text), VInt(number) => Some(number.to_str()), VDecimal(number) => Some(number.to_str()), VBool(flag) => Some(flag.to_str()), _ => None }
+}

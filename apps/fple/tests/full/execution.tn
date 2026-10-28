@@ -1,0 +1,60 @@
+import fple_model
+import fple_kernel
+import fple_catalog
+
+const NOW: Str = "2026-10-28T00:00:00.000Z"
+fn expect(condition: Bool, message: Str) { if not condition { panic(message) } }
+fn resolve(session: Str) -> Option[fple_model.Identity] {
+    if session == "" { return None }
+    let bindings = if session == "admin" { [fple_model.Binding { scope_kind: "platform", scope_id: "root", permissions: ["*"] }] } else { [] }
+    Some(fple_model.Identity { subject: session, kind: if session == "worker" { SystemActor } else { UserActor }, enabled: session != "disabled", bindings })
+}
+fn call(operation: Str, input: fple_model.Value) -> fple_model.Call {
+    fple_model.Call { operation, input, scope: VObject(["platformId": VText("root")]), key: None }
+}
+fn perform(app: mut fple_kernel.Application, session: Str, proposal: fple_model.Call) -> fple_kernel.Receipt {
+    let permit = fple_kernel.allow(app, session, proposal, NOW).unwrap()
+    app.commit(permit, NOW).unwrap()
+}
+fn main(sys: Sys) {
+    var app = fple_kernel.Application.new("application", resolve, [], fn(record) => false, fn(url) => url.starts_with("https://")).unwrap()
+    let draft = call("terms.version.create-draft", VObject(["kind": VText("service"), "audience": VText("user"), "version": VText("1"), "title": VText("Terms"), "required": VBool(true)]))
+    expect(fple_kernel.allow(app, "user", draft, NOW).is_err(), "front-to-back authority bypass")
+    let allowed = fple_kernel.allowed(app, "admin", [draft, call("unknown.operation", VObject([:]))], NOW)
+    expect(allowed.len() == 1, "unsupported action exposed")
+    let created = app.commit(allowed[0], NOW).unwrap()
+    let id = created.plan.result.field("id").unwrap().text().unwrap()
+    expect(created.plan.result.field("status") == Some(VText("draft")), "draft creation")
+    expect(created.plan.result.field("createdAt") == None, "stored-only field leaked")
+    expect(app.commit(allowed[0], NOW) == Err(OldRevision), "single-revision permit reused")
+    let publish = call("terms.version.publish", VObject(["termsVersionId": VText(id)]))
+    let accept = call("terms.agreement.accept", VObject(["termsVersionId": VText(id)]))
+    expect(fple_kernel.allow(app, "user", accept, NOW).is_err(), "draft terms accepted")
+    let _ = perform(mut app, "admin", publish)
+    let accepted = perform(mut app, "user", accept)
+    expect(accepted.plan.result.field("subjectId") == Some(VText("user")), "agreement identity forged")
+    expect(fple_kernel.allow(app, "user", accept, NOW).is_err(), "duplicate agreement admitted")
+    let archived = perform(mut app, "admin", call("terms.version.archive", VObject(["termsVersionId": VText(id)])))
+    expect(archived.plan.result.field("status") == Some(VText("archived")), "terms archive")
+    let _ = perform(mut app, "admin", call("terms.version.archive", VObject(["termsVersionId": VText(id)])))
+    let notice = call("announcement.notice.create-draft", VObject([
+        "title": VText("Notice"), "body": VText("Body"), "level": VText("info"), "displayOrder": VInt(0),
+        "publishFrom": VText(NOW), "publishUntil": VNull]))
+    let notice_id = perform(mut app, "admin", notice).plan.result.field("id").unwrap()
+    let _ = perform(mut app, "admin", call("announcement.notice.publish", VObject(["noticeId": notice_id])))
+    expect(fple_kernel.allow(app, "admin", call("announcement.notice.publish", VObject(["noticeId": notice_id])), NOW).is_err(), "notice republished")
+    let _ = perform(mut app, "admin", call("announcement.notice.archive", VObject(["noticeId": notice_id])))
+    let inquiry = call("support.inquiry.create", VObject([
+        "sellerId": VText("shop"), "sellerSlug": VText("shop"), "reporterSubjectId": VText("user"),
+        "category": VText("other"), "message": VText("Help"), "pagePath": VNull, "customerId": VNull,
+        "customerSummary": VNull, "orderId": VNull, "orderSummary": VNull]))
+    expect(fple_kernel.allow(app, "user", inquiry, NOW).is_err(), "user forged service ingress")
+    let inquiry_id = perform(mut app, "worker", inquiry).plan.result.field("id").unwrap()
+    let _ = perform(mut app, "admin", call("support.inquiry.check", VObject(["inquiryId": inquiry_id])))
+    let answered = perform(mut app, "admin", call("support.inquiry.answer", VObject(["inquiryId": inquiry_id, "answer": VText("  Answer  ")])))
+    expect(answered.plan.result.field("answer") == Some(VText("Answer")), "answer not normalized")
+    expect(fple_kernel.allow(app, "admin", call("support.inquiry.check", VObject(["inquiryId": inquiry_id])), NOW).is_err(), "answered inquiry reopened")
+    expect(fple_kernel.missing_implementations(fple_catalog.load().unwrap()).len() == 693, "coverage must distinguish contracts from behavior")
+    sys.console.println("execution: frontend proposal -> permission -> schema -> owner policy -> atomic store -> result")
+    sys.console.println("behavior coverage: 18 source operations executable; 693 explicitly reject as unported")
+}

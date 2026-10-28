@@ -1,0 +1,108 @@
+// A portable aggregate store. Storage/transaction realization is a host concern.
+import fple_model
+import fple_validation
+import fple_invariants
+
+pub struct Store {
+    records: Map[(Str, Str), fple_model.Record], specs: Map[Str, fple_model.EntitySpec],
+    validator: fple_validation.Validator,
+}
+pub struct View { records: Map[(Str, Str), fple_model.Record], readable: List[Str] }
+pub fn Store.new(catalog: fple_model.Catalog, validator: fple_validation.Validator, seed: List[fple_model.Record]) -> Result[Store, fple_model.Failure] {
+    var specs: Map[Str, fple_model.EntitySpec] = [:]
+    for entity in catalog.entities { specs[entity.name] = entity }
+    var store = Store { records: [:], specs, validator }
+    for record in seed {
+        if record.revision < 0 { return Err(StateConflict("negative record revision")) }
+        let key = (record.entity, record.id)
+        if store.records.contains(key) { return Err(StateConflict("duplicate seed record")) }
+        store.check_record(record)?
+        store.records[key] = record
+    }
+    store.check_unique()?
+    Ok(store)
+}
+pub fn Store.view(self, operation: fple_model.Operation) -> View { View { records: self.records, readable: operation.reads + operation.writes } }
+pub fn Store.view_with(self, operation: fple_model.Operation, dependencies: List[Str]) -> View { View { records: self.records, readable: operation.reads + operation.writes + dependencies } }
+pub fn View.read(self, entity: Str, id: Str) -> Result[Option[fple_model.Record], fple_model.Failure] {
+    if not self.readable.contains(entity) { return Err(AccessDenied("undeclared entity read: {entity}")) }
+    Ok(self.records.get((entity, id)))
+}
+pub fn View.list(self, entity: Str) -> Result[List[fple_model.Record], fple_model.Failure] {
+    if not self.readable.contains(entity) { return Err(AccessDenied("undeclared entity read: {entity}")) }
+    var result: List[fple_model.Record] = []
+    for (_, record) in self.records { if record.entity == entity { result.push(record) } }
+    Ok(result)
+}
+pub fn Store.apply(mut self, operation: fple_model.Operation, changes: List[fple_model.Change]) -> Result[Unit, fple_model.Failure] {
+    if operation.kind == "query" and not changes.is_empty() { return Err(AccessDenied("query attempted mutation")) }
+    var candidate = self
+    for change in changes { candidate.change(operation, change)? }
+    candidate.check_unique()?
+    self = candidate
+    Ok(())
+}
+fn Store.change(mut self, operation: fple_model.Operation, change: fple_model.Change) -> Result[Unit, fple_model.Failure] {
+    let entity = match change { CreateRecord(name, _, _) | ReplaceRecord(name, _, _, _) | DeleteRecord(name, _, _) => name }
+    if not operation.writes.contains(entity) { return Err(AccessDenied("undeclared entity write: {entity}")) }
+    let spec = self.specs.get(entity).ok_or(NotFound("entity {entity}"))?
+    match change {
+        CreateRecord(_, id, data) => {
+            if self.records.contains((entity, id)) { return Err(StateConflict("record already exists")) }
+            let record = fple_model.Record { entity, id, revision: 0, data }
+            self.check_record(record)?
+            self.records[(entity, id)] = record
+        },
+        ReplaceRecord(_, id, revision, data) => {
+            let previous = self.records.get((entity, id)).ok_or(NotFound(entity))?
+            if revision != previous.revision { return Err(OldRevision) }
+            for immutable in spec.immutable {
+                if previous.data.field(immutable) != data.field(immutable) { return Err(StateConflict("immutable field: {entity}.{immutable}")) }
+            }
+            let next = revision.checked_add(1).ok_or(StateConflict("record revision exhausted"))?
+            let record = fple_model.Record { entity, id, revision: next, data }
+            self.check_record(record)?
+            self.records[(entity, id)] = record
+        },
+        DeleteRecord(_, id, revision) => {
+            let previous = self.records.get((entity, id)).ok_or(NotFound(entity))?
+            if previous.revision != revision { return Err(OldRevision) }
+            let _ = self.records.remove((entity, id))
+        },
+    }
+    Ok(())
+}
+fn Store.check_record(self, record: fple_model.Record) -> Result[Unit, fple_model.Failure] {
+    let spec = self.specs.get(record.entity).ok_or(NotFound("entity {record.entity}"))?
+    if record.id == "" or record.data.field("id") != Some(VText(record.id)) { return Err(StateConflict("record identity mismatch")) }
+    let _ = self.validator.validate(spec.schema, record.data, spec.validation, "{record.entity}.{record.id}")?
+    for invariant in spec.invariants {
+        let expression = fple_model.field(invariant, "checkIR")?
+        if not fple_invariants.evaluate(expression, record.data)? {
+            return Err(StateConflict(fple_model.text(invariant, "id")?))
+        }
+    }
+    Ok(())
+}
+fn Store.check_unique(self) -> Result[Unit, fple_model.Failure] {
+    for (entity, spec) in self.specs {
+        for constraint in spec.uniqueness {
+            let fields = fple_model.field(constraint, "fields")?.list().ok_or(Unsupported("unique field list"))?
+            var seen: Set[Str] = Set.new()
+            for (_, record) in self.records {
+                if record.entity != entity { continue }
+                var values: List[fple_model.Value] = []
+                var complete = true
+                for field in fields {
+                    let name = field.text().ok_or(Unsupported("unique field"))?
+                    match record.data.field(name) {
+                        Some(value) if value != VNull => values.push(value),
+                        _ => complete = false,
+                    }
+                }
+                if complete and not seen.insert(encode(values)) { return Err(StateConflict("unique constraint: {entity}")) }
+            }
+        }
+    }
+    Ok(())
+}

@@ -1,0 +1,77 @@
+// Program's datetime spellings, without a host clock or timezone database.
+// Source: packages/program/src/model/datetime.ts.
+pub struct Instant { pub milliseconds: Int }
+fn digits(text: Str, start: Int, length: Int) -> Option[Int] {
+    if start < 0 or start + length > text.len() { return None }
+    let part = text.slice(start, start + length)
+    if not part.chars().all(fn(c) => c.len() == 1 and c.byte(0).is_digit()) { return None }
+    part.to_int()
+}
+pub fn leap(year: Int) -> Bool { year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) }
+pub fn month_days(year: Int, month: Int) -> Option[Int] {
+    match month { 1 | 3 | 5 | 7 | 8 | 10 | 12 => Some(31), 4 | 6 | 9 | 11 => Some(30), 2 => Some(if leap(year) { 29 } else { 28 }), _ => None }
+}
+fn days_before_year(year: Int) -> Int {
+    let previous = year - 1
+    365 * previous + previous / 4 - previous / 100 + previous / 400
+}
+pub fn parse(text: Str) -> Option[Instant] {
+    let compact = text.len() == 14 and text.chars().all(fn(c) => c.len() == 1 and c.byte(0).is_digit())
+    let year = digits(text, 0, 4)?
+    let month = digits(text, if compact { 4 } else { 5 }, 2)?
+    let day = digits(text, if compact { 6 } else { 8 }, 2)?
+    // Date.UTC maps 0..99 into 1900..1999; source's equality check rejects them.
+    if year < 100 or day < 1 or day > month_days(year, month)? { return None }
+    var hour = 0
+    var minute = 0
+    var second = 0
+    var milliseconds = 0
+    var offset = 0
+    if compact {
+        hour = digits(text, 8, 2)?
+        minute = digits(text, 10, 2)?
+        second = digits(text, 12, 2)?
+    } else {
+        if text.len() < 10 or text.slice(4, 5) != "-" or text.slice(7, 8) != "-" { return None }
+        if text.len() != 10 {
+            if text.len() < 19 or text.slice(10, 11) != "T" or text.slice(13, 14) != ":" or text.slice(16, 17) != ":" { return None }
+            hour = digits(text, 11, 2)?
+            minute = digits(text, 14, 2)?
+            second = digits(text, 17, 2)?
+            let tail = text.slice(19, text.len())
+            let (fraction, zone) = fraction_zone(tail)?
+            milliseconds = fraction
+            offset = zone
+        }
+    }
+    if hour > 23 or minute > 59 or second > 59 { return None }
+    var days = days_before_year(year) - days_before_year(1970) + day - 1
+    for prior in 1..month { days += month_days(year, prior)? }
+    Some(Instant { milliseconds: ((days * 24 + hour) * 60 + minute) * 60_000 + second * 1000 + milliseconds - offset })
+}
+fn fraction_zone(tail: Str) -> Option[(Int, Int)] {
+    var end = 0
+    var milliseconds = 0
+    if tail.starts_with(".") {
+        end = 1
+        while end < tail.len() and tail.byte(end).is_digit() { end += 1 }
+        if end == 1 or end > 10 { return None }
+        let fraction = tail.slice(1, end)
+        milliseconds = fraction.slice(0, fraction.len().min(3)).pad_right(3, "0").to_int()?
+    }
+    let zone = tail.slice(end, tail.len())
+    if zone == "" or zone == "Z" { return Some((milliseconds, 0)) }
+    if zone.len() != 6 or (zone.byte(0) != '+' and zone.byte(0) != '-') or zone.byte(3) != ':' { return None }
+    let hours = digits(zone, 1, 2)?
+    let minutes = digits(zone, 4, 2)?
+    if hours > 23 or minutes > 59 { return None }
+    let direction = if zone.byte(0) == '+' { 1 } else { -1 }
+    Some((milliseconds, direction * (hours * 60 + minutes) * 60_000))
+}
+pub fn kst_day(milliseconds: Int) -> Option[Int] {
+    Some(milliseconds.checked_add(9 * 60 * 60_000)?.div_euclid(86_400_000))
+}
+pub fn kst_day_window(day: Int) -> Option[(Int, Int)] {
+    let start = day.checked_mul(86_400_000)?.checked_sub(9 * 60 * 60_000)?
+    Some((start, start.checked_add(86_400_000)?))
+}

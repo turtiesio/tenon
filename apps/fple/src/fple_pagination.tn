@@ -1,0 +1,51 @@
+// Opaque portable cursors bind query, filters, scope and sort order together.
+import fple_model
+
+struct Cursor { operation: Str, scope: fple_model.Value, filters: fple_model.Value, order: List[(Str, Bool)], last: List[fple_model.Value] }
+fn scalar_compare(a: fple_model.Value, b: fple_model.Value) -> Int {
+    if a == b { return 0 }
+    if a == VNull { return -1 }
+    if b == VNull { return 1 }
+    if let (VInt(left), VInt(right)) = (a, b) { return if left < right { -1 } else { 1 } }
+    if let (Some(left), Some(right)) = (a.decimal(), b.decimal()) { return if left < right { -1 } else if left > right { 1 } else { 0 } }
+    if let (Some(left), Some(right)) = (a.text(), b.text()) { return if left < right { -1 } else { 1 } }
+    0
+}
+fn row_key(row: fple_model.Value, order: List[(Str, Bool)]) -> List[fple_model.Value] {
+    order.map(fn(item) => row.field(item.0).unwrap_or(VNull))
+}
+fn compare(a: List[fple_model.Value], b: List[fple_model.Value], order: List[(Str, Bool)]) -> Int {
+    for index in 0..order.len() {
+        let result = scalar_compare(a[index], b[index])
+        if result != 0 { return if order[index].1 { -result } else { result } }
+    }
+    0
+}
+pub fn page(context: fple_model.Context, rows: List[fple_model.Value], order: List[(Str, Bool)], default_limit: Int, maximum: Int) -> Result[fple_model.Value, fple_model.Failure] {
+    let limit = context.input.field("limit").and_then(fn(v) => v.integer()).unwrap_or(default_limit)
+    if limit < 0 { return Err(BadInput("limit", "page limit must be non-negative")) }
+    let filters = context.input.without(["cursor", "limit"])?
+    var after: Option[List[fple_model.Value]] = None
+    if let Some(cursor) = context.input.field("cursor").and_then(fn(v) => v.text()) {
+        if cursor != "" {
+            let decoded: Result[Cursor, Str] = decode(cursor)
+            let value = decoded.map_err(fn(e) => BadInput("cursor", e))?
+            if value.operation != context.operation.id or value.scope != context.scope or value.filters != filters or value.order != order or value.last.len() != order.len() {
+                return Err(BadInput("cursor", "cursor does not match request"))
+            }
+            after = Some(value.last)
+        }
+    }
+    var sorted = rows
+    sorted.sort_with(fn(a, b) => compare(row_key(a, order), row_key(b, order), order))
+    let eligible = match after { Some(last) => sorted.filter(fn(row) => compare(row_key(row, order), last, order) > 0), None => sorted }
+    let selected = eligible.slice(0, eligible.len().min(limit))
+    if selected.len() > maximum { return Err(StateConflict("reduce source exceeded maxItems")) }
+    let has_next = eligible.len() > limit
+    var info: Map[Str, fple_model.Value] = ["hasNextPage": VBool(has_next)]
+    if has_next and not selected.is_empty() {
+        let cursor = Cursor { operation: context.operation.id, scope: context.scope, filters, order, last: row_key(selected[selected.len() - 1], order) }
+        info["nextCursor"] = VText(encode(cursor))
+    }
+    Ok(VObject(["items": VList(selected), "pageInfo": VObject(info)]))
+}

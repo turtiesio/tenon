@@ -1,0 +1,108 @@
+import fple_catalog
+import fple_model
+import fple_validation
+import fple_access
+import fple_routes
+import fple_frontend
+import fple_calendar
+import source_validation
+
+fn expect(condition: Bool, message: Str) { if not condition { panic(message) } }
+fn identity(permissions: List[Str]) -> fple_model.Identity {
+    fple_model.Identity { subject: "user", kind: UserActor, enabled: true, bindings: [fple_model.Binding { scope_kind: "seller.account", scope_id: "shop", permissions }] }
+}
+fn contracts(catalog: fple_model.Catalog) {
+    expect(catalog.operations.len() == 711 and catalog.routes.len() == 107 and catalog.pages.len() == 171, "source surface changed")
+    expect(catalog.entities.len() == 163 and catalog.signals.len() == 26 and catalog.host_ports.len() == 49, "source storage or effects changed")
+    var ids: Set[Str] = Set.new()
+    var entities: Set[Str] = Set.new()
+    for entity in catalog.entities { expect(entities.insert(entity.name), "duplicate entity") }
+    for operation in catalog.operations { expect(ids.insert(operation.id), "duplicate operation") }
+    for operation in catalog.operations {
+        expect(operation.input_schema >= 0 and operation.input_schema < catalog.schemas.len(), "input schema reference")
+        expect(operation.output_schema >= 0 and operation.output_schema < catalog.schemas.len(), "output schema reference")
+        for entity in operation.reads + operation.writes { expect(entities.contains(entity), "unknown owner entity") }
+        for query in operation.invalidates { expect(ids.contains(query), "unknown invalidation query") }
+    }
+    for route in catalog.routes { for reference in route.operations { expect(ids.contains(reference), "unknown HTTP operation") } }
+    for page in catalog.pages { for reference in page.operations { expect(ids.contains(reference), "unknown frontend operation") } }
+}
+fn validation(catalog: fple_model.Catalog) {
+    let validator = fple_validation.Validator.new(catalog.schemas, fn(text) => text == "https://example.com").unwrap()
+    var operations: Map[Str, fple_model.Operation] = [:]
+    for operation in catalog.operations { operations[operation.id] = operation }
+    let cases = source_validation.cases().unwrap()
+    expect(cases.len() == 2709, "oracle case count changed")
+    for (id, schema, input, valid, normalized) in cases {
+        let operation = operations[id]
+        let result = validator.validate(schema, input, operation.input_validation, "request.input")
+        expect(result.is_ok() == valid, "source validation differs for {id}: {result}")
+        if valid { expect(result == Ok(normalized), "source normalization differs for {id}") }
+    }
+}
+fn authority(catalog: fple_model.Catalog) {
+    var operations: Map[Str, fple_model.Operation] = [:]
+    for operation in catalog.operations { operations[operation.id] = operation }
+    let seller = identity(["seller.catalog.write"])
+    let scope = VObject(["sellerId": VText("shop")])
+    expect(fple_access.authorize(Some(seller), operations["catalog.product.create"], scope).is_ok(), "scoped writer denied")
+    expect(fple_access.authorize(Some(seller), operations["catalog.stock.adjust"], scope).is_err(), "catalog write granted stock write")
+    expect(fple_access.authorize(Some(seller), operations["catalog.product.create"], VObject(["sellerId": VText("other")])).is_err(), "cross-shop write admitted")
+    expect(fple_access.authorize(Some(identity(["*"])), operations["announcement.notice.create-draft"], VObject(["platformId": VText("root")])).is_err(), "shop wildcard escaped scope")
+    let guest = fple_model.Identity { kind: GuestActor, bindings: [], ..seller }
+    expect(fple_access.authorize(Some(guest), operations["cart.item.add"], VObject([:])).is_err(), "guest became a user")
+    expect(fple_access.authorize(None, operations["terms.version.list-public"], VObject([:])).is_ok(), "public operation required login")
+    expect(fple_access.authorize(Some(fple_model.Identity { enabled: false, ..seller }), operations["cart.item.add"], VObject([:])).is_err(), "disabled subject admitted")
+}
+fn routes(catalog: fple_model.Catalog) {
+    let found = fple_routes.http(catalog.routes, "/api/shop-settlement-sales/shop/detail", "POST").unwrap()
+    expect(found.key == "shop.settlement-sales.detail" and found.parameters["sellerId"] == "shop", "HTTP parameter dispatch")
+    expect(fple_routes.http(catalog.routes, "/api/coupons/claim", "GET") == None, "wrong HTTP method admitted")
+    expect(fple_routes.http(catalog.routes, "/api/ir/cart.item.list", "GET").unwrap().key == "$operationId", "RPC operation dispatch")
+    expect(fple_routes.http(catalog.routes, "/media/a/b", "HEAD").unwrap().parameters["_splat"] == "a/b", "media catchall dispatch")
+    expect(fple_routes.page(catalog.pages, "/shop/admin/customers/customer").is_some(), "frontend non-nested route missing")
+    expect(fple_routes.page(catalog.pages, "/shop/checkout").is_some(), "checkout route missing")
+    expect(fple_routes.page(catalog.pages, "/unknown-path/a/b/c/d") == None, "unknown page fabricated")
+}
+fn frontend() {
+    expect(fple_access.platform_screen_permission("/admin/sellers") == "platform.sellers.read", "seller list permission")
+    expect(fple_access.platform_screen_permission("/admin/sellers/id") == "platform.admin", "seller detail permission widened")
+    let sale = fple_model.Identity { subject: "sales", kind: UserActor, enabled: true, bindings: [fple_model.Binding { scope_kind: "platform", scope_id: "root", permissions: ["platform.sellers.read"] }] }
+    let context = fple_frontend.ScreenContext { pathname: "/admin/dashboard", loading: false, identity: Some(sale), platform_id: "root", shop_id: None, shop_missing: false, owner_terms_missing: false }
+    expect(fple_frontend.gate(context) == RedirectScreen("/admin/sellers"), "limited admin landing")
+    expect(fple_frontend.gate(fple_frontend.ScreenContext { pathname: "/shop/admin/login", identity: None, ..context }) == ReadyScreen, "seller login blocked itself")
+    expect(fple_frontend.gate(fple_frontend.ScreenContext { pathname: "/shop/admin/orders", identity: None, ..context }) == LoginScreen, "anonymous admin admitted")
+    expect(fple_frontend.login_required(VObject(["cause": VObject(["reason": VText("auth.session_required")])])), "nested login failure lost")
+    expect(fple_frontend.primary_claim_transition(["rejected", "processing", "canceled"]) == Some("processing"), "UI invented claim stage")
+    expect(not fple_frontend.show_first_order_cart(true, Some("seat")), "first-order seat entered common cart")
+    var prompt = fple_frontend.PromptState.new(VBool(false))
+    expect(prompt.ask(VText("first"), true).unwrap() == [SettlePrompt(0, VBool(false))], "prompt without host")
+    prompt.register("host")
+    let _ = prompt.ask(VText("first"), true).unwrap()
+    let _ = prompt.ask(VText("second"), true).unwrap()
+    expect(prompt.answer(1, VBool(true)).is_empty() and prompt.read().unwrap().id == 2, "stale prompt answer settled new prompt")
+    let _ = prompt.release("host")
+    expect(prompt.read() == None and prompt.answer(2, VBool(true)).is_empty(), "unmounted prompt leaked")
+}
+fn dates() {
+    let compact = fple_calendar.parse("20261028010203").unwrap()
+    expect(fple_calendar.parse("2026-10-28T01:02:03Z") == Some(compact), "compact UTC semantics")
+    expect(fple_calendar.parse("2026-10-28T10:02:03+09:00") == Some(compact), "explicit zone semantics")
+    expect(fple_calendar.parse("2026-02-29") == None and fple_calendar.parse("2024-02-29").is_some(), "calendar day validation")
+    expect(fple_calendar.parse("0099-01-01") == None, "Date.UTC year compatibility")
+    expect(fple_calendar.parse("2026-10-28T01:02:03.123456789Z").unwrap().milliseconds == compact.milliseconds + 123, "millisecond truncation")
+    let day = fple_calendar.kst_day(compact.milliseconds).unwrap()
+    let (start, end) = fple_calendar.kst_day_window(day).unwrap()
+    expect(start <= compact.milliseconds and compact.milliseconds < end and end - start == 86_400_000, "KST day boundaries")
+}
+fn main(sys: Sys) {
+    let catalog = fple_catalog.load().unwrap()
+    contracts(catalog)
+    validation(catalog)
+    authority(catalog)
+    routes(catalog)
+    frontend()
+    dates()
+    sys.console.println("full surface: 711 operations, 107 HTTP routes, 171 pages, 163 entities, 49 ports")
+    sys.console.println("parity: 2709 source-validator cases; scoped access, route dispatch, frontend gates, UTC/KST")
+}

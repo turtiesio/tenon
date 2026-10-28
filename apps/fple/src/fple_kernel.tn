@@ -1,0 +1,164 @@
+// Full-contract execution boundary. Implementations are Tenon owner modules;
+// unknown behavior is rejected, never replaced with generic CRUD or a host verdict.
+import fple_model
+import fple_catalog
+import fple_validation
+import fple_calendar
+import fple_access
+import fple_store
+import fple_content
+import fple_content_reads
+
+pub struct Permit {
+    root: Str, revision: Int, session: Str, identity: Option[fple_model.Identity], call: fple_model.Call,
+}
+pub struct Receipt {
+    pub root: Str, pub revision: Int, pub source_digest: Str, pub actor: Option[fple_model.Identity],
+    pub call: fple_model.Call, pub now: Str, pub plan: fple_model.Plan,
+}
+pub unique struct Application {
+    root: Str, revision: Int, catalog: fple_model.Catalog, operations: Map[Str, fple_model.Operation],
+    validator: fple_validation.Validator, store: fple_store.Store,
+    resolve: fn(Str) -> Option[fple_model.Identity], receipts: Map[(Str, Str), Receipt],
+}
+pub fn Application.new(root: Str, resolve: fn(Str) -> Option[fple_model.Identity], records: List[fple_model.Record],
+    verify: fn(fple_model.Record) -> Bool, url: fn(Str) -> Bool) -> Result[Application, fple_model.Failure] {
+    if root == "" { return Err(BadInput("root", "root identity required")) }
+    for record in records { if not verify(record) { return Err(AccessDenied("untrusted initial record")) } }
+    let catalog = fple_catalog.load().map_err(HostFailure)?
+    let validator = fple_validation.Validator.new(catalog.schemas, url)?
+    let store = fple_store.Store.new(catalog, validator, records)?
+    var operations: Map[Str, fple_model.Operation] = [:]
+    for operation in catalog.operations {
+        if operations.contains(operation.id) { return Err(StateConflict("duplicate operation")) }
+        operations[operation.id] = operation
+    }
+    Ok(Application { root, revision: 0, catalog, operations, validator, store, resolve, receipts: [:] })
+}
+pub fn Permit.description(self) -> fple_model.Call { self.call }
+pub fn implementations() -> List[Str] { fple_content.implementations() + fple_content_reads.implementations() }
+pub fn missing_implementations(catalog: fple_model.Catalog) -> List[Str] {
+    let present = implementations()
+    catalog.operations.filter(fn(operation) => not present.contains(operation.id)).map(fn(operation) => operation.id)
+}
+fn operation(application: ref Application, id: Str) -> Result[fple_model.Operation, fple_model.Failure] {
+    application.operations.get(id).ok_or(NotFound("operation {id}"))
+}
+fn receipt_key(op: fple_model.Operation, call: fple_model.Call) -> Result[Option[(Str, Str)], fple_model.Failure] {
+    if op.idempotency == "none" { return Ok(None) }
+    if let Some(key) = call.key {
+        if key == "" { return Err(BadInput("key", "empty idempotency key")) }
+        return Ok(Some((op.id, key)))
+    }
+    if op.idempotency == "required" { return Err(BadInput("key", "idempotency key required")) }
+    Ok(None)
+}
+fn authenticated(application: ref Application, session: Str, op: fple_model.Operation, scope: fple_model.Value) -> Result[Option[fple_model.Identity], fple_model.Failure] {
+    let actor = (application.resolve)(session)
+    fple_access.authorize(actor, op, scope)?
+    Ok(actor)
+}
+fn prepare(application: ref Application, actor: Option[fple_model.Identity], call: fple_model.Call, now: Str) -> Result[fple_model.Plan, fple_model.Failure] {
+    if fple_calendar.parse(now) == None { return Err(BadInput("now", "expected datetime")) }
+    let op = operation(application, call.operation)?
+    if not implementations().contains(op.id) { return Err(Unsupported("behavior not ported: {op.id}")) }
+    let scope = if op.scope_schema >= 0 { application.validator.validate(op.scope_schema, call.scope, [], "scope")? } else { call.scope }
+    fple_access.authorize(actor, op, scope)?
+    let input = application.validator.validate(op.input_schema, call.input, op.input_validation, "request.input")?
+    let next = if op.kind == "query" { application.revision } else { application.revision.checked_add(1).ok_or(StateConflict("application revision exhausted"))? }
+    let id = "{application.root}:{next}:{op.id}"
+    let context = fple_model.Context { operation: op, actor, scope, input, id, now }
+    let checked = if fple_content_reads.implementations().contains(op.id) {
+        fple_content_reads.plan(application.store.view_with(op, fple_content_reads.extra_reads(op.id)), context)?
+    } else { fple_content.plan(application.store.view(op), context)? }
+    for rule in op.guards { if not checked.checked.contains(rule) { return Err(Unsupported("unchecked rule: {op.id}: {rule}")) } }
+    let plan = checked.plan
+    let _ = application.validator.validate(op.output_schema, plan.result, op.output_validation, "response.output")?
+    check_effects(application, op, plan)?
+    var candidate = application.store
+    candidate.apply(op, plan.changes)?
+    Ok(plan)
+}
+fn check_effects(application: ref Application, op: fple_model.Operation, plan: fple_model.Plan) -> Result[Unit, fple_model.Failure] {
+    if op.kind == "query" and (not plan.changes.is_empty() or not plan.signals.is_empty() or not plan.calls.is_empty()) { return Err(AccessDenied("query attempted effects")) }
+    for signal in plan.signals {
+        if not op.events.contains(signal.name) { return Err(AccessDenied("undeclared event: {signal.name}")) }
+        var found = false
+        for spec in application.catalog.signals {
+            if spec.name == signal.name { let _ = application.validator.validate(spec.schema, signal.data, spec.validation, "event")?; found = true }
+        }
+        if not found { return Err(Unsupported("event {signal.name}")) }
+    }
+    for call in plan.calls {
+        if not op.ports.contains(call.port) { return Err(AccessDenied("undeclared host port: {call.port}")) }
+        var found_port = false
+        for spec in application.catalog.host_ports {
+            if spec.name == call.port { let _ = application.validator.validate(spec.input_schema, call.input, spec.input_validation, "port.input")?; found_port = true }
+        }
+        if not found_port { return Err(Unsupported("host port {call.port}")) }
+    }
+    Ok(())
+}
+pub fn allow(application: ref Application, session: Str, call: fple_model.Call, now: Str) -> Result[Permit, fple_model.Failure] {
+    let op = operation(application, call.operation)?
+    let identity = authenticated(application, session, op, call.scope)?
+    let key = receipt_key(op, call)?
+    let previous = match key { Some(k) => application.receipts.get(k), None => None }
+    if let Some(existing) = previous {
+        same_receipt(existing, identity, call)?
+    } else { let _ = prepare(application, identity, call, now)? }
+    Ok(Permit { root: application.root, revision: application.revision, session, identity, call })
+}
+fn same_receipt(receipt: Receipt, identity: Option[fple_model.Identity], call: fple_model.Call) -> Result[Unit, fple_model.Failure] {
+    if receipt.actor != identity or receipt.call != call { return Err(StateConflict("idempotency key reused")) }
+    Ok(())
+}
+pub fn allowed(application: ref Application, session: Str, calls: List[fple_model.Call], now: Str) -> List[Permit] {
+    var permitted: List[Permit] = []
+    for call in calls { if let Ok(permit) = allow(application, session, call, now) { permitted.push(permit) } }
+    permitted
+}
+pub fn Application.commit(mut self, permit: Permit, now: Str) -> Result[Receipt, fple_model.Failure] {
+    if permit.root != self.root { return Err(AccessDenied("foreign application permit")) }
+    let op = operation(self, permit.call.operation)?
+    let identity = authenticated(self, permit.session, op, permit.call.scope)?
+    if identity != permit.identity { return Err(AccessDenied("principal changed")) }
+    let key = receipt_key(op, permit.call)?
+    let previous = match key { Some(k) => self.receipts.get(k), None => None }
+    if let Some(existing) = previous { same_receipt(existing, identity, permit.call)?; return Ok(existing) }
+    if permit.revision != self.revision { return Err(OldRevision) }
+    let plan = prepare(self, identity, permit.call, now)?
+    let revision = if op.kind == "query" { self.revision } else { self.revision.checked_add(1).ok_or(StateConflict("application revision exhausted"))? }
+    let receipt = Receipt { root: self.root, revision, source_digest: self.catalog.source_digest, actor: identity, call: permit.call, now, plan }
+    self.store.apply(op, plan.changes)?
+    self.revision = revision
+    if let Some(invocation) = key { self.receipts[invocation] = receipt }
+    Ok(receipt)
+}
+
+pub fn query(application: ref Application, session: Str, call: fple_model.Call, now: Str) -> Result[fple_model.Value, fple_model.Failure] {
+    let op = operation(application, call.operation)?
+    if op.kind != "query" { return Err(AccessDenied("read requires query operation")) }
+    let actor = authenticated(application, session, op, call.scope)?
+    Ok(prepare(application, actor, call, now)?.result)
+}
+pub fn Application.restore(root: Str, resolve: fn(Str) -> Option[fple_model.Identity], records: List[fple_model.Record],
+    verify_record: fn(fple_model.Record) -> Bool, url: fn(Str) -> Bool, history: List[Receipt], verify_receipt: fn(Receipt) -> Bool) -> Result[Application, fple_model.Failure] {
+    var application = Application.new(root, resolve, records, verify_record, url)?
+    for receipt in history {
+        if not verify_receipt(receipt) { return Err(AccessDenied("untrusted receipt")) }
+        if receipt.root != root or receipt.source_digest != application.catalog.source_digest { return Err(StateConflict("receipt definition or root mismatch")) }
+        let op = operation(application, receipt.call.operation)?
+        if op.kind == "query" { return Err(StateConflict("query in mutation history")) }
+        let next = application.revision.checked_add(1).ok_or(StateConflict("application revision exhausted"))?
+        if receipt.revision != next { return Err(StateConflict("receipt revision gap")) }
+        let key = receipt_key(op, receipt.call)?
+        if let Some(invocation) = key { if application.receipts.contains(invocation) { return Err(StateConflict("duplicate receipt key")) } }
+        let plan = prepare(application, receipt.actor, receipt.call, receipt.now)?
+        if plan != receipt.plan { return Err(StateConflict("receipt plan mismatch")) }
+        application.store.apply(op, plan.changes)?
+        application.revision = next
+        if let Some(invocation) = key { application.receipts[invocation] = receipt }
+    }
+    Ok(application)
+}

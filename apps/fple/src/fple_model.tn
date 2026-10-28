@@ -1,0 +1,104 @@
+// The shared, host-neutral vocabulary of the full application definition.
+pub enum Value {
+    VNull, VBool(Bool), VInt(Int), VDecimal(Float), VText(Str),
+    VList(List[Value]), VObject(Map[Str, Value]),
+}
+pub enum Failure {
+    BadInput(Str, Str), AccessDenied(Str), NotFound(Str), Unsupported(Str),
+    StateConflict(Str), OldRevision, HostFailure(Str),
+}
+pub enum ActorKind { AnonymousActor, GuestActor, UserActor, SystemActor }
+pub struct Binding {
+    pub scope_kind: Str, pub scope_id: Str, pub permissions: List[Str],
+}
+pub struct Identity {
+    pub subject: Str, pub kind: ActorKind, pub enabled: Bool, pub bindings: List[Binding],
+}
+pub struct Operation {
+    pub id: Str, pub owner: Str, pub kind: Str, pub version: Int, pub idempotency: Str,
+    pub access: Str, pub scope_kind: Str, pub scope_field: Str, pub scope_schema: Int,
+    pub permission: Str, pub input_schema: Int, pub output_schema: Int,
+    pub reads: List[Str], pub writes: List[Str], pub events: List[Str], pub ports: List[Str],
+    pub guards: List[Str], pub invalidates: List[Str], pub cache: Value,
+    pub input_validation: List[Value], pub output_validation: List[Value], pub source: Str,
+}
+pub struct HttpRoute {
+    pub key: Str, pub path: Str, pub methods: List[Str], pub principal: Value,
+    pub policy: Value, pub operations: List[Str],
+}
+pub struct Page {
+    pub path: Str, pub source: Str, pub operations: List[Str],
+}
+pub struct RoleDefault {
+    pub scope: Str, pub key: Str, pub label: Str, pub permissions: List[Str], pub system: Bool,
+}
+pub struct Catalog {
+    pub schemas: List[Value], pub operations: List[Operation], pub routes: List[HttpRoute],
+    pub pages: List[Page], pub roles: List[RoleDefault], pub source_revision: Str, pub source_digest: Str,
+    pub entities: List[EntitySpec], pub signals: List[SignalSpec], pub host_ports: List[PortSpec],
+}
+pub struct EntitySpec {
+    pub name: Str, pub schema: Int, pub immutable: List[Str], pub indexes: List[Value],
+    pub uniqueness: List[Value], pub invariants: List[Value], pub version: Int,
+    pub validation: List[Value],
+}
+pub struct SignalSpec { pub name: Str, pub schema: Int, pub validation: List[Value], pub metadata: Value }
+pub struct PortSpec { pub name: Str, pub input_schema: Int, pub output_schema: Int, pub input_validation: List[Value], pub output_validation: List[Value] }
+pub struct Record {
+    pub entity: Str, pub id: Str, pub revision: Int, pub data: Value,
+}
+pub enum Change { CreateRecord(Str, Str, Value), ReplaceRecord(Str, Str, Int, Value), DeleteRecord(Str, Str, Int) }
+pub struct Signal { pub name: Str, pub data: Value }
+pub struct HostCall { pub port: Str, pub operation: Str, pub key: Str, pub input: Value }
+pub struct Plan { pub result: Value, pub changes: List[Change], pub signals: List[Signal], pub calls: List[HostCall] }
+pub struct Call { pub operation: Str, pub scope: Value, pub input: Value, pub key: Option[Str] }
+pub struct Context { pub operation: Operation, pub actor: Option[Identity], pub scope: Value, pub input: Value, pub id: Str, pub now: Str }
+pub struct CheckedPlan { pub plan: Plan, pub checked: List[Str] }
+
+pub fn Value.field(self, name: Str) -> Option[Value] {
+    match self { VObject(fields) => fields.get(name), _ => None }
+}
+pub fn Value.text(self) -> Option[Str] { match self { VText(text) => Some(text), _ => None } }
+pub fn Value.integer(self) -> Option[Int] { match self { VInt(number) => Some(number), _ => None } }
+pub fn Value.decimal(self) -> Option[Float] {
+    match self { VInt(number) => Some(number.to_float()), VDecimal(number) => Some(number), _ => None }
+}
+pub fn Value.boolean(self) -> Option[Bool] { match self { VBool(value) => Some(value), _ => None } }
+pub fn Value.list(self) -> Option[List[Value]] { match self { VList(items) => Some(items), _ => None } }
+pub fn Value.object(self) -> Option[Map[Str, Value]] { match self { VObject(fields) => Some(fields), _ => None } }
+pub fn Value.at(self, path: List[Str]) -> Option[Value] {
+    var current = self
+    for key in path {
+        current = match current {
+            VObject(fields) => fields.get(key)?,
+            VList(items) => items.get(key.to_int()?)?,
+            _ => return None,
+        }
+    }
+    Some(current)
+}
+pub fn Value.with(self, name: Str, value: Value) -> Result[Value, Failure] {
+    var fields = self.object().ok_or(BadInput(name, "expected object"))?
+    fields[name] = value
+    Ok(VObject(fields))
+}
+pub fn Value.with_fields(self, updates: List[(Str, Value)]) -> Result[Value, Failure] {
+    var fields = self.object().ok_or(BadInput("$", "expected object"))?
+    for (key, value) in updates { fields[key] = value }
+    Ok(VObject(fields))
+}
+pub fn Value.without(self, names: List[Str]) -> Result[Value, Failure] {
+    var fields = self.object().ok_or(BadInput("$", "expected object"))?
+    for name in names { let _ = fields.remove(name) }
+    Ok(VObject(fields))
+}
+pub fn field(value: Value, name: Str) -> Result[Value, Failure] { value.field(name).ok_or(BadInput(name, "missing required field")) }
+pub fn text(value: Value, name: Str) -> Result[Str, Failure] { field(value, name)?.text().ok_or(BadInput(name, "expected string")) }
+pub fn integer(value: Value, name: Str) -> Result[Int, Failure] { field(value, name)?.integer().ok_or(BadInput(name, "expected integer")) }
+pub fn boolean(value: Value, name: Str) -> Result[Bool, Failure] { field(value, name)?.boolean().ok_or(BadInput(name, "expected boolean")) }
+pub fn object(fields: List[(Str, Value)]) -> Value {
+    var values: Map[Str, Value] = [:]
+    for (key, value) in fields { values[key] = value }
+    VObject(values)
+}
+pub fn empty_plan(result: Value) -> Plan { Plan { result, changes: [], signals: [], calls: [] } }

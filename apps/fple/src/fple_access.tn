@@ -1,0 +1,57 @@
+// One cross-tier authorization policy. No permission prefix implies authority.
+import fple_model
+
+pub fn enabled(identity: fple_model.Identity) -> Result[Unit, fple_model.Failure] {
+    if not identity.enabled { return Err(AccessDenied("auth.subject_disabled")) }
+    Ok(())
+}
+pub fn has_permission(identity: fple_model.Identity, scope_kind: Str, scope_id: Str, permission: Str) -> Bool {
+    if not identity.enabled { return false }
+    for binding in identity.bindings {
+        if binding.scope_kind == scope_kind and binding.scope_id == scope_id
+            and (binding.permissions.contains("*") or binding.permissions.contains(permission)) { return true }
+    }
+    false
+}
+pub fn authorize(identity: Option[fple_model.Identity], operation: fple_model.Operation, scope: fple_model.Value) -> Result[Unit, fple_model.Failure] {
+    if operation.access == "public" { return Ok(()) }
+    let actor = identity.ok_or(AccessDenied("actor is required"))?
+    enabled(actor)?
+    match operation.access {
+        "actor" => { if actor.kind != AnonymousActor { return Ok(()) } },
+        "session" => { if actor.kind == GuestActor or actor.kind == UserActor { return Ok(()) } },
+        "user" => { if actor.kind == UserActor { return Ok(()) } },
+        "system" => { if actor.kind == SystemActor { return Ok(()) } },
+        "permit" => {
+            if actor.subject == "" { return Err(AccessDenied("actor is required")) }
+            let id = scope.field(operation.scope_field).and_then(fn(v) => v.text()).ok_or(BadInput("scope", "object id is required"))?
+            if id == "" { return Err(BadInput("scope", "object id is required")) }
+            if has_permission(actor, operation.scope_kind, id, operation.permission) { return Ok(()) }
+            return Err(AccessDenied("permission is required"))
+        },
+        _ => return Err(Unsupported("access mode {operation.access}")),
+    }
+    Err(AccessDenied("{operation.access} actor is required"))
+}
+pub fn permissions(identity: fple_model.Identity, scope_kind: Str, scope_id: Str) -> List[Str] {
+    var found: List[Str] = []
+    if not identity.enabled { return found }
+    for binding in identity.bindings {
+        if binding.scope_kind == scope_kind and binding.scope_id == scope_id {
+            for permission in binding.permissions { if not found.contains(permission) { found.push(permission) } }
+        }
+    }
+    found
+}
+pub fn platform_screen_permission(path: Str) -> Str {
+    if path == "/admin/sellers" { return "platform.sellers.read" }
+    if path.starts_with("/admin/orders") { return "platform.orders.read" }
+    if path.starts_with("/admin/settlement") { return "platform.settlement.read" }
+    "platform.admin"
+}
+pub fn first_platform_screen(identity: fple_model.Identity, platform_id: Str) -> Option[Str] {
+    for (path, permission) in [("/admin/dashboard", "platform.admin"), ("/admin/sellers", "platform.sellers.read"), ("/admin/orders", "platform.orders.read"), ("/admin/settlement", "platform.settlement.read")] {
+        if has_permission(identity, "platform", platform_id, permission) { return Some(path) }
+    }
+    None
+}

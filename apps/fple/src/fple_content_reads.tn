@@ -1,0 +1,78 @@
+import fple_model
+import fple_store
+import fple_pagination
+
+pub fn implementations() -> List[Str] {
+    ["terms.version.list-admin", "terms.version.list-public", "terms.agreement.list-my", "terms.agreement.required-missing",
+        "announcement.notice.list-admin", "support.inquiry.list-admin", "support.lead.list-admin"]
+}
+pub fn extra_reads(id: Str) -> List[Str] {
+    // Source countMissingRequired performs these reads through its read port;
+    // its published readEntities metadata is empty.
+    if id == "terms.agreement.required-missing" { ["terms.version", "terms.agreement"] } else { [] }
+}
+pub fn plan(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.CheckedPlan, fple_model.Failure] {
+    let id = context.operation.id
+    let data = match id {
+        "terms.version.list-admin" | "terms.version.list-public" => versions(view, context)?,
+        "terms.agreement.list-my" => agreements(view, context)?,
+        "terms.agreement.required-missing" => missing(view, context)?,
+        "announcement.notice.list-admin" => notices(view, context)?,
+        "support.inquiry.list-admin" => inquiries(view, context)?,
+        "support.lead.list-admin" => fple_pagination.page(context, view.list("support.lead")?.map(fn(row) => row.data), [("createdAt", true), ("id", true)], 50, 100)?,
+        _ => return Err(Unsupported(id)),
+    }
+    Ok(fple_model.CheckedPlan { checked: [], plan: fple_model.empty_plan(data) })
+}
+fn input_matches(input: fple_model.Value, row: fple_model.Value, fields: List[Str]) -> Bool {
+    for field in fields { if let Some(expected) = input.field(field) { if row.field(field) != Some(expected) { return false } } }
+    true
+}
+fn versions(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.Value, fple_model.Failure] {
+    let public = context.operation.id == "terms.version.list-public"
+    let rows = view.list("terms.version")?.map(fn(row) => row.data).filter(fn(row) =>
+        input_matches(context.input, row, ["kind", "audience", "status"]) and (not public or row.field("status") == Some(VText("published"))))
+    let limit = context.input.field("limit").and_then(fn(v) => v.integer()).unwrap_or(50)
+    let adjusted = if public { fple_model.Context { input: context.input.with("limit", VInt(limit.min(100)))?, ..context } } else { context }
+    fple_pagination.page(adjusted, rows, [("createdAt", true), ("id", true)], 50, INT_MAX)
+}
+fn agreements(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.Value, fple_model.Failure] {
+    let subject = context.actor.ok_or(AccessDenied("user is required"))?.subject
+    let rows = view.list("terms.agreement")?.filter(fn(row) => row.data.field("subjectId") == Some(VText(subject))).map(fn(row) => row.data)
+    let limit = context.input.field("limit").and_then(fn(v) => v.integer()).unwrap_or(50)
+    fple_pagination.page(fple_model.Context { input: context.input.with("limit", VInt(limit.min(100)))?, ..context }, rows, [("agreedAt", true), ("id", true)], 50, INT_MAX)
+}
+fn missing(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.Value, fple_model.Failure] {
+    let subject = context.actor.ok_or(AccessDenied("user is required"))?.subject
+    let audience = fple_model.text(context.input, "audience")?
+    let all_versions = view.list("terms.version")?.map(fn(row) => row.data)
+    let agreements = view.list("terms.agreement")?.map(fn(row) => row.data)
+    var count = 0
+    for selected in [audience, "all"] {
+        var candidates = all_versions.filter(fn(row) => row.field("audience") == Some(VText(selected)) and row.field("status") == Some(VText("published")))
+        candidates.sort_by_desc(fn(row) => (row.field("createdAt").and_then(fn(v) => v.text()).unwrap_or(""), row.field("id").and_then(fn(v) => v.text()).unwrap_or("")))
+        candidates = candidates.slice(0, candidates.len().min(100))
+        for version in candidates {
+            if version.field("required") != Some(VBool(true)) { continue }
+            let stamp = version.field("publishedAt").and_then(fn(v) => v.text()).unwrap_or(version.field("createdAt").and_then(fn(v) => v.text()).unwrap_or(""))
+            let superseded = candidates.any(fn(other) => other.field("kind") == version.field("kind")
+                and other.field("publishedAt").and_then(fn(v) => v.text()).unwrap_or(other.field("createdAt").and_then(fn(v) => v.text()).unwrap_or("")) > stamp)
+            if superseded { continue }
+            if not agreements.any(fn(row) => row.field("subjectId") == Some(VText(subject)) and row.field("termsVersionId") == version.field("id")) { count += 1 }
+        }
+    }
+    Ok(VObject(["missingRequiredCount": VInt(count)]))
+}
+fn notices(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.Value, fple_model.Failure] {
+    var rows: List[fple_model.Value] = []
+    for record in view.list("announcement.notice")? {
+        if not input_matches(context.input, record.data, ["status"]) { continue }
+        let value = record.data.without(["authorSubjectId"])?
+        rows.push(value.with("category", value.field("category").unwrap_or(VText("news")))?)
+    }
+    fple_pagination.page(context, rows, [("createdAt", true), ("id", true)], 50, INT_MAX)
+}
+fn inquiries(view: fple_store.View, context: fple_model.Context) -> Result[fple_model.Value, fple_model.Failure] {
+    let rows = view.list("support.inquiry")?.map(fn(row) => row.data).filter(fn(row) => input_matches(context.input, row, ["status"]))
+    fple_pagination.page(context, rows, [("createdAt", true), ("id", true)], 50, 100)
+}

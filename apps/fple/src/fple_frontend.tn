@@ -1,0 +1,80 @@
+import fple_model
+import fple_access
+
+pub enum ScreenGate { LoadingScreen, LoginScreen, MissingShopScreen, DeniedScreen, ConsentScreen, RedirectScreen(Str), ReadyScreen }
+pub struct ScreenContext {
+    pub pathname: Str, pub loading: Bool, pub identity: Option[fple_model.Identity],
+    pub platform_id: Str, pub shop_id: Option[Str], pub shop_missing: Bool,
+    pub owner_terms_missing: Bool,
+}
+pub fn gate(context: ScreenContext) -> ScreenGate {
+    let parts = context.pathname.split("/").filter(fn(p) => p != "")
+    let platform = parts.first() == Some("admin")
+    let shop = parts.get(1) == Some("admin")
+    if not platform and not shop { return ReadyScreen }
+    if shop and parts.get(2) == Some("login") { return ReadyScreen }
+    if context.loading { return LoadingScreen }
+    let Some(identity) = context.identity else { return LoginScreen }
+    if identity.kind != UserActor { return LoginScreen }
+    if platform {
+        let required = fple_access.platform_screen_permission(context.pathname)
+        if fple_access.has_permission(identity, "platform", context.platform_id, required) { return ReadyScreen }
+        let redirect = fple_access.first_platform_screen(identity, context.platform_id)
+        if let Some(path) = redirect { if path != context.pathname { return RedirectScreen(path) } }
+        return DeniedScreen
+    }
+    if context.shop_missing { return MissingShopScreen }
+    let Some(shop_id) = context.shop_id else { return LoadingScreen }
+    if not fple_access.has_permission(identity, "seller.account", shop_id, "seller.read") { return DeniedScreen }
+    if context.owner_terms_missing { return ConsentScreen }
+    ReadyScreen
+}
+pub fn login_required(error: fple_model.Value) -> Bool { login_failure(error, 0) }
+fn login_failure(error: fple_model.Value, depth: Int) -> Bool {
+    if depth > 8 { return false }
+    if error == VText("login_required") or error == VText("auth.session_required") { return true }
+    if error.object() == None { return false }
+    if error.field("status") == Some(VInt(401)) { return true }
+    if error.field("code") == Some(VText("forbidden")) and error.field("message") == Some(VText("user is required")) { return true }
+    for field in ["code", "reason", "message", "error", "cause"] {
+        if let Some(value) = error.field(field) { if login_failure(value, depth + 1) { return true } }
+    }
+    false
+}
+pub fn primary_claim_transition(available: List[Str]) -> Option[Str] {
+    for transition in available { if transition != "rejected" and transition != "canceled" { return Some(transition) } }
+    None
+}
+pub fn show_first_order_cart(cart_enabled: Bool, seat: Option[Str]) -> Bool { cart_enabled and seat == None }
+
+// A host-neutral confirmation/prompt lifecycle. Adapters resolve promises and
+// render controls from these effects; an old answer cannot settle a newer ask.
+pub enum PromptEffect { PresentPrompt(Int, fple_model.Value), SettlePrompt(Int, fple_model.Value), DismissPrompt(Int) }
+pub struct Prompt { pub id: Int, pub request: fple_model.Value }
+pub struct PromptState { hosts: Set[Str], next_id: Int, pending: Option[Prompt], canceled: fple_model.Value }
+pub fn PromptState.new(canceled: fple_model.Value) -> PromptState { PromptState { hosts: Set.new(), next_id: 1, pending: None, canceled } }
+pub fn PromptState.register(mut self, host: Str) { let _ = self.hosts.insert(host) }
+pub fn PromptState.read(self) -> Option[Prompt] { self.pending }
+pub fn PromptState.release(mut self, host: Str) -> List[PromptEffect] {
+    let _ = self.hosts.remove(host)
+    if not self.hosts.is_empty() { return [] }
+    let Some(pending) = self.pending else { return [] }
+    self.pending = None
+    [DismissPrompt(pending.id), SettlePrompt(pending.id, self.canceled)]
+}
+pub fn PromptState.ask(mut self, request: fple_model.Value, browser: Bool) -> Result[List[PromptEffect], fple_model.Failure] {
+    if not browser or self.hosts.is_empty() { return Ok([SettlePrompt(0, self.canceled)]) }
+    var effects: List[PromptEffect] = []
+    if let Some(previous) = self.pending { effects.push(DismissPrompt(previous.id)); effects.push(SettlePrompt(previous.id, self.canceled)) }
+    let id = self.next_id
+    self.next_id = id.checked_add(1).ok_or(StateConflict("prompt id exhausted"))?
+    self.pending = Some(Prompt { id, request })
+    effects.push(PresentPrompt(id, request))
+    Ok(effects)
+}
+pub fn PromptState.answer(mut self, id: Int, value: fple_model.Value) -> List[PromptEffect] {
+    let Some(current) = self.pending else { return [] }
+    if current.id != id { return [] }
+    self.pending = None
+    [DismissPrompt(id), SettlePrompt(id, value)]
+}
