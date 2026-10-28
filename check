@@ -11,4 +11,5 @@ python3 tools/doctest.py
 python3 tools/vscode_grammar_check.py
 tools/programs.sh
 tools/selfhost.sh
+tools/fixpoint.sh
 tools/approvals_test.sh

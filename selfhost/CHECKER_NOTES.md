@@ -4,15 +4,18 @@
 the bootstrap's front end after parsing: module loading (bootstrap/src/main.rs
 `front`), bootstrap/src/check.rs, bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs, bootstrap/src/linear.rs and
 the Subst/unify code of bootstrap/src/types.rs. It prints `ok` or the first diagnostic
-as `PATH:LINE:COL: error: MESSAGE`. `tools/selfhost.sh` compares it with
-`tenon check` on every `.tn` file in the corpus.
+as `PATH:LINE:COL: error: MESSAGE`; `tenonc check FILE [ROOT]`
+(selfhost/tenonc.tn) is the same. `tools/selfhost.sh` compares it with
+`tenon check` on every `.tn` file in the corpus. `checker.check` returns the
+side tables the C backend uses (`Checked`; see EMITTER_NOTES.md).
 
 ## Modules
 
 | Module | Ports | Contents |
 |---|---|---|
-| `check.tn` | main.rs `front` | driver: reads the prelude and modules through `Fs`, parses, reports |
-| `checker.tn` | check.rs `check` | the phases in the bootstrap's order |
+| `check.tn` | main.rs | driver: prints `ok` or the diagnostic |
+| `front.tn` | main.rs `front` | reads the prelude and modules through `Fs`, parses, checks |
+| `checker.tn` | check.rs `check` | the phases in the bootstrap's order; returns `Checked` |
 | `ckast.tn` | ast.rs, check.rs `fix_paths`, `breaks` | checker syntax tree with file numbers and node ids |
 | `cktypes.tn` | types.rs | `Ty`, substitution, unification (no rollback, as in the bootstrap) |
 | `ckenv.tn` | check.rs `declare`, `resolve_type`, `lower_type`, ... | declarations, modules, privacy, `check_main` |
@@ -75,13 +78,14 @@ expressions, declarations, variants, parameters and imports.
 
 ## Testing
 
-- `tools/selfhost.sh` (part of `./check --fast`): every corpus file, including
+- `tools/selfhost.sh` (part of `./check --fast`, using `tenonc check`): every corpus file, including
   the extra cases in `tests/selfhost/` (one diagnostic per file, plus accepted
   programs with tricky constructs; `ckmod*.tn`, `ckbad*.tn`, `ckcycle.tn` and
   `ckmissingdep.tn` are modules imported by the `mod_*` cases).
 - `selfhost/checkfuzz.py COUNT SEED [-v]`: differential mutation testing.
   Corpus programs (mostly ones the bootstrap accepts) get token-level
-  mutations; both checkers must print the same first line. Disagreements are
+  mutations; both checkers must print the same first line (and accepted
+  mutants must emit the same C). Disagreements are
   saved under `.evidence/checkfuzz/`.
 
 ## Known disagreements

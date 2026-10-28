@@ -31,10 +31,10 @@ pub enum PK {
 pub struct Pat { pub id: Int, pub sp: Span, pub k: PK }
 
 pub enum EK {
-    XInt,
-    XFloat,
+    XInt(Int),
+    XFloat(Float),
     XBool(Bool),
-    XStr(List[Expr]),
+    XStr(List[Expr], List[Option[Str]]), // the interpolated expressions; the segments (None: the next expression)
     XUnit,
     XName(Str),
     XPath(Str, Str),
@@ -214,22 +214,27 @@ fn Conv.stmt(mut self, s: parser.Stmt) -> Stmt {
 
 fn Conv.expr(mut self, e: parser.Expr) -> Expr {
     let k = match e.kind {
-        EInt(_) => XInt,
-        EFloat(_) => XFloat,
+        EInt(i) => XInt(i),
+        EFloat(f) => XFloat(f),
         EBool(b) => XBool(b),
         EStr(segs) => {
             var xs: List[Expr] = []
+            var lits: List[Option[Str]] = []
             for s in segs {
                 match s {
-                    SExpr(x) => xs.push(self.expr(x)),
+                    SExpr(x) => {
+                        xs.push(self.expr(x))
+                        lits.push(None)
+                    }
                     SFmt(x, f) => {
                         let inner = self.expr(x)
                         xs.push(Expr { id: self.id(), sp: inner.sp, k: XFmt(inner, f) })
+                        lits.push(None)
                     }
-                    SLit(_) => {}
+                    SLit(l) => lits.push(Some(l)),
                 }
             }
-            XStr(xs)
+            XStr(xs, lits)
         }
         EUnit => XUnit,
         Name(n) => XName(n),
@@ -446,7 +451,7 @@ fn Fixer.expr(self, e0: Expr) -> Expr {
 
 fn Fixer.children(self, k: EK) -> EK {
     match k {
-        XStr(xs) => XStr(xs.map(fn(x) => self.expr(x))),
+        XStr(xs, lits) => XStr(xs.map(fn(x) => self.expr(x)), lits),
         XField(b, f) => XField(self.expr(b), f),
         XTField(b, i) => XTField(self.expr(b), i),
         XUnary(op, b) => XUnary(op, self.expr(b)),
@@ -555,7 +560,7 @@ fn block_exprs(b: Block) -> List[Expr] {
 // Direct sub-expressions, in bootstrap/src/interp.rs `visit_children` order.
 pub fn children(e: Expr) -> List[Expr] {
     match e.k {
-        XStr(xs) | XList(xs) | XTuple(xs) => xs,
+        XStr(xs, _) | XList(xs) | XTuple(xs) => xs,
         XField(b, _) | XTField(b, _) | XUnary(_, b) | XTry(b) | XMutArg(b) | XFmt(b, _) => [b],
         XIndex(a, b) | XBinary(_, a, b) => [a, b],
         XCall(c, args) | XMethod(c, _, args) => [c] + args,

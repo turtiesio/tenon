@@ -1,0 +1,316 @@
+// module (imported by emitbody.tn)
+// Self-hosted C backend, part 4: matches and patterns, `?`, closures and
+// function values. A port of bootstrap/src/emit_ctl.rs.
+
+import ckast
+import cktypes
+import ckenv
+import emit
+import emitbody
+import emitbi
+
+fn variant_of(m: mut emit.Em, p: ckast.Pat) -> Int {
+    match m.c.res.get(p.id) {
+        Some(RVariant(_, vi, _)) => vi,
+        _ => panic("emit: variant pattern without resolution"),
+    }
+}
+
+fn tuple_parts(t: cktypes.Ty) -> List[cktypes.Ty] {
+    match t {
+        Tup(ts) => ts,
+        _ => panic("emit: tuple pattern on " + t.show()),
+    }
+}
+
+pub fn pat_test(m: mut emit.Em, p: ckast.Pat, v: Str, t: cktypes.Ty) -> Str {
+    match p.k {
+        QWild | QBind(_) => "1",
+        QInt(i) => "(" + v + " == " + emit.int_lit(i) + ")",
+        QBool(b) => if b { "(" + v + ")" } else { "(!" + v + ")" },
+        QStr(s) => "tn_Str_eq(" + v + ", tn_str_lit(" + emit.c_string(s) + ", {s.len()}))",
+        QTuple(ps) => {
+            let ts = tuple_parts(t)
+            var parts: List[Str] = []
+            for i in 0..ps.len() { parts.push(pat_test(mut m, ps[i], "(" + v + ").f{i}", ts[i])) }
+            parts.join(" && ")
+        }
+        QVariant(_, _, ps) => {
+            let vi = variant_of(mut m, p)
+            let fts = m.enum_variants(t).unwrap()[vi].1
+            var parts = [m.tag(t, v) + " == {vi}"]
+            for j in 0..ps.len() {
+                let pv = m.payload(t, v, vi, j)
+                let s = pat_test(mut m, ps[j], pv, fts[j])
+                if s != "1" { parts.push(s) }
+            }
+            "(" + parts.join(" && ") + ")"
+        }
+        QOr(_) => panic("emit: or-patterns are expanded"),
+    }
+}
+
+// Bind pattern variables (retained) from value `v`, which is known to match.
+// `borrow`: the matched value outlives these bindings and cannot change
+// meanwhile, so they need no reference of their own.
+pub fn bind(m: mut emit.Em, p: ckast.Pat, v: Str, t: cktypes.Ty, borrow: Bool) {
+    match p.k {
+        QBind(n) => {
+            let tn = m.cty(t)
+            if borrow or m.trivial(t) {
+                m.line(tn + " v_" + n + " = " + v + ";")
+                return
+            }
+            m.line(tn + " v_" + n + " = " + tn + "_retain(" + v + ");")
+            m.reg_local("v_" + n, t)
+        }
+        QTuple(ps) => {
+            let ts = tuple_parts(t)
+            for i in 0..ps.len() { bind(mut m, ps[i], "(" + v + ").f{i}", ts[i], borrow) }
+        }
+        QVariant(_, _, ps) => {
+            let vi = variant_of(mut m, p)
+            let fts = m.enum_variants(t).unwrap()[vi].1
+            for j in 0..ps.len() {
+                let pv = m.payload(t, v, vi, j)
+                bind(mut m, ps[j], pv, fts[j], borrow)
+            }
+        }
+        _ => {}
+    }
+}
+
+pub fn match_expr(m: mut emit.Em, e: ckast.Expr, s: ckast.Expr, arms: List[ckast.Arm], t: cktypes.Ty) -> emit.CV {
+    let st = m.ety(s)
+    let res = m.result_var(t)
+    let cv = emitbody.expr(mut m, s)
+    let stable = cv.owned or (emit.is_ident(cv.code) and cv.code.starts_with("v_") and not m.st.muts.contains(cv.code))
+    let sv = if cv.owned or emit.is_ident(cv.code) { cv.code } else { m.tmp_val(st, cv.code).code }
+    let done = m.fresh("done")
+    for a in arms {
+        for alt in expand_or(a.pat) {
+            let test = pat_test(mut m, alt, sv, st)
+            m.line("if (" + test + ") \{")
+            m.st.indent += 1
+            m.push(SkBlock)
+            bind(mut m, alt, sv, st, stable)
+            match a.guard {
+                Some(g) => {
+                    let gv = emitbody.expr(mut m, g)
+                    m.line("if (" + gv.code + ") \{")
+                    m.st.indent += 1
+                }
+                None => {}
+            }
+            m.push(SkStmt)
+            let v = emitbody.expr(mut m, a.body)
+            match res {
+                Some(r) => {
+                    let code = m.own(v, t)
+                    m.line(r + " = " + code + ";")
+                }
+                None => {}
+            }
+            m.pop()
+            m.release_to(SkBlock)
+            m.line("goto " + done + ";")
+            if a.guard.is_some() {
+                m.st.indent -= 1
+                m.line("}")
+            }
+            m.pop()
+            m.st.indent -= 1
+            m.line("}")
+        }
+    }
+    let loc = m.loc(e.sp)
+    m.line("tn_trap(\"no match arm (internal error)\", " + loc + ");")
+    m.line(done + ":;")
+    m.finish_result(res, t)
+}
+
+pub fn try_expr(m: mut emit.Em, e: ckast.Expr, x: ckast.Expr, t: cktypes.Ty) -> emit.CV {
+    let xt = m.ety(x)
+    let cv = emitbody.expr(mut m, x)
+    let v = if cv.owned or cv.code.starts_with("v_") { cv.code } else { m.tmp_val(xt, cv.code).code }
+    let rt = m.st.ret
+    let tag = m.tag(xt, v)
+    m.line("if (" + tag + " != 0) \{")
+    m.st.indent += 1
+    let ret = if xt.is("Option") {
+        m.ctor_named(rt, "None", [])
+    } else {
+        let et = xt.args()[1]
+        let p = m.payload(xt, v, 1, 0)
+        let code = m.own(emit.bor(p), et)
+        m.ctor_named(rt, "Err", [code])
+    }
+    let rn = m.cty(rt)
+    let r = m.fresh("r")
+    m.line(rn + " " + r + " = " + ret + ";")
+    m.release_to(SkFn)
+    m.line("return " + r + ";")
+    m.st.indent -= 1
+    m.line("}")
+    emit.bor(m.payload(xt, v, 0, 0))
+}
+
+pub fn lambda(m: mut emit.Em, e: ckast.Expr, params: List[(Str, Option[ckast.TExpr])], body: ckast.Expr, t: cktypes.Ty) -> emit.CV {
+    let (pts, rt) = match t {
+        Fun(a, r) => (a, r),
+        _ => panic("emit: lambda of type " + t.show()),
+    }
+    var caps: List[(Str, cktypes.Ty)] = []
+    for c in m.c.captures[e.id] { caps.push((c.0, m.sub(c.1))) }
+    let name = m.fresh("lam")
+    let rn = m.cty(rt)
+    // environment
+    var env = "struct " + name + "_env \{ tn_env h;"
+    var drop = "static void " + name + "_drop(tn_env *e) \{ struct " + name + "_env *E = (void *)e; "
+    for c in caps {
+        let tn = m.cty(c.1)
+        env += " " + tn + " c_" + c.0 + ";"
+        drop += tn + "_release(E->c_" + c.0 + "); "
+    }
+    env += " };\n"
+    drop += "tn_free(E); }\n"
+    m.helpers += env
+    m.helpers += drop
+    var ps = ["tn_env *env_"]
+    for i in 0..params.len().min(pts.len()) {
+        let tn = m.cty(pts[i])
+        ps.push(tn + " v_" + params[i].0)
+    }
+    let sig = "static " + rn + " " + name + "(" + ps.join(", ") + ")"
+    m.protos += sig + ";\n"
+    // body, in a fresh function context
+    var saved = m.st
+    m.st = emit.FnState { tps: saved.tps, tas: saved.tas, ret: rt, indent: 1, ..emit.new_state() }
+    m.push(SkFn)
+    m.line("struct " + name + "_env *E = (void *)env_; (void)E;")
+    for c in caps {
+        let tn = m.cty(c.1)
+        m.line(tn + " v_" + c.0 + " = E->c_" + c.0 + ";")
+    }
+    let r = m.fresh("ret")
+    m.line(rn + " " + r + ";")
+    m.push(SkStmt)
+    let v = emitbody.expr(mut m, body)
+    let code = m.own(v, rt)
+    m.line(r + " = " + code + ";")
+    m.pop()
+    m.release_to(SkFn)
+    m.line("return " + r + ";")
+    let out = m.st.out
+    m.st = saved
+    saved = emit.new_state() // so m.st.out is not shared and appending stays in place
+    m.bodies += sig + " \{\n"
+    m.bodies += out
+    m.bodies += "}\n"
+    // creation
+    if caps.is_empty() { return emit.bor("((tn_fn)\{ (void *)" + name + ", NULL })") }
+    let env_v = m.fresh("env")
+    m.line("struct {name}_env *{env_v} = tn_alloc(sizeof *{env_v}); {env_v}->h.rc = 1; {env_v}->h.drop = {name}_drop;")
+    for c in caps {
+        let code2 = m.own(emit.bor(m.local_code(c.0)), c.1)
+        m.line(env_v + "->c_" + c.0 + " = " + code2 + ";")
+    }
+    m.tmp_owned(t, "((tn_fn)\{ (void *)" + name + ", &" + env_v + "->h })")
+}
+
+pub fn fn_wrapper(m: mut emit.Em, fi: Int, targs: List[cktypes.Ty]) -> Str {
+    let key = "fn{fi}:[" + cktypes.show_list(targs) + "]"
+    match m.wrappers.get(key) {
+        Some(w) => return w,
+        None => {}
+    }
+    let (ptys, rt) = m.sig(fi, targs)
+    let w = m.fresh("fnv")
+    m.wrappers[key] = w
+    let rn = m.cty(rt)
+    var ps = ["tn_env *e"]
+    for i in 0..ptys.len() {
+        let tn = m.cty(ptys[i])
+        ps.push(tn + " a{i}")
+    }
+    let sig = "static " + rn + " " + w + "(" + ps.join(", ") + ")"
+    m.protos += sig + ";\n"
+    var args: List[emit.CV] = []
+    var names: List[Str] = []
+    for i in 0..ptys.len() {
+        args.push(emit.bor("a{i}"))
+        names.push("a{i}")
+    }
+    if m.c.env.fns[fi].is_extern {
+        var saved = m.st
+        m.st = emit.FnState { ret: rt, indent: 1, ..emit.new_state() }
+        m.push(SkFn)
+        let name = m.c.env.fns[fi].name
+        let v = emitbi.extern_call(mut m, name, args, ptys, rt, ckast.Span { file: 0, line: 0, col: 0 })
+        let code = m.own(v, rt)
+        let r = m.fresh("r")
+        m.line(rn + " " + r + " = " + code + ";")
+        m.release_to(SkFn)
+        m.line("return " + r + ";")
+        let out = m.st.out
+        m.st = saved
+        saved = emit.new_state()
+        m.bodies += sig + " \{ (void)e;\n"
+        m.bodies += out
+        m.bodies += "}\n"
+    } else {
+        let f = emitbody.fn_inst(mut m, fi, targs)
+        m.bodies += sig + " \{ (void)e; return " + f + "(" + names.join(", ") + "); }\n"
+    }
+    w
+}
+
+pub fn ctor_wrapper(m: mut emit.Em, et: cktypes.Ty, vi: Int, ptys: List[cktypes.Ty]) -> Str {
+    let key = "ctor" + et.show() + ":{vi}"
+    match m.wrappers.get(key) {
+        Some(w) => return w,
+        None => {}
+    }
+    let w = m.fresh("fnv")
+    m.wrappers[key] = w
+    let en = m.cty(et)
+    var ps = ["tn_env *e"]
+    var args: List[Str] = []
+    for i in 0..ptys.len() {
+        let tn = m.cty(ptys[i])
+        ps.push(tn + " a{i}")
+        args.push(tn + "_retain(a{i})")
+    }
+    let sig = "static " + en + " " + w + "(" + ps.join(", ") + ")"
+    m.protos += sig + ";\n"
+    let code = m.ctor(et, vi, args)
+    m.bodies += sig + " \{ (void)e; return " + code + "; }\n"
+    w
+}
+
+// Expand or-patterns (also nested ones) into separate alternatives.
+fn expand_or(p: ckast.Pat) -> List[ckast.Pat] {
+    match p.k {
+        QOr(alts) => {
+            var out: List[ckast.Pat] = []
+            for a in alts { out.extend(expand_or(a)) }
+            out
+        }
+        QTuple(ps) => product(ps).map(fn(v) => ckast.Pat { id: p.id, sp: p.sp, k: QTuple(v) }),
+        QVariant(q, n, ps) => product(ps).map(fn(v) => ckast.Pat { id: p.id, sp: p.sp, k: QVariant(q, n, v) }),
+        _ => [p],
+    }
+}
+
+fn product(ps: List[ckast.Pat]) -> List[List[ckast.Pat]] {
+    var acc: List[List[ckast.Pat]] = [[]]
+    for p in ps {
+        let alts = expand_or(p)
+        var next: List[List[ckast.Pat]] = []
+        for a in acc {
+            for alt in alts { next.push(a + [alt]) }
+        }
+        acc = next
+    }
+    acc
+}

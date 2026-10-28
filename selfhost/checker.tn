@@ -15,9 +15,21 @@ import ckast
 import ckenv
 import ckinfer
 import cklin
+import cktypes
+
+// What the backend needs (bootstrap/src/check.rs `Checked`): the program, the
+// declarations, and the side tables keyed by node id.
+pub struct Checked {
+    pub prog: ckast.Program,
+    pub env: ckenv.Env,
+    pub types: Map[Int, cktypes.Ty],
+    pub res: Map[Int, ckenv.Res],
+    pub captures: Map[Int, List[(Str, cktypes.Ty)]],
+    pub main: Int,
+}
 
 // Check a whole program (prelude, main file and modules, already merged).
-pub fn check(prog: ckast.Program) -> Result[Unit, ckast.Diag] {
+pub fn check(prog: ckast.Program) -> Result[Checked, ckast.Diag] {
     let env = ckenv.declare(prog)?
     var ck = ckinfer.new_ck(env)
     for i in 0..prog.fns.len() { ck.check_fn(prog.fns[i], i)? }
@@ -28,7 +40,8 @@ pub fn check(prog: ckast.Program) -> Result[Unit, ckast.Diag] {
     if main < 0 { return ckast.fail(ckast.Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'") }
     ck.env.check_main(main)?
     const_cycles(prog, ck.res)?
-    cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures)
+    cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures)?
+    Ok(Checked { prog, env: ck.env, types: ck.types, res: ck.res, captures: ck.captures, main })
 }
 
 // The constants referenced anywhere in an expression, in traversal order.

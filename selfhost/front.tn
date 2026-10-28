@@ -1,0 +1,101 @@
+// module (imported by check.tn and tenonc.tn)
+// Loading and checking a program: a port of bootstrap/src/main.rs `front`.
+// The prelude and the standard library are read from ROOT (the repository:
+// ROOT/lib/prelude.tn, ROOT/lib/std/NAME.tn) instead of being embedded.
+import parser
+import ckast
+import checker
+
+// Standard library modules (bootstrap/src/main.rs `STD`).
+fn std_modules() -> List[Str] { ["journal", "regex"] }
+
+// A loaded program: every source file (name, text) in load order, as
+// bootstrap/src/diag.rs `SourceMap` (file 0 is the prelude, 1 the main file).
+pub struct Front { pub files: List[(Str, Str)], pub checked: checker.Checked }
+
+// Why loading or checking failed. `fatal`: an I/O problem (exit status 2),
+// otherwise a diagnostic at file:line:col (exit status 1). `text` is the
+// source of `file`, for rendering the line (empty if unknown).
+pub struct Failure { pub fatal: Bool, pub file: Str, pub line: Int, pub col: Int, pub msg: Str, pub text: Str }
+
+fn io_fail(msg: Str) -> Failure { Failure { fatal: true, file: "", line: 0, col: 0, msg, text: "" } }
+
+fn diag(files: List[(Str, Str)], fi: Int, line: Int, col: Int, msg: Str) -> Failure {
+    Failure { fatal: false, file: files[fi].0, line, col, msg, text: files[fi].1 }
+}
+
+// The one-line form `PATH:LINE:COL: error: MESSAGE`.
+pub fn Failure.line_text(self) -> Str { "{self.file}:{self.line}:{self.col}: error: {self.msg}" }
+
+// The bootstrap's rendering (bootstrap/src/diag.rs `render`): the message, the
+// source line and a caret under the column.
+pub fn Failure.render(self) -> Str {
+    let lines = self.text.lines()
+    let src = if self.line >= 1 and self.line <= lines.len() { lines[self.line - 1] } else { "" }
+    let caret = " ".repeat((self.col - 1).max(0))
+    self.line_text() + "\n  " + src + "\n  " + caret + "^"
+}
+
+// Path::parent, as the bootstrap uses it to find a module next to its importer.
+fn parent(p: Str) -> Str {
+    var i = p.len() - 1
+    while i >= 0 and p.byte(i) != 47 { i -= 1 }
+    if i < 0 { "" } else if i == 0 { "/" } else { p.slice(0, i) }
+}
+
+pub fn join(dir: Str, name: Str) -> Str {
+    if dir == "" { name } else if dir.ends_with("/") { dir + name } else { dir + "/" + name }
+}
+
+// Load the program: prelude, the main file, then every imported module
+// (from the importing file's directory, else the standard library), and check it.
+pub fn load(fs: Fs, root: Str, path: Str) -> Result[Front, Failure] {
+    let prelude = match fs.read(join(root, "lib/prelude.tn")) {
+        Ok(s) => s,
+        Err(e) => return Err(io_fail("cannot read the prelude: {e}")),
+    }
+    let src = match fs.read(path) {
+        Ok(s) => s,
+        Err(e) => return Err(io_fail("cannot read {path}: {e}")),
+    }
+    var files: List[(Str, Str)] = [("<prelude>", prelude), (path, src)]
+    var modules = ["", ""]
+    var parsed: List[parser.Program] = []
+    var i = 0
+    while i < files.len() {
+        let prog = match parser.parse(files[i].1) {
+            Ok(p) => p,
+            Err(e) => return Err(diag(files, i, e.line, e.col, e.msg)),
+        }
+        parsed.push(prog)
+        for im in prog.imports {
+            let name = im.0
+            if not modules.contains(name) {
+                let local = join(parent(files[i].0), name + ".tn")
+                // A file never imports itself: `regex.tn` doing `import regex` gets the std module.
+                let me = files[i].0
+                let is_self = me == name + ".tn" or me.ends_with("/" + name + ".tn")
+                let found = if is_self { None } else { fs.read(local).ok() }
+                match found {
+                    Some(text) => files.push((local, text)),
+                    None => {
+                        if not std_modules().contains(name) {
+                            return Err(diag(files, i, im.1.line, im.1.col,
+                                "cannot find module '{name}' ({local} or the standard library)"))
+                        }
+                        match fs.read(join(root, "lib/std/" + name + ".tn")) {
+                            Ok(text) => files.push(("<std>/" + name + ".tn", text)),
+                            Err(e) => return Err(io_fail("cannot read the standard library: {e}")),
+                        }
+                    }
+                }
+                modules.push(name)
+            }
+        }
+        i += 1
+    }
+    match checker.check(ckast.convert(parsed, modules)) {
+        Ok(c) => Ok(Front { files, checked: c }),
+        Err(d) => Err(diag(files, d.sp.file, d.sp.line, d.sp.col, d.msg)),
+    }
+}

@@ -2,7 +2,9 @@
 """Differential mutation testing of the self-hosted checker: corpus programs
 are mutated at the token level (deleted/duplicated/swapped tokens, renamed
 identifiers and types, flipped let/var, mut/ref, literals ...) and both
-`tenon check` and selfhost/check.tn must report the same first line.
+`tenon check` and `tenonc check` (selfhost/tenonc.tn) must report the same
+first line; when both accept a mutant, `tenon emit` and `tenonc emit` must
+print the same C (and exit with the same status).
 
 Usage: selfhost/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
 Disagreements are kept in .evidence/checkfuzz/ (mutant + both outputs)."""
@@ -106,12 +108,21 @@ def run_one(args):
         except subprocess.TimeoutExpired:
             want = "<bootstrap timeout>"
         try:
-            b = subprocess.run([ck, rel, ROOT], cwd=tmp, capture_output=True, text=True, timeout=20)
+            b = subprocess.run([ck, "check", rel, ROOT], cwd=tmp, capture_output=True, text=True, timeout=20)
             got = (b.stdout.splitlines() or [b.stderr.strip() or "<no output, exit %d>" % b.returncode])[0]
         except subprocess.TimeoutExpired:
             got = "<selfhost timeout>"
         if want != got:
             return (rel, mut, want, got)
+        if want == "ok":
+            try:
+                a = subprocess.run([TENON, "emit", rel], cwd=tmp, capture_output=True, timeout=20)
+                b = subprocess.run([ck, "emit", rel, "--root", ROOT], cwd=tmp, capture_output=True, timeout=20)
+                if (a.returncode, a.stdout) != (b.returncode, b.stdout):
+                    return (rel, mut, "emit: exit %d, %d bytes of C" % (a.returncode, len(a.stdout)),
+                            "emit: exit %d, %d bytes of C (different)" % (b.returncode, len(b.stdout)))
+            except subprocess.TimeoutExpired:
+                return (rel, mut, "emit", "<emit timeout>")
     return ("agree", want)
 
 
@@ -119,8 +130,8 @@ def main():
     pos = [a for a in sys.argv[1:] if not a.startswith("-")]
     count = int(pos[0]) if len(pos) > 0 else 500
     seed = int(pos[1]) if len(pos) > 1 else 1
-    ck = os.path.join(tempfile.mkdtemp(), "check")
-    subprocess.run([TENON, "build", os.path.join(ROOT, "selfhost", "check.tn"), "-o", ck], check=True)
+    ck = os.path.join(tempfile.mkdtemp(), "tenonc")
+    subprocess.run([TENON, "build", os.path.join(ROOT, "selfhost", "tenonc.tn"), "-o", ck], check=True)
     files = corpus()
     # Mostly mutate programs the bootstrap accepts: their mutants reach the checker.
     good = [f for f in files if subprocess.run([TENON, "check", f], cwd=ROOT, capture_output=True).returncode == 0]
