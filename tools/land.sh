@@ -11,7 +11,12 @@ start=$(date +%s)
 git add -u
 [ $# -gt 0 ] && git add -- "$@"
 if ! git diff --cached --quiet; then
-  git commit -q -m "$msg" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+  git commit -q -m "$msg"
+fi
+# Owner rule (docs/log.md): no AI co-author trailers, ever (also enforced in CI).
+if git log origin/main..HEAD --format=%B | grep -qiE '^co-authored-by:.*(claude|anthropic|openai|codex|gpt)'; then
+  echo "land: a commit carries an AI Co-Authored-By trailer; remove it (git commit --amend)"
+  exit 1
 fi
 for attempt in 1 2 3; do
   git fetch -q origin main

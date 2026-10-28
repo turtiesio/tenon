@@ -173,6 +173,11 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **No AI co-author trailers, ever:** commits carry no `Co-Authored-By` line for
+  Claude, Anthropic, OpenAI, Codex or GPT. tools/land.sh no longer adds one and
+  refuses to push a commit that has one; CI fails on any in the history once the
+  existing ones are removed from the published history.
+
 - **Continuous improvement without the owner's laptop:** the repository was made
   public (free GitHub Actions minutes; CI had silently stopped running because of
   a failed payment on the private repo since 05:19 UTC). Unattended agents land
