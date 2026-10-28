@@ -1,0 +1,6 @@
+// error: type 'Fs' is already defined
+// A builtin type (here the capability Fs) cannot be hidden by a user item, unlike the
+// prelude's declared types (docs/reference.md §13).
+struct Fs { files: List[Str] }
+
+fn main() {}

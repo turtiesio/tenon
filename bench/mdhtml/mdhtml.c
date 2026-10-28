@@ -182,6 +182,7 @@ static bool starts_block(Str line) {
            item_marker(line, &m) > 0;
 }
 
+// Over 80 lines: the block loop, one branch per Markdown block kind, as in the other versions of the benchmark.
 static void render(Buf *out, const Str *lines, size_t n) {
     Buf para = {0};
     size_t i = 0;

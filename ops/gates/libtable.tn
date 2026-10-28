@@ -1,0 +1,157 @@
+// docs/library.md's signature table is the prelude's (tenon.md §6 item 2,
+// "No-staleness gates").
+//
+//     tenon run ops/gates/libtable.tn            check (./check runs it)
+//     tenon run ops/gates/libtable.tn --write    rewrite the table in docs/library.md
+//
+// The table lies between the lines `<!-- prelude-table: begin -->` and
+// `<!-- prelude-table: end -->` of docs/library.md. It has one row
+// `| `SIGNATURE` | BEHAVIOUR |` for every top-level item of lib/prelude.tn and
+// lib/v2/prelude.tn (each function, method, constant, type and trait, in
+// file order), and one `#### TITLE` table per `// ---- TITLE ----` section
+// of the prelude. A signature is the item's first line without `pub`,
+// `extern`, a body and a trailing comment. The behaviour column is written by
+// hand; --write keeps it (found by the signature, else by the name) and gives
+// a new item `TODO`. The check fails when the table differs from what --write
+// would produce, or a behaviour is empty or `TODO`.
+
+const PRELUDES: List[(Str, Str)] = [("lib/prelude.tn", "Core"), ("lib/v2/prelude.tn", "Traits")]
+const DOC: Str = "docs/library.md"
+const BEGIN: Str = "<!-- prelude-table: begin -->"
+const END: Str = "<!-- prelude-table: end -->"
+
+// The signature of a top-level item, if the line starts one.
+fn signature(line: Str) -> Option[Str] {
+    var s = line.strip_prefix("pub ").unwrap_or(line)
+    s = s.strip_prefix("extern ").unwrap_or(s)
+    let kw = ["fn ", "const ", "struct ", "enum ", "trait ", "linear struct ", "unique struct "]
+    if not kw.any(fn(k) => s.starts_with(k)) { return None }
+    if let Some((code, _)) = s.split_once("//") { s = code.trim_end() }
+    if s.starts_with("fn ") {
+        s = s.slice(3, s.len())
+        if let Some((head, _)) = s.split_once(" \{") { s = head }
+    } else {
+        s = s.strip_suffix(" \{").unwrap_or(s)
+    }
+    Some(s)
+}
+
+// `Str.find(self, sub: Str) -> Option[Int]` is named `Str.find`, `struct Sys {..}` `Sys`.
+fn name_of(sig: Str) -> Str {
+    var s = sig
+    var stops = ["("]
+    for k in ["const ", "struct ", "enum ", "trait ", "linear struct ", "unique struct "] {
+        if let Some(rest) = s.strip_prefix(k) {
+            s = rest
+            stops = ["[", " ", ":"]
+        }
+    }
+    var end = s.len()
+    for stop in stops {
+        if let Some(i) = s.find(stop) { end = end.min(i) }
+    }
+    s.slice(0, end)
+}
+
+fn section_title(line: Str) -> Option[Str] {
+    let rest = line.strip_prefix("// ---- ")?
+    var t = rest.strip_suffix(" ----").unwrap_or(rest)
+    for stop in [":", " ("] {
+        if let Some((head, _)) = t.split_once(stop) { t = head }
+    }
+    Some(t.trim())
+}
+
+// The rows already written: behaviour by signature and by name.
+fn old_rows(block: List[Str]) -> (Map[Str, Str], Map[Str, Str]) {
+    var by_sig: Map[Str, Str] = [:]
+    var by_name: Map[Str, Str] = [:]
+    for line in block {
+        let Some(rest) = line.strip_prefix("| `") else { continue }
+        let Some((sig, tail)) = rest.split_once("` | ") else { continue }
+        let desc = tail.strip_suffix(" |").unwrap_or(tail).trim()
+        by_sig[sig] = desc
+        by_name[name_of(sig)] = desc
+    }
+    (by_sig, by_name)
+}
+
+fn section(title: Str, path: Str, rows: List[Str]) -> List[Str] {
+    if rows.is_empty() { return [] }
+    ["", "#### {title} ({path})", "", "| Signature | Behaviour |", "|---|---|"] + rows
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let write = sys.args.contains("--write")
+    let fs = if write { sys.fs.within(".") } else { sys.fs.within(".").read_only() }
+    let Ok(doc) = fs.read(DOC) else {
+        con.eprintln("libtable: cannot read {DOC}")
+        return 2
+    }
+    let lines = doc.lines()
+    let (Some(b), Some(e)) = (lines.index_of(BEGIN), lines.index_of(END)) else {
+        con.println("libtable: {DOC} has no `{BEGIN}` ... `{END}` block")
+        return 1
+    }
+    let old = lines.slice(b + 1, e)
+    let (by_sig, by_name) = old_rows(old)
+    var table: List[Str] = []
+    var todo: List[Str] = []
+    var items = 0
+    for (path, first) in PRELUDES {
+        let Ok(src) = fs.read(path) else {
+            con.eprintln("libtable: cannot read {path}")
+            return 2
+        }
+        var title = first
+        var rows: List[Str] = []
+        for line in src.lines() {
+            if let Some(t) = section_title(line) {
+                table.extend(section(title, path, rows))
+                title = t
+                rows = []
+                continue
+            }
+            let Some(sig) = signature(line) else { continue }
+            items += 1
+            let desc = by_sig.get(sig).unwrap_or(by_name.get_or(name_of(sig), ""))
+            if desc == "" or desc == "TODO" { todo.push(sig) }
+            rows.push("| `{sig}` | {if desc == "" { "TODO" } else { desc }} |")
+        }
+        table.extend(section(title, path, rows))
+    }
+    table.push("")
+    if write {
+        let text = (lines.slice(0, b + 1) + table + lines.slice(e, lines.len())).join("\n") + "\n"
+        if let Err(err) = fs.write(DOC, text) {
+            con.eprintln("libtable: {err}")
+            return 2
+        }
+        con.println("libtable: wrote {items} items to {DOC}; {todo.len()} to describe (TODO)")
+        return 0
+    }
+    var bad = 0
+    if table != old {
+        let have = Set.of(by_sig.keys())
+        var want: Set[Str] = Set.new()
+        for line in table {
+            if let Some(rest) = line.strip_prefix("| `") {
+                let sig = rest.split_once("` | ").map_or(rest, fn(p) => p.0)
+                let _ = want.insert(sig)
+                if not have.contains(sig) { con.println("{DOC}: missing (in the prelude): {sig}") }
+            }
+        }
+        for sig in by_sig.keys() {
+            if not want.contains(sig) { con.println("{DOC}: not in the prelude (removed or changed): {sig}") }
+        }
+        con.println("libtable: the table in {DOC} differs from lib/prelude.tn and lib/v2/prelude.tn: run `tenon run ops/gates/libtable.tn --write`, then describe the rows marked TODO")
+        bad += 1
+    }
+    for sig in todo {
+        con.println("{DOC}: `{sig}` has no behaviour: describe it in one line (edge cases included)")
+        bad += 1
+    }
+    con.println("libtable: {items} prelude items, {bad} problems")
+    if bad > 0 { 1 } else { 0 }
+}

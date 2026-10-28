@@ -76,6 +76,7 @@ fn usage(con: Console) -> Int {
     2
 }
 
+// Over 80 lines: the argument parsing and the three commands, one branch each.
 fn main(sys: Sys) -> Int {
     let con = sys.console
     var args = sys.args

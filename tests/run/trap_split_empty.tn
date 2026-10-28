@@ -1,0 +1,5 @@
+// Str.split with an empty separator traps (there is no sensible piece list).
+fn main(sys: Sys) {
+    sys.console.println("{"a,b".split(",")}")
+    sys.console.println("{"a,b".split("")}")
+}

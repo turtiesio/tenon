@@ -635,6 +635,7 @@ fn Regex.class_has(self, i: Int, c: Int) -> Bool {
 // One anchored attempt at byte `start`; with `full`, only a match that ends at
 // the end of the subject counts (the machine backtracks into other choices
 // until one does). Returns the capture slots (start, end per group, -1: unset).
+// Over 80 lines: the backtracking machine, one loop with one arm per instruction kind.
 fn Regex.attempt(self, s: Str, start: Int, full: Bool) -> Option[List[Int]] {
     var slots = List.filled(self.nslots, -1)
     var stack: List[Frame] = []

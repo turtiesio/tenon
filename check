@@ -27,6 +27,10 @@ step "tenon test tests tests/v2" "$TENON" test tests tests/v2
 step "cli_test" ops/gates/cli_test.sh
 step "doctest" python3 ops/gates/doctest.py
 step "doclinks" "$TENON" run ops/gates/doclinks.tn
+step "claims" "$TENON" run ops/gates/claims.tn
+step "libtable" "$TENON" run ops/gates/libtable.tn
+step "sizes" "$TENON" run ops/gates/sizes.tn
+step "status_age" "$TENON" run ops/gates/status_age.tn
 step "vscode grammar" python3 ops/gates/vscode_grammar_check.py
 step "programs" ops/gates/programs.sh
 step "cache_test" ops/gates/cache_test.sh

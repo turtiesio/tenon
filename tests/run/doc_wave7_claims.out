@@ -1,0 +1,9 @@
+mut places: 5 1 5 ["k": 3]
+let name reuse: id 3 id 4 bad
+let name reuse: [10, 20] 6
+guard on alternatives: trade SELL trade BUY usage other
+let-else tuple: 3 -1 -1
+tuple fields: [(1, 2), (3, 9)] (2, "a")
+list plus: [1, 2, 3] [25, 10, 5, 25, 10, 5]
+constants: 40 Some(1)
+exit: 0

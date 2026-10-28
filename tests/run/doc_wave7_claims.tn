@@ -1,0 +1,74 @@
+// Reference claims added after study wave 7 (docs/reference.md §4, §6, §7):
+// `mut` arguments that are map entries and fields, tuple-field assignment,
+// `let (Some(a), Some(b)) = ... else`, `return match`, a guard on alternative
+// patterns, a `let` whose initializer binds the same name in a pattern, and
+// constants evaluated at each use (an unused one is never evaluated).
+enum Res { Found(Int), Missing(Int, Str), Fail(Str) }
+struct Lot { qty: Int }
+struct Book { lots: Map[Str, List[Lot]], cash: Int }
+
+const DENOMS: List[Int] = [25, 10, 5]
+const NEVER: List[Int] = boom()
+
+fn boom() -> List[Int] { panic("a constant that is never used is never evaluated") }
+
+fn take(lots: mut List[Lot], n: Int) -> Int {
+    var got = 0
+    while got < n and not lots.is_empty() {
+        got += lots.remove(0).qty
+    }
+    got
+}
+
+fn add(x: mut Int, d: Int) { x += d }
+
+fn lookup(r: Res) -> Str {
+    let id = match r {
+        Fail(e) => return e,
+        Missing(id, _) => id,
+        Found(id) => id,
+    }
+    "id {id}"
+}
+
+fn kind(t: List[Str]) -> Str {
+    return match t[0] {
+        "BUY" | "SELL" if t.len() == 4 => "trade {t[0]}",
+        "BUY" | "SELL" => "usage",
+        _ => "other",
+    }
+}
+
+fn pair(x: Option[Int], y: Option[Int]) -> Int {
+    let (Some(a), Some(b)) = (x, y) else { return -1 }
+    a + b
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    var book = Book { lots: ["A": [Lot { qty: 2 }, Lot { qty: 3 }, Lot { qty: 4 }]], cash: 0 }
+    let got = take(mut book.lots["A"], 3)
+    add(mut book.cash, 5)
+    var m = ["k": 1]
+    add(mut m["k"], 2)
+    con.println("mut places: {got} {book.lots["A"].len()} {book.cash} {m}")
+    con.println("let name reuse: {lookup(Found(3))} {lookup(Missing(4, "x"))} {lookup(Fail("bad"))}")
+    let xs = [1, 2].map(fn(xs) => xs * 10)
+    let y = {
+        let y = 5
+        y + 1
+    }
+    con.println("let name reuse: {xs} {y}")
+    con.println("guard on alternatives: {kind(["SELL", "a", "b", "c"])} {kind(["BUY", "a", "b", "c"])} {kind(["BUY"])} {kind(["X"])}")
+    con.println("let-else tuple: {pair(Some(1), Some(2))} {pair(None, Some(2))} {pair(Some(1), None)}")
+    var spans = [(1, 2), (3, 4)]
+    spans[1].1 = 9
+    var t = (1, "a")
+    t.0 += 1
+    con.println("tuple fields: {spans} {t}")
+    con.println("list plus: {[1, 2] + [3]} {DENOMS + DENOMS}")
+    var total = 0
+    let denoms = DENOMS // bind a list constant once before a loop
+    for i in 0..3 { total += denoms[i] }
+    con.println("constants: {total} {DENOMS.index_of(10)}")
+}

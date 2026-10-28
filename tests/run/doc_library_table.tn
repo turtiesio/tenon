@@ -1,0 +1,50 @@
+// The edge cases stated in docs/library.md ("Every prelude item", "Writing
+// files", "Builtin types and capabilities") after study wave 7: is_digits,
+// fmt_fixed on negatives, the Option[Int] of find/rfind/index_of, List.remove
+// returning the element, list `+`, repeat, to_int, round, and writing a file
+// format of one's own with Fs.append / write / rename / truncate.
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    c.println("is_digits: {"".is_digits()} {"-1".is_digits()} {"+1".is_digits()} {"1.5".is_digits()} {"007".is_digits()}")
+    c.println("fmt_fixed: {(-5).fmt_fixed(2)} {(-1234).fmt_fixed(2)} {7.fmt_fixed(3)} {5.fmt_fixed(0)} {5.fmt_fixed(-1)}")
+    c.println("find: {"abab".find("b")} {"abab".find("x")} {"abc".find("")} {"abab".rfind("b")} {"abc".rfind("")} {[5, 6].index_of(6)} {[5, 6].index_of(7)}")
+    c.println("find_from: {"abc".find_from("", 3)} {"ab".find_from("b", 2)}")
+    var q = ["a", "b", "c"]
+    let first = q.remove(0)
+    let _ = q.pop()
+    c.println("remove: {first} {q}")
+    let ds = [1, 2]
+    let more = ds + [3]
+    c.println("plus: {ds} {more} {[0] + []}")
+    var xs = [1, 2, 3]
+    xs.insert(3, 4)
+    c.println("insert: {xs} {xs.slice(1, 1)} {xs.get(-1)} {List.filled(-1, 0)}")
+    c.println("repeat: [{"ab".repeat(0)}] [{"ab".repeat(-2)}] {"ab".repeat(2)}")
+    c.println("to_int: {"+5".to_int()} {"-0".to_int()} {"".to_int()} {" 5".to_int()} {"1_000".to_int()}")
+    c.println("to_float: {"+1.5".to_float()} {" 1.5".to_float()} {"inf".to_float()}")
+    c.println("round: {2.5.round()} {(-0.5).round()} {(-1.9).to_int()} {2.5.to_fixed(0)}")
+    c.println("euclid: {(-7).rem_euclid(3)} {7.rem_euclid(-3)} {(-7).div_euclid(3)} {7.div_euclid(-2)}")
+    c.println("checked: {7.checked_div(0)} {INT_MIN.checked_div(-1)} {5.checked_pow(-1)}")
+    c.println("text: {"é".upper()} {"".chars()} {"".words()} {"abc".contains("")} {"ab".strip_prefix("")}")
+    var m = ["a": 1, "b": 2]
+    m["a"] = 5
+    c.println("map: {m} {m.remove("b")} {m.remove("b")} {Set.of([3, 1, 3, 2]).items()}")
+
+    // Writing files: a format of the program's own.
+    let _ = sys.fs.mkdir("doc_library_scratch")
+    let fs = sys.fs.within("doc_library_scratch")
+    fs.append("log", "add 1\n")?
+    fs.append("log", "add 2\n")?
+    fs.append("log", "add 3")? // a torn last record
+    let text = fs.read("log")?
+    fs.truncate("log", text.rfind("\n").map_or(0, fn(i) => i + 1))?
+    c.println("log: {encode(fs.read("log")?)}")
+    fs.write("snapshot", "v1\n")?     // atomic: via snapshot.tmp
+    fs.write("snapshot.tmp", "v2\n")? // the spec's own temp file (via snapshot.tmp.tmp)
+    fs.rename("snapshot.tmp", "snapshot")?
+    fs.write("empty", "")?
+    c.println("snapshot: {encode(fs.read("snapshot")?)} {fs.list(".")?} {fs.exists("../doc_library_scratch")}")
+    for name in fs.list(".")? { fs.remove(name)? }
+    sys.fs.remove("doc_library_scratch")?
+    Ok(())
+}

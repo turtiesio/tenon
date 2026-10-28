@@ -1,0 +1,21 @@
+# Exceptions for ops/gates/sizes.tn (run by ./check), each with its reason.
+# `file PATH REASON`: a file allowed over 1000 lines.
+# `fn PATH NAME REASON`: a function allowed over 80 lines, for files that do
+# not carry the in-source comment (`// Over 80 lines: REASON` directly above
+# the function is the usual way).
+
+# The C runtime is one header that every generated program includes (tenon
+# build emits a single translation unit per program plus this header; no
+# separate runtime library to build, link or install, docs/dev/compiler.md).
+file runtime/tenon.h one header included by every generated program, so no runtime library to build or link
+# The single source document of the language (tenon.md §3): authors in the
+# usability study get it whole, with quickstart.md, library.md and tools.md.
+file docs/reference.md the language's single reference document, given whole to study authors
+
+# Owner-guarded file (ops/governance/guarded.txt): its comment needs the owner.
+fn ops/repo/approvals.py main one pass over the change, rule by rule; each rule is a few lines and they share the parsed diff
+# Functions in compiler/ that state their reason here until a change to the
+# file adds the comment above them.
+fn compiler/ckcall.tn pattern a dispatch on the pattern kind, one arm per kind
+fn compiler/ieval.tn stmt a dispatch on the statement kind, one arm per kind
+fn compiler/ieval.tn ev_calls a dispatch on the call form (mut arguments, mut receivers, builtins, decode), one arm per form

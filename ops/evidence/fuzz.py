@@ -38,6 +38,7 @@ class Gen:
         return self.r.choice(xs)
 
     # ---- expressions of a given type ----
+    # Over 80 lines: one branch per kind of expression generated for a type.
     def expr(self, t, env, d=0):
         r = self.r
         vars_ = [n for n, (vt, _) in env.items() if vt == t]

@@ -2530,6 +2530,7 @@ static int64_t tn_ms_now(void) {
  * result is packed as
  * [status, signal, timed_out, len(out), out..., err...]; status is -1 when the
  * command was ended by a signal. */
+/* Over 80 lines: fork and exec, the pipes and the poll loop with the timeout share the child's state. */
 static TN_UNUSED int tn_proc_capture(tn_Str cmd, tn_List_Str args, tn_Str dir, tn_Str input, tn_Int timeout_ms, tn_List_Int *res, tn_Str *msg) {
     int64_t n = tn_List_Str_len(args);
     bool nul = memchr(cmd.p, 0, (size_t)cmd.len) != NULL || memchr(dir.p, 0, (size_t)dir.len) != NULL;

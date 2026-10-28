@@ -1,0 +1,4 @@
+["a", "b"]
+exit: 70
+stderr: trap: split with an empty separator
+stderr:   at trap_split_empty.tn:4:32

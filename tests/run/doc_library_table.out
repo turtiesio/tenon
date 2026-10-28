@@ -1,0 +1,18 @@
+is_digits: false false false false true
+fmt_fixed: -0.05 -12.34 0.007 5 5
+find: Some(1) None Some(0) Some(3) Some(3) Some(1) None
+find_from: Some(3) None
+remove: a ["b"]
+plus: [1, 2] [1, 2, 3] [0]
+insert: [1, 2, 3, 4] [] None []
+repeat: [] [] abab
+to_int: Some(5) Some(0) None None None
+to_float: Some(1.5) None Some(inf)
+round: 3.0 -1.0 -1 2
+euclid: 2 1 -3 -3
+checked: None None None
+text: é [] [] true Some("ab")
+map: ["a": 5, "b": 2] Some(2) None [3, 1, 2]
+log: "add 1\nadd 2\n"
+snapshot: "v2\n" ["empty", "log", "snapshot"] false
+exit: 0

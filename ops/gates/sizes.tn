@@ -1,0 +1,151 @@
+// Files up to 1000 lines, functions up to 80, unless a reason is stated
+// (tenon.md §2.3 and §6 item 2, "No-staleness gates").
+//
+//     tenon run ops/gates/sizes.tn        (from the repository root; ./check runs it)
+//
+// Reads the files git tracks (`git ls-files`), except seed/ (frozen: its line
+// count may only shrink) and evidence/ (published records, never edited).
+//   - Files: a source or document file (.tn .h .c .py .md .lean) longer than
+//     1000 lines fails unless ops/gates/sizes.txt has a line
+//     `file PATH REASON`.
+//   - Functions: in Tenon (.tn), C (.h .c) and Python (.py), a function
+//     longer than 80 lines (from its first line to its closing line) fails
+//     unless one of the comment lines directly above it contains
+//     `Over 80 lines: REASON`, or ops/gates/sizes.txt has a line
+//     `fn PATH NAME REASON` (for files that cannot carry the comment). A Tenon
+//     function starts with a line `fn ...{` (or `pub fn`, at any indentation)
+//     and ends at the first `}` with the same indentation; a C function starts
+//     at column 0 with a line ending in `) {` and ends at the next `}` at
+//     column 0; a Python one is a `def` and its indented body.
+// Prints each violation with how to fix it; exit status 1 if there is one.
+
+const MAX_FILE: Int = 1000
+const MAX_FN: Int = 80
+const MARKER: Str = "Over 80 lines:"
+
+struct Exceptions { files: List[Str], fns: List[Str] }
+
+fn load_exceptions(text: Str) -> Exceptions {
+    var ex = Exceptions { files: [], fns: [] }
+    for line in text.lines() {
+        let w = line.words()
+        if w.len() < 3 or w[0].starts_with("#") { continue }
+        if w[0] == "file" { ex.files.push(w[1]) } else if w[0] == "fn" and w.len() >= 4 { ex.fns.push("{w[1]} {w[2]}") }
+    }
+    ex
+}
+
+fn indent(line: Str) -> Int {
+    var i = 0
+    while i < line.len() and line.byte(i) == ' ' { i += 1 }
+    i
+}
+
+// The name of the function a line starts, if it starts one: `fn Walk.expr(...` gives `Walk.expr`.
+fn fn_name(line: Str, kind: Str) -> Option[Str] {
+    let t = line.trim_start()
+    if kind == "tn" {
+        if not t.ends_with("\{") { return None }
+        let rest = t.strip_prefix("pub ").unwrap_or(t)
+        let Some(r) = rest.strip_prefix("fn ") else { return None }
+        let Some(open) = r.find("(") else { return None }
+        let name = r.slice(0, open)
+        return Some(name.split("[")[0])
+    }
+    if kind == "c" {
+        if indent(line) > 0 or not line.ends_with(") \{") or line.starts_with("struct") or line.starts_with("typedef") { return None }
+        let Some(open) = line.find("(") else { return None }
+        let words = line.slice(0, open).words()
+        if words.is_empty() { return None }
+        return Some(words[words.len() - 1].trim_start_chars("*"))
+    }
+    let Some(r) = t.strip_prefix("def ") else { return None }
+    let Some(open) = r.find("(") else { return None }
+    Some(r.slice(0, open))
+}
+
+// The index of the function's last line.
+fn fn_end(lines: List[Str], start: Int, kind: Str) -> Int {
+    let ind = indent(lines[start])
+    let close = " ".repeat(ind) + "}"
+    var j = start + 1
+    while j < lines.len() {
+        let l = lines[j]
+        if kind == "tn" and l == close { return j }
+        if kind == "c" and l == "}" { return j }
+        if kind == "py" and l.trim() != "" and indent(l) <= ind {
+            var k = j - 1
+            while k > start and lines[k].trim() == "" { k -= 1 }
+            return k
+        }
+        j += 1
+    }
+    lines.len() - 1
+}
+
+// Does a comment line directly above line `start` state the reason?
+fn marked(lines: List[Str], start: Int) -> Bool {
+    var k = start - 1
+    while k >= 0 {
+        let t = lines[k].trim()
+        let comment = t.starts_with("//") or t.starts_with("#") or t.starts_with("/*") or t.starts_with("*")
+        if not comment or t.starts_with("#[") { return false }
+        if t.contains(MARKER) { return true }
+        k -= 1
+    }
+    false
+}
+
+fn kind_of(path: Str) -> Str {
+    if path.ends_with(".tn") { "tn" } else if path.ends_with(".h") or path.ends_with(".c") { "c" } else if path.ends_with(".py") { "py" } else { "" }
+}
+
+fn sized(path: Str) -> Bool {
+    [".tn", ".h", ".c", ".py", ".md", ".lean"].any(fn(e) => path.ends_with(e))
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let fs = sys.fs.within(".").read_only()
+    let ex = load_exceptions(fs.read("ops/gates/sizes.txt").unwrap_or(""))
+    let Ok(git) = sys.proc.run_with("git", ["ls-files"], "", [], 30000) else {
+        con.eprintln("sizes: cannot run git ls-files")
+        return 2
+    }
+    if git.status != 0 {
+        con.eprintln("sizes: git ls-files failed: {Str.from_utf8_lossy(git.err)}")
+        return 2
+    }
+    var files = 0
+    var fns = 0
+    var bad = 0
+    for path in Str.from_utf8_lossy(git.out).lines() {
+        if path.starts_with("seed/") or path.starts_with("evidence/") or not sized(path) { continue }
+        let Ok(text) = fs.read(path) else { continue }
+        files += 1
+        let lines = text.lines()
+        if lines.len() > MAX_FILE and not ex.files.contains(path) {
+            con.println("{path}: {lines.len()} lines, over {MAX_FILE}: split it, or add `file {path} REASON` to ops/gates/sizes.txt")
+            bad += 1
+        }
+        let kind = kind_of(path)
+        if kind == "" { continue }
+        var i = 0
+        while i < lines.len() {
+            let Some(name) = fn_name(lines[i], kind) else {
+                i += 1
+                continue
+            }
+            let end = fn_end(lines, i, kind)
+            let n = end - i + 1
+            fns += 1
+            if n > MAX_FN and not marked(lines, i) and not ex.fns.contains("{path} {name}") {
+                con.println("{path}:{i + 1}: {name} is {n} lines, over {MAX_FN}: split it, or state why in a comment directly above it (`{MARKER} REASON`)")
+                bad += 1
+            }
+            i = if kind == "py" { i + 1 } else { end + 1 } // Python: nested defs are functions too
+        }
+    }
+    con.println("sizes: {files} files, {fns} functions, {bad} over the limits without a stated reason")
+    if bad > 0 { 1 } else { 0 }
+}

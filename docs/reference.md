@@ -10,9 +10,13 @@ to write real programs. Every signature of the builtin API is in the prelude
 is ordinary Tenon source.
 
 Every claim here is checked by a test in `tests/` (run `./check`; the
-doc programs themselves: `python3 ops/gates/doctest.py`).
+doc programs themselves: `python3 ops/gates/doctest.py`). The tests behind
+each section are named in an HTML comment at its start
+(`<!-- test: PATH ... -->`, enforced by `ops/gates/claims.tn`).
 
 ## 1. A first program
+
+<!-- test: tests/run/tour.tn tests/run/maps.tn tests/run/io_stdin.tn -->
 
 ```tenon
 fn main(sys: Sys) -> Result[Unit, Str] {
@@ -35,6 +39,8 @@ command, flag, environment variable and exit status of `tenon` is in
 [docs/tools.md](tools.md).
 
 ## 2. Lexical structure
+
+<!-- test: tests/run/int_literals.tn tests/run/raw_string.tn tests/run/strings.tn tests/run/exponents.tn tests/run/charclass.tn tests/fmt/continuation.in.tn tests/reject/raw_string_unterminated.tn tests/reject/hex_malformed.tn tests/reject/const_name.tn -->
 
 - Comments: `// to end of line`.
 - Statements end at a newline (or `;`). A line that begins with `.`, `else`,
@@ -59,14 +65,16 @@ command, flag, environment variable and exit status of `tenon` is in
 
 ## 3. Types
 
+<!-- test: tests/run/arith.tn tests/run/trap_overflow.tn tests/run/trap_divzero.tn tests/reject/int_float_mix.tn tests/reject/no_coercion.tn tests/reject/no_null.tn tests/run/doc_wave7_claims.tn tests/run/trap_slice_boundary.tn -->
+
 | Type | Meaning |
 |---|---|
 | `Int` | 64-bit signed integer. Overflow **traps**. `/` and `%` truncate toward zero (`-7 / 2 == -3`, `-7 % 2 == -1`); dividing by zero traps. |
 | `Float` | 64-bit IEEE float. |
 | `Bool` | `true` / `false`. |
-| `Str` | Immutable UTF-8 text. Offsets and `len()` are in bytes; `char_count()` counts code points ([docs/library.md](library.md)). |
+| `Str` | Immutable UTF-8 text. Offsets and `len()` are in bytes; `char_count()` counts code points ([docs/library.md](library.md)). `slice` at an offset inside a multi-byte character traps. |
 | `Unit` | No information; written `()`. |
-| `List[T]` | Growable sequence with value semantics. |
+| `List[T]` | Growable sequence with value semantics; `a + b` is a new list, `a`'s elements then `b`'s. |
 | `Map[K, V]` | Hash map; iteration follows insertion order. |
 | `(A, B, ...)` | Tuple; fields `.0`, `.1`, ... |
 | `fn(A, B) -> R` | Function value (named function or closure). |
@@ -80,6 +88,8 @@ write `1.to_float() + 2.0`.
 
 ### Value semantics
 
+<!-- test: tests/run/lists.tn tests/run/structs.tn tests/run/eq_contents.tn -->
+
 Every value behaves as if it were copied on assignment. Lists and maps are
 shared until one copy is modified (copy-on-write), so copying is cheap:
 
@@ -90,6 +100,8 @@ a.push(3)      // b is still [1, 2]
 ```
 
 ### Performance model
+
+<!-- test: tests/run/str_append.tn tests/run/counting_update_fallback.tn tests/run/rev_range.tn tests/run/mut_params.tn tests/run/study2_fixes.tn -->
 
 - Copying a value (`let b = a`, passing an argument, returning) never copies
   a list, map or string: it shares it and bumps a reference count. A copy is
@@ -128,6 +140,8 @@ a.push(3)      // b is still [1, 2]
 
 ## 4. Declarations
 
+<!-- test: tests/run/structs.tn tests/run/enums.tn tests/run/generics.tn tests/run/consts.tn tests/run/field_shorthand.tn tests/run/doc_wave5_claims.tn tests/run/doc_wave7_claims.tn tests/reject/recursive_struct.tn tests/reject/ambiguous_variant.tn tests/reject/foreign_method.tn tests/reject/option_method.tn -->
+
 ```tenon
 struct Point { x: Int, y: Int }
 struct Pair[A, B] { first: A, second: B }
@@ -155,6 +169,11 @@ builtin types (`Int`, `Str`, `List[T]` or a specific `List[Robot]`, `Map`,
 are declared types: only the prelude can add methods to them (write a free
 function such as `fn is_full(o: Option[Int]) -> Bool` instead). Details in §13.
 
+- A constant (`const NAME: T = expr`) may be any expression. It is evaluated
+  again at every use (it is compiled as a function without parameters), and
+  never if it is not used, so a `List` or `Map` constant builds a new list at
+  each use: inside a hot loop, bind it once before the loop
+  (`let denoms = DENOMS`).
 - A struct may not contain itself directly; use an enum or a `List`.
 - Variants are used unqualified (`Circle(3)`) unless two enums share a variant
   name, then qualify: `Shape.Circle(3)`.
@@ -174,6 +193,8 @@ function such as `fn is_full(o: Option[Int]) -> Bool` instead). Details in §13.
   `Point { x, y: 0 }`, `Point { x, ..p }`.
 
 ## 5. Functions and closures
+
+<!-- test: tests/run/closures.tn tests/run/lambda_captures_self.tn tests/run/doc_claims_wave3.tn tests/reject/captured_mutation.tn tests/reject/tparam_long.tn -->
 
 The last expression of a block is its value. `return` exits early.
 
@@ -201,6 +222,8 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
 
 ## 6. Variables and mutation
 
+<!-- test: tests/run/mut_params.tn tests/run/doc_wave6_claims.tn tests/run/doc_wave7_claims.tn tests/reject/shadowing.tn tests/reject/immutable_assign.tn tests/reject/immutable_push.tn tests/reject/mut_arg_alias.tn tests/reject/mut_arg_not_mut.tn tests/run/hide_prelude_fn.tn -->
+
 - `let x = ...` is immutable; `var x = ...` is mutable. Types are inferred;
   annotate with `let x: List[Int] = []` when needed.
 - `var` destructures like `let`, and every name it binds is mutable:
@@ -210,10 +233,15 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
 - Names may not be redeclared inside a function (no shadowing). This includes
   parameters and names bound by patterns: `let v = f()` followed by
   `match v { Some(v) => ... }` is rejected; use another name (`Some(x)`).
+  The name a `let` or `var` declares exists only after its statement, so its
+  own initializer may bind the same name in a pattern or an inner block
+  whose scope ends inside it: `let id = match r { Found(id) => id, Fail(e) => return e }`
+  is accepted (the arm's `id` is gone when the `let`'s `id` begins).
 - A file may define its own item with a prelude name (`path_join`, `Result`,
   ...); it hides the prelude's in that file only (§13).
 - Assignment targets: `x = v`, `p.field = v`, `xs[i] = v`, `m[k] = v`
-  (inserts or replaces), and compound forms `+= -= *= /= %=`. Evaluation
+  (inserts or replaces), tuple fields `t.0 = v` (also deep: `spans[i].1 = last`),
+  and compound forms `+= -= *= /= %=`. Evaluation
   order: the target's index expressions, then the right-hand side, then (for
   compound forms) the target's current value is read.
 - Mutating methods (`push`, `insert`, `sort`, user methods with `mut self`)
@@ -223,6 +251,9 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
 - Function parameters are immutable, except `mut` parameters: the caller
   passes a place marked `mut`, and the function's changes are visible to the
   caller after the call. Two `mut` arguments cannot refer to the same variable.
+  The place may be any mutable place, not only a variable: a field, an
+  element or a map entry (`take(mut book[sym], n)`, `add(mut self.cash, d)`;
+  a map entry must exist, else the call traps as `m[k] += 1` does).
 
   ```tenon
   fn visit(node: Str, path: mut List[Str]) { path.push(node) }
@@ -230,6 +261,8 @@ the interpreter but is rejected by `tenon build`. Named functions and variants c
   ```
 
 ## 7. Control flow
+
+<!-- test: tests/run/if_let.tn tests/run/let_else.tn tests/run/while_true.tn tests/run/rev_range.tn tests/run/return_bare_expr.tn tests/run/doc_wave5_claims.tn tests/run/doc_wave6_claims.tn tests/run/doc_wave7_claims.tn tests/reject/non_exhaustive.tn tests/reject/unreachable_arm.tn tests/reject/unused_result.tn tests/reject/let_else_falls.tn tests/reject/range_outside_for.tn tests/reject/while_true_break_needs_value.tn -->
 
 ```tenon
 if a > b { ... } else if a == b { ... } else { ... }   // also an expression
@@ -263,8 +296,9 @@ match shape {
 ```
 
 A guard (`if cond` after the pattern) works on every kind of arm, including
-string and number literals; when the guard is false the following arms are
-tried, so the same literal may appear again without a guard:
+string and number literals and alternatives (`"BUY" | "SELL" if t.len() == 4 =>`:
+the guard applies to every alternative); when the guard is false the
+following arms are tried, so the same literal may appear again without a guard:
 
 ```tenon
 match t[0] {
@@ -295,6 +329,7 @@ value cannot be the matched value (the `else` path would drop it).
 ```tenon
 let Some(i) = line.find(",") else { return Err("missing comma") }
 let Rect(w, h) = shape else { continue }
+let (Some(a), Some(b)) = (x.to_int(), y.to_int()) else { return usage() }  // both or leave
 ```
 
 Patterns: `_`, a name, literals (`3`, `-1`, `"text"`, `'a'`, `true`), tuples
@@ -319,7 +354,8 @@ after it. If the loop has a `break` of its own (one in a nested loop does not
 count), the function must give a value after the loop.
 `break` and `continue` can appear anywhere inside the loop body, including
 inside `match` arms. A bare `return` (no value) may end a match arm or stand
-anywhere an expression may: `None => return,`, `if bad { return }`.
+anywhere an expression may: `None => return,`, `if bad { return }`. `return`
+takes any expression, `match` and `if` included: `return match t[0] { ... }`.
 
 Unary minus works on any number expression (`-x`, `-e.1`). It binds more
 loosely than method calls, field access and indexing: `-x.min(y)` is
@@ -327,6 +363,8 @@ loosely than method calls, field access and indexing: `-x.min(y)` is
 before a number literal is part of the literal: `-2.abs()` is `(-2).abs()`, `2`.
 
 ## 8. Strings and formatting
+
+<!-- test: tests/run/strings.tn tests/run/exponents.tn tests/run/doc_wave6_claims.tn tests/run/fmt_fixed_extremes.tn -->
 
 `"{expr}"` formats any value. Top-level strings are inserted as-is; inside
 containers they are quoted:
@@ -349,6 +387,8 @@ interpolation may contain string literals of its own:
 `"{m.get_or("k", 0)} {names.join(", ")}"`.
 
 ### Format specs
+
+<!-- test: tests/run/fmt_spec.tn tests/run/fmt_group.tn tests/reject/fmt_spec_python_f.tn tests/reject/fmt_spec_generic.tn tests/reject/fmt_spec_group_radix.tn -->
 
 `"{expr:SPEC}"` pads, aligns and converts an `Int`, `Float`, `Str` or `Bool`:
 
@@ -410,6 +450,8 @@ radix     = "x" | "X" | "b" | "o"; Int only
 
 ## 9. Errors: values, `?`, and traps
 
+<!-- test: tests/run/errors.tn tests/run/doc_claims_wave3.tn tests/run/exit_code.tn tests/run/exit_one.tn tests/run/exit_reserved.tn tests/run/trap_unwrap.tn tests/run/trap_key.tn tests/run/trap_index.tn tests/run/trap_panic.tn tests/run/trap_stack.tn tests/reject/try_error_mismatch.tn tests/reject/try_wrong_ret.tn -->
+
 Expected failures are values (`Option`, `Result`). `?` returns early from the
 enclosing function on `None` / `Err(e)`; the function must return an `Option`,
 or a `Result` with the **same** error type (no conversion).
@@ -457,6 +499,8 @@ Exit codes used by the runtime:
 including these four (an interpreter passes on the status of the program it runs).
 
 ## 10. Capabilities (authority)
+
+<!-- test: tests/run/io_fs.tn tests/run/fs_escape.tn tests/run/fs_truncate.tn tests/run/fs_mkdir_one.tn tests/run/bytes_fs.tn tests/run/path_helpers.tn tests/run/doc_claims_wave3.tn tests/run/cap_probe_proc.tn tests/reject/ambient_authority.tn tests/reject/forge_capability.tn tests/reject/cap_probe_global_print.tn -->
 
 A program can only affect the outside world through capabilities, and the only
 source of capabilities is the `Sys` value passed to `main`:
@@ -527,6 +571,8 @@ are lexical: they never touch the disk, and `..` is not resolved.
 
 ## 11. Builtin API
 
+<!-- test: ops/gates/libtable.tn tests/run/doc_library_table.tn -->
+
 The methods of the builtin types (`Str`, `List`, `Map`, `Set`, `Heap`,
 `Option`, `Result`, `Int`, `Float`), the operations of the capabilities
 (`Console`, `Fs`, `Clock`, `Proc`), bytes, text encoding and line endings
@@ -535,6 +581,8 @@ modules (`journal`, `regex`). Every signature is in the prelude
 (`lib/prelude.tn` in the repository, `docs/prelude.tn` in a study kit).
 
 ## 12. Obligations: linear and unique types
+
+<!-- test: tests/run/linear.tn tests/run/ref_params.tn tests/reject/linear_dropped.tn tests/reject/linear_twice.tn tests/reject/linear_try.tn tests/reject/linear_in_loop.tn tests/reject/linear_closure.tn tests/reject/unique_copy.tn tests/v2/reject/const_linear.tn tests/v2/reject/linear_inflight_try_arg.tn tests/v2/run/linear_inflight_ok.tn tests/v2/run/self_finish_ok.tn -->
 
 ```tenon
 linear struct Claim { job: Str }      // must be used exactly once
@@ -596,6 +644,8 @@ parameters; every impl must declare the same ones (a call through a bound or
 
 ## 13. Modules
 
+<!-- test: tests/run/modules.tn tests/run/hide_prelude_fn.tn tests/run/hide_prelude_types.tn tests/run/hide_prelude_variants.tn tests/run/hide_prelude_modules.tn tests/reject/hide_builtin_type.tn tests/reject/private_field.tn tests/reject/private_construct.tn tests/reject/duplicate_hiding_fn.tn tests/reject/self_import.tn tests/v2/reject/enum_private_match.tn -->
+
 ```tenon
 import journal                       // journal.tn next to this file, else the standard library
 
@@ -628,7 +678,16 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   a private type of another module cannot be encoded or decoded (§14).
 - A top-level item (function, constant, struct, enum) defined in a file
   hides the prelude item of the same name in that file, so a new prelude
-  name never breaks a program. Other files still see the prelude's item
+  name never breaks a program. The builtin types cannot be hidden, since
+  they are not prelude items: `Int`, `Float`, `Bool`, `Str`, `Unit`, `List`,
+  `Map`, the capabilities `Console`, `Fs`, `Clock`, `Net`, `Proc`, the handles
+  `Listener`, `Conn`, `Poller`, and `Workers`, `Worker`, `Sender`, `Receiver`
+  (§18); a struct or enum with one of these names is an error
+  (`type 'Fs' is already defined`): pick another name (`Tree`, `Vfs`). Nor can a
+  struct or enum take the name of a prelude trait (`Eq`, `Ord`, `Hash`,
+  `Show`, `Send`). The prelude's declared types (`Option`, `Result`,
+  `IoError`, `Sys`, `Set`, `Heap`, `NetEvent`, `ProcOut`), functions and
+  constants can be hidden. Other files still see the prelude's item
   (or the module's as `mod.name`), and the prelude's own code, `?` and the
   values prelude functions return always use the prelude's. Unqualified
   variant names work the same way: a variant of the file's own or an
@@ -674,6 +733,8 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 
 ## 14. Data codec
 
+<!-- test: tests/run/codec.tn tests/run/codec_list_bad_element.tn tests/reject/codec_fn.tn tests/reject/codec_private.tn tests/reject/codec_linear.tn -->
+
 `encode(x)` gives the text that formatting prints for `x`, with every field;
 `decode(text)` parses it back for the expected type and is strict: it accepts
 exactly the canonical text and fails with `Err("cannot decode T at byte N")`
@@ -684,6 +745,8 @@ other modules (§13) cannot be encoded or decoded, so `decode` cannot forge a
 value only its module may make.
 
 ## 15. Networking
+
+<!-- test: tests/run/net_drop_closes.tn programs/chat/test.sh programs/kvhttp/test.sh -->
 
 ```tenon
 let l = sys.net.listen(8080)?          // Listener on 127.0.0.1; port 0 picks one (l.port())
@@ -701,6 +764,8 @@ function stays open until the variable it came from goes out of scope. Operation
 `sleep_ms`, reading the console) the program's standard output is flushed.
 
 ### Many connections: the event loop
+
+<!-- test: programs/chat/test.sh tests/v2/run/workers_event_loop.tn -->
 
 Within one thread, concurrency is a single-threaded event loop: no data
 races are possible, and events arrive in a deterministic order (for more
@@ -731,10 +796,14 @@ reported in increasing id order. A struct holding a `Poller` must be declared
 
 ## 16. Formatting
 
+<!-- test: ops/gates/fmt_check.sh tests/fmt/statements.in.tn -->
+
 Every program has one canonical layout, which `tenon fmt` produces; its
 rules are in [docs/tools.md](tools.md) ("Formatting").
 
 ## 17. Traits
+
+<!-- test: tests/v2/run/trait_basic.tn tests/v2/run/trait_bounds.tn tests/v2/run/trait_dyn.tn tests/v2/run/trait_show.tn tests/v2/run/trait_generic_impl.tn tests/v2/run/trait_modules.tn tests/v2/reject/impl_missing_method.tn tests/v2/reject/bound_not_declared.tn -->
 
 A trait names a set of methods; an `impl` gives them for one type.
 
@@ -876,6 +945,8 @@ cannot hold the linear type Job`): a table call could not tell whether the
 value was finished.
 
 ## 18. Workers and channels
+
+<!-- test: tests/v2/run/workers_basic.tn tests/v2/run/workers_channels.tn tests/v2/run/workers_par_map.tn tests/v2/run/workers_deadlock.tn tests/v2/run/workers_trap.tn tests/v2/reject/send_linear.tn tests/v2/reject/spawn_poller.tn -->
 
 A worker runs a function on another OS thread, so programs can use every
 core. Workers share nothing: each has a heap of its own, and they
@@ -1042,6 +1113,8 @@ the implementation):
   keeps at most 64 MB of freed blocks for reuse; `main` has 1 GB.
 
 ## 19. Not yet implemented
+
+<!-- test: tests/v2/run/workers_channels.tn -->
 
 Bounded channels, waiting on several channels at once, and a channel that a
 `Poller` reports like a socket; see `docs/log.md`.

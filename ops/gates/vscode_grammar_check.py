@@ -247,6 +247,7 @@ def lexer_error_line(path):
     return int(m.group(1)) if m else None
 
 
+# Over 80 lines: the checks one after another, each a few lines, sharing the loaded grammar.
 def main():
     problems = []
     loaded = {}

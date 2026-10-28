@@ -138,6 +138,7 @@ def verdict(ok, text):
     return ("**met**" if ok else "**not met**") + (f": {text}" if text else "")
 
 
+# Over 80 lines: writes STATUS.md section by section in document order, each from the evidence it shows.
 def main():
     os.makedirs(EV, exist_ok=True)
     today = datetime.date.today().isoformat()

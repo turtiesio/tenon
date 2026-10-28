@@ -1,0 +1,5 @@
+n
+é
+exit: 70
+stderr: trap: slice [0, 2) is not on a character boundary
+stderr:   at trap_slice_boundary.tn:6:26

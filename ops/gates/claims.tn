@@ -1,0 +1,90 @@
+// Every section of the user reference has a test or a command behind it
+// (tenon.md §6 item 2, "No-staleness gates").
+//
+//     tenon run ops/gates/claims.tn        (from the repository root; ./check runs it)
+//
+// Reads docs/reference.md and docs/library.md. A section is the text from a
+// `##` or `###` heading to the next heading (the introduction before the
+// first `##` is not a section). Each section must hold, outside fenced code,
+// at least one marker (an HTML comment, invisible when the page is rendered):
+//   <!-- test: PATH [PATH...] -->   the tests that check the section's claims
+//   <!-- cmd: COMMAND -->           a command that checks them; run from the
+//                                   repository root with `sh -c`, it must exit 0
+// Each PATH must exist and lie under tests/, programs/ or ops/gates/ (what
+// ./check runs). A ```tenon block with `fn main` is compiled by
+// ops/gates/doctest.py; that does not count, since it checks no behaviour.
+// Prints each section without a marker and each bad marker; exit status 1 if
+// there is one.
+
+const DOCS: List[Str] = ["docs/reference.md", "docs/library.md"]
+const ROOTS: List[Str] = ["tests/", "programs/", "ops/gates/"]
+
+struct Section { doc: Str, line: Int, title: Str, markers: Int }
+
+fn marker(line: Str, kind: Str) -> Option[Str] {
+    let t = line.trim()
+    let body = t.strip_prefix("<!-- {kind}:")?.strip_suffix("-->")?
+    Some(body.trim())
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let fs = sys.fs.within(".").read_only()
+    var bad = 0
+    var sections: List[Section] = []
+    var tests = 0
+    var cmds: List[(Str, Int, Str)] = []
+    for doc in DOCS {
+        let Ok(text) = fs.read(doc) else {
+            con.eprintln("claims: cannot read {doc}")
+            return 2
+        }
+        var fenced = false
+        for (n, line) in text.lines().enumerate() {
+            if line.trim().starts_with("```") {
+                fenced = not fenced
+                continue
+            }
+            if fenced { continue }
+            if line.starts_with("## ") or line.starts_with("### ") {
+                sections.push(Section { doc, line: n + 1, title: line.trim_start_chars("#").trim(), markers: 0 })
+                continue
+            }
+            let in_section = not sections.is_empty() and sections[sections.len() - 1].doc == doc
+            if let Some(paths) = marker(line, "test") {
+                for p in paths.words() {
+                    if not ROOTS.any(fn(r) => p.starts_with(r)) or not fs.exists(p) {
+                        con.println("{doc}:{n + 1}: test {p}: not an existing file under tests/, programs/ or ops/gates/")
+                        bad += 1
+                    }
+                    tests += 1
+                }
+            } else if let Some(cmd) = marker(line, "cmd") {
+                cmds.push((doc, n + 1, cmd))
+            } else {
+                continue
+            }
+            if in_section { sections[sections.len() - 1].markers += 1 }
+        }
+    }
+    for (doc, n, cmd) in cmds {
+        let r = sys.proc.run_with("sh", ["-c", cmd], "", [], 60000)
+        let ok = r.is_ok_and(fn(o) => o.status == 0)
+        if not ok {
+            let out = match r {
+                Ok(o) => Str.from_utf8_lossy(o.out) + Str.from_utf8_lossy(o.err),
+                Err(e) => "{e}",
+            }
+            con.println("{doc}:{n}: cmd `{cmd}` failed:\n{out}")
+            bad += 1
+        }
+    }
+    for s in sections {
+        if s.markers == 0 {
+            con.println("{s.doc}:{s.line}: section \"{s.title}\" has no test behind it: add `<!-- test: PATH -->` naming the tests that check its claims (or `<!-- cmd: COMMAND -->`)")
+            bad += 1
+        }
+    }
+    con.println("claims: {sections.len()} sections, {tests} tests and {cmds.len()} commands named, {bad} problems")
+    if bad > 0 { 1 } else { 0 }
+}
