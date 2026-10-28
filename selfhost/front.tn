@@ -38,16 +38,9 @@ pub fn Failure.render(self) -> Str {
     self.line_text() + "\n  " + src + "\n  " + caret + "^"
 }
 
-// Path::parent, as the bootstrap uses it to find a module next to its importer.
-fn parent(p: Str) -> Str {
-    var i = p.len() - 1
-    while i >= 0 and p.byte(i) != 47 { i -= 1 }
-    if i < 0 { "" } else if i == 0 { "/" } else { p.slice(0, i) }
-}
-
-pub fn join(dir: Str, name: Str) -> Str {
-    if dir == "" { name } else if dir.ends_with("/") { dir + name } else { dir + "/" + name }
-}
+// The directory a module is looked up in, next to its importer: "" (not
+// path_parent's ".") for a bare file name, so diagnostics name `m.tn`, not `./m.tn`.
+fn importer_dir(p: Str) -> Str { if p.contains("/") { path_parent(p) } else { "" } }
 
 // Load the program (the prelude, the main file, then every imported module)
 // and check it.
@@ -89,12 +82,12 @@ pub fn analyze_in(fs: Fs, root: Str, path: Str, src: Str, pk: Option[pkg.Ctx]) -
 // and a module name must then name one file): the files, their trees and the
 // module name of each.
 fn gather(fs: Fs, root: Str, path: Str, given: Option[Str], pk: Option[pkg.Ctx]) -> Result[(List[(Str, Str)], List[parser.Program], List[Str]), Failure] {
-    let prelude0 = match fs.read(join(root, "lib/prelude.tn")) {
+    let prelude0 = match fs.read(path_join(root, "lib/prelude.tn")) {
         Ok(s) => s,
         Err(e) => return Err(io_fail("cannot read the prelude: {e}")),
     }
     // lib/v2/prelude.tn (the traits; syntax the bootstrap cannot parse) is part of the prelude
-    let prelude = match fs.read(join(root, "lib/v2/prelude.tn")) {
+    let prelude = match fs.read(path_join(root, "lib/v2/prelude.tn")) {
         Ok(s) => prelude0 + "\n" + s,
         Err(_) => prelude0,
     }
@@ -119,7 +112,7 @@ fn gather(fs: Fs, root: Str, path: Str, given: Option[Str], pk: Option[pkg.Ctx])
             let name = im.0
             let known = modules.index_of(name)
             if known.is_none() or pk.is_some() {
-                let local = join(parent(files[i].0), name + ".tn")
+                let local = path_join(importer_dir(files[i].0), name + ".tn")
                 // A file never imports itself: `regex.tn` doing `import regex` gets the std module.
                 let me = files[i].0
                 let is_self = me == name + ".tn" or me.ends_with("/" + name + ".tn")
@@ -142,7 +135,7 @@ fn gather(fs: Fs, root: Str, path: Str, given: Option[Str], pk: Option[pkg.Ctx])
                             return Err(diag(files, i, im.1.line, im.1.col,
                                 "cannot find module '{name}' ({place} or the standard library)"))
                         }
-                        match fs.read(join(root, "lib/std/" + name + ".tn")) {
+                        match fs.read(path_join(root, "lib/std/" + name + ".tn")) {
                             Ok(text) => ("<std>/" + name + ".tn", text),
                             Err(e) => return Err(io_fail("cannot read the standard library: {e}")),
                         }

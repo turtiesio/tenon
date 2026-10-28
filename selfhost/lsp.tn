@@ -33,7 +33,7 @@ struct Server { con: Console, fs: Fs, proc: Proc, root: Str, docs: Map[Str, Doc]
 pub fn serve(sys: Sys, root0: Str) -> Int {
     let con = sys.console
     var root = root0
-    if not root.starts_with("/") { root = front.join(sys.proc.env("PWD").unwrap_or("/"), root) }
+    if not root.starts_with("/") { root = path_join(sys.proc.env("PWD").unwrap_or("/"), root) }
     var s = Server { con, fs: sys.fs, proc: sys.proc, root, docs: [:], up: false, down: false }
     while true {
         let msg = match read_message(con) {

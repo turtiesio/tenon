@@ -273,7 +273,7 @@ pub fn Query.locate(self, fi: Int, line: Int) -> (Str, Str, Int) {
         let v = self.v2_line()
         if v > 0 and line >= v {
             let rest = self.files[0].1.lines().slice(v - 1, self.files[0].1.lines().len()).join("\n") + "\n"
-            return (join(self.root, "lib/v2/prelude.tn"), rest, line - v + 1)
+            return (path_join(self.root, "lib/v2/prelude.tn"), rest, line - v + 1)
         }
     }
     (self.file_path(fi), self.files[fi].1, line)
@@ -282,14 +282,12 @@ pub fn Query.locate(self, fi: Int, line: Int) -> (Str, Str, Int) {
 // The path of source file `fi` on disk.
 pub fn Query.file_path(self, fi: Int) -> Str {
     let n = self.files[fi].0
-    if n == "<prelude>" { return join(self.root, "lib/prelude.tn") }
+    if n == "<prelude>" { return path_join(self.root, "lib/prelude.tn") }
     match n.strip_prefix("<std>/") {
-        Some(rest) => join(self.root, "lib/std/" + rest),
+        Some(rest) => path_join(self.root, "lib/std/" + rest),
         None => n,
     }
 }
-
-fn join(dir: Str, name: Str) -> Str { if dir.ends_with("/") { dir + name } else { dir + "/" + name } }
 
 // The offset of word `w` after declaration position `sp` in its file.
 fn Query.word_after(self, sp: ckast.Span, w: Str) -> (Int, Int) {
