@@ -173,6 +173,9 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Codex model:** stays gpt-6.1-sol (through OpenAI's OAuth sign-in); the earlier
+  note naming gpt-6.1-terra and gpt-6-luna is superseded.
+
 - **History rewritten (owner request):** every AI Co-Authored-By trailer was
   removed from main's 181 commits; authors, dates and file contents are unchanged,
   except that commit IDs cited in Markdown files and messages now point to the new

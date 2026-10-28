@@ -309,7 +309,7 @@ count as real users. No Windows or WebAssembly target in this milestone.
     that runs it and reports to it; replacing the host changes no rule. GitHub
     issues, if used, mirror the queue rather than define it.
   - Agents authenticate with their providers' supported sign-in (Codex through
-    OpenAI's OAuth login, models gpt-6.1-terra at xhigh and gpt-6-luna at high;
+    OpenAI's OAuth login, model gpt-6.1-sol;
     Claude through its own login), never with credentials in the repository.
 - **Console.** An operations console, served by a Tenon program: STATUS and
   correctness trends, the task queue, running and past agent runs with their
