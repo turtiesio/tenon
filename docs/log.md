@@ -403,3 +403,65 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   generic impls, dyn in lists/maps/structs/enums, Show overrides, modules,
   linear and `mut`, corners), 41 reject tests (one per diagnostic), lex and
   parse goldens, a formatter golden, LSP hover/definition/completion.
+
+## 2026-10-28 — workers and channels (tenon.md §5, milestone 2)
+
+- **Fix first:** a missing map key reached through a place (`m[k] += 1`) now
+  shows the key type's Show impl in the interpreter too (ieval.nk), as in C
+  and as `m[k]` read as a value; tests/v2/run/trait_show_key_place.tn.
+- **API** (user decision: isolated workers and channels next to the event
+  loop; docs/reference.md §18): `sys.workers()` gives the `Workers`
+  capability; `w.spawn(f, arg) -> Worker[R]`, `h.join() -> R`, `w.cores()`;
+  `channel() -> (Sender[T], Receiver[T])` with `send`, `close`, `recv ->
+  Option[T]`, `try_recv`; `w.par_map(xs, f)` and `par_map_n` in
+  lib/v2/prelude.tn (Tenon over the primitives: a few chunks per worker on a
+  job channel, results by chunk index). A method on `Sys` rather than a new
+  field: `Sys` is declared in lib/prelude.tn, which the frozen bootstrap
+  reads. `Sender`, `Receiver` and `Worker` are builtin handle types (shared,
+  atomically counted in C), so no untyped handle is ever visible.
+- **Decisions.** Copy, not move, for v1: everything sent is deep-copied by
+  the sender (per-type `T_copy` in C; nothing in the interpreter, whose
+  values are immutable); unique values move by the type system (the sender
+  loses them). Channels are unbounded and MPMC, closed only by `close()`:
+  the interpreter has no destructors, so "closed when the senders are
+  dropped" could not behave the same on both backends; instead a program
+  in which every thread waits traps with `deadlock` (C: counts of live and
+  waiting threads under the one channel lock; interpreter: no worker can
+  run), at main's wait. A trap in a worker ends the program (traps are not
+  caught anywhere), so `join` gives `R`, not a `Result`. Send excludes linear
+  types (a dropped channel or unjoined worker would lose the obligation) and
+  Poller/Listener/Conn (sockets stay with the worker that opened them); a
+  worker cannot return a unique value (handles are copyable, every join gives
+  the result). Every other capability is sendable: authority stays explicit
+  because a worker gets only what is passed.
+- **C runtime:** a program that calls `sys.workers()` is compiled with
+  `TN_MT`: one thread-local struct holds the allocator's free lists, the
+  release queue and the trap location (separate thread-local variables made
+  bench/trees 25% slower on macOS, where each one costs a call; the struct
+  4-5%); recursive enums use the free lists instead of per-type pools (the
+  pools as thread-locals cost another 20%); the shared nullary enum nodes
+  keep their counts; output is written under a lock (println as one piece),
+  input read under another, one trap message wins. Free lists keep at most
+  64 MB per thread, so a worker that only receives does not hoard memory.
+  Programs without workers compile to exactly the C they did before (the
+  whole v1 corpus is still byte-identical to the bootstrap's).
+- **Interpreter:** the interpreter is built by the frozen bootstrap, so it
+  cannot use threads. A deterministic cooperative scheduler
+  (selfhost/iwork.tn) runs workers when main waits; a waiting worker is
+  unwound (`CBlock`) and resumed by re-running it with its effects (all
+  builtins from Console.print on) replayed from a log. Same observable
+  results for every program whose output does not depend on scheduling;
+  resuming is quadratic in the number of waits (fine for tests; use build).
+  try_recv yields: in a worker it gives up its turn once, in main it gives
+  every worker a turn, so event loops that poll channels work.
+- **Measured** (M4 Max, 16 cores): bench/v2/mandel 3.62x on 4 workers, 6.9x
+  on 8; bench/v2/pwords (allocating, maps copied back) 3.51x and 6.2x
+  (tools/bench.py --parallel, also in STATUS.md); serial Tenon = C on mandel.
+  Copies: 0.6 ns per Int, 12 ns per string, 18 ns per map entry; round trip
+  4.5 µs; spawn+join 18 µs.
+- **Evidence:** tests/v2/run (workers, channels, par_map, pool, event loop,
+  trap, deadlock, closed channel, stack overflow; both backends), 14 reject
+  tests (one per isolation rule), programs/v2/scan (a parallel scanner/grep
+  over a directory tree, scenario on both backends); tools/tsan.sh
+  (ThreadSanitizer, every v2 run test and scan, 3 runs each: clean),
+  tools/asan.sh now covers programs/v2 (clean).

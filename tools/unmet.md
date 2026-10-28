@@ -46,4 +46,4 @@ Milestone 1 (tenon.md §4), item by item:
 - Self-hosted lexer, parser and checker agree with the bootstrap on the full corpus: **met** (tools/selfhost.sh).
 - Approvals log and checker exist and refused a real weakening in a test: **met** (tools/approvals_test.sh).
 
-Concurrency: single-threaded event loop (user decision); see programs/chat. No multi-core parallelism.
+Concurrency: a single-threaded event loop per thread (programs/chat), and isolated workers with channels on every core (tenonc only: docs/reference.md §18, programs/v2/scan; bench/v2 at 3.5-3.6x on 4 workers).

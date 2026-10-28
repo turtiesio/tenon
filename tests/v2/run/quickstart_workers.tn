@@ -1,0 +1,20 @@
+// The worker rows of docs/quickstart.md: every snippet there is taken from here.
+fn slow_square(x: Int) -> Int { x * x }
+
+fn total(xs: List[Int]) -> Int { xs.sum() }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let w = sys.workers()
+    let squares = w.par_map([1, 2, 3, 4], slow_square)
+    let h = w.spawn(total, [1, 2, 3])
+    con.println("{squares} {h.join()}")
+    let (tx, rx) = channel()
+    let p = w.spawn(fn(n: Int) -> Int {
+        for i in 0..n { tx.send(i * 10) }
+        tx.close()
+        n
+    }, 3)
+    while let Some(x) = rx.recv() { con.println("got {x}") }
+    con.println("sent {p.join()}")
+}

@@ -132,3 +132,24 @@ and never cross-checked (tools/selfhost.sh skips every `v2/` directory).
   bounds recursively). `cklin`: a trait call with `self` consumes its
   receiver; `dyn` cannot hold linear or unique values; an impl method's
   `self` is exempt only in the type's own module.
+
+## Workers and channels (v2: tenonc only)
+
+docs/reference.md §18; the API is in lib/v2/prelude.tn (`extern fn`s with
+bounds, `Workers.par_map` in Tenon).
+
+- **Types:** `Workers` (a capability), `Sender[T]`, `Receiver[T]` and
+  `Worker[R]` are builtin types (cktypes `builtin_arity`, `is_capability`:
+  not comparable, not encodable, not in `dyn`). The three handles are
+  `is_shared_handle`: `kind_walk` does not look into their type argument, so
+  `Sender[Token]` of a unique `Token` is a plain, copyable value.
+- **Send** is a derived trait (`builtin_trait_name`): `Env.implements` asks
+  `unsendable_part`, which walks tuples, struct fields, enum payloads and
+  type arguments (not into the shared handles) and names the first linear
+  type or socket handle (Poller, Listener, Conn). The bound failure appends
+  that reason. Every other type is Send, functions and `dyn` values
+  included: closures and `dyn` values cannot hold linear or unique values.
+- **cklin:** the worker externs consume a generic argument exactly once
+  (`worker_extern` in `extern_ok`), so unique values may be sent or spawned
+  and are then moved; `Workers.spawn` with a non-plain result type is
+  refused (`a worker cannot return the unique type ...`).

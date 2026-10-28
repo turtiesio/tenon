@@ -1,7 +1,8 @@
 # Tenon quick start for Python and TypeScript programmers
 
 One page, to read before docs/reference.md. Every snippet comes from
-tests/run/quickstart.tn (the trait rows from tests/v2/run/quickstart_traits.tn),
+tests/run/quickstart.tn (the trait rows from tests/v2/run/quickstart_traits.tn,
+the worker rows from tests/v2/run/quickstart_workers.tn),
 which the test suite runs on both backends.
 
 ## A whole program
@@ -101,6 +102,9 @@ fn main(sys: Sys) -> Int {
 | `def total(xs: list[T])` with `T` bound to Shape / `function total<T extends Shape>(xs: T[])` | `fn total[T: Shape](xs: List[T]) -> Int`; several bounds `T: Shape + Show` |
 | `list[Shape]` of different classes / `Shape[]` | `let shapes: List[dyn Shape] = [dyn Shape(c), dyn Shape(Circle { r: 2 })]` (the conversion is written) |
 | `__str__` / `toString()` | `impl Show for Pt { fn to_str(self) -> Str { "Pt({self.x})" } }`; used by `"{p}"` everywhere |
+| `ProcessPoolExecutor().map(f, xs)`, `Pool().map(f, xs)` / a `worker_threads` pool | `let w = sys.workers()` then `w.par_map(xs, f)`: the same list as `xs.map(f)`, computed on all cores (§18 of the reference) |
+| `executor.submit(total, xs).result()` / `new Worker(...)` + `once('message')` | `let h = w.spawn(total, xs)` then `h.join()` gives the result; the argument and result are copied, nothing is shared |
+| `multiprocessing.Queue()`, `queue.Queue()` / `MessageChannel`, `postMessage` | `let (tx, rx) = channel()`; `tx.send(x)`; `while let Some(x) = rx.recv() { ... }` ends after `tx.close()` |
 | `P(x=x, y=0)` / `{ x, y: 0 }` | `P { x, y: 0 }` (`x` alone means `x: x`) |
 | method that mutates | `fn P.bump(mut self)`; call it on a `var` |
 | tagged union / `match` | `enum Cmd { Add(Str, Int), List }` and exhaustive `match` |
@@ -125,5 +129,8 @@ fn main(sys: Sys) -> Int {
   and the like to get `Option` instead. `INT_MIN` and `INT_MAX` are in the prelude.
 - **Files and the network need a capability** from `sys` (`sys.fs`, `sys.net`).
   A function that does not receive one cannot touch them.
+- **Workers share nothing.** What you send or pass to `spawn` is copied (a
+  unique value moves), and a channel ends only when someone calls `close()`:
+  dropping the senders does not end `recv()` loops.
 - **Building a big string:** `out += piece` on a `var` appends in place. To
   build across functions, pass the buffer down: `fn emit(out: mut Str, ...)`.

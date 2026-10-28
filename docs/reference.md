@@ -70,6 +70,7 @@ unchanged program is instant (cache in `$TENON_CACHE`, default
 | `Option[T]` | `Some(T)` or `None`. There is no null. |
 | `Result[T, E]` | `Ok(T)` or `Err(E)`. |
 | `Console`, `Fs`, `Clock`, `Net`, `Proc` | Capabilities (§10). |
+| `Workers`, `Worker[R]`, `Sender[T]`, `Receiver[T]` | Workers and channels (§18; tenonc only). |
 
 There is **no implicit conversion** of any kind: `1 + 2.0` is a type error;
 write `1.to_float() + 2.0`.
@@ -118,6 +119,9 @@ a.push(3)      // b is still [1, 2]
   `var memo = self.memo; self.memo = []; ... self.value(i, mut memo) ...; self.memo = memo`.
 - Integers are 64-bit machine integers with an overflow check; structs,
   tuples and non-recursive enums are stored inline, without allocation.
+- Reference counts are plain (non-atomic) integers, also in programs with
+  workers (§18): a value is never shared between threads. What crosses to
+  another worker is copied, at a cost proportional to its size.
 
 ## 4. Declarations
 
@@ -461,7 +465,8 @@ struct Sys { console: Console, fs: Fs, clock: Clock, net: Net, proc: Proc, args:
 `sys.args` holds the command-line arguments *after* the program name. Paths
 given to the unattenuated `sys.fs` are relative to the current directory (or
 absolute; `sys.fs.within("/srv/data")` is fine). `sys.net` is the network
-capability (§15); `sys.proc` runs other programs (below). There are no global functions for I/O, no ambient file system access, and no
+capability (§15); `sys.proc` runs other programs (below); `sys.workers()`
+(tenonc only) starts workers on other cores (§18). There are no global functions for I/O, no ambient file system access, and no
 way to construct a capability. Functions that need authority take it as a
 parameter, so a signature shows what a function can touch. Attenuate before
 passing on:
@@ -899,9 +904,10 @@ one closes it. Operations block; before blocking (`accept`, `connect`, reads,
 
 ### Many connections: the event loop
 
-Concurrency in Tenon is a single-threaded event loop: no data races are
-possible, and events arrive in a deterministic order. A `Poller` (a unique
-handle from `sys.net.poller()`) owns many sockets, named by `Int` ids:
+Within one thread, concurrency is a single-threaded event loop: no data
+races are possible, and events arrive in a deterministic order (for more
+cores, workers and channels: §18). A `Poller` (a unique handle from
+`sys.net.poller()`) owns many sockets, named by `Int` ids:
 
 ```tenon
 let p = sys.net.poller()
@@ -1060,7 +1066,8 @@ ordering, hashing and `to_str()` always worked (§4). As bounds they say what
 a type parameter is used for: `fn largest[T: Ord](xs: List[T]) -> T`,
 `fn count[K: Hash + Eq](xs: List[K]) -> Int`. Eq: no functions,
 capabilities or `dyn` values inside; Ord: Eq and no maps; Hash (usable as a
-map key): Eq and no Float; Show: no functions or capabilities. A type that
+map key): Eq and no Float; Show: no functions or capabilities (a fifth,
+Send, says what can go to another worker: §18). A type that
 contains a function does not satisfy Eq: `type fn(Int) -> Int does not
 implement Eq (needed by bound T: Eq of same)`. Only Show can be implemented,
 to replace the derived text:
@@ -1104,6 +1111,179 @@ code. `dyn` values cannot hold linear or unique values (`a 'dyn' value
 cannot hold the linear type Job`): a table call could not tell whether the
 value was finished.
 
-## 18. Not yet implemented
+## 18. Workers and channels
 
-Multi-core parallelism; see `docs/log.md`.
+A worker runs a function on another OS thread, so programs can use every
+core. Workers share nothing: each has a heap of its own, and they
+communicate through typed channels. What goes from one worker to another is
+copied into the receiver's heap (a unique value is moved), so no two threads
+ever touch the same value and there are no data races, by construction.
+Workers are implemented by the self-hosted compiler (`tenonc run`, `tenonc
+build`; lib/v2/prelude.tn); the bootstrap `tenon` does not know them.
+
+```tenon
+fn count_words(lines: List[Str]) -> Int {
+    var n = 0
+    for l in lines { n += l.words().len() }
+    n
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let w = sys.workers()                         // the authority to start workers
+    let h = w.spawn(count_words, ["a b", "c"])   // runs on another core
+    con.println("{h.join()}")                     // 3: waits, gives the result
+    con.println("{w.par_map([1, 2, 3], fn(x) => x * x)}")   // [1, 4, 9]
+    // a pool: the jobs go into one channel, every worker takes the next one
+    let (jobs, todo) = channel()
+    let (done, results) = channel()
+    var pool: List[Worker[Unit]] = []
+    for _ in 0..4 {
+        pool.push(w.spawn(fn(_) {
+            while let Some(x) = todo.recv() { done.send((x, x * 10)) }
+        }, ()))
+    }
+    for i in 0..8 { jobs.send(i) }
+    jobs.close()                                  // recv gives None once the jobs are gone
+    var out: List[(Int, Int)] = []
+    for _ in 0..8 { out.push(results.recv().unwrap()) }
+    out.sort()                                    // in whatever order they finished: sort
+    for h2 in pool { h2.join() }
+    con.println("{out}")
+}
+```
+
+| Call | Meaning |
+|---|---|
+| `sys.workers()` | the `Workers` capability: only `main` has it, and passes it on explicitly |
+| `w.spawn(f, arg)` | start `f(arg)` (`f: fn(A) -> R`) on a new worker; gives a `Worker[R]` |
+| `h.join()` | wait for the worker and give its result (a copy: a handle may be joined again, by any worker) |
+| `w.cores()` | the number of cores (to size a pool) |
+| `w.par_map(xs, f)`, `w.par_map_n(n, xs, f)` | `xs.map(f)` computed by `cores()` (or `n`) workers: the same list, in order |
+| `channel()` | a new channel: `(Sender[T], Receiver[T])`, `T` inferred from use |
+| `tx.send(x)` | put a copy of `x` in the channel (never waits: channels are unbounded); traps on a closed channel |
+| `tx.close()` | no more sends; receivers get what is left, then `None` |
+| `rx.recv()` | the next value (`Option[T]`), waiting for one; `None` once closed and empty |
+| `rx.try_recv()` | the next value if there is one now, else `None` (for polling) |
+
+A function of several values takes a tuple (`w.spawn(f, (a, b))`), or is a
+closure that captures them (`w.spawn(fn(_) => f(a, b), ())`). Channel
+handles and `Worker` handles are shared: copies of a `Sender` all send to the
+same channel, and any number of workers may send to and receive from one
+channel (each value is received once). They cannot be compared or encoded.
+
+**What can be sent: `Send`.** The derived trait `Send` (like `Eq` and `Show`,
+§17) says which values may go to another worker, as spawn's argument or
+result or through a channel. Every type is `Send` except:
+
+- linear types (§12), and types containing them: a channel that is dropped
+  with values in it, or a worker that is never joined, would lose the
+  obligation (`type Job does not implement Send (needed by bound T: Send of
+  channel): the linear type Job could be dropped by a channel or a worker that
+  is never joined`);
+- the socket handles `Poller`, `Listener` and `Conn`, and types containing
+  them: their sockets belong to the worker that opened them. Send the `Net`
+  capability and open them in the worker.
+
+A type parameter is `Send` only if it declares it (`fn f[T: Send](x: T)`), so
+generic code that sends its values says so. The other capabilities (`Console`,
+`Fs`, `Clock`, `Net`, `Proc`, `Workers`) can be sent: a worker has no
+authority except what the program passes to it (an attenuated `Fs` stays
+attenuated). Unique values (§12) are moved: after `tx.send(t)` or
+`w.spawn(f, t)` the sender cannot use `t`. A worker cannot return a unique
+value, because every `join` of a handle gives the result; send it through a
+channel instead. Closures capture by value and cannot capture unique or
+linear values, so a closure (also inside a `dyn` value, which cannot hold
+them either) always carries only sendable values, and can be spawned or sent.
+
+**Traps.** A trap in a worker ends the whole program with status 70, as a
+trap in `main` does (traps are bugs, and are not caught); so do a stack
+overflow (72) and `sys.proc.exit` in a worker. When `main` returns, the
+program ends, also the workers that are still running: join the ones whose
+work matters.
+
+**Closing and deadlock.** A channel ends only when some sender calls
+`close()`; dropping the senders does not close it. A program in which every
+thread waits on a `recv` or a `join` that nothing can satisfy (for example a
+`recv` loop on a channel that is never closed, after its senders finished)
+traps with `deadlock: every worker is waiting for a channel or a join`, at the
+main thread's wait, instead of hanging. A thread blocked elsewhere (a socket,
+`Poller.wait`, the console) does not count as waiting.
+
+**Deterministic output.** Workers run in parallel, so the order of their
+`println` lines and of values arriving on a shared channel depends on
+scheduling. Programs (and tests) whose output must not vary collect results
+through channels and sort them, or by index (`par_map` does), and print from
+`main` after `join`. A line printed by `println` is never mixed with
+another worker's.
+
+**Event loops.** A `Poller` lives in one worker, which opens it from the
+`Net` it was given; several workers may each run an event loop. An event loop
+polls a channel with `try_recv` between waits with a timeout:
+
+```tenon
+fn serve(caps: (Net, Receiver[Str])) -> Int {
+    let (net, stop) = caps
+    let p = net.poller()
+    let _ = p.listen(0)
+    var turns = 0
+    while true {
+        for ev in p.wait(10) {                     // 10 ms, then look at the channel
+            match ev {
+                Data(id, text) => { let _ = p.send(id, text) }
+                _ => {}
+            }
+        }
+        turns += 1
+        if stop.try_recv().is_some() { break }
+    }
+    turns
+}
+
+fn main(sys: Sys) {
+    let (stop, stop_rx) = channel()
+    let h = sys.workers().spawn(serve, (sys.net, stop_rx))
+    stop.send("stop")
+    sys.console.println("{h.join() > 0}")
+}
+```
+
+(tests/v2/run/workers_event_loop.tn is a server worker with a client event
+loop in `main`.)
+
+**In the interpreter** (`tenonc run`) workers run on one thread under a
+deterministic scheduler, with the same results as `tenonc build` for every
+program whose output does not depend on scheduling (selfhost/iwork.tn): a
+worker runs when `main` waits (`recv`, `join`, `try_recv`), until it finishes
+or waits itself; a waiting worker is resumed by running it again from the
+start, with every effect it already had (output, files, channels) replayed
+from a log instead of repeated. So resuming a worker costs the work it did
+before, and a worker blocked in a socket read or `Poller.wait` without a
+timeout holds up the others. Use `tenonc build` for speed.
+
+**Costs** (C backend, Apple M4 Max; selfhost/iwork.tn and runtime/tenon.h for
+the implementation):
+
+- Copying a value to another worker costs about its size: 0.6 ns per `Int`
+  of a list, 12 ns per string (one allocation each), 18 ns per map entry
+  (measured with lists of 1,000,000 `Int`s and 100,000 strings, and a map of
+  100,000 entries). A value shared twice inside the sent value is copied
+  twice. Send a few large messages (chunks) rather than many small ones.
+- A message round trip to another worker and back takes about 4.5 µs (the
+  receiver sleeps when the channel is empty); starting and joining a worker
+  about 18 µs.
+- A program that starts workers is compiled for threads: its allocator state
+  is thread-local and its output locked. Single-threaded code in such a
+  program runs at most a few percent slower (bench/trees 5%, bench/v2/pwords
+  3%, bench/v2/mandel 0%); programs without workers are unchanged.
+- Speedups over the same function on one thread (`python3 tools/bench.py
+  --parallel`; 16 cores): bench/v2/mandel (floating point) 1.96x on 2
+  workers, 3.62x on 4, 6.9x on 8; bench/v2/pwords (strings and maps,
+  allocating; maps copied back) 1.92x, 3.51x, 6.2x.
+- Each worker has its own stack of 256 MB (reserved, committed as used) and
+  keeps at most 64 MB of freed blocks for reuse; `main` has 1 GB.
+
+## 19. Not yet implemented
+
+Bounded channels, waiting on several channels at once, and a channel that a
+`Poller` reports like a socket; see `docs/log.md`.

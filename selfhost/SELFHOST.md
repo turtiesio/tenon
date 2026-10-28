@@ -142,3 +142,20 @@ tools/selfhost.sh and tools/fixpoint.sh compare the two compilers as before
 (selfhost.sh now uses `tenonc tokens`/`ast`; `tenonc check` is now silent on
 success and prints the rendered diagnostic like `tenon check`; selfhost/check.tn
 keeps the one-line `ok` form).
+
+## Workers and channels in the interpreter (v2)
+
+selfhost/iwork.tn, docs/reference.md §18. The interpreter is built by the
+frozen bootstrap, so it has no threads: workers run under a deterministic
+cooperative scheduler. A spawned worker runs when `main` waits (recv, join,
+try_recv), round robin, until it finishes or would wait; a waiting worker is
+unwound (`ieval.CBlock`) and later run again from the start, with the result
+of every builtin with an effect it already called (`ibuiltin.FIRST_EFFECT`
+on: console, capabilities, channels, workers) replayed from its log. The
+observable results are the C backend's for every program whose output does
+not depend on scheduling (tests/v2/run/workers_*.tn, programs/v2/scan on
+both backends). Differences: resuming a worker repeats its computation (a
+worker that waits k times costs about k times its work); a worker blocked in
+the host (a socket, `Poller.wait(-1)`, `sleep_ms`) holds up every worker;
+workers still running when `main` returns never ran to the end (in C they
+are stopped at an arbitrary point); `Workers.cores()` asks `getconf`.
