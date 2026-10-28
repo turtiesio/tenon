@@ -106,7 +106,7 @@ evidence). Study stays as product evidence.
 - **Evidence:** `tools/selfhost.sh:24-56` and `tools/fixpoint.sh:31-42` are near copies, each with its own `one()` and `xargs -P 8`.
 - **Gains:** one script fewer and one stage1 pass fewer, about 2-3 s warm.
 
-### A5. Build `fmt` and `lsp` once, with tenonc instead of the bootstrap. S, low risk. Folded into B1.
+### A5. Build `fmt` and `lsp` once, with tenonc instead of the bootstrap. S, low risk. Folded into B1. Done in 78d0a9a (fmt_check and lsp_test use `target/tenon fmt` / `tenon lsp`: no separate builds).
 
 - **Evidence:**
   - `tools/fmt_check.sh:20` builds `tenonfmt` at `-O2` with the bootstrap.
@@ -115,7 +115,7 @@ evidence). Study stays as product evidence.
 
 ## Batch B: one CLI, consistent flags
 
-### B1. One `tenon` binary with subcommands. M, medium risk. (after concurrency lands)
+### B1. One `tenon` binary with subcommands. M, medium risk. Done in 78d0a9a (code, tools, VS Code client) and the docs commit after it. The seed is `target/release/tenon-seed` (user decision, docs/log.md "CLI and seed"; bootstrap/Cargo.toml package name, approved in governance/approvals.log), and the tools call it `$SEED`; `tenon help` and `--version` added; install: tools/install.sh.
 
 - **What:** one driver, `selfhost/tenon.tn`, built to `target/tenon`, merging `tenonc.tn`, `tenonfmt.tn` and `tenonlsp.tn`. The subcommands are `run build emit check test fmt lsp fetch tokens ast`.
 - **Why:**
@@ -129,7 +129,7 @@ evidence). Study stays as product evidence.
   - The bootstrap keeps `target/release/tenon`. Rename its use in tools to `$SEED`, so no reader confuses the two.
 - **Dependencies:** B2. Also update `editors/vscode/extension.js:33,73`.
 
-### B2. Flags anywhere; drop positional ROOT. S, low risk. (after concurrency lands)
+### B2. Flags anywhere; drop positional ROOT. S, low risk. Done in 78d0a9a (one parser in selfhost/tenon.tn; tools/cli_test.sh; tools/checkfuzz.py was the last user of the positional ROOT).
 
 Current behaviour in `selfhost/tenonc.tn`:
 
@@ -141,13 +141,13 @@ Current behaviour in `selfhost/tenonc.tn`:
 
 Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT exists only for `selfhost/check.tn` compatibility, and that file is dead (C1).
 
-### B3. `tenonc test` without `$TENONC` fails opaquely. S, low risk. (after concurrency lands)
+### B3. `tenonc test` without `$TENONC` fails opaquely. S, low risk. Done in 78d0a9a (`tenon test` finds its own path and passes it to its workers as `--exe`; the tools use `$TENON`, `$TENON0`, `$SEED` only, defined in tools/corpus.py).
 
 - **Evidence:** `selfhost/testrun.tn:196`, `p.env("TENONC").unwrap_or("tenonc")`. `target/tenonc test tests` from the README fails with "FAIL a test worker did not finish" unless `tenonc` is on PATH (reproduced).
 - **Fix:** default to the running executable's path, or fail with a clear message naming `$TENONC`.
 - **Related clean-up:** `check:18` sets `TENON=` for tenonc, which never reads it. The scripts use both `$TENON` and `$TENONC` for the same binary (`doctest.py:26`, `vscode_grammar_check.py:35`, `programs.sh:7` versus `selfhost.sh`, `fixpoint.sh`, `pkg_test.sh`). Use one variable.
 
-### B4. One table of environment variables and exit codes. S, low risk.
+### B4. One table of environment variables and exit codes. S, low risk. Done in the docs commit after 78d0a9a (docs/tools.md; the cache default and the package-aware commands fixed in reference.md).
 
 - **Variables:** `TENON_ROOT`, `TENON_CACHE`, `TENON_KEEP_C`, `TENON_HOME`, `CC`, `TENONC`. Each is documented in 3-6 places today: `tenonc.tn:20-28`, `SELFHOST.md:23,128-134`, `EMITTER_NOTES.md:34`, `reference.md:30-32`, `vscode/README.md:62`.
 - **Already out of sync:** the cache default (`<tmp>` vs `$TMPDIR`), and which commands are package-aware (`reference.md:775` vs `packages.md:174`).
@@ -358,7 +358,7 @@ target/tenon            one self-hosted binary (selfhost/tenon.tn)
   tenon tokens FILE         tenon ast FILE                    tenon --help
   common flags anywhere: --root DIR (else $TENON_ROOT, else the binary's repo)
   exit codes: 0 ok, 1 diagnostic/test failure, 2 usage/I-O, 70/72 traps
-target/release/tenon    the frozen Rust seed (scripts call it $SEED); builds stage1 only
+target/release/tenon-seed  the frozen Rust seed (scripts call it $SEED); builds stage0 only
 ```
 
 ### Docs

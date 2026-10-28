@@ -28,6 +28,10 @@ expect 0 "usage: tenon COMMAND" "$C" help
 expect 0 "tenon fmt [--check]" "$C" --help
 expect 0 "usage: tenon COMMAND" "$C" build --help
 expect 0 "tenon 0." "$C" --version
+n=$((n + 1))
+"$C" help > "$tmp/usage.txt"
+grep -qxF -f "$tmp/usage.txt" docs/tools.md && [ "$(grep -cxF -f "$tmp/usage.txt" docs/tools.md)" = "$(wc -l < "$tmp/usage.txt" | tr -d ' ')" ] ||
+  { echo "cli_test: FAIL: docs/tools.md does not show the usage text of \`tenon help\` verbatim"; fail=1; }
 expect 2 "tenon: unknown command 'frob'" "$C" frob
 expect 2 "tenon: unknown flag --bless for \`tenon build\`" "$C" build "$tmp/p.tn" --bless
 expect 2 "tenon: unknown flag -x for \`tenon check\`" "$C" check -x "$tmp/p.tn"

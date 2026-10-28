@@ -7,7 +7,7 @@
   literals, raw strings `r"..."`, and strings with escapes (`\{`) and
   interpolations `{expr}` / `{expr:SPEC}` whose expressions are highlighted as
   code and whose format spec is highlighted separately.
-- A client for the Tenon language server, `tenonlsp` (selfhost/tenonlsp.tn):
+- A client for the Tenon language server, `tenon lsp` (selfhost/lsp.tn):
   - diagnostics: the checker's first diagnostic (parse errors too), exactly as
     `tenon check` reports it, updated as you type (unsaved text is checked;
     imported modules are read from disk, and every open file is checked again
@@ -33,11 +33,11 @@ only the `vscode` API and Node built-ins (it frames JSON-RPC by hand).
 
 ## Install
 
-Build the language server (from the repository root) somewhere on your PATH:
+Install `tenon`, which holds the language server (`tenon lsp`), on your
+PATH, from the repository root (docs/tools.md):
 
 ```sh
-cargo build --release
-target/release/tenon build selfhost/tenonlsp.tn -o ~/bin/tenonlsp
+tools/install.sh        # ~/.local/bin/tenon; put ~/.local/bin on PATH
 ```
 
 Then link (or copy) this folder into VS Code's extension directory and
@@ -58,13 +58,13 @@ code --install-extension tenon-0.2.0.vsix
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `tenon.serverPath` | `tenonlsp` | the server executable; a bare name is looked up on PATH |
-| `tenon.root` | (empty) | the toolchain root: the directory with `lib/prelude.tn` and `lib/std/`, passed as `--root`. Empty: a workspace folder containing `lib/prelude.tn` (the Tenon repository itself), else `$TENON_ROOT`, else the server's working directory |
+| `tenon.serverPath` | `tenon` | the `tenon` executable, started as `tenon lsp`; a bare name is looked up on PATH |
+| `tenon.root` | (empty) | the toolchain root: the directory with `lib/prelude.tn` and `lib/std/`, passed as `--root`. Empty: a workspace folder containing `lib/prelude.tn` (the Tenon repository itself), else `$TENON_ROOT`, else the root `tenon` finds from its own path (docs/tools.md) |
 
 Changing a setting restarts the server; so does the command "Tenon: Restart
 Language Server". Its messages are in the "Tenon" output channel.
 
-Any other editor with a language-server client can run `tenonlsp --root DIR`
+Any other editor with a language-server client can run `tenon lsp [--root DIR]`
 the same way: it speaks LSP over stdin and stdout.
 
 ## Checking
@@ -76,7 +76,7 @@ the same way: it speaks LSP over stdin and stdout.
   file of the repository. Keep regexes to the subset that Oniguruma and Python's
   `re` share (no `\G`, `\K`, `\p{...}`); the checker translates `\h` and
   `(?<name>...)` and rejects the rest.
-- `python3 tools/lsp_test.py` (run by `./check`) builds the server and drives
-  it through scripted sessions on `tests/lsp/`, asserting exact responses; it
+- `python3 tools/lsp_test.py` (run by `./check`) drives `target/tenon lsp`
+  through scripted sessions on `tests/lsp/`, asserting exact responses; it
   also runs `node --check extension.js` and `tools/lsp_client_test.js`, which
   loads this client with a stand-in `vscode` module against the real server.
