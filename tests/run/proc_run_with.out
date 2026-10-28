@@ -1,0 +1,13 @@
+before
+status 3 signal 0 timed_out false out "out\n" err "err\n"
+status 0 signal 0 timed_out false out "a\nb�\u{0}" err ""
+status 0 signal 0 timed_out false out "/\n" err ""
+status -1 signal 9 timed_out true out "" err ""
+status -1 signal 9 timed_out false out "" err ""
+error NotFound("tenon-no-such-command")
+error NotFound("/tenon-no-such-directory")
+error Denied("/etc/hosts")
+error Failed("sh: argument contains a NUL byte")
+cat echoed 300000 bytes
+after
+exit: 72

@@ -658,3 +658,23 @@ extern fn Proc.run(self, cmd: Str, args: List[Str]) -> Result[Int, IoError]
 // The environment variable `name` (None if unset, or if `name` is empty or
 // contains '=' or a NUL byte); invalid UTF-8 becomes U+FFFD.
 extern fn Proc.env(self, name: Str) -> Option[Str]
+// run_with(cmd, args, dir, input, timeout_ms): runs `cmd` like run, but in
+// directory `dir` ("" = the current one; NotFound(dir) if it is not a
+// directory), with `input` (bytes, each 0..255, else a trap) as its standard
+// input, and captures its standard output and error as bytes. A command still
+// running after timeout_ms > 0 milliseconds is killed (SIGKILL) and
+// `timed_out` is set; 0 or less waits for ever. `status` is the exit status,
+// or -1 when the command was ended by a signal (then `signal` is its number).
+pub struct ProcOut { pub status: Int, pub signal: Int, pub timed_out: Bool, pub out: List[Int], pub err: List[Int] }
+fn Proc.run_with(self, cmd: Str, args: List[Str], dir: Str, input: List[Int], timeout_ms: Int) -> Result[ProcOut, IoError] {
+    let r = self.run_capture(cmd, args, dir, input, timeout_ms)?
+    let n = r[3]
+    Ok(ProcOut { status: r[0], signal: r[1], timed_out: r[2] == 1, out: r.slice(4, 4 + n), err: r.slice(4 + n, r.len()) })
+}
+// The packed form behind run_with: [status, signal, timed_out, len(out), out..., err...].
+extern fn Proc.run_capture(self, cmd: Str, args: List[Str], dir: Str, input: List[Int], timeout_ms: Int) -> Result[List[Int], IoError]
+// Ends the program now with `status` (0-255, else a trap), after flushing
+// standard output. Unlike returning from `main`, any status is allowed,
+// including the runtime's reserved ones (70, 71, 72, 74): a program that runs
+// other programs (an interpreter, a test runner) can pass theirs on.
+extern fn Proc.exit(self, status: Int)

@@ -445,6 +445,9 @@ Exit codes used by the runtime:
 | 72 | stack overflow | no |
 | 74 | standard output could not be written | no |
 
+`sys.proc.exit(status)` (§11) may end a program with any status 0-255,
+including these four (an interpreter passes on the status of the program it runs).
+
 ## 10. Capabilities (authority)
 
 A program can only affect the outside world through capabilities, and the only
@@ -677,7 +680,7 @@ Highlights:
   separator; `read_all`, `Fs.read` and `s.split("\n")` keep every `"\r"`.
 - Paths: `path_join(a, b)`, `path_parent(p)`, `path_base(p)` (§10).
 - `Clock`: `now_ms mono_ns sleep_ms`.
-- `Proc`: `run env`. `p.run(cmd, args)` (`Result[Int, IoError]`) runs the
+- `Proc`: `run run_with exit env`. `p.run(cmd, args)` (`Result[Int, IoError]`) runs the
   program `cmd` (looked up in `PATH` unless it contains a `/`) with the
   arguments `args`, no shell involved, sharing standard input, output and
   error; standard output is flushed first. It waits and gives the exit
@@ -690,6 +693,20 @@ Highlights:
   authority of the user (a command can do anything), so hand it only to
   the code that must run commands: `fn build(p: Proc, out: Str)` says so in
   its signature.
+  `p.run_with(cmd, args, dir, input, timeout_ms)` (`Result[ProcOut, IoError]`)
+  runs `cmd` the same way but in directory `dir` (`""`: the current one;
+  `Err(NotFound(dir))` if it is not a directory), with the bytes `input`
+  (`List[Int]`, each 0..255, else a trap) as its standard input, and captures
+  its standard output and error: `ProcOut { status, signal, timed_out, out,
+  err }` with `out` and `err` as bytes (`Str.from_utf8_lossy(o.out)` for
+  text). A command still running after `timeout_ms > 0` milliseconds is
+  killed (SIGKILL) and `timed_out` is `true`; `0` waits for ever. `status` is
+  the exit status, or `-1` when the command was ended by a signal (`signal`
+  is then its number, else 0). `p.exit(status)` ends the program at once with
+  `status` after flushing standard output: any value 0-255, including the
+  runtime's reserved codes (70, 71, 72, 74), so a program that runs other
+  programs (an interpreter, a test runner) can pass their status on; a value
+  outside 0-255 traps. Both need the `Proc` authority, like `run`.
 
 ## 12. Obligations: linear and unique types
 

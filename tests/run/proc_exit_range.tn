@@ -1,0 +1,5 @@
+// Proc.exit outside 0..255 traps.
+fn main(sys: Sys) {
+    sys.console.println("before")
+    sys.proc.exit(256)
+}
