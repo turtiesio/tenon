@@ -81,6 +81,10 @@ def main():
         w(f"- sanitizers: {san['programs']} run tests under ASan+UBSan, {verdict} ({san['date']}, {san['commit']}; `tools/asan.sh`)")
     else:
         w("- sanitizers: not run yet (`tools/asan.sh`)")
+    tsan = load("tsan.json")
+    if tsan:
+        verdict = "all clean" if tsan["failed"] == 0 else f"**{tsan['failed']} FAILED**"
+        w(f"- ThreadSanitizer: {tsan['programs']} programs with workers ({tsan['runs']} runs), {verdict} ({tsan['date']}, {tsan['commit']}; `tools/tsan.sh`)")
     w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`)\n")
     if bench:
         w("| Program | Tenon | C (cc -O2) | Rust (-O) | Python | TypeScript (node) | Tenon / C | Binary (Tenon / C) |\n|---|---|---|---|---|---|---|---|")
@@ -89,6 +93,16 @@ def main():
             w(f"| {k} | {v['tenon']:.3f} s | {v['c']:.3f} s | {opt('rust')} | {v['python']:.3f} s | {opt('typescript')} | {v['tenon_vs_c']}x | {v['size_tenon'] // 1024} KB / {v['size_c'] // 1024} KB |")
         worst = max(v["tenon_vs_c"] for v in bench.values())
         w(f"\nTarget: within 1.5x of C. Worst: {worst}x — {'met' if worst <= 1.5 else '**not met**'}.")
+    par = load("bench_parallel.json")
+    if par:
+        w("\n### Parallel (workers; `python3 tools/bench.py --parallel`)\n")
+        ns = sorted(int(k[1:]) for k in next(iter(par.values())) if k.startswith("w"))
+        w("| Program | C (serial) | Tenon serial | " + " | ".join(f"{n} workers" for n in ns) + " |\n|---|---|---|" + "---|" * len(ns))
+        for k, v in sorted(par.items()):
+            c = f"{v['c']:.3f} s" if "c" in v else "-"
+            w(f"| {k} | {c} | {v['serial']:.3f} s | " + " | ".join(f"{v[f'w{n}']:.3f} s ({v[f'speedup{n}']}x)" for n in ns) + " |")
+        s4 = min(v.get("speedup4", 0) for v in par.values())
+        w(f"\nTarget: at least 3x on 4 cores. Lowest: {s4}x — {'met' if s4 >= 3 else '**not met**'}.")
     w("\n## Usability study\n")
     w(study.get("summary", "Not run yet. Task specifications: `study/tasks/`; hidden tests are kept out of authors' view.") + "\n")
     w("## Trusted base\n")

@@ -113,3 +113,27 @@ v1 corpus stays byte-identical to the bootstrap's (tools/selfhost.sh).
   formats (interpolation, lists, maps, traps, `main`'s error) uses it and
   `encode` (TN_FULL) does not. Its prototype goes with the helper
   prototypes, which come before the functions'.
+
+## Workers and channels (v2: tenonc only; emitbi.tn `worker_call`)
+
+A program whose checker results resolve a call to `Sys.workers` (emit.tn
+`uses_workers`, `Em.mt`) is compiled for threads; nothing changes for any
+other program, so the v1 corpus stays byte-identical to the bootstrap's.
+
+- The C starts with `#define TN_MT 1`, which switches runtime/tenon.h to its
+  thread-safe form (one thread-local struct for the allocator lists, the
+  release queue and `tn_cur_loc`; locked output and input; see the section
+  "workers and channels" there).
+- Every type gets `N_copy`, a deep copy that reads its argument without
+  touching its counts (struct and tuple fields, enum payloads, `TN_LIST_COPY`
+  and `TN_MAP_COPY` for lists and maps; builtin ones in tenon.h); closures'
+  environments and `dyn` boxes get a `copy` function in their header. Boxed
+  enums allocate from the free lists (no per-type pools, which would be
+  thread-locals) and leave the shared nullary nodes' counts alone
+  (`TN_RC_STATIC`). `println` is one locked write (`tn_writeln`).
+- `Workers.spawn` copies the argument and the function, and starts a
+  `tn_Worker` whose generated runner (`tn_runN`, per argument and result
+  type) calls it on the new thread; `Worker.join` copies the result out;
+  `channel` makes a `tn_Chan` with the element size and a release function
+  (`tn_relpN`); `send` copies (`send_copy`; a retain in a program without
+  workers, where channels are used by one thread).

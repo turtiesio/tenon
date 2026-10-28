@@ -18,7 +18,7 @@ target/tenonc`). It has every subcommand of the bootstrap's `tenon` (run,
 build, emit, check, test, tokens, ast; selfhost/SELFHOST.md). The Rust
 bootstrap is a frozen seed: changing it needs an approvals entry and its line
 count may only shrink (governance/README.md). New language features exist
-only in tenonc (traits: docs/reference.md §17); code that uses them lives
+only in tenonc (traits, docs/reference.md §17; workers and channels, §18); code that uses them lives
 under a `v2/` directory (lib/v2, tests/v2), which the tools comparing tenonc
 with the bootstrap skip.
 
@@ -26,12 +26,12 @@ with the bootstrap skip.
 
 ```
 bootstrap/    the Rust bootstrap compiler and reference interpreter (Cargo package): a frozen seed
-lib/          prelude.tn (the builtin API, in Tenon), std/ (standard modules), v2/prelude.tn (tenonc-only: the traits)
+lib/          prelude.tn (the builtin API, in Tenon), std/ (standard modules), v2/prelude.tn (tenonc-only: traits, workers)
 runtime/      tenon.h, the C runtime every native build includes
 selfhost/     the compiler written in Tenon (tenonc: checker, C backend, interpreter, test runner), cross-checked against bootstrap/
 tests/        run/ reject/ lex/ parse/ selfhost/ corpus; redteam/ findings and repros; v2/ (tenonc-only)
-programs/     real programs with scenario tests (tools/programs.sh)
-bench/        benchmarks against C, Rust, Python, TypeScript (tools/bench.py)
+programs/     real programs with scenario tests (tools/programs.sh); v2/ (tenonc-only: scan, with workers)
+bench/        benchmarks against C, Rust, Python, TypeScript (tools/bench.py); v2/ parallel ones (--parallel)
 docs/         reference, quickstart, packages, decision log
 editors/      editor support: vscode/ (syntax highlighting, no build step)
 governance/   guarded tests and the append-only approvals log

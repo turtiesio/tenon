@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """Benchmarks: each bench/NAME has NAME.tn, NAME.c, NAME.py (and optional
 gen.py producing input.txt fed on stdin). Outputs must be identical across
-implementations. Writes .evidence/bench.json (median of N runs, wall time)."""
+implementations. Writes .evidence/bench.json (median of N runs, wall time).
+
+Parallel benchmarks (workers, tenonc only): each bench/v2/NAME has NAME.tn,
+which takes the number of workers as its argument (0: the same function on
+one thread, the serial baseline), and optionally NAME.c, a serial C
+reference with the same output. Each is run serially and with 1, 2, 4 and 8 workers (PAR_WORKERS
+to change); the speedup is over the serial run of the same binary. Writes
+.evidence/bench_parallel.json. `bench.py --parallel` runs only these."""
 import json, os, statistics, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TENON = os.path.join(ROOT, "target", "release", "tenon")
+TENONC = os.environ.get("TENONC", os.path.join(ROOT, "target", "tenonc"))
 OUT = os.path.join(ROOT, "bench", "out")
 RUNS = int(os.environ.get("BENCH_RUNS", "3"))
 
@@ -23,7 +31,47 @@ def timed(cmd, stdin_path):
     return statistics.median(times), out
 
 
+def parallel():
+    os.makedirs(OUT, exist_ok=True)
+    if not os.path.exists(TENONC):
+        subprocess.run([TENON, "build", os.path.join(ROOT, "selfhost", "tenonc.tn"), "-o", TENONC], check=True)
+    counts = [int(x) for x in os.environ.get("PAR_WORKERS", "1,2,4,8").split(",")]
+    d0 = os.path.join(ROOT, "bench", "v2")
+    results = {}
+    for name in sorted(os.listdir(d0)):
+        d = os.path.join(d0, name)
+        if not os.path.isfile(os.path.join(d, name + ".tn")):
+            continue
+        tn_bin, c_bin = os.path.join(OUT, name + "_par"), os.path.join(OUT, name + "_par_c")
+        env = dict(os.environ, TENON_ROOT=ROOT)
+        subprocess.run([TENONC, "build", os.path.join(d, name + ".tn"), "-o", tn_bin], check=True, env=env)
+        serial, out = timed([tn_bin, "0"], None)
+        row = {"serial": round(serial, 4), "cores": os.cpu_count()}
+        line = f"{name:10} serial {serial:.3f}s"
+        if os.path.exists(os.path.join(d, name + ".c")):
+            # -ffp-contract=off: no fused multiply-add, as Tenon's floats (same results)
+            subprocess.run(["cc", "-O2", "-ffp-contract=off", "-o", c_bin, os.path.join(d, name + ".c")], check=True)
+            c_t, c_out = timed([c_bin], None)
+            if out != c_out:
+                raise SystemExit(f"{name}: Tenon and C disagree")
+            row["c"] = round(c_t, 4)
+            line += f"  c {c_t:.3f}s"
+        for n in counts:
+            t, o = timed([tn_bin, str(n)], None)
+            if o != out:
+                raise SystemExit(f"{name}: {n} workers give another output")
+            row[f"w{n}"] = round(t, 4)
+            row[f"speedup{n}"] = round(serial / t, 2)
+            line += f"  {n}w {t:.3f}s ({serial / t:.2f}x)"
+        results[name] = row
+        print(line)
+    os.makedirs(os.path.join(ROOT, ".evidence"), exist_ok=True)
+    json.dump(results, open(os.path.join(ROOT, ".evidence", "bench_parallel.json"), "w"), indent=1, sort_keys=True)
+
+
 def main():
+    if sys.argv[1:] == ["--parallel"]:
+        return parallel()
     os.makedirs(OUT, exist_ok=True)
     names = sys.argv[1:] or sorted(os.listdir(os.path.join(ROOT, "bench")))
     results = {}
@@ -68,6 +116,8 @@ def main():
     old = json.load(open(path)) if os.path.exists(path) else {}
     old.update(results)
     json.dump(old, open(path, "w"), indent=1, sort_keys=True)
+    if not sys.argv[1:]:
+        parallel()
 
 
 if __name__ == "__main__":

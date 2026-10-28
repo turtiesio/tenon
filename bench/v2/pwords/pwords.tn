@@ -1,0 +1,38 @@
+// Parallel benchmark (v2, tenonc only): word frequencies, with data moving
+// between workers. Each of 64 chunks makes 200,000 pseudo-random words
+// (strings built and hashed: allocation-heavy) and counts them in a map;
+// the maps (up to 4,096 entries each) are copied back to main and merged.
+// `pwords N` uses N workers (Workers.par_map_n), `pwords 0` the same
+// function on one thread. tools/bench.py --parallel.
+const CHUNKS: Int = 64
+const WORDS: Int = 200000
+const SYLLABLES: Str = "kabadafagahajakalamanapasatavawa"
+
+fn syllable(i: Int) -> Str { SYLLABLES.slice(2 * i, 2 * i + 2) }
+
+fn count_chunk(c: Int) -> Map[Str, Int] {
+    var seed = c * 7919 + 1
+    var m: Map[Str, Int] = [:]
+    for _ in 0..WORDS {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        let w = syllable(seed / 65536 % 16) + syllable(seed / 1024 % 16) + syllable(seed / 16 % 16)
+        m[w] = m.get_or(w, 0) + 1
+    }
+    m
+}
+
+fn main(sys: Sys) {
+    let n = if sys.args.is_empty() { 0 } else { sys.args[0].to_int().unwrap_or(0) }
+    var cs: List[Int] = []
+    for c in 0..CHUNKS { cs.push(c) }
+    let maps = if n == 0 { cs.map(count_chunk) } else { sys.workers().par_map_n(n, cs, count_chunk) }
+    var all: Map[Str, Int] = [:]
+    for m in maps {
+        for (w, k) in m { all[w] = all.get_or(w, 0) + k }
+    }
+    var es = all.entries()
+    es.sort_by(fn(e) => (-e.1, e.0))
+    var total = 0
+    for e in es { total += e.1 }
+    sys.console.println("{total} words, {es.len()} distinct; most frequent: {es.slice(0, 3)}")
+}
