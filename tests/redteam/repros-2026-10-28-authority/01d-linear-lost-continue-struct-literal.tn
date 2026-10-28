@@ -1,0 +1,24 @@
+// A linear value moved into an earlier argument is lost when a later argument `continue`s, or when a later
+// field of a struct literal fails with `?`: there is no "completed 11", and claim 20 never reaches Hold.finish.
+linear struct Claim { id: Int }
+linear struct Hold { c: Claim, n: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn Hold.finish(self, con: Console) { con.println("finished hold {self.n}") }
+fn take(c: Claim, con: Console, n: Int) { c.complete(con) }
+fn viacont(con: Console) {
+    for i in 0..3 {
+        let c = Claim { id: 10 + i }
+        take(c, con, if i == 1 { continue } else { 0 })
+    }
+}
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn viastruct(con: Console) -> Result[Int, Str] {
+    let c2 = Claim { id: 20 }
+    let k = Hold { c: c2, n: fails()? }
+    k.finish(con)
+    Ok(1)
+}
+fn main(sys: Sys) {
+    viacont(sys.console)
+    sys.console.println("{viastruct(sys.console)}")
+}

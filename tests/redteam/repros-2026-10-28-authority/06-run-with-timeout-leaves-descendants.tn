@@ -1,0 +1,11 @@
+// Proc.run_with kills the command on timeout, but only the command itself: a process it started
+// keeps running (not killed as a group). The marker "sleep 7.31" is easy to look for.
+fn main(sys: Sys) {
+    let con = sys.console
+    let r = sys.proc.run_with("sh", ["-c", "sleep 7.31 & sleep 7.31"], "", [], 300).unwrap()
+    con.println("timed_out={r.timed_out} status={r.status} signal={r.signal}")
+    // pgrep exits 0 when a matching process exists
+    let alive = sys.proc.run_with("pgrep", ["-f", "sleep 7.31"], "", [], 0).unwrap()
+    con.println("descendant still running after the timeout: {alive.status == 0}")
+    let _ = sys.proc.run("pkill", ["-f", "sleep 7.31"])
+}

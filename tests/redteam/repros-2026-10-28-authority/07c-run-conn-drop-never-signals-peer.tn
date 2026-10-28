@@ -1,0 +1,13 @@
+// Dropping a Conn closes it, so the peer sees end of stream (Conn.read_line gives what was sent,
+// then None). In `tenon run` the dropped client Conn stays open: the server's read_line waits for a
+// newline forever (the program hangs; run it under a timeout). `tenon build`: prints Ok(Some("x")).
+fn send_and_drop(sys: Sys, port: Int) {
+    let c = sys.net.connect("127.0.0.1", port).unwrap()
+    let _ = c.write("x")
+}
+fn main(sys: Sys) {
+    let l = sys.net.listen(0).unwrap()
+    send_and_drop(sys, l.port())
+    let s = l.accept().unwrap()
+    sys.console.println("peer after client conn dropped: {s.read_line()}")
+}

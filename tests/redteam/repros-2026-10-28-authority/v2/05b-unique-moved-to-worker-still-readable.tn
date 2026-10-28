@@ -1,0 +1,24 @@
+// A unique value is moved to a worker; the sender can still read it (field reads are not
+// treated as uses), after the worker has dropped it.
+unique struct Buf { items: List[Int], name: Str }
+fn consume(b: Buf) -> Int {
+    var t = 0
+    for x in b.items { t += x }
+    t + b.name.len()
+}
+fn main(sys: Sys) {
+    let w = sys.workers()
+    var xs: List[Int] = []
+    for i in 0..1000 { xs.push(i) }
+    let b = Buf { items: xs, name: "x".repeat(100) }
+    let h = w.spawn(consume, b)
+    let t = h.join()
+    // the worker is finished and has dropped its copy; b was moved into spawn
+    sys.console.println("worker total {t}; sender still sees {b.items.len()} items, name {b.name.len()}")
+    let (tx, rx) = channel()
+    let b2 = Buf { items: [1, 2, 3], name: "ab" }
+    tx.send(b2)
+    let got = rx.recv().unwrap()
+    let n = consume(got)
+    sys.console.println("{n} {b2.items.len()} {b2.name}")
+}

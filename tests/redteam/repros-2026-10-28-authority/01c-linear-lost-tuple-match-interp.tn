@@ -1,0 +1,27 @@
+// Same loss through a tuple, a match scrutinee and an interpolation: the linear value is moved
+// into the first part, then `?` in a later part returns early without anyone finishing it.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn Claim.id_of(self) -> Int { self.id }
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn via_tuple(con: Console) -> Result[Int, Str] {
+    let c = Claim { id: 1 }
+    let (a, b) = (c, fails()?)
+    a.complete(con)
+    Ok(b)
+}
+fn via_match(con: Console) -> Result[Int, Str] {
+    let c = Claim { id: 2 }
+    match (c, fails()?) {
+        (a, b) => { a.complete(con); Ok(b) }
+    }
+}
+fn via_interp() -> Result[Str, Str] {
+    let c = Claim { id: 3 }
+    Ok("{c.id_of()} {fails()?}")
+}
+fn main(sys: Sys) {
+    sys.console.println("{via_tuple(sys.console)}")
+    sys.console.println("{via_match(sys.console)}")
+    sys.console.println("{via_interp()}")
+}

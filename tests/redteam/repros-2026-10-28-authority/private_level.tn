@@ -1,0 +1,5 @@
+// module
+enum Level { Guest, Admin }
+pub fn guest() -> Level { Guest }
+pub fn is_admin(l: Level) -> Bool { match l { Admin => true, Guest => false } }
+pub fn Level.name(self) -> Str { match self { Admin => "admin", Guest => "guest" } }

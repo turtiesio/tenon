@@ -1,0 +1,9 @@
+// The same for a unique type: a constant is copied at every use, so "never copied" does not hold.
+unique struct Handle { fd: Int }
+const HANDLE: Handle = Handle { fd: 3 }
+fn eat(h: Handle) -> Int { h.fd }
+fn main(sys: Sys) {
+    let a = HANDLE
+    let b = HANDLE
+    sys.console.println("{eat(a) + eat(b)}")
+}

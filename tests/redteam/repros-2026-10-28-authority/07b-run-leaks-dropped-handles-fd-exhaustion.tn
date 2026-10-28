@@ -1,0 +1,16 @@
+// Dropping a Listener/Conn closes it (reference §15). In the interpreter it does not, so a loop
+// that opens and drops handles runs out of file descriptors.
+fn once(sys: Sys) -> Bool {
+    match sys.net.listen(0) {
+        Ok(l) => l.port() > 0,
+        Err(e) => false,
+    }
+}
+fn main(sys: Sys) {
+    var ok = 0
+    var first_fail = -1
+    for i in 0..5000 {
+        if once(sys) { ok += 1 } else if first_fail < 0 { first_fail = i }
+    }
+    sys.console.println("opened and dropped {ok} listeners; first failure at {first_fail}")
+}

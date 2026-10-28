@@ -1,0 +1,12 @@
+// A linear value passed as an earlier argument is lost when a later argument's `?` returns.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console, n: Int) { con.println("completed {self.id} with {n}") }
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn work(con: Console) -> Result[Unit, Str] {
+    let c = Claim { id: 7 }
+    c.complete(con, fails()?)
+    Ok(())
+}
+fn main(sys: Sys) {
+    sys.console.println("{work(sys.console)}")
+}

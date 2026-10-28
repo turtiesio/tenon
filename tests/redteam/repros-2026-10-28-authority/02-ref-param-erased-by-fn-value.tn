@@ -1,0 +1,14 @@
+// A function whose parameter is `ref Claim` only inspects it (the caller keeps the value).
+// Used as a plain `fn(Claim) -> Int` value, the call is treated as consuming the argument,
+// so the obligation vanishes without anyone completing it.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn peek(c: ref Claim) -> Int { c.id }
+fn apply(f: fn(Claim) -> Int, c: Claim) -> Int { f(c) }
+fn main(sys: Sys) {
+    let n = apply(peek, Claim { id: 7 })
+    sys.console.println("peeked {n}")
+    let k = Claim { id: 8 }
+    let g: fn(Claim) -> Int = peek
+    sys.console.println("peeked {g(k)}")
+}

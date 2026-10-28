@@ -1,0 +1,16 @@
+// A module-private enum: its variants are not nameable outside (`Admin(..)` is "unknown name"),
+// yet a value of it can be forged with `decode`, and its variants can be matched on.
+import private_level
+fn main(sys: Sys) {
+    let con = sys.console
+    let g = private_level.guest()
+    con.println("is_admin(guest) = {private_level.is_admin(g)}")
+    // forged: the type is inferred from is_admin's parameter, so it is never named
+    let forged = decode("Admin").unwrap()
+    con.println("is_admin(decode) = {private_level.is_admin(forged)}")
+    // the private variants are visible to a pattern
+    match g {
+        Admin => con.println("matched private variant Admin"),
+        Guest => con.println("matched private variant Guest"),
+    }
+}

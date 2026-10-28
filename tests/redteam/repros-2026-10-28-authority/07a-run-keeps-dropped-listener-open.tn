@@ -1,0 +1,13 @@
+// Reference §15: "Listener and Conn are unique handles ... dropping one closes it".
+// `tenon build` closes the listener when open_and_drop returns; `tenon run` leaves it accepting.
+fn open_and_drop(sys: Sys) -> Int {
+    let l = sys.net.listen(0).unwrap()
+    l.port()
+}
+fn main(sys: Sys) {
+    let p = open_and_drop(sys)
+    match sys.net.connect("127.0.0.1", p) {
+        Ok(_) => sys.console.println("listener dropped when open_and_drop returned: still accepting"),
+        Err(_) => sys.console.println("listener dropped when open_and_drop returned: refused"),
+    }
+}

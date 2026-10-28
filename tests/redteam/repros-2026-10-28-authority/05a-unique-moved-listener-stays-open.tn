@@ -1,0 +1,15 @@
+// Reference §12/§15: a unique value is never copied, and dropping a Listener/Conn closes it.
+// A unique value that was passed by value (moved) can still be used afterwards, so the "dropped"
+// listener stays open and the moved-from name keeps working.
+fn close_it(l: Listener) {}
+fn main(sys: Sys) {
+    let con = sys.console
+    let l = sys.net.listen(0).unwrap()
+    let port = l.port()
+    close_it(l) // l was moved: this should be the end of it
+    con.println("port readable after move: {l.port() == port}")
+    match sys.net.connect("127.0.0.1", port) {
+        Ok(_) => con.println("connect after 'close': connected"),
+        Err(e) => con.println("connect after 'close': {e}"),
+    }
+}

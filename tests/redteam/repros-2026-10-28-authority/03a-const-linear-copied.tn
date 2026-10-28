@@ -1,0 +1,12 @@
+// A constant of a linear type is copied at every use: one obligation becomes any number.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+const CLAIM: Claim = Claim { id: 1 }
+fn main(sys: Sys) {
+    let a = CLAIM
+    let b = CLAIM
+    let c = CLAIM
+    a.complete(sys.console)
+    b.complete(sys.console)
+    c.complete(sys.console)
+}
