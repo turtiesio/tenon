@@ -1,0 +1,527 @@
+// module (imported by tenonc.tn)
+// Self-hosted C backend, part 1: the emitter state, C names of types, and the
+// scope and temporary helpers. A port of bootstrap/src/emit_c.rs (driver,
+// types) and the helpers of bootstrap/src/emit_body.rs; `tenonc emit FILE`
+// must print exactly what `tenon emit FILE` prints (tools/selfhost.sh).
+//
+//   emit        state, C type names, scopes and temporaries, the driver
+//   emitlayout  type definitions, per-type helpers, decoders, `main`, assembly
+//   emitbody    functions, statements, places, expressions, calls
+//   emitctl     patterns, `match`, `?`, closures and function values
+//   emitbi      the prelude's `extern fn`s
+//
+// Ownership protocol: every expression yields a CV that is either *owned*
+// (a temp registered in the innermost scope, released at statement or
+// scope end unless moved) or *borrowed* (valid until the statement ends).
+// Parameters are borrowed; results are owned; storing anything retains it.
+//
+// The C runtime (runtime/tenon.h) is pasted into the output; the bootstrap
+// embeds it with include_str!, the self-hosted compiler reads it from ROOT
+// when it compiles a program (tenonc.tn).
+
+import ckast
+import cktypes
+import ckenv
+import checker
+import emitlayout
+import emitbody
+
+pub enum Sk { SkFn, SkBlock, SkStmt, SkLoop }
+
+pub struct Scope { pub kind: Sk, pub owned: List[(Str, cktypes.Ty)] }
+
+pub struct FnState {
+    pub out: Str,
+    pub scopes: List[Scope],
+    pub tps: List[Str],          // type parameters of the instance being emitted
+    pub tas: List[cktypes.Ty],   // ... and their types
+    pub ret: cktypes.Ty,
+    pub self_ptr: Bool,
+    pub indent: Int,
+    pub muts: Map[Str, Bool],    // `var` locals: values bound from them must be retained
+    pub mut_params: List[Str],   // `x: mut T` parameters, passed as pointers (p_x)
+}
+
+pub fn new_state() -> FnState {
+    FnState { out: "", scopes: [], tps: [], tas: [], ret: cktypes.t_unit(), self_ptr: false, indent: 0, muts: [:], mut_params: [] }
+}
+
+pub struct CV { pub code: Str, pub owned: Bool }
+
+pub fn bor(code: Str) -> CV { CV { code, owned: false } }
+
+pub struct Em {
+    pub c: checker.Checked,
+    pub names: List[Str], // source file names, for trap locations
+    pub tnames: Map[cktypes.Ty, Str],
+    pub tlist: List[cktypes.Ty],
+    pub boxed: Map[cktypes.Ty, Bool],
+    pub fn_names: Map[(Int, List[cktypes.Ty]), Str],
+    pub fn_queue: List[(Int, List[cktypes.Ty], Str)],
+    pub wrappers: Map[Str, Str],
+    pub protos: Str,
+    pub bodies: Str,
+    pub helpers: Str,
+    pub counter: Int,
+    pub st: FnState,
+    pub err: Str, // set when the program cannot be compiled (polymorphic recursion)
+}
+
+// The C program for a checked program; Err(message) if it cannot be compiled.
+pub fn emit(c: checker.Checked, names: List[Str], runtime: Str) -> Result[Str, Str] {
+    var m = Em {
+        c, names, tnames: [:], tlist: [], boxed: [:], fn_names: [:], fn_queue: [], wrappers: [:],
+        protos: "", bodies: "", helpers: "", counter: 0, st: new_state(), err: "",
+    }
+    let main_name = emitbody.fn_inst(mut m, c.main, [])
+    while let Some(job) = m.fn_queue.pop() {
+        if m.err != "" { return Err(m.err) }
+        emitbody.emit_fn(mut m, job.0, job.1, job.2)
+    }
+    let main_c = emitlayout.main_wrapper(mut m, main_name)
+    let out = emitlayout.assemble(mut m, runtime, main_c)
+    if m.err != "" { return Err(m.err) }
+    Ok(out)
+}
+
+// The C backend makes one copy per type instantiation; a function or type
+// whose instantiations grow without bound (polymorphic recursion) has none.
+pub fn ty_depth(t: cktypes.Ty) -> Int {
+    match t {
+        Con(_, a) | Tup(a) => 1 + max_depth(a),
+        Fun(a, r) => 1 + max_depth(a).max(ty_depth(r)),
+        _ => 1,
+    }
+}
+
+fn max_depth(a: List[cktypes.Ty]) -> Int {
+    var d = 0
+    for x in a { d = d.max(ty_depth(x)) }
+    d
+}
+
+pub fn Em.polymorphic_recursion(mut self, what: Str) {
+    if self.err == "" {
+        self.err = "cannot compile polymorphic recursion (" + what + "); the interpreter can run it, the C backend needs finitely many instantiations"
+    }
+}
+
+pub fn sanitize(s: Str) -> Str {
+    var plain = true
+    for i in 0..s.len() {
+        if not s.byte(i).is_alnum() { plain = false }
+    }
+    if plain { return s }
+    var out = ""
+    for ch in s.chars() { out += if ch.len() == 1 and ch.byte(0).is_alnum() { ch } else { "_" } }
+    out
+}
+
+fn plain_byte(b: Int) -> Bool { b >= 32 and b <= 126 and b != 34 and b != 92 and b != 63 }
+
+// A C string literal for the bytes of s.
+pub fn c_string(s: Str) -> Str {
+    var out = "\""
+    var start = 0
+    var i = 0
+    while i < s.len() {
+        let b = s.byte(i)
+        if not plain_byte(b) {
+            if start < i { out += s.slice(start, i) }
+            if b == 34 { out += "\\\"" } else if b == 92 { out += "\\\\" } else if b == 63 { out += "\\?" } else {
+                out += "\\" + b.to_str_radix(8).pad_left(3, "0")
+            }
+            start = i + 1
+        }
+        i += 1
+    }
+    if start < s.len() { out += s.slice(start, s.len()) }
+    out + "\""
+}
+
+pub fn int_lit(i: Int) -> Str {
+    if i == INT_MIN { "(-9223372036854775807LL - 1)" } else { "{i}LL" }
+}
+
+// Rust's `{:e}` for a float literal: the shortest digits, as d.ddde<exp>.
+pub fn float_lit(f: Float) -> Str {
+    var s = f.to_str()
+    var sign = ""
+    if s.starts_with("-") {
+        sign = "-"
+        s = s.slice(1, s.len())
+    }
+    var exp = 0
+    match s.find("e") {
+        Some(i) => {
+            exp = s.slice(i + 1, s.len()).to_int().unwrap()
+            s = s.slice(0, i)
+        }
+        None => {}
+    }
+    var point = s.len()
+    match s.find(".") {
+        Some(i) => {
+            point = i
+            s = s.slice(0, i) + s.slice(i + 1, s.len())
+        }
+        None => {}
+    }
+    var lead = 0
+    while lead < s.len() and s.byte(lead) == '0' { lead += 1 }
+    var end = s.len()
+    while end > lead and s.byte(end - 1) == '0' { end -= 1 }
+    if lead == end { return sign + "0e0" }
+    let digits = s.slice(lead, end)
+    let e = point - lead - 1 + exp
+    let frac = if digits.len() > 1 { "." + digits.slice(1, digits.len()) } else { "" }
+    sign + digits.slice(0, 1) + frac + "e{e}"
+}
+
+// The name a type is shown by (bootstrap/src/interp.rs `display`): without its module.
+pub fn display(n: Str) -> Str {
+    match n.rfind(".") {
+        Some(i) => n.slice(i + 1, n.len()),
+        None => n,
+    }
+}
+
+pub fn is_ident(s: Str) -> Bool { s.all_bytes(fn(b) => b.is_alnum() or b == '_') }
+
+pub fn Em.fresh(mut self, base: Str) -> Str {
+    self.counter += 1
+    base + "{self.counter}"
+}
+
+// Prelude code reports traps at the user call that entered it (tn_cur_loc).
+pub fn Em.loc(self, sp: ckast.Span) -> Str {
+    if sp.file == 0 { return "tn_cur_loc" }
+    c_string("{self.names[sp.file]}:{sp.line}:{sp.col}")
+}
+
+pub fn Em.note_prelude_call(self, fi: Int, sp: ckast.Span) -> Option[Str] {
+    // externs get their location passed directly; only Tenon-written prelude code needs it
+    let f = self.c.env.fns[fi]
+    if f.sp.file == 0 and sp.file != 0 and not f.is_extern { Some("tn_cur_loc = " + self.loc(sp) + ";") } else { None }
+}
+
+pub fn Em.struct_fields(self, t: cktypes.Ty) -> Option[List[(Str, cktypes.Ty)]] { self.c.env.struct_fields(t) }
+pub fn Em.enum_variants(self, t: cktypes.Ty) -> Option[List[(Str, List[cktypes.Ty])]] { self.c.env.enum_variants(t) }
+
+// ---- types ----
+
+pub fn Em.is_ptr_kind(mut self, t: cktypes.Ty) -> Bool {
+    match t {
+        Con(n, _) if n == "List" or n == "Map" => true,
+        Con(_, _) if self.enum_variants(t).is_some() => self.is_boxed(t),
+        _ => false,
+    }
+}
+
+fn variant_fields(vs: List[(Str, List[cktypes.Ty])]) -> List[cktypes.Ty] {
+    var out: List[cktypes.Ty] = []
+    for v in vs { out.extend(v.1) }
+    out
+}
+
+// An enum is boxed when it can contain itself by value.
+pub fn Em.is_boxed(mut self, t: cktypes.Ty) -> Bool {
+    match self.boxed.get(t) {
+        Some(b) => return b,
+        None => {}
+    }
+    var seen: Map[cktypes.Ty, Bool] = [:]
+    var stack = variant_fields(self.enum_variants(t).unwrap())
+    var found = false
+    while let Some(x) = stack.pop() {
+        if x == t {
+            found = true
+            break
+        }
+        if seen.contains(x) { continue }
+        seen[x] = true
+        if ty_depth(x) > 48 {
+            self.polymorphic_recursion("the type " + display(x.show()) + " keeps growing")
+            break
+        }
+        match x {
+            Tup(ts) => stack.extend(ts),
+            Con(n, _) if n == "List" or n == "Map" => {}
+            Con(_, _) => {
+                match self.struct_fields(x) {
+                    Some(fs) => {
+                        for f in fs { stack.push(f.1) }
+                    }
+                    None => match self.enum_variants(x) {
+                        Some(vs) => stack.extend(variant_fields(vs)),
+                        None => {}
+                    },
+                }
+            }
+            _ => {}
+        }
+    }
+    self.boxed[t] = found
+    found
+}
+
+fn builtin_c(n: Str) -> Bool {
+    match n {
+        "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn" | "Poller" | "Proc" => true,
+        _ => false,
+    }
+}
+
+pub fn Em.cty(mut self, t: cktypes.Ty) -> Str {
+    match self.tnames.get(t) {
+        Some(n) => return n,
+        None => {}
+    }
+    if ty_depth(t) > 48 {
+        self.polymorphic_recursion("the type " + display(t.show()) + " keeps growing")
+        return "tn_Unit"
+    }
+    let name = match t {
+        Con(n, a) if a.is_empty() and builtin_c(n) => "tn_" + n,
+        Con(n, a) if n == "List" and (a[0].is("Str") or a[0].is("Int")) => "tn_List_" + a[0].show(),
+        Fun(_, _) => "tn_fn",
+        Con(n, _) => {
+            self.counter += 1
+            "t{self.counter}_" + sanitize(n)
+        }
+        Tup(_) => {
+            self.counter += 1
+            "t{self.counter}_Tuple"
+        }
+        _ => panic("emit: non-concrete type " + t.show()),
+    }
+    self.tnames[t] = name
+    if not name.starts_with("tn_") {
+        // components first, so that by-value definitions can be ordered
+        match t {
+            Con(n, a) if n == "List" or n == "Map" => {
+                for x in a { let _ = self.cty(x) }
+            }
+            Tup(ts) => {
+                for x in ts { let _ = self.cty(x) }
+            }
+            Con(_, _) => match self.struct_fields(t) {
+                Some(fs) => {
+                    for f in fs { let _ = self.cty(f.1) }
+                }
+                None => match self.enum_variants(t) {
+                    Some(vs) => {
+                        for v in vs {
+                            for x in v.1 { let _ = self.cty(x) }
+                        }
+                    }
+                    None => {}
+                },
+            },
+            _ => {}
+        }
+        self.tlist.push(t)
+    }
+    name
+}
+
+// Accessors used by the body emitter.
+pub fn Em.tag(mut self, t: cktypes.Ty, v: Str) -> Str {
+    if self.is_boxed(t) { "(" + v + ")->tag" } else { "(" + v + ").tag" }
+}
+
+pub fn Em.payload(mut self, t: cktypes.Ty, v: Str, vi: Int, fi: Int) -> Str {
+    if self.is_boxed(t) { "(" + v + ")->u.v{vi}.f{fi}" } else { "(" + v + ").u.v{vi}.f{fi}" }
+}
+
+pub fn Em.variant_index(self, t: cktypes.Ty, name: Str) -> Int {
+    let vs = self.enum_variants(t).unwrap()
+    for i in 0..vs.len() {
+        if vs[i].0 == name { return i }
+    }
+    panic("emit: no variant " + name)
+}
+
+pub fn Em.ctor(mut self, t: cktypes.Ty, vi: Int, args: List[Str]) -> Str {
+    let n = self.cty(t)
+    n + "_mk{vi}(" + args.join(", ") + ")"
+}
+
+pub fn Em.ctor_named(mut self, t: cktypes.Ty, vname: Str, args: List[Str]) -> Str {
+    let vi = self.variant_index(t, vname)
+    self.ctor(t, vi, args)
+}
+
+// ---- the function being emitted ----
+
+pub fn Em.line(mut self, s: Str) {
+    for _ in 0..self.st.indent { self.st.out += "    " }
+    self.st.out += s
+    self.st.out += "\n"
+}
+
+pub fn Em.sub(self, t: cktypes.Ty) -> cktypes.Ty { t.subst(self.st.tps, self.st.tas) }
+
+pub fn Em.subs(self, ts: List[cktypes.Ty]) -> List[cktypes.Ty] {
+    var out: List[cktypes.Ty] = []
+    for t in ts { out.push(t.subst(self.st.tps, self.st.tas)) }
+    out
+}
+
+pub fn Em.ety(self, e: ckast.Expr) -> cktypes.Ty { self.c.types[e.id].subst(self.st.tps, self.st.tas) }
+
+pub fn Em.pty(self, id: Int) -> cktypes.Ty { self.c.types[id].subst(self.st.tps, self.st.tas) }
+
+fn trivial_name(n: Str) -> Bool {
+    match n {
+        "Int" | "Float" | "Bool" | "Unit" | "Console" | "Clock" | "Net" | "Proc" => true,
+        _ => false,
+    }
+}
+
+pub fn Em.trivial(mut self, t: cktypes.Ty) -> Bool {
+    if self.err != "" { return true } // a type that keeps growing: emission stops
+    match t {
+        Con(n, a) if a.is_empty() and trivial_name(n) => true,
+        Tup(ts) => {
+            for x in ts {
+                if not self.trivial(x) { return false }
+            }
+            true
+        }
+        Con(n, _) if n == "List" or n == "Map" or n == "Str" or n == "Fs" => false,
+        Con(_, _) if ty_depth(t) > 48 => {
+            self.polymorphic_recursion("the type " + display(t.show()) + " keeps growing")
+            true
+        }
+        Con(_, _) => match self.struct_fields(t) {
+            Some(fs) => {
+                for f in fs {
+                    if not self.trivial(f.1) { return false }
+                }
+                true
+            }
+            None => match self.enum_variants(t) {
+                Some(vs) => {
+                    if self.is_boxed(t) { return false }
+                    for v in vs {
+                        for x in v.1 {
+                            if not self.trivial(x) { return false }
+                        }
+                    }
+                    true
+                }
+                None => false,
+            },
+        },
+        _ => false,
+    }
+}
+
+pub fn Em.push(mut self, kind: Sk) { self.st.scopes.push(Scope { kind, owned: [] }) }
+
+pub fn Em.release_list(mut self, owned: List[(Str, cktypes.Ty)]) {
+    var i = owned.len() - 1
+    while i >= 0 {
+        let t = owned[i].1
+        if not self.trivial(t) {
+            let tn = self.cty(t)
+            self.line(tn + "_release(" + owned[i].0 + ");")
+        }
+        i -= 1
+    }
+}
+
+pub fn Em.pop(mut self) {
+    let s = self.st.scopes.pop().unwrap()
+    self.release_list(s.owned)
+}
+
+// Release (without popping) every scope down to and including the innermost `kind`.
+pub fn Em.release_to(mut self, kind: Sk) {
+    var all: List[List[(Str, cktypes.Ty)]] = []
+    var i = self.st.scopes.len() - 1
+    while i >= 0 {
+        all.push(self.st.scopes[i].owned)
+        if self.st.scopes[i].kind == kind { break }
+        i -= 1
+    }
+    for o in all { self.release_list(o) }
+}
+
+pub fn Em.reg(mut self, name: Str, t: cktypes.Ty) {
+    self.st.scopes[self.st.scopes.len() - 1].owned.push((name, t))
+}
+
+pub fn Em.reg_local(mut self, name: Str, t: cktypes.Ty) {
+    var i = self.st.scopes.len() - 1
+    while self.st.scopes[i].kind == SkStmt { i -= 1 }
+    self.st.scopes[i].owned.push((name, t))
+}
+
+pub fn Em.unreg(mut self, name: Str) {
+    var i = self.st.scopes.len() - 1
+    while i >= 0 {
+        let owned = self.st.scopes[i].owned
+        for j in 0..owned.len() {
+            if owned[j].0 == name {
+                let _ = self.st.scopes[i].owned.remove(j)
+                return
+            }
+        }
+        i -= 1
+    }
+}
+
+// Take ownership of a value: move an owned temp, or retain a borrowed one.
+pub fn Em.own(mut self, cv: CV, t: cktypes.Ty) -> Str {
+    if cv.owned {
+        self.unreg(cv.code)
+        return cv.code
+    }
+    if self.trivial(t) { return cv.code }
+    let tn = self.cty(t)
+    tn + "_retain(" + cv.code + ")"
+}
+
+pub fn Em.tmp_owned(mut self, t: cktypes.Ty, init: Str) -> CV {
+    let tn = self.cty(t)
+    let n = self.fresh("t")
+    self.line(tn + " " + n + " = " + init + ";")
+    self.reg(n, t)
+    CV { code: n, owned: true }
+}
+
+pub fn Em.tmp_val(mut self, t: cktypes.Ty, init: Str) -> CV {
+    let tn = self.cty(t)
+    let n = self.fresh("t")
+    self.line(tn + " " + n + " = " + init + ";")
+    bor(n)
+}
+
+pub fn Em.local_code(self, n: Str) -> Str {
+    if n == "self" and self.st.self_ptr { "(*p_self)" } else if self.st.mut_params.contains(n) { "(*p_" + n + ")" } else { "v_" + n }
+}
+
+pub fn Em.result_var(mut self, t: cktypes.Ty) -> Option[Str] {
+    if t.is("Unit") { return None }
+    let tn = self.cty(t)
+    let r = self.fresh("r")
+    self.line(tn + " " + r + " = \{0};")
+    Some(r)
+}
+
+pub fn Em.finish_result(mut self, res: Option[Str], t: cktypes.Ty) -> CV {
+    match res {
+        Some(r) => {
+            self.reg(r, t)
+            CV { code: r, owned: true }
+        }
+        None => bor("0"),
+    }
+}
+
+pub fn Em.sig(self, fi: Int, targs: List[cktypes.Ty]) -> (List[cktypes.Ty], cktypes.Ty) {
+    let f = self.c.env.fns[fi]
+    (f.params.map(fn(p) => p.1.subst(f.tparams, targs)), f.ret.subst(f.tparams, targs))
+}

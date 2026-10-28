@@ -18,7 +18,7 @@ target/release/tenon build prog.tn -o prog  # native executable via C
 bootstrap/    the Rust bootstrap compiler and reference interpreter (Cargo package)
 lib/          prelude.tn (the builtin API, in Tenon) and std/ (standard modules)
 runtime/      tenon.h, the C runtime every native build includes
-selfhost/     the compiler front end written in Tenon, cross-checked against bootstrap/
+selfhost/     the compiler written in Tenon (tenonc: checker and C backend), cross-checked against bootstrap/
 tests/        run/ reject/ lex/ parse/ selfhost/ corpus; redteam/ findings and repros
 programs/     real programs with scenario tests (tools/programs.sh)
 bench/        benchmarks against C, Rust, Python, TypeScript (tools/bench.py)

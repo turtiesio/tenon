@@ -1,0 +1,971 @@
+// module (imported by emit.tn)
+// Self-hosted C backend, part 3: function instances, statements, loops,
+// places and assignment, expressions, calls. A port of bootstrap/src/emit_body.rs;
+// see emit.tn for the ownership protocol.
+
+import ckast
+import cktypes
+import ckenv
+import checker
+import emit
+import emitctl
+import emitbi
+
+// A place being assigned or mutated: a C pointer to the root variable, then steps.
+pub enum Step { StepField(Str), StepList(cktypes.Ty, Str), StepMap(cktypes.Ty, Str) }
+pub struct Place { pub root: Str, pub steps: List[Step] }
+
+// Can evaluating e assign to an existing local (so earlier borrowed reads go stale)?
+fn may_mutate(c: checker.Checked, e: ckast.Expr) -> Bool {
+    match e.k {
+        XLambda(_, _, _) => return false,
+        XMethod(_, _, _) => match c.res.get(e.id) {
+            Some(RMethod(fi, _)) if c.env.fns[fi].self_kind == MutSelf => return true,
+            _ => {}
+        },
+        XBlock(b) | XIf(_, b, _) => {
+            for s in b.stmts {
+                match s.k {
+                    KAssign(_, _, _) => return true,
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+    for x in ckast.children(e) {
+        if may_mutate(c, x) { return true }
+    }
+    false
+}
+
+// ---- function instances ----
+
+pub fn fn_inst(m: mut emit.Em, fi: Int, targs: List[cktypes.Ty]) -> Str {
+    if targs.any(fn(t) => emit.ty_depth(t) > 24) {
+        m.polymorphic_recursion("'" + m.c.env.fns[fi].name + "' calls itself at ever larger types")
+        return "f_error"
+    }
+    match m.fn_names.get((fi, targs)) {
+        Some(n) => return n,
+        None => {}
+    }
+    let base = emit.sanitize(m.c.env.fns[fi].name)
+    let name = if targs.is_empty() and base == "main" { "tn_user_main" } else { m.fresh("f_" + base + "_") }
+    m.fn_names[(fi, targs)] = name
+    m.fn_queue.push((fi, targs, name))
+    name
+}
+
+pub fn emit_fn(m: mut emit.Em, fi: Int, targs: List[cktypes.Ty], name: Str) {
+    let info = m.c.env.fns[fi]
+    let decl = m.c.prog.fns[fi]
+    let ret = info.ret.subst(info.tparams, targs)
+    let rn = m.cty(ret)
+    var params: List[Str] = []
+    var mut_params: List[Str] = []
+    let skip = if info.self_kind != NoSelf { 1 } else { 0 }
+    for i in 0..info.params.len() {
+        let n = info.params[i].0
+        let ct = m.cty(info.params[i].1.subst(info.tparams, targs))
+        if i == 0 and info.self_kind == MutSelf {
+            params.push(ct + " *p_self")
+        } else if i >= skip and info.muts[i - skip] {
+            params.push(ct + " *p_" + n)
+            mut_params.push(n)
+        } else {
+            params.push(ct + " v_" + n)
+        }
+    }
+    let sig = "static " + rn + " " + name + "(" + (if params.is_empty() { "void" } else { params.join(", ") }) + ")"
+    m.protos += sig + ";\n"
+    m.st = emit.FnState {
+        tps: info.tparams, tas: targs, ret, self_ptr: info.self_kind == MutSelf, indent: 1, mut_params, ..emit.new_state()
+    }
+    m.push(SkFn)
+    let r = m.fresh("ret")
+    m.st.out += "    " + rn + " " + r + ";\n"
+    block_into(mut m, decl.body.unwrap(), Some(r), ret)
+    m.release_to(SkFn)
+    m.line("return " + r + ";")
+    m.st.scopes = []
+    let body = m.st.out
+    m.st.out = ""
+    m.bodies += sig + " \{\n"
+    m.bodies += body
+    m.bodies += "}\n"
+}
+
+// Evaluate left to right; a value that a later operand could invalidate is retained first.
+pub fn eval_list(m: mut emit.Em, es: List[ckast.Expr]) -> List[emit.CV] {
+    let c = m.c
+    var muts: List[Bool] = []
+    for e in es { muts.push(may_mutate(c, e)) }
+    var out: List[emit.CV] = []
+    for i in 0..es.len() {
+        let cv = expr(mut m, es[i])
+        var later = false
+        for j in i + 1..es.len() {
+            if muts[j] { later = true }
+        }
+        if not cv.owned and later {
+            let t = m.ety(es[i])
+            let code = m.own(cv, t)
+            out.push(m.tmp_owned(t, code))
+        } else {
+            out.push(cv)
+        }
+    }
+    out
+}
+
+// ---- blocks and statements ----
+
+// Emit a block's statements; the trailing expression's value (if wanted) goes into `result`.
+pub fn block_into(m: mut emit.Em, b: ckast.Block, result: Option[Str], rt: cktypes.Ty) {
+    m.push(SkBlock)
+    stmts_into(mut m, b, result, rt)
+    m.pop()
+}
+
+pub fn stmts_into(m: mut emit.Em, b: ckast.Block, result: Option[Str], rt: cktypes.Ty) {
+    let n = b.stmts.len()
+    for i in 0..n {
+        let s = b.stmts[i]
+        match (s.k, result) {
+            (KExpr(e), Some(r)) if i + 1 == n => {
+                m.push(SkStmt)
+                let cv = expr(mut m, e)
+                let code = m.own(cv, rt)
+                m.line(r + " = " + code + ";")
+                m.pop()
+            }
+            _ => stmt(mut m, s),
+        }
+    }
+}
+
+fn pat_names(p: ckast.Pat, out: mut Map[Str, Bool]) {
+    match p.k {
+        QBind(n) => out["v_" + n] = true,
+        QTuple(ps) | QVariant(_, _, ps) | QOr(ps) => {
+            for q in ps { pat_names(q, mut out) }
+        }
+        _ => {}
+    }
+}
+
+fn stmt(m: mut emit.Em, s: ckast.Stmt) {
+    m.push(SkStmt)
+    match s.k {
+        KExpr(e) => {
+            let _ = expr(mut m, e)
+        }
+        KLet(pat, mutable, _, value, els) => {
+            if mutable { pat_names(pat, mut m.st.muts) }
+            let t = m.pty(pat.id)
+            let cv = expr(mut m, value)
+            match els {
+                Some(b) => {
+                    let v = if cv.owned or emit.is_ident(cv.code) { cv.code } else { m.tmp_val(t, cv.code).code }
+                    let test = emitctl.pat_test(mut m, pat, v, t)
+                    m.line("if (!(" + test + ")) \{")
+                    m.st.indent += 1
+                    block_into(mut m, b, None, cktypes.t_unit())
+                    m.st.indent -= 1
+                    m.line("}")
+                    emitctl.bind(mut m, pat, v, t, false)
+                }
+                None => match pat.k {
+                    QBind(n) => {
+                        let code = m.own(cv, t)
+                        let tn = m.cty(t)
+                        m.line(tn + " v_" + n + " = " + code + ";")
+                        m.reg_local("v_" + n, t)
+                    }
+                    _ => {
+                        let v = if cv.owned { cv.code } else { m.tmp_val(t, cv.code).code }
+                        emitctl.bind(mut m, pat, v, t, false)
+                    }
+                },
+            }
+        }
+        KAssign(target, op, value) => assign(mut m, target, op, value, s),
+        KWhile(cond, body) => {
+            m.line("for (;;) \{")
+            m.st.indent += 1
+            m.push(SkStmt)
+            let cv = expr(mut m, cond)
+            let c = m.fresh("c")
+            m.line("bool " + c + " = " + cv.code + ";")
+            m.pop()
+            m.line("if (!" + c + ") break;")
+            m.push(SkLoop)
+            stmts_into(mut m, body, None, cktypes.t_unit())
+            m.pop()
+            m.st.indent -= 1
+            m.line("}")
+        }
+        KFor(pat, iter, body) => for_loop(mut m, pat, iter, body),
+        KReturn(v) => {
+            let rt = m.st.ret
+            let code = match v {
+                Some(e) => {
+                    let cv = expr(mut m, e)
+                    m.own(cv, rt)
+                }
+                None => "0",
+            }
+            let tn = m.cty(rt)
+            let r = m.fresh("r")
+            m.line(tn + " " + r + " = " + code + ";")
+            m.release_to(SkFn)
+            m.line("return " + r + ";")
+        }
+        KBreak => {
+            m.release_to(SkLoop)
+            m.line("break;")
+        }
+        KContinue => {
+            m.release_to(SkLoop)
+            m.line("continue;")
+        }
+    }
+    m.pop()
+}
+
+// The arguments of a call to the prelude's `rev_range` (not a user item hiding it).
+fn rev_range_args(m: mut emit.Em, e: ckast.Expr) -> Option[List[ckast.Expr]] {
+    match e.k {
+        XCall(callee, args) => match m.c.res.get(callee.id) {
+            Some(RFn(fi, _)) => {
+                let f = m.c.env.fns[fi]
+                if f.name == "rev_range" and f.sp.file == 0 { Some(args) } else { None }
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn fusable(m: mut emit.Em, e: ckast.Expr) -> Option[(ckast.Expr, Str)] {
+    match e.k {
+        XMethod(recv, _, args) => match m.c.res.get(e.id) {
+            Some(RMethod(fi, _)) if args.is_empty() => {
+                let n = m.c.env.fns[fi].name
+                if n == "Str.words" { Some((recv, "tn_next_word")) } else if n == "Str.lines" { Some((recv, "tn_next_line")) } else { None }
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn for_loop(m: mut emit.Em, pat: ckast.Pat, iter: ckast.FIter, body: ckast.Block) {
+    let et = m.pty(pat.id)
+    m.line("\{")
+    m.st.indent += 1
+    m.push(SkBlock)
+    let i = m.fresh("i")
+    match iter {
+        FRange(a, b) => {
+            let vs = eval_list(mut m, [a, b])
+            let hi = m.fresh("hi")
+            m.line("int64_t " + hi + " = " + vs[1].code + ";")
+            m.line("for (int64_t {i} = {vs[0].code}; {i} < {hi}; {i}++) \{")
+            m.st.indent += 1
+            m.push(SkLoop)
+            emitctl.bind(mut m, pat, i, et, true)
+        }
+        FEach(e) => {
+            match rev_range_args(mut m, e) {
+                Some(args) => {
+                    // `for i in rev_range(lo, hi)`: count down instead of building the list
+                    let vs = eval_list(mut m, [args[0], args[1]])
+                    let lo = m.fresh("lo")
+                    let k = m.fresh("k")
+                    m.line("int64_t {lo} = {vs[0].code}, {k} = {vs[1].code};")
+                    m.line("while ({k} > {lo}) \{")
+                    m.st.indent += 1
+                    m.push(SkLoop)
+                    m.line("int64_t {i} = --{k};")
+                    emitctl.bind(mut m, pat, i, et, true)
+                }
+                None => match fusable(mut m, e) {
+                    Some((recv, next)) => {
+                        // `for x in s.words()` / `s.lines()`: scan the string instead of
+                        // building the temporary list (same elements, same order).
+                        let cv = expr(mut m, recv)
+                        let code = m.own(cv, cktypes.t_str())
+                        let src = m.tmp_owned(cktypes.t_str(), code).code
+                        let pos = m.fresh("pos")
+                        let w = m.fresh("w")
+                        m.line("int64_t " + pos + " = 0;")
+                        m.line("for (tn_Str {w}; {next}({src}, &{pos}, &{w});) \{")
+                        m.st.indent += 1
+                        m.push(SkLoop)
+                        emitctl.bind(mut m, pat, w, et, true)
+                    }
+                    None => {
+                        let st = m.ety(e)
+                        let cv = expr(mut m, e)
+                        let code = m.own(cv, st)
+                        let snap = m.tmp_owned(st, code).code
+                        let ln = m.cty(st)
+                        if st.is("List") {
+                            m.line("for (int64_t {i} = 0; {i} < {ln}_len({snap}); {i}++) \{")
+                            m.st.indent += 1
+                            m.push(SkLoop)
+                            emitctl.bind(mut m, pat, snap + "->data[" + i + "]", et, true)
+                        } else {
+                            m.line("for (int64_t {i} = 0; {snap} && {i} < {snap}->n; {i}++) \{")
+                            m.st.indent += 1
+                            m.line("if (!{snap}->e[{i}].live) continue;")
+                            m.push(SkLoop)
+                            let tn = m.cty(et)
+                            let tup = m.fresh("kv")
+                            m.line("{tn} {tup} = \{ {snap}->e[{i}].k, {snap}->e[{i}].v };")
+                            emitctl.bind(mut m, pat, tup, et, true)
+                        }
+                    }
+                },
+            }
+        }
+    }
+    stmts_into(mut m, body, None, cktypes.t_unit())
+    m.pop()
+    m.st.indent -= 1
+    m.line("}")
+    m.pop()
+    m.st.indent -= 1
+    m.line("}")
+}
+
+// ---- places ----
+
+pub fn place(m: mut emit.Em, e: ckast.Expr) -> Place {
+    match e.k {
+        XName(n) => {
+            let root = if n == "self" and m.st.self_ptr { "p_self" } else if m.st.mut_params.contains(n) { "p_" + n } else { "&v_" + n }
+            Place { root, steps: [] }
+        }
+        XField(b, f) => {
+            var p = place(mut m, b)
+            p.steps.push(StepField("f_" + f))
+            p
+        }
+        XTField(b, i) => {
+            var p = place(mut m, b)
+            p.steps.push(StepField("f{i}"))
+            p
+        }
+        XIndex(b, i) => {
+            let bt = m.ety(b)
+            var p = place(mut m, b)
+            let it = m.ety(i)
+            let cv = expr(mut m, i)
+            let code = m.own(cv, it)
+            let k = m.tmp_owned(it, code).code
+            p.steps.push(if bt.is("List") { StepList(bt, k) } else { StepMap(bt, k) })
+            p
+        }
+        _ => panic("emit: the checker guarantees places"),
+    }
+}
+
+// Pointer to the place after the first `n` steps.
+pub fn place_ptr(m: mut emit.Em, p: Place, n: Int, sp: ckast.Span) -> Str {
+    var cur = p.root
+    for i in 0..n {
+        cur = match p.steps[i] {
+            StepField(f) => "(&(" + cur + ")->" + f + ")",
+            StepList(t, k) => {
+                let ln = m.cty(t)
+                let et = m.cty(t.args()[0])
+                let q = m.fresh("p")
+                let loc = m.loc(sp)
+                m.line("{et} *{q} = {ln}_at_mut({cur}, {k}, {loc});")
+                q
+            }
+            StepMap(t, k) => {
+                let mn = m.cty(t)
+                let vt = m.cty(t.args()[1])
+                let q = m.fresh("p")
+                let loc = m.loc(sp)
+                m.line("{vt} *{q} = {mn}_at_mut({cur}, {k}, {loc});")
+                q
+            }
+        }
+    }
+    cur
+}
+
+fn simple(e: ckast.Expr) -> Bool {
+    match e.k {
+        XName(_) | XInt(_) | XStr(_, _) => true,
+        _ => false,
+    }
+}
+
+// `m[k] = m.get_or(k, d) OP x` with simple operands: one slot lookup
+// instead of a lookup plus an insert. Same evaluation order and traps:
+// operands are names or literals, so evaluating them has no effects.
+fn counting_update(m: mut emit.Em, target: ckast.Expr, value: ckast.Expr) -> Bool {
+    let XIndex(m1, k1) = target.k else { return false }
+    let XBinary(op, l, x) = value.k else { return false }
+    let XMethod(m2, name, args) = l.k else { return false }
+    let XName(a) = m1.k else { return false }
+    let XName(b) = m2.k else { return false }
+    if a != b or name != "get_or" or args.len() != 2 or not simple(k1) or not simple(args[0]) or not simple(args[1]) or not simple(x) {
+        return false
+    }
+    let same_key = match (k1.k, args[0].k) {
+        (XName(p), XName(q)) => p == q,
+        _ => false,
+    }
+    let mt = m.ety(m1)
+    if not same_key or not mt.is("Map") or not mt.args()[1].is("Int") or not (op == "Add" or op == "Sub") { return false }
+    let is_get_or = match m.c.res.get(l.id) {
+        Some(RMethod(fi, _)) => m.c.env.fns[fi].name == "Map.get_or",
+        _ => false,
+    }
+    if not is_get_or { return false }
+    if m.st.mut_params.contains(a) or (a == "self" and m.st.self_ptr) { return false }
+    let kt = mt.args()[0]
+    let mn = m.cty(mt)
+    let kn = m.cty(kt)
+    let k = expr(mut m, k1).code
+    let d = expr(mut m, args[1]).code
+    let xv = expr(mut m, x).code
+    let fr = m.fresh("fresh")
+    let slot = m.fresh("slot")
+    let f = if op == "Add" { "tn_add" } else { "tn_sub" }
+    let loc = m.loc(value.sp)
+    m.line("bool {fr}; tn_Int *{slot} = {mn}_slot(&v_{a}, {kn}_retain({k}), &{fr});")
+    m.line("if ({fr}) *{slot} = {d};")
+    m.line("*{slot} = {f}(*{slot}, {xv}, {loc});")
+    true
+}
+
+// s += a + b + c: the pieces appended one by one.
+fn pieces(e: ckast.Expr, out: mut List[ckast.Expr]) {
+    match e.k {
+        XBinary(op, l, r) if op == "Add" => {
+            pieces(l, mut out)
+            pieces(r, mut out)
+        }
+        _ => out.push(e),
+    }
+}
+
+fn assign(m: mut emit.Em, target: ckast.Expr, op: Option[Str], value: ckast.Expr, s: ckast.Stmt) {
+    if op.is_none() and counting_update(mut m, target, value) { return }
+    let t = m.ety(target)
+    let concat = match value.k {
+        XBinary(o, _, _) => o == "Add",
+        _ => false,
+    }
+    if op == Some("Add") and t.is("Str") and concat {
+        // s += a + b + c: append each piece in place instead of building a + b + c
+        // (operands are evaluated left to right first, as before).
+        var ps: List[ckast.Expr] = []
+        pieces(value, mut ps)
+        let p = place(mut m, target)
+        let vs = eval_list(mut m, ps)
+        var codes: List[Str] = []
+        for v in vs {
+            let code = m.own(v, t)
+            codes.push(m.tmp_owned(t, code).code)
+        }
+        let ptr = place_ptr(mut m, p, p.steps.len(), target.sp)
+        for c in codes { m.line("tn_str_append(" + ptr + ", " + c + ");") }
+        return
+    }
+    let p = place(mut m, target)
+    let cv = expr(mut m, value)
+    let code = m.own(cv, t)
+    let tn = m.cty(t)
+    let nv = m.fresh("nv")
+    m.line(tn + " " + nv + " = " + code + ";")
+    match op {
+        None => {
+            if not p.steps.is_empty() {
+                match p.steps[p.steps.len() - 1] {
+                    StepMap(mt, k) => {
+                        let ptr = place_ptr(mut m, p, p.steps.len() - 1, target.sp)
+                        let mn = m.cty(mt)
+                        m.unreg(k)
+                        m.line("{mn}_insert({ptr}, {k}, {nv});")
+                        return
+                    }
+                    _ => {}
+                }
+            }
+            let ptr = place_ptr(mut m, p, p.steps.len(), target.sp)
+            if not m.trivial(t) { m.line(tn + "_release(*" + ptr + ");") }
+            m.line("*" + ptr + " = " + nv + ";")
+        }
+        Some(o) if o == "Add" and t.is("Str") => {
+            // s += t appends in place when s's buffer is not shared
+            m.reg(nv, t)
+            let ptr = place_ptr(mut m, p, p.steps.len(), target.sp)
+            m.line("tn_str_append(" + ptr + ", " + nv + ");")
+        }
+        Some(o) => {
+            m.reg(nv, t)
+            let ptr = place_ptr(mut m, p, p.steps.len(), target.sp)
+            let r = arith(mut m, o, t, "(*" + ptr + ")", nv, s.sp)
+            let code2 = m.own(r, t)
+            if not m.trivial(t) { m.line(tn + "_release(*" + ptr + ");") }
+            m.line("*" + ptr + " = " + code2 + ";")
+        }
+    }
+}
+
+// ---- expressions ----
+
+pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
+    let t = m.ety(e)
+    match e.k {
+        XInt(i) => emit.bor(emit.int_lit(i)),
+        XFloat(f) => emit.bor(emit.float_lit(f)),
+        XBool(b) => emit.bor(if b { "true" } else { "false" }),
+        XUnit => emit.bor("0"),
+        XStr(xs, lits) => interp_str(mut m, xs, lits),
+        XName(_) | XPath(_, _) => name_value(mut m, e, t),
+        XCall(callee, args) => call(mut m, e, callee, args, t),
+        XMethod(recv, _, args) => method(mut m, e, recv, args, t),
+        XField(b, f) => {
+            let cv = expr(mut m, b)
+            emit.bor("(" + cv.code + ").f_" + f)
+        }
+        XTField(b, i) => {
+            let cv = expr(mut m, b)
+            emit.bor("(" + cv.code + ").f{i}")
+        }
+        XIndex(b, i) => {
+            let bt = m.ety(b)
+            let vs = eval_list(mut m, [b, i])
+            let bn = m.cty(bt)
+            let loc = m.loc(e.sp)
+            m.tmp_val(t, "*{bn}_at({vs[0].code}, {vs[1].code}, {loc})")
+        }
+        XUnary(op, x) => {
+            let cv = expr(mut m, x)
+            let code = if op == "not" { "!(" + cv.code + ")" } else if t.is("Int") { "tn_neg(" + cv.code + ", " + m.loc(e.sp) + ")" } else { "(-(" + cv.code + "))" }
+            m.tmp_val(t, code)
+        }
+        XBinary(op, l, r) => binary(mut m, e, op, l, r),
+        XIf(c, then, els) => {
+            let res = m.result_var(t)
+            let cv = expr(mut m, c)
+            m.line("if (" + cv.code + ") \{")
+            m.st.indent += 1
+            block_into(mut m, then, res, t)
+            m.st.indent -= 1
+            match els {
+                Some(x) => {
+                    m.line("} else \{")
+                    m.st.indent += 1
+                    m.push(SkBlock)
+                    let v = expr(mut m, x)
+                    match res {
+                        Some(r) => {
+                            let code = m.own(v, t)
+                            m.line(r + " = " + code + ";")
+                        }
+                        None => {}
+                    }
+                    m.pop()
+                    m.st.indent -= 1
+                }
+                None => {}
+            }
+            m.line("}")
+            m.finish_result(res, t)
+        }
+        XBlock(b) => {
+            let res = m.result_var(t)
+            m.line("\{")
+            m.st.indent += 1
+            block_into(mut m, b, res, t)
+            m.st.indent -= 1
+            m.line("}")
+            m.finish_result(res, t)
+        }
+        XMatch(s, arms) => emitctl.match_expr(mut m, e, s, arms, t),
+        XList(xs) => {
+            let vs = eval_list(mut m, xs)
+            if vs.is_empty() {
+                let ln = m.cty(t)
+                return emit.bor("((" + ln + ") NULL)")
+            }
+            let et = t.args()[0]
+            let ln = m.cty(t)
+            let l = m.tmp_owned(t, ln + "_alloc({vs.len()})")
+            for i in 0..vs.len() {
+                let code = m.own(vs[i], et)
+                m.line(l.code + "->data[{i}] = " + code + ";")
+            }
+            m.line(l.code + "->len = {xs.len()};")
+            l
+        }
+        XMap(ps) => {
+            var refs: List[ckast.Expr] = []
+            for p in ps {
+                refs.push(p.0)
+                refs.push(p.1)
+            }
+            let vs = eval_list(mut m, refs)
+            if vs.is_empty() {
+                let mn = m.cty(t)
+                return emit.bor("((" + mn + ") NULL)")
+            }
+            let kt = t.args()[0]
+            let vt = t.args()[1]
+            let mn = m.cty(t)
+            let mp = m.tmp_owned(t, "NULL")
+            var i = 0
+            while i + 1 < vs.len() {
+                let kc = m.own(vs[i], kt)
+                let vc = m.own(vs[i + 1], vt)
+                m.line(mn + "_insert(&" + mp.code + ", " + kc + ", " + vc + ");")
+                i += 2
+            }
+            mp
+        }
+        XTuple(xs) => {
+            let ts = match t {
+                Tup(a) => a,
+                _ => [],
+            }
+            let vs = eval_list(mut m, xs)
+            var codes: List[Str] = []
+            for i in 0..vs.len() { codes.push(m.own(vs[i], ts[i])) }
+            let tn = m.cty(t)
+            m.tmp_owned(t, "(" + tn + ")\{ " + codes.join(", ") + " }")
+        }
+        XNew(_, fields, base) => {
+            let decl = m.struct_fields(t).unwrap()
+            var refs = fields.map(fn(f) => f.1)
+            match base {
+                Some(b) => refs.push(b),
+                None => {}
+            }
+            var vs = eval_list(mut m, refs)
+            let base_cv = if base.is_some() { vs.pop() } else { None }
+            var inits: List[Str] = []
+            for i in 0..fields.len() {
+                let f = fields[i].0
+                var ft = cktypes.t_unit()
+                for d in decl {
+                    if d.0 == f {
+                        ft = d.1
+                        break
+                    }
+                }
+                let code = m.own(vs[i], ft)
+                inits.push(".f_" + f + " = " + code)
+            }
+            match base_cv {
+                Some(bv) => {
+                    for d in decl {
+                        if not fields.any(fn(g) => g.0 == d.0) {
+                            let code = m.own(emit.bor("(" + bv.code + ").f_" + d.0), d.1)
+                            inits.push(".f_" + d.0 + " = " + code)
+                        }
+                    }
+                }
+                None => {}
+            }
+            let tn = m.cty(t)
+            m.tmp_owned(t, "(" + tn + ")\{ " + inits.join(", ") + " }")
+        }
+        XTry(x) => emitctl.try_expr(mut m, e, x, t),
+        XLambda(params, _, body) => emitctl.lambda(mut m, e, params, body, t),
+        XMutArg(_) => panic("emit: mut arguments are handled at calls"),
+        XFmt(_, _) => panic("emit: format specs are handled in strings"),
+    }
+}
+
+fn spec_char(c: Str) -> Str { if c == "" { "0" } else { "'" + c + "'" } }
+
+fn interp_str(m: mut emit.Em, xs: List[ckast.Expr], lits: List[Option[Str]]) -> emit.CV {
+    if lits.len() == 1 {
+        match lits[0] {
+            Some(s) => return emit.bor("tn_str_lit(" + emit.c_string(s) + ", {s.len()})"),
+            None => {}
+        }
+    }
+    let refs = xs.map(fn(x) => match x.k {
+        XFmt(inner, _) => inner,
+        _ => x,
+    })
+    var tys: List[cktypes.Ty] = []
+    for x in refs { tys.push(m.ety(x)) }
+    let vs = eval_list(mut m, refs)
+    let b = m.fresh("b")
+    m.line("tn_buf " + b + " = tn_buf_new();")
+    var k = 0
+    for seg in lits {
+        match seg {
+            Some(l) => m.line("tn_buf_add(&" + b + ", " + emit.c_string(l) + ", {l.len()});"),
+            None => {
+                let v = vs[k]
+                let tn = m.cty(tys[k])
+                match xs[k].k {
+                    XFmt(_, f) => {
+                        let fill = emit.c_string(f.fill)
+                        let z = if f.zero { 1 } else { 0 }
+                        let g = if f.group { 1 } else { 0 }
+                        m.line("\{ static const tn_fmt_spec fs = \{{fill}, {f.fill.len()}, {spec_char(f.align)}, {z}, {g}, {f.width}, {f.prec}, {spec_char(f.radix)}}; {tn}_fmt(&{b}, {v.code}, &fs); }")
+                    }
+                    _ => m.line(tn + "_show(&" + b + ", " + v.code + ", true);"),
+                }
+                k += 1
+            }
+        }
+    }
+    m.tmp_owned(cktypes.t_str(), "tn_buf_finish(&" + b + ")")
+}
+
+fn fn_value(w: Str) -> Str { "((tn_fn)\{ (void *)" + w + ", NULL })" }
+
+fn name_value(m: mut emit.Em, e: ckast.Expr, t: cktypes.Ty) -> emit.CV {
+    match m.c.res[e.id] {
+        RLocal(n) => emit.bor(m.local_code(n)),
+        RConst(fi) => {
+            let f = fn_inst(mut m, fi, [])
+            m.tmp_owned(t, f + "()")
+        }
+        RFn(fi, targs) => {
+            let ts = m.subs(targs)
+            let w = emitctl.fn_wrapper(mut m, fi, ts)
+            emit.bor(fn_value(w))
+        }
+        RVariant(_, vi, _) => {
+            match t {
+                Fun(ps, r) => {
+                    let w = emitctl.ctor_wrapper(mut m, r, vi, ps)
+                    return emit.bor(fn_value(w))
+                }
+                _ => {}
+            }
+            let code = m.ctor(t, vi, [])
+            m.tmp_owned(t, code)
+        }
+        _ => panic("emit: unexpected resolution of a name"),
+    }
+}
+
+fn codes_of(vs: List[emit.CV]) -> List[Str] { vs.map(fn(v) => v.code) }
+
+fn call(m: mut emit.Em, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr], t: cktypes.Ty) -> emit.CV {
+    match m.c.res.get(callee.id) {
+        Some(RFn(fi, _)) => match m.note_prelude_call(fi, e.sp) {
+            Some(l) => m.line(l),
+            None => {}
+        },
+        _ => {}
+    }
+    match m.c.res.get(e.id) {
+        Some(RCallValue) => {
+            var ptys: List[cktypes.Ty] = []
+            for a in args { ptys.push(m.ety(a)) }
+            let vs = eval_list(mut m, [callee] + args)
+            let f = vs[0].code
+            let rn = m.cty(t)
+            var sig = ["tn_env *"]
+            for p in ptys { sig.push(m.cty(p)) }
+            let call_args = ["(" + f + ").env"] + codes_of(vs.slice(1, vs.len()))
+            let code = "((" + rn + " (*)(" + sig.join(", ") + ")) (" + f + ").f)(" + call_args.join(", ") + ")"
+            return m.tmp_owned(t, code)
+        }
+        _ => {}
+    }
+    match m.c.res.get(callee.id) {
+        Some(RFn(fi, targs0)) => {
+            let targs = m.subs(targs0)
+            if m.c.env.fns[fi].muts.any(fn(b) => b) {
+                let ptys = m.sig(fi, targs).0
+                let codes = mut_args(mut m, args, ptys)
+                let name = fn_inst(mut m, fi, targs)
+                return m.tmp_owned(t, name + "(" + codes.join(", ") + ")")
+            }
+            let vs = eval_list(mut m, args)
+            if m.c.env.fns[fi].is_extern {
+                let ptys = m.sig(fi, targs).0
+                let name = m.c.env.fns[fi].name
+                return emitbi.extern_call(mut m, name, vs, ptys, t, e.sp)
+            }
+            let name = fn_inst(mut m, fi, targs)
+            m.tmp_owned(t, name + "(" + codes_of(vs).join(", ") + ")")
+        }
+        Some(RVariant(_, vi, _)) => {
+            let vs = eval_list(mut m, args)
+            let fts = m.enum_variants(t).unwrap()[vi].1
+            var codes: List[Str] = []
+            for i in 0..vs.len() { codes.push(m.own(vs[i], fts[i])) }
+            let code = m.ctor(t, vi, codes)
+            m.tmp_owned(t, code)
+        }
+        _ => panic("emit: call without resolution"),
+    }
+}
+
+fn method(m: mut emit.Em, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr], t: cktypes.Ty) -> emit.CV {
+    match m.c.res[e.id] {
+        RToStr => {
+            let rt = m.ety(recv)
+            let cv = expr(mut m, recv)
+            let tn = m.cty(rt)
+            let b = m.fresh("b")
+            m.line("tn_buf " + b + " = tn_buf_new();")
+            m.line(tn + "_show(&" + b + ", " + cv.code + ", true);")
+            m.tmp_owned(cktypes.t_str(), "tn_buf_finish(&" + b + ")")
+        }
+        RMethod(fi, targs0) => {
+            match m.note_prelude_call(fi, e.sp) {
+                Some(l) => m.line(l),
+                None => {}
+            }
+            let targs = m.subs(targs0)
+            let ptys = m.sig(fi, targs).0
+            let info = m.c.env.fns[fi]
+            let rest = ptys.slice(1, ptys.len())
+            if info.self_kind == MutSelf {
+                let p = place(mut m, recv)
+                if not info.is_extern {
+                    let codes = mut_args(mut m, args, rest)
+                    let ptr = place_ptr(mut m, p, p.steps.len(), recv.sp)
+                    let f = fn_inst(mut m, fi, targs)
+                    return m.tmp_owned(t, f + "(" + ([ptr] + codes).join(", ") + ")")
+                }
+                let vs = eval_list(mut m, args)
+                // Arguments are owned so they cannot alias the receiver being mutated.
+                var owned: List[emit.CV] = []
+                for i in 0..vs.len() {
+                    let code = m.own(vs[i], rest[i])
+                    owned.push(m.tmp_owned(rest[i], code))
+                }
+                let ptr = place_ptr(mut m, p, p.steps.len(), recv.sp)
+                return emitbi.extern_mut(mut m, info.name, ptr, ptys, owned, t, e.sp)
+            }
+            if info.muts.any(fn(b) => b) {
+                let rv = expr(mut m, recv)
+                let rt = ptys[0]
+                let rcode = m.own(rv, rt)
+                let r = m.tmp_owned(rt, rcode).code
+                let codes = [r] + mut_args(mut m, args, rest)
+                let f = fn_inst(mut m, fi, targs)
+                return m.tmp_owned(t, f + "(" + codes.join(", ") + ")")
+            }
+            let vs = eval_list(mut m, [recv] + args)
+            if info.is_extern { return emitbi.extern_call(mut m, info.name, vs, ptys, t, e.sp) }
+            let f = fn_inst(mut m, fi, targs)
+            m.tmp_owned(t, f + "(" + codes_of(vs).join(", ") + ")")
+        }
+        _ => panic("emit: unexpected resolution of a method"),
+    }
+}
+
+// Arguments for a call with `mut` parameters: places become pointers, and
+// every other argument is owned so nothing aliases a place being changed.
+fn mut_args(m: mut emit.Em, args: List[ckast.Expr], ptys: List[cktypes.Ty]) -> List[Str] {
+    var places: List[Option[Place]] = []
+    var codes: List[Str] = []
+    for i in 0..args.len() {
+        match args[i].k {
+            XMutArg(inner) => {
+                places.push(Some(place(mut m, inner)))
+                codes.push("")
+            }
+            _ => {
+                let cv = expr(mut m, args[i])
+                let code = m.own(cv, ptys[i])
+                places.push(None)
+                codes.push(m.tmp_owned(ptys[i], code).code)
+            }
+        }
+    }
+    var out: List[Str] = []
+    for i in 0..args.len() {
+        match places[i] {
+            Some(p) => out.push(place_ptr(mut m, p, p.steps.len(), args[i].sp)),
+            None => out.push(codes[i]),
+        }
+    }
+    out
+}
+
+fn binary(m: mut emit.Em, e: ckast.Expr, op: Str, l: ckast.Expr, r: ckast.Expr) -> emit.CV {
+    if op == "And" or op == "Or" {
+        let lv = expr(mut m, l)
+        let res = m.fresh("b")
+        m.line("bool " + res + " = " + lv.code + ";")
+        m.line("if (" + (if op == "And" { "" } else { "!" }) + res + ") \{")
+        m.st.indent += 1
+        m.push(SkBlock)
+        let rv = expr(mut m, r)
+        m.line(res + " = " + rv.code + ";")
+        m.pop()
+        m.st.indent -= 1
+        m.line("}")
+        return emit.bor(res)
+    }
+    let lt = m.ety(l)
+    let vs = eval_list(mut m, [l, r])
+    let a = vs[0].code
+    let b = vs[1].code
+    let tn = m.cty(lt)
+    let scalar = lt.is("Int") or lt.is("Float") or lt.is("Bool") or lt.is("Unit")
+    let code = match op {
+        "Eq" | "Ne" => {
+            let neg = if op == "Ne" { "!" } else { "" }
+            if scalar { neg + "(" + a + " == " + b + ")" } else { neg + tn + "_eq(" + a + ", " + b + ")" }
+        }
+        "Lt" | "Le" | "Gt" | "Ge" => {
+            let o = match op {
+                "Lt" => "<",
+                "Le" => "<=",
+                "Gt" => ">",
+                _ => ">=",
+            }
+            if lt.is("Int") or lt.is("Float") {
+                "(" + a + " " + o + " " + b + ")"
+            } else {
+                if lt.any(fn(x) => x.is("Map")) { m.line("tn_cur_loc = " + m.loc(e.sp) + ";") }
+                "(" + tn + "_cmp(" + a + ", " + b + ") " + o + " 0)"
+            }
+        }
+        _ => return arith(mut m, op, lt, a, b, e.sp),
+    }
+    m.tmp_val(cktypes.t_bool(), code)
+}
+
+pub fn arith(m: mut emit.Em, op: Str, t: cktypes.Ty, a: Str, b: Str, sp: ckast.Span) -> emit.CV {
+    let loc = m.loc(sp)
+    if t.is("Int") {
+        let f = match op {
+            "Add" => "tn_add",
+            "Sub" => "tn_sub",
+            "Mul" => "tn_mul",
+            "Div" => "tn_div",
+            _ => "tn_rem",
+        }
+        return m.tmp_val(t, f + "(" + a + ", " + b + ", " + loc + ")")
+    }
+    if t.is("Float") {
+        let code = match op {
+            "Add" => "(" + a + " + " + b + ")",
+            "Sub" => "(" + a + " - " + b + ")",
+            "Mul" => "(" + a + " * " + b + ")",
+            "Div" => "(" + a + " / " + b + ")",
+            _ => "fmod(" + a + ", " + b + ")",
+        }
+        return m.tmp_val(t, code)
+    }
+    if t.is("Str") { return m.tmp_owned(t, "tn_str_concat(" + a + ", " + b + ")") }
+    let ln = m.cty(t)
+    m.tmp_owned(t, ln + "_concat(" + a + ", " + b + ")")
+}

@@ -569,11 +569,11 @@ fn Ck.fresh_list(mut self, n: Int) -> List[cktypes.Ty] {
 
 fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
     match e.k {
-        XInt => Ok(cktypes.t_int()),
-        XFloat => Ok(cktypes.t_float()),
+        XInt(_) => Ok(cktypes.t_int()),
+        XFloat(_) => Ok(cktypes.t_float()),
         XBool(_) => Ok(cktypes.t_bool()),
         XUnit => Ok(cktypes.t_unit()),
-        XStr(xs) => {
+        XStr(xs, _) => {
             for x in xs {
                 let t0 = self.sub.fresh()
                 let t = self.expr(x, t0)?
@@ -935,8 +935,9 @@ fn Ck.call(mut self, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr], 
                 XName(_) | XPath(_, _) => true,
                 _ => false,
             }
+            // Calling a local or a constant calls the function value it holds.
             let local = match self.pres.get(callee.id) {
-                Some(RLocal(_)) => true,
+                Some(RLocal(_)) | Some(RConst(_)) => true,
                 _ => false,
             }
             if not named or local { self.pres[e.id] = RCallValue }

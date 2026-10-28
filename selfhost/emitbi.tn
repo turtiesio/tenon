@@ -1,0 +1,431 @@
+// module (imported by emitbody.tn)
+// Self-hosted C backend, part 5: the `extern fn`s of lib/prelude.tn, lowered
+// to runtime calls (runtime/tenon.h). A port of bootstrap/src/emit_builtins.rs.
+
+import ckast
+import cktypes
+import emit
+
+fn some_none(m: mut emit.Em, t: cktypes.Ty, cond: Str, val: Str) -> emit.CV {
+    let s = m.ctor_named(t, "Some", [val])
+    let n = m.ctor_named(t, "None", [])
+    m.tmp_owned(t, cond + " ? " + s + " : " + n)
+}
+
+fn io_result(m: mut emit.Em, t: cktypes.Ty, k: Str, ok: Str, msg: Str) -> emit.CV {
+    let et = t.args()[1]
+    let e0 = m.ctor(et, 0, [msg])
+    let e1 = m.ctor(et, 1, [msg])
+    let e2 = m.ctor(et, 2, [msg])
+    let err = "(" + k + " == 1 ? " + e0 + " : " + k + " == 2 ? " + e1 + " : " + e2 + ")"
+    let okv = m.ctor_named(t, "Ok", [ok])
+    let errv = m.ctor_named(t, "Err", [err])
+    m.tmp_owned(t, k + " == 0 ? " + okv + " : " + errv)
+}
+
+fn int_t() -> cktypes.Ty { cktypes.t_int() }
+fn bool_t() -> cktypes.Ty { cktypes.t_bool() }
+
+pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[cktypes.Ty], t: cktypes.Ty, sp: ckast.Span) -> emit.CV {
+    let a = args.map(fn(v) => v.code)
+    let loc = m.loc(sp)
+    let tn = m.cty(t)
+    match name {
+        "panic" => {
+            m.line("tn_trap_str(" + a[0] + ", " + loc + ");")
+            let r = m.fresh("t")
+            m.line(tn + " " + r + " = \{0};")
+            emit.bor(r)
+        }
+        "encode" => {
+            let xn = m.cty(ptys[0])
+            let b = m.fresh("b")
+            m.line("tn_buf {b} = tn_buf_new(); {xn}_show(&{b}, {a[0]}, TN_FULL);")
+            m.tmp_owned(t, "tn_buf_finish(&" + b + ")")
+        }
+        "decode" => {
+            let vt = t.args()[0]
+            let vn = m.cty(vt)
+            let d = m.fresh("d")
+            let v = m.fresh("v")
+            let ok = m.fresh("ok")
+            m.line("tn_dec {d} = \{ ({a[0]}).p, ({a[0]}).len, 0, -1 }; {vn} {v}; bool {ok} = {vn}_dec(&{d}, &{v});")
+            m.line("if ({ok} && {d}.pos != {d}.n) \{ {vn}_release({v}); {ok} = false; tn_dec_fail(&{d}, {d}.pos); }")
+            let okv = m.ctor_named(t, "Ok", [v])
+            let msg = "tn_dec_msg(&" + d + ", " + emit.c_string(vt.show()) + ")"
+            let errv = m.ctor_named(t, "Err", [msg])
+            m.tmp_owned(t, ok + " ? " + okv + " : " + errv)
+        }
+        "assert" => {
+            m.line("if (!(" + a[0] + ")) tn_trap(\"assertion failed\", " + loc + ");")
+            emit.bor("0")
+        }
+        "Int.to_float" => m.tmp_val(t, "(double)(" + a[0] + ")"),
+        "Int.checked_add" | "Int.checked_sub" | "Int.checked_mul" | "Int.checked_div" => {
+            let r = m.fresh("r")
+            m.line("tn_Int " + r + " = 0;")
+            let ok = match name {
+                "Int.checked_add" => "!__builtin_add_overflow({a[0]}, {a[1]}, &{r})",
+                "Int.checked_sub" => "!__builtin_sub_overflow({a[0]}, {a[1]}, &{r})",
+                "Int.checked_mul" => "!__builtin_mul_overflow({a[0]}, {a[1]}, &{r})",
+                _ => "(({a[1]}) != 0 && !(({a[0]}) == INT64_MIN && ({a[1]}) == -1) && (({r} = ({a[0]}) / ({a[1]})), 1))",
+            }
+            let okv = m.tmp_val(bool_t(), ok).code
+            some_none(mut m, t, okv, r)
+        }
+        "Int.char" => m.tmp_owned(t, "tn_int_char(" + a[0] + ", " + loc + ")"),
+        "Float.to_int" => m.tmp_val(t, "tn_float_to_int(" + a[0] + ", " + loc + ")"),
+        "Float.to_fixed" => m.tmp_owned(t, "tn_float_fixed(" + a[0] + ", " + a[1] + ")"),
+        "Float.sqrt" | "Float.floor" | "Float.ceil" | "Float.round" => m.tmp_val(t, name.slice(6, name.len()) + "(" + a[0] + ")"),
+        "Str.len" => m.tmp_val(t, "(" + a[0] + ").len"),
+        "Str.char_count" => m.tmp_val(t, "tn_str_char_count(" + a[0] + ")"),
+        "Str.byte" => m.tmp_val(t, "tn_str_byte(" + a[0] + ", " + a[1] + ", " + loc + ")"),
+        "Str.slice" => m.tmp_owned(t, "tn_str_slice(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + loc + ")"),
+        "Str.find_from" => {
+            let n = m.tmp_val(int_t(), a[2]).code
+            m.line("if ({n} < 0 || {n} > ({a[0]}).len) tn_trapf({loc}, \"index %lld out of bounds for length %lld\", (long long){n}, (long long)({a[0]}).len);")
+            let i = m.tmp_val(int_t(), "tn_str_find(" + a[0] + ", " + a[1] + ", " + n + ")").code
+            some_none(mut m, t, i + " >= 0", i)
+        }
+        "Str.find" => {
+            let i = m.tmp_val(int_t(), "tn_str_find(" + a[0] + ", " + a[1] + ", 0)").code
+            some_none(mut m, t, i + " >= 0", i)
+        }
+        "Str.split" => m.tmp_owned(t, "tn_str_split(" + a[0] + ", " + a[1] + ", " + loc + ")"),
+        "Str.words" => m.tmp_owned(t, "tn_str_words(" + a[0] + ")"),
+        "Str.lines" => m.tmp_owned(t, "tn_str_lines(" + a[0] + ")"),
+        "Str.trim" => m.tmp_owned(t, "tn_str_trim(" + a[0] + ", true, true)"),
+        "Str.trim_start" => m.tmp_owned(t, "tn_str_trim(" + a[0] + ", true, false)"),
+        "Str.trim_end" => m.tmp_owned(t, "tn_str_trim(" + a[0] + ", false, true)"),
+        "Str.starts_with" => m.tmp_val(t, "tn_str_starts(" + a[0] + ", " + a[1] + ")"),
+        "Str.ends_with" => m.tmp_val(t, "tn_str_ends(" + a[0] + ", " + a[1] + ")"),
+        "Str.to_int" | "Str.to_float" => {
+            let ty = if name == "Str.to_int" { "tn_Int" } else { "tn_Float" }
+            let f = if name == "Str.to_int" { "tn_str_to_int" } else { "tn_str_to_float" }
+            let o = m.fresh("o")
+            m.line(ty + " " + o + " = 0;")
+            let ok = m.tmp_val(bool_t(), f + "(" + a[0] + ", &" + o + ")").code
+            some_none(mut m, t, ok, o)
+        }
+        "Str.upper" | "Str.lower" => {
+            let up = if name == "Str.upper" { "true" } else { "false" }
+            if args[0].owned {
+                // The receiver is a temporary: hand it over so it can be reused in place.
+                m.unreg(a[0])
+                m.tmp_owned(t, "tn_str_case_move(" + a[0] + ", " + up + ")")
+            } else {
+                m.tmp_owned(t, "tn_str_case(" + a[0] + ", " + up + ")")
+            }
+        }
+        "Str.replace" => m.tmp_owned(t, "tn_str_replace(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + loc + ")"),
+        "Str.chars" => m.tmp_owned(t, "tn_str_chars(" + a[0] + ")"),
+        "Str.bytes" => m.tmp_owned(t, "tn_bytes_list((" + a[0] + ").p, (" + a[0] + ").len)"),
+        "Str.from_utf8" => {
+            let s = m.fresh("s")
+            m.line("tn_Str " + s + " = \{0};")
+            let ok = m.tmp_val(bool_t(), "tn_str_from_utf8(" + a[0] + ", &" + s + ")").code
+            some_none(mut m, t, ok, s)
+        }
+        "Str.from_utf8_lossy" => m.tmp_owned(t, "tn_str_from_utf8_lossy(" + a[0] + ", " + loc + ")"),
+        "List.len" => {
+            let ln = m.cty(ptys[0])
+            m.tmp_val(t, ln + "_len(" + a[0] + ")")
+        }
+        "List.slice" => {
+            let ln = m.cty(ptys[0])
+            m.tmp_owned(t, ln + "_slice(" + a[0] + ", " + a[1] + ", " + a[2] + ", " + loc + ")")
+        }
+        "List.join" => m.tmp_owned(t, "tn_str_join(" + a[0] + ", " + a[1] + ")"),
+        "Map.len" => {
+            let mn = m.cty(ptys[0])
+            m.tmp_val(t, mn + "_len(" + a[0] + ")")
+        }
+        "Map.get" => {
+            let mn = m.cty(ptys[0])
+            let vt = ptys[0].args()[1]
+            let vn = m.cty(vt)
+            let p = m.fresh("p")
+            m.line(vn + " *" + p + " = " + mn + "_get(" + a[0] + ", " + a[1] + ");")
+            let val = if m.trivial(vt) { "*" + p } else { vn + "_retain(*" + p + ")" }
+            some_none(mut m, t, p, val)
+        }
+        "Map.keys" | "Map.values" => {
+            let ln = tn
+            let et = t.args()[0]
+            let en = m.cty(et)
+            let l = m.tmp_owned(t, "NULL")
+            let f = if name == "Map.keys" { "k" } else { "v" }
+            let i = m.fresh("i")
+            let mp = a[0]
+            m.line("for (int64_t {i} = 0; {mp} && {i} < {mp}->n; {i}++) if ({mp}->e[{i}].live) {ln}_push(&{l.code}, {en}_retain({mp}->e[{i}].{f}));")
+            l
+        }
+        "Option.unwrap" | "Option.expect" | "Result.unwrap" | "Result.expect" => {
+            let xt = ptys[0]
+            let tag = m.tag(xt, a[0])
+            m.line("if (" + tag + " != 0) \{")
+            if name == "Option.unwrap" {
+                m.line("    tn_trap(\"unwrap on None\", " + loc + ");")
+            } else if name == "Option.expect" {
+                m.line("    tn_trap_str(" + a[1] + ", " + loc + ");")
+            } else {
+                let b = m.fresh("b")
+                m.line("    tn_buf " + b + " = tn_buf_new();")
+                if name == "Result.unwrap" {
+                    let xn = m.cty(xt)
+                    m.line("    tn_buf_cstr(&{b}, \"unwrap on \"); {xn}_show(&{b}, {a[0]}, 0);")
+                } else {
+                    let et = xt.args()[1]
+                    let en = m.cty(et)
+                    let p = m.payload(xt, a[0], 1, 0)
+                    m.line("    tn_buf_str(&{b}, {a[1]}); tn_buf_cstr(&{b}, \": \"); {en}_show(&{b}, {p}, 0);")
+                }
+                m.line("    tn_trap_buf(&" + b + ", " + loc + ");")
+            }
+            m.line("}")
+            emit.bor(m.payload(xt, a[0], 0, 0))
+        }
+        "Console.print" | "Console.println" => {
+            m.line("tn_write((" + a[1] + ").p, (size_t)(" + a[1] + ").len);")
+            if name == "Console.println" { m.line("tn_write(\"\\n\", 1);") }
+            emit.bor("0")
+        }
+        "Console.flush" => {
+            m.line("tn_flush();")
+            emit.bor("0")
+        }
+        "Console.eprintln" => {
+            m.line("tn_eprintln(" + a[1] + ");")
+            emit.bor("0")
+        }
+        "Console.read_line" => {
+            let s = m.fresh("s")
+            m.line("tn_Str " + s + " = \{0};")
+            let ok = m.tmp_val(bool_t(), "tn_read_line(&" + s + ")").code
+            some_none(mut m, t, ok, s)
+        }
+        "Console.read_all" => m.tmp_owned(t, "tn_read_all()"),
+        "Console.read_all_bytes" => m.tmp_owned(t, "tn_read_all_bytes()"),
+        "Console.write_bytes" => {
+            m.line("tn_write_bytes(" + a[1] + ", " + loc + ");")
+            emit.bor("0")
+        }
+        "Fs.read" | "Fs.list" | "Fs.read_bytes" => {
+            let okt = t.args()[0]
+            let on = m.cty(okt)
+            let r = m.fresh("r")
+            let ms = m.fresh("m")
+            m.line(on + " " + r + " = \{0}; tn_Str " + ms + " = \{0};")
+            let f = "tn_fs_" + name.slice(3, name.len())
+            let k = m.tmp_val(int_t(), f + "(" + a[0] + ", " + a[1] + ", &" + r + ", &" + ms + ")").code
+            io_result(mut m, t, k, r, ms)
+        }
+        "Fs.write" | "Fs.append" | "Fs.write_bytes" | "Fs.append_bytes" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" => {
+            // the byte variants convert first (an out-of-range byte traps before any check)
+            let data = match name {
+                "Fs.write" | "Fs.append" => a[2],
+                "Fs.write_bytes" | "Fs.append_bytes" => m.tmp_owned(cktypes.t_str(), "tn_bytes_of(" + a[2] + ", " + loc + ")").code,
+                _ => "",
+            }
+            let ms = m.fresh("m")
+            m.line("tn_Str " + ms + " = \{0};")
+            var base = name.slice(3, name.len())
+            if base.ends_with("_bytes") { base = base.slice(0, base.len() - 6) }
+            let extra = if data == "" { "" } else { data + ", " }
+            let k = m.tmp_val(int_t(), "tn_fs_" + base + "(" + a[0] + ", " + a[1] + ", " + extra + "&" + ms + ")").code
+            io_result(mut m, t, k, "0", ms)
+        }
+        "Fs.truncate" => {
+            let ms = m.fresh("m")
+            m.line("tn_Str " + ms + " = \{0};")
+            let k = m.tmp_val(int_t(), "tn_fs_truncate(" + a[0] + ", " + a[1] + ", " + a[2] + ", &" + ms + ")").code
+            io_result(mut m, t, k, "0", ms)
+        }
+        "Fs.exists" => m.tmp_val(t, "tn_fs_exists(" + a[0] + ", " + a[1] + ")"),
+        "Fs.is_dir" => m.tmp_val(t, "tn_fs_is_dir(" + a[0] + ", " + a[1] + ")"),
+        "Fs.rename" => {
+            let ms = m.fresh("m")
+            m.line("tn_Str " + ms + " = \{0};")
+            let k = m.tmp_val(int_t(), "tn_fs_rename(" + a[0] + ", " + a[1] + ", " + a[2] + ", &" + ms + ")").code
+            io_result(mut m, t, k, "0", ms)
+        }
+        "Fs.within" => m.tmp_owned(t, "tn_fs_within(" + a[0] + ", " + a[1] + ")"),
+        "Fs.read_only" => m.tmp_owned(t, "tn_fs_make(tn_Str_retain((" + a[0] + ")->root), (" + a[0] + ")->att, false)"),
+        "Net.listen" | "Net.connect" | "Listener.accept" | "Conn.read" | "Conn.write" => {
+            let okt = t.args()[0]
+            let on = m.cty(okt)
+            let r = m.fresh("r")
+            let ms = m.fresh("m")
+            m.line(on + " " + r + " = \{0}; tn_Str " + ms + " = \{0};")
+            let call = match name {
+                "Net.listen" => "tn_net_listen({a[1]}, &{r}, &{ms})",
+                "Net.connect" => "tn_net_connect({a[1]}, {a[2]}, &{r}, &{ms})",
+                "Listener.accept" => "tn_listener_accept({a[0]}, &{r}, &{ms})",
+                "Conn.read" => "tn_conn_read({a[0]}, {a[1]}, &{r}, &{ms})",
+                _ => "tn_conn_write({a[0]}, {a[1]}, &{ms})",
+            }
+            let k = m.tmp_val(int_t(), call).code
+            io_result(mut m, t, k, r, ms)
+        }
+        "Conn.read_line" => {
+            let opt = t.args()[0]
+            let some = m.fresh("some")
+            let l = m.fresh("l")
+            let ms = m.fresh("m")
+            m.line("bool {some} = false; tn_Str {l} = \{0}, {ms} = \{0};")
+            let k = m.tmp_val(int_t(), "tn_conn_read_line({a[0]}, &{some}, &{l}, &{ms})").code
+            let sm = m.ctor_named(opt, "Some", [l])
+            let nn = m.ctor_named(opt, "None", [])
+            let o = m.tmp_val(opt, some + " ? " + sm + " : " + nn).code
+            io_result(mut m, t, k, o, ms)
+        }
+        "Listener.port" => m.tmp_val(t, "tn_listener_port(" + a[0] + ")"),
+        "Net.poller" => m.tmp_owned(t, "tn_net_poller()"),
+        "Poller.port" => m.tmp_val(t, "tn_poller_port(" + a[0] + ", " + a[1] + ")"),
+        "Poller.close" => {
+            m.line("tn_poller_close(" + a[0] + ", " + a[1] + ");")
+            emit.bor("0")
+        }
+        "Poller.listen" | "Poller.connect" | "Poller.send" => {
+            let r = m.fresh("r")
+            let ms = m.fresh("m")
+            m.line("tn_Int " + r + " = 0; tn_Str " + ms + " = \{0};")
+            let call = match name {
+                "Poller.listen" => "tn_poller_listen({a[0]}, {a[1]}, &{r}, &{ms})",
+                "Poller.connect" => "tn_poller_connect({a[0]}, {a[1]}, {a[2]}, &{r}, &{ms})",
+                _ => "tn_poller_send({a[0]}, {a[1]}, {a[2]}, &{ms})",
+            }
+            let k = m.tmp_val(int_t(), call).code
+            let okv = if name == "Poller.send" { "0" } else { r }
+            io_result(mut m, t, k, okv, ms)
+        }
+        "Poller.wait" => {
+            let et = t.args()[0]
+            let ln = m.cty(t)
+            let ev = m.fresh("ev")
+            let n = m.fresh("n")
+            let i = m.fresh("i")
+            m.line("tn_rawev *{ev}; int64_t {n} = tn_poller_wait({a[0]}, {a[1]}, &{ev});")
+            let l = m.tmp_owned(t, "NULL").code
+            let acc = m.ctor(et, 0, ["{ev}[{i}].a", "{ev}[{i}].b"])
+            let dat = m.ctor(et, 1, ["{ev}[{i}].a", "{ev}[{i}].data"])
+            let clo = m.ctor(et, 2, ["{ev}[{i}].a"])
+            let tmo = m.ctor(et, 3, [])
+            m.line("for (int64_t {i} = 0; {i} < {n}; {i}++) {ln}_push(&{l}, {ev}[{i}].kind == 0 ? {acc} : {ev}[{i}].kind == 1 ? {dat} : {ev}[{i}].kind == 2 ? {clo} : {tmo});")
+            m.line("tn_free(" + ev + ");")
+            emit.bor(l)
+        }
+        "Proc.run" => {
+            let r = m.fresh("r")
+            let ms = m.fresh("m")
+            m.line("tn_Int " + r + " = 0; tn_Str " + ms + " = \{0};")
+            let k = m.tmp_val(int_t(), "tn_proc_run(" + a[1] + ", " + a[2] + ", &" + r + ", &" + ms + ")").code
+            io_result(mut m, t, k, r, ms)
+        }
+        "Proc.env" => {
+            let s = m.fresh("s")
+            m.line("tn_Str " + s + " = \{0};")
+            let ok = m.tmp_val(bool_t(), "tn_proc_env(" + a[1] + ", &" + s + ")").code
+            some_none(mut m, t, ok, s)
+        }
+        "Clock.now_ms" => m.tmp_val(t, "tn_now_ms()"),
+        "Clock.mono_ns" => m.tmp_val(t, "tn_mono_ns()"),
+        "Clock.sleep_ms" => {
+            m.line("tn_sleep_ms(" + a[1] + ");")
+            emit.bor("0")
+        }
+        _ => panic("emit: missing builtin " + name),
+    }
+}
+
+// Mutating builtins: `p` points at the receiver place; args are owned temps.
+pub fn extern_mut(m: mut emit.Em, name: Str, p: Str, ptys: List[cktypes.Ty], args: List[emit.CV], t: cktypes.Ty, sp: ckast.Span) -> emit.CV {
+    let rt = ptys[0]
+    let loc = m.loc(sp)
+    let ln = m.cty(rt)
+    let tys = match name {
+        "List.push" => [rt.args()[0]],
+        "List.insert" => [cktypes.t_int(), rt.args()[0]],
+        "List.sort_by" | "List.sort_by_desc" => [cktypes.t_unit()],
+        "Map.insert" => [rt.args()[0], rt.args()[1]],
+        _ => args.map(fn(_) => cktypes.t_unit()),
+    }
+    let raw = name == "List.sort_by" or name == "List.sort_by_desc" or name == "Map.remove" or name == "List.remove"
+    var a: List[Str] = []
+    for i in 0..args.len().min(tys.len()) {
+        if raw { a.push(args[i].code) } else { a.push(m.own(args[i], tys[i])) }
+    }
+    match name {
+        "List.push" => {
+            m.line(ln + "_push(" + p + ", " + a[0] + ");")
+            emit.bor("0")
+        }
+        "List.pop" => {
+            let et = rt.args()[0]
+            let en = m.cty(et)
+            let o = m.fresh("o")
+            m.line(en + " " + o + " = \{0};")
+            let ok = m.tmp_val(cktypes.t_bool(), ln + "_pop(" + p + ", &" + o + ")").code
+            some_none(mut m, t, ok, o)
+        }
+        "List.insert" => {
+            m.line(ln + "_insert(" + p + ", " + a[0] + ", " + a[1] + ", " + loc + ");")
+            emit.bor("0")
+        }
+        "List.remove" => m.tmp_owned(t, ln + "_remove(" + p + ", " + a[0] + ", " + loc + ")"),
+        "List.clear" | "List.reverse" | "List.sort" => {
+            if name == "List.sort" and rt.any(fn(x) => x.is("Map")) { m.line("tn_cur_loc = " + loc + ";") }
+            m.line(ln + "_" + name.slice(5, name.len()) + "(" + p + ");")
+            emit.bor("0")
+        }
+        "List.sort_by" | "List.sort_by_desc" => {
+            let kt = match ptys[1] {
+                Fun(_, k) => k,
+                _ => panic("emit: sort_by key"),
+            }
+            let h = sort_by_helper(mut m, rt, kt, name == "List.sort_by_desc")
+            if kt.any(fn(x) => x.is("Map")) { m.line("tn_cur_loc = " + loc + ";") }
+            m.line(h + "(" + p + ", " + a[0] + ");")
+            emit.bor("0")
+        }
+        "Map.insert" => {
+            m.line(ln + "_insert(" + p + ", " + a[0] + ", " + a[1] + ");")
+            emit.bor("0")
+        }
+        "Map.remove" => {
+            let vt = rt.args()[1]
+            let vn = m.cty(vt)
+            let o = m.fresh("o")
+            m.line(vn + " " + o + " = \{0};")
+            let ok = m.tmp_val(cktypes.t_bool(), ln + "_remove(" + p + ", " + a[0] + ", &" + o + ")").code
+            some_none(mut m, t, ok, o)
+        }
+        _ => panic("emit: missing mutating builtin " + name),
+    }
+}
+
+fn sort_by_helper(m: mut emit.Em, lt: cktypes.Ty, kt: cktypes.Ty, desc: Bool) -> Str {
+    let key = "sortby" + lt.show() + "|" + kt.show() + "{desc}"
+    match m.wrappers.get(key) {
+        Some(w) => return w,
+        None => {}
+    }
+    let h = m.fresh("sortby")
+    m.wrappers[key] = h
+    let ln = m.cty(lt)
+    let et = m.cty(lt.args()[0])
+    let kn = m.cty(kt)
+    let neg = if desc { "-" } else { "" }
+    m.protos += "static void {h}({ln} *p, tn_fn f);\n"
+    m.helpers += "static int {h}_cmp(void *ctx, int64_t a, int64_t b) \{ {kn} *k = ctx; return {neg}{kn}_cmp(k[a], k[b]); }\n"
+    m.bodies += "static void {h}({ln} *p, tn_fn f) \{\n    int64_t n = {ln}_len(*p);\n    if (n < 2) return;\n    " +
+        "{kn} *keys = tn_alloc(sizeof({kn}) * (size_t)n);\n    " +
+        "for (int64_t i = 0; i < n; i++) keys[i] = (({kn} (*)(tn_env *, {et})) f.f)(f.env, (*p)->data[i]);\n    " +
+        "int64_t *idx = tn_alloc(sizeof(int64_t) * (size_t)n), *tmp = tn_alloc(sizeof(int64_t) * (size_t)n);\n    " +
+        "for (int64_t i = 0; i < n; i++) idx[i] = i;\n    tn_msort_idx(idx, tmp, n, {h}_cmp, keys);\n    " +
+        "{ln}_unique(p);\n    {et} *out = tn_alloc(sizeof({et}) * (size_t)n);\n    " +
+        "for (int64_t i = 0; i < n; i++) out[i] = (*p)->data[idx[i]];\n    " +
+        "memcpy((*p)->data, out, sizeof({et}) * (size_t)n);\n    " +
+        "for (int64_t i = 0; i < n; i++) {kn}_release(keys[i]);\n    tn_free(keys); tn_free(idx); tn_free(tmp); tn_free(out);\n}\n"
+    h
+}

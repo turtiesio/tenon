@@ -416,8 +416,8 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
         None => {}
     }
     match e.k {
-        XInt | XFloat | XBool(_) | XUnit | XPath(_, _) => Ok(()),
-        XStr(xs) => self.exprs(xs, false),
+        XInt(_) | XFloat(_) | XBool(_) | XUnit | XPath(_, _) => Ok(()),
+        XStr(xs, _) => self.exprs(xs, false),
         XName(n) => {
             match self.res.get(e.id) {
                 Some(RFn(fi, targs)) => return self.generic_args_ok(fi, targs, e.sp),

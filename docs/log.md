@@ -300,3 +300,22 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   probes committed at the root by accident became tests: 18 in
   `tests/reject/cap_probe_*`, 5 in `tests/run/cap_probe_*` (now guarded), one
   repro (`tests/redteam/repros/25-*`). Entries above name the old paths.
+
+## 2026-10-28 — self-hosting stage A: the C backend in Tenon
+
+- **Self-hosted C backend** (selfhost/emit*.tn, ~2,700 lines, port of the
+  bootstrap's emit_c/emit_body/emit_ctl/emit_builtins) and driver
+  selfhost/tenonc.tn (`check`, `emit`, `build`). It works from the
+  self-hosted checker's side tables (`checker.check` now returns them; no
+  diagnostic changed). `tenonc emit` is byte-identical to `tenon emit` on all
+  306 accepted corpus files (tools/selfhost.sh), and the compiler reaches a
+  fixpoint: stage1 (bootstrap-built) and stage2 (stage1-built) emit the same
+  3 MB of C for tenonc.tn as the bootstrap (tools/fixpoint.sh, in ./check).
+  Stage1 emits in 0.8x-1.1x the bootstrap's time (tenonc.tn 58 vs 73 ms).
+- **Language addition: `Proc`** (`sys.proc`), the capability to run a
+  command (`Proc.run(cmd, args) -> Result[Int, IoError]`) and read an
+  environment variable (`Proc.env`), needed by `tenonc build` to run `$CC`.
+  Only `main`'s Sys has one; it is the whole authority of the user, so a
+  function that runs commands says so in its signature.
+- The prelude, std modules and runtime header are read from the repository
+  (`--root`, `$TENON_ROOT`, or `.`) instead of embedded.
