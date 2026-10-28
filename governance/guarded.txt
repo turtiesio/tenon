@@ -11,6 +11,9 @@ tests/run/exit_reserved.tn
 tests/run/exit_reserved.out
 tests/run/cap_probe_*.tn
 tests/run/cap_probe_*.out
+# Conformance 2026-10-28 (tests/redteam/FINDINGS-2026-10-28-conformance.md)
+tests/run/trap_euclid_extremes.tn
+tests/run/trap_euclid_extremes.out
 # The bootstrap is a frozen seed (tenon.md §5): any change to it needs an
 # approval line, and its line count may only shrink (tools/approvals.py).
 frozen bootstrap/*

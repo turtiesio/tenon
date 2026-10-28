@@ -1,0 +1,22 @@
+// Euclidean division and remainder at the ends of Int (conformance 2026-10-28 #3):
+// a = q * d + r with 0 <= r < |d|; only a quotient that does not fit traps.
+fn main(sys: Sys) {
+    let c = sys.console
+    let ds = [3, -3, 7, -7, 1, -1, 2, -2, INT_MAX, INT_MIN]
+    for a in [INT_MIN, INT_MIN + 1, -7, -1, 0, 1, 7, INT_MAX - 1, INT_MAX] {
+        for d in ds {
+            if a == INT_MIN and d == -1 { continue }
+            let q = a.div_euclid(d)
+            let r = a.rem_euclid(d)
+            // a == q * d + r, computed without overflow (q * d alone may not fit: then q * d + |d| does)
+            let back = match q.checked_mul(d) {
+                Some(p) => p.checked_add(r),
+                None => (q + d / d.abs()).checked_mul(d).and_then(fn(p) => p.checked_add(r - d.abs())),
+            }
+            let ok = r >= 0 and (d == INT_MIN or r < d.abs()) and back == Some(a)
+            c.println("{a} {d}: {q} {r} {ok}")
+        }
+    }
+    c.println("{INT_MIN.div_euclid(3)} {(-1).rem_euclid(INT_MIN)} {INT_MIN.rem_euclid(-1)}")
+    c.println("{INT_MIN.div_euclid(-1)}")
+}

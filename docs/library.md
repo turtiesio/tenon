@@ -106,7 +106,8 @@ single source of the builtin API. Every claim here is checked by a test in
   `e < 0` (`0.pow(0) == 1`); `x.to_str_radix(base)` writes `x` in base 2-36
   (lowercase digits, `-` for negatives; another base traps):
   `255.to_str_radix(16) == "ff"`; `rem_euclid` and
-  `div_euclid` (the remainder is never negative); `fmt_fixed(scale)` writes a
+  `div_euclid` (the remainder is never negative; no intermediate overflow: only
+  `INT_MIN.div_euclid(-1)`, whose quotient does not fit, traps); `fmt_fixed(scale)` writes a
   fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents); constants
   `INT_MAX`, `INT_MIN`; and for code points
   `is_digit is_alpha is_alnum is_space is_upper is_lower` (ASCII only:
