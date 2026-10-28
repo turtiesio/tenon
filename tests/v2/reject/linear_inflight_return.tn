@@ -1,0 +1,11 @@
+// error: this linear value would be lost if another part of the expression leaves early
+// Authority finding 1 (2026-10-28): `return` in a later argument.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn take(c: Claim, con: Console, n: Int) { c.complete(con) }
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn work(con: Console, early: Bool) {
+    let c = Claim { id: 2 }
+    take(c, con, if early { return } else { 0 })
+}
+fn main(sys: Sys) { work(sys.console, true) }

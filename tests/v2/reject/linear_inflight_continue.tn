@@ -1,0 +1,12 @@
+// error: this linear value would be lost if another part of the expression leaves early
+// Authority finding 1 (2026-10-28): `continue` in a later argument.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn take(c: Claim, con: Console, n: Int) { c.complete(con) }
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn main(sys: Sys) {
+    for i in 0..3 {
+        let c = Claim { id: 10 + i }
+        take(c, sys.console, if i == 1 { continue } else { 0 })
+    }
+}

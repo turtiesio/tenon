@@ -554,6 +554,13 @@ lock). The compiler rejects any program that copies one or loses one:
   (a unique variable declared with `var`);
 - every path must consume it: both branches of an `if`, every `match` arm,
   and before `return`, `break`, `continue` or `?`;
+- a linear value moved into a call, a tuple or a struct literal belongs to it
+  only once the whole expression is built, so no other part of that
+  expression may leave early (`?`, `return`, or a `break`/`continue` of a
+  loop around it): `store.commit(claim, parse(line)?)` is rejected, because
+  a failing `parse` would lose the claim; compute the part first,
+  `let n = parse(line)?` then `store.commit(claim, n)`. This holds whatever
+  the order of the parts;
 - a value from outside a loop cannot be consumed inside the loop;
 - `_` patterns and `let _ =` cannot discard it, and it cannot be overwritten;
 - closures cannot capture it; `List`/`Map` cannot hold it; generic functions

@@ -1,0 +1,10 @@
+take 7
+completed 1
+take 3
+completed 2
+take 40
+completed 3
+5 7
+Ok(())
+Err("bad x")
+exit: 0

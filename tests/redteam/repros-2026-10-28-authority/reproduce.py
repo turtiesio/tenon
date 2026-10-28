@@ -16,7 +16,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 TENON = os.environ.get("TENON", str(ROOT / "target/tenon"))
 FILES = {
-    "01": ["01a-linear-lost-method-arg.tn", "01b-linear-lost-call-return-break.tn", "01c-linear-lost-tuple-match-interp.tn", "01d-linear-lost-continue-struct-literal.tn"],
+    "01": ["v2/01a-linear-lost-method-arg.tn", "v2/01b-linear-lost-call-return-break.tn", "v2/01c-linear-lost-tuple-match-interp.tn", "v2/01d-linear-lost-continue-struct-literal.tn"],
     "02": ["v2/02-ref-param-erased-by-fn-value.tn"],
     "03": ["v2/03a-const-linear-copied.tn", "v2/03b-const-unique-copied.tn"],
     "04": ["v2/04-private-enum-forged.tn"],

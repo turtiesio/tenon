@@ -392,6 +392,39 @@ fn Walk.generic_args_ok(mut self, fi: Int, targs: List[cktypes.Ty], sp: ckast.Sp
     Ok(())
 }
 
+// A linear value moved into a call, tuple or struct literal is owned by it
+// only once the whole expression is built: if another part leaves early
+// (`?`, `return`, `break`, `continue`), the moved value is lost. So a part
+// that moves a linear value cannot sit next to a part that may leave
+// (reference §12). `parts`: each part and whether it is moved.
+fn Walk.no_early_exit(self, parts: List[(ckast.Expr, Bool)]) -> Result[Unit, ckast.Diag] {
+    for i in 0..parts.len() {
+        if parts[i].1 and self.kind(parts[i].0.id) == Linear {
+            for j in 0..parts.len() {
+                if j != i and ckast.can_leave(parts[j].0) {
+                    return ckast.fail(parts[i].0.sp, "this linear value would be lost if another part of the expression leaves early ('?', 'return', 'break' or 'continue'); compute that part with 'let' first")
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+// The arguments as parts for no_early_exit: `ref` and `mut` arguments are not moved.
+fn arg_parts(args: List[ckast.Expr], refs: List[Bool]) -> List[(ckast.Expr, Bool)] {
+    var out: List[(ckast.Expr, Bool)] = []
+    for i in 0..args.len() {
+        let moved = not (i < refs.len() and refs[i]) and match args[i].k {
+            XMutArg(_) => false,
+            _ => true,
+        }
+        out.push((args[i], moved))
+    }
+    out
+}
+
+fn moved_parts(xs: List[ckast.Expr]) -> List[(ckast.Expr, Bool)] { xs.map(fn(x) => (x, true)) }
+
 fn Walk.args(mut self, args: List[ckast.Expr], refs: List[Bool]) -> Result[Unit, ckast.Diag] {
     for i in 0..args.len() {
         let by_ref = i < refs.len() and refs[i]
@@ -507,7 +540,11 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
         XIf(c, then, els) => self.if_expr(e, c, then, els, consume),
         XMatch(s, arms) => self.match_expr(e, s, arms, consume),
         XBlock(b) => self.block(b, consume),
-        XList(xs) | XTuple(xs) => self.exprs(xs, true),
+        XList(xs) => self.exprs(xs, true),
+        XTuple(xs) => {
+            self.no_early_exit(moved_parts(xs))?
+            self.exprs(xs, true)
+        }
         XMap(ps) => {
             for p in ps {
                 self.expr(p.0, true)?
@@ -547,6 +584,7 @@ fn Walk.call(mut self, e: ckast.Expr, callee: ckast.Expr, args: List[ckast.Expr]
         }
         _ => {}
     }
+    self.no_early_exit([(callee, false)] + arg_parts(args, refs))?
     self.expr(callee, false)?
     self.args(args, refs)
 }
@@ -562,13 +600,15 @@ fn Walk.method(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr]
                 Some(Con(o, _)) => cktypes.is_capability(o),
                 _ => false,
             }
-            self.expr(recv, f.self_kind == ValSelf and not handle)?
             refs = self.ref_params(fi)
+            self.no_early_exit([(recv, f.self_kind == ValSelf and not handle)] + arg_parts(args, refs))?
+            self.expr(recv, f.self_kind == ValSelf and not handle)?
         }
         Some(RTrait(tr, mi, _, _)) => {
             let tm = self.env.traits[tr].methods[mi]
-            self.expr(recv, tm.self_kind == ValSelf)?
             refs = tm.refs
+            self.no_early_exit([(recv, tm.self_kind == ValSelf)] + arg_parts(args, refs))?
+            self.expr(recv, tm.self_kind == ValSelf)?
         }
         _ => self.expr(recv, false)?,
     }
@@ -623,6 +663,12 @@ fn Walk.match_expr(mut self, e: ckast.Expr, s: ckast.Expr, arms: List[ckast.Arm]
 }
 
 fn Walk.struct_lit(mut self, e: ckast.Expr, fs: List[(Str, ckast.Expr)], base: Option[ckast.Expr]) -> Result[Unit, ckast.Diag] {
+    var parts = moved_parts(fs.map(fn(f) => f.1))
+    match base {
+        Some(b) => parts.push((b, true)),
+        None => {}
+    }
+    self.no_early_exit(parts)?
     for f in fs { self.expr(f.1, true)? }
     match base {
         Some(b) => {

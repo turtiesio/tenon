@@ -1,0 +1,16 @@
+// error: this linear value would be lost if another part of the expression leaves early
+// Authority finding 1 (2026-10-28): a match scrutinee built from the claim and a `?`.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn take(c: Claim, con: Console, n: Int) { c.complete(con) }
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn work(con: Console) -> Result[Int, Str] {
+    let c = Claim { id: 2 }
+    match (c, fails()?) {
+        (a, b) => {
+            a.complete(con)
+            Ok(b)
+        }
+    }
+}
+fn main(sys: Sys) { sys.console.println("{work(sys.console)}") }

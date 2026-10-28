@@ -601,6 +601,53 @@ fn in_expr(e: Expr) -> Bool {
     children(e).any(in_expr)
 }
 
+// Can evaluating e leave it early: a `?`, a `return`, or a `break`/`continue`
+// of a loop around e (one of a loop inside e stays inside)? Closures are not
+// entered. Used by the linear pass (cklin `no_early_exit`).
+pub fn can_leave(e: Expr) -> Bool { leaves_in(e, false) }
+
+// `inner`: inside a loop that is itself inside the expression.
+fn leaves_in(e: Expr, inner: Bool) -> Bool {
+    match e.k {
+        XTry(_) => return true,
+        XLambda(_, _, _) => return false,
+        XBlock(b) => return stmts_leave(b.stmts, inner),
+        XIf(c, b, els) => {
+            if leaves_in(c, inner) or stmts_leave(b.stmts, inner) { return true }
+            return match els {
+                Some(x) => leaves_in(x, inner),
+                None => false,
+            }
+        }
+        _ => {}
+    }
+    children(e).any(fn(x) => leaves_in(x, inner))
+}
+
+fn stmts_leave(stmts: List[Stmt], inner: Bool) -> Bool {
+    for s in stmts {
+        let found = match s.k {
+            KReturn(_) => true,
+            KBreak | KContinue => not inner,
+            KWhile(c, b) => leaves_in(c, inner) or stmts_leave(b.stmts, true),
+            KFor(_, it, b) => {
+                let head = match it {
+                    FRange(a, z) => leaves_in(a, inner) or leaves_in(z, inner),
+                    FEach(x) => leaves_in(x, inner),
+                }
+                head or stmts_leave(b.stmts, true)
+            }
+            KLet(_, _, _, v, els) => leaves_in(v, inner) or match els {
+                Some(b) => stmts_leave(b.stmts, inner),
+                None => false,
+            },
+            _ => stmt_exprs(s).any(fn(x) => leaves_in(x, inner)),
+        }
+        if found { return true }
+    }
+    false
+}
+
 // The expressions directly inside a statement, in seed/src/interp.rs `visit_stmt` order.
 pub fn stmt_exprs(s: Stmt) -> List[Expr] {
     match s.k {

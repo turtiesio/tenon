@@ -243,6 +243,11 @@ A user-defined method taking `self` (`h.get()`) *is* rejected after a move, so t
 
 **Expected:** "'x' was already used" for each of these uses. **Actual:** accepted, `run` = native.
 
+Fixed in bdbca07, tests tests/v2/reject/moved_*.tn (field read, `ref` argument, `==`, formatting, a
+`Listener` method, a linear field after `fin`, moved on one path, after `spawn`, after `send`) and
+tests/v2/run/unique_moved_then_reassigned.tn. Rule (reference §12): once consumed, a name cannot be
+used at all, also by the uses that do not consume, until a unique `var` is assigned a new value.
+
 ## 7. `Proc.run_with` timeout leaves the command's descendants running (Low)
 
 **Property:** library, `Proc`: a command still running after `timeout_ms` "is killed (SIGKILL)";

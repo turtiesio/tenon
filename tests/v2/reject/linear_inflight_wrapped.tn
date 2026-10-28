@@ -1,0 +1,18 @@
+// error: this linear value would be lost if another part of the expression leaves early
+// Authority finding 1 (2026-10-28): wrapped in a variant (Option[Claim] is linear), then `?`.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn take(c: Claim, con: Console, n: Int) { c.complete(con) }
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn take_opt(o: Option[Claim], con: Console, n: Int) {
+    match o {
+        Some(c) => c.complete(con),
+        None => {}
+    }
+}
+fn work(con: Console) -> Result[Unit, Str] {
+    let c = Claim { id: 6 }
+    take_opt(Some(c), con, fails()?)
+    Ok(())
+}
+fn main(sys: Sys) { sys.console.println("{work(sys.console)}") }

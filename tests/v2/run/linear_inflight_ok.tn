@@ -1,0 +1,35 @@
+// What stays accepted next to the in-flight rule (authority finding 1, 2026-10-28): the part that may
+// leave is computed first with `let`; a `break` of a loop inside an argument, and a `?` inside a
+// closure, do not leave the call; an interpolation part that finishes the claim by itself.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn Claim.id_of(self) -> Int { self.id }
+fn take(c: Claim, con: Console, n: Int) {
+    con.println("take {n}")
+    c.complete(con)
+}
+fn parse(s: Str) -> Result[Int, Str] { s.to_int().ok_or("bad " + s) }
+fn work(con: Console, s: Str) -> Result[Unit, Str] {
+    let n = parse(s)?
+    let c = Claim { id: 1 }
+    take(c, con, n)
+    let c2 = Claim { id: 2 }
+    take(c2, con, {
+        var k = 0
+        while true {
+            k += 1
+            if k == 3 { break }
+        }
+        k
+    })
+    let c3 = Claim { id: 3 }
+    let f = fn(t: Str) => parse(t).map(fn(x) => x * 10)
+    take(c3, con, f("4").unwrap_or(0))
+    let c4 = Claim { id: 5 }
+    con.println("{c4.id_of()} {parse(s)?}")
+    Ok(())
+}
+fn main(sys: Sys) {
+    sys.console.println("{work(sys.console, "7")}")
+    sys.console.println("{work(sys.console, "x")}")
+}

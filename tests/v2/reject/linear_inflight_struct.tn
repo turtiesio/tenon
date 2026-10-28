@@ -1,0 +1,15 @@
+// error: this linear value would be lost if another part of the expression leaves early
+// Authority finding 1 (2026-10-28): a field of a linear struct literal, then `?` in a later field.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn take(c: Claim, con: Console, n: Int) { c.complete(con) }
+fn fails() -> Result[Int, Str] { Err("boom") }
+linear struct Hold { c: Claim, n: Int }
+fn Hold.finish(self, con: Console) { con.println("finished hold {self.n}") }
+fn work(con: Console) -> Result[Int, Str] {
+    let c2 = Claim { id: 20 }
+    let k = Hold { c: c2, n: fails()? }
+    k.finish(con)
+    Ok(1)
+}
+fn main(sys: Sys) { sys.console.println("{work(sys.console)}") }

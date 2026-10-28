@@ -1,0 +1,11 @@
+// error: this linear value would be lost if another part of the expression leaves early
+// Authority finding 1 (2026-10-28): a new linear value as an argument is lost the same way.
+linear struct Claim { id: Int }
+fn Claim.complete(self, con: Console) { con.println("completed {self.id}") }
+fn take(c: Claim, con: Console, n: Int) { c.complete(con) }
+fn fails() -> Result[Int, Str] { Err("boom") }
+fn work(con: Console) -> Result[Unit, Str] {
+    take(Claim { id: 5 }, con, fails()?)
+    Ok(())
+}
+fn main(sys: Sys) { sys.console.println("{work(sys.console)}") }

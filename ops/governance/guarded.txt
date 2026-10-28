@@ -49,6 +49,9 @@ tests/v2/reject/struct_private_decode.tn
 tests/v2/reject/moved_*.tn
 tests/v2/run/unique_moved_then_reassigned.tn
 tests/v2/run/unique_moved_then_reassigned.out
+tests/v2/reject/linear_inflight_*.tn
+tests/v2/run/linear_inflight_ok.tn
+tests/v2/run/linear_inflight_ok.out
 # The bootstrap is a frozen seed (tenon.md §5): any change to it needs an
 # approval line, and its line count may only shrink (ops/repo/approvals.py).
 frozen seed/*
