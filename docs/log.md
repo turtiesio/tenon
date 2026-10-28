@@ -502,3 +502,93 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   runtime with the seed apart, judges milestones 1 and 2 from data, shows
   the per-step check time, and computes open regressions; tools/unmet.md
   keeps only prose.
+
+## Numbering (from here on)
+
+Entries are numbered from 20 (the 19 above, in file order, are 1-19), with
+the date: `## N. DATE — title`. The headings above are kept as written
+(existing lines are never edited): "2026-10-28/29 — waves 4-6" comes before
+four later "2026-10-28" entries because those were landed after it.
+
+## 20. 2026-10-28 — the formatter (retroactive: bb246f3)
+
+- **Decision:** one canonical layout with no options (tenon.md §5), written
+  in Tenon (selfhost/fmt*.tn), that keeps the author's line breaks and only
+  re-indents and re-spaces; it refuses to write unless its output lexes to
+  the same tokens and parses (self-verifying). Rationale: a reflowing
+  formatter would need a layout engine and would churn diffs; a refusing one
+  can never corrupt a file. Rules: docs/tools.md "Formatting".
+- **Effect** (measured on 55a0a90, `tools/fmt_check.sh`): 574 corpus files in
+  canonical layout, 262 exempt (tools/fmt_skip.txt: study inputs, malformed
+  inputs, guarded tests), 29 more do not parse; idempotent on 787 files;
+  syntax tree unchanged on all 42 files formatting changes; 6 golden tests;
+  1.6 s in ./check.
+
+## 21. 2026-10-28 — the language server (retroactive: 17415de)
+
+- **Decision:** LSP 3.17 over stdio in Tenon (selfhost/lsp*.tn, json.tn),
+  sharing the checker through `checker.check_lenient` so that diagnostics are
+  exactly `tenon check`'s and the side tables cover a program being edited;
+  no incremental analysis (the whole program is checked per change).
+  Rationale: one checker, no second front end to drift.
+- **Effect** (55a0a90, `python3 tools/lsp_test.py`): checking
+  selfhost/tenon.tn (the largest program) through the server takes 78 ms and
+  a hover 1 ms, so whole-program re-checking is fast enough; the scripted
+  sessions take 0.4 s in ./check.
+
+## 22. 2026-10-28 — VS Code (retroactive: 0ea5380, c89ef85, 17415de)
+
+- **Decision:** editors/vscode with a TextMate grammar and a dependency-free
+  language-server client (no npm, no build step), checked without VS Code by
+  tools/vscode_grammar_check.py: a small TextMate interpreter run over the
+  whole corpus, and the grammar's keywords compared with the lexer's.
+- **Effect** (55a0a90): the grammar tokenizes 865 files (47925 lines) with 0
+  leaks; the only unterminated literals are in the 7 files the lexer also
+  rejects; 0.7 s in ./check.
+
+## 23. 2026-10-28 — traits: measured effect (addendum to "traits")
+
+- Programs without traits get byte-identical C: tools/selfhost.sh compares
+  `tenon emit` with the seed's on all 318 accepted v1 files, 0 differences.
+- A call through a bound is compiled to the same direct call of one
+  instance as a call of a non-generic function (the emitted C of
+  `fn bound[T: Area](x: T) -> Int { x.area() }` and
+  `fn plain(x: Sq) -> Int { x.direct() }` has the same shape); a `dyn` call
+  is one indirect call through a static vtable.
+- Tests: the "traits" entry says 10 programs in tests/v2/run; there were 12
+  at that point (the 11 trait_*.tn and quickstart_traits.tn, plus the
+  module geo.tn), and 56 reject files in tests/v2/reject now, workers' included.
+
+## 24. 2026-10-28 — cleanup batch E: docs layout and accuracy
+
+- **Layout:** user docs in docs/ (quickstart, reference, library, tools,
+  packages); contributor docs in docs/dev/: compiler.md (selfhost/SELFHOST.md,
+  CHECKER_NOTES.md and EMITTER_NOTES.md merged, duplicates removed),
+  testing.md (the one description of ./check, the test directories, adding a
+  test, guarded tests, evidence) and cleanup_plan.md (was docs/CLEANUP_PLAN.md).
+- **reference.md 1292 -> 1006 lines, the language only:** the builtin API
+  (§11) and the standard library moved to the new docs/library.md (251
+  lines); the formatting rules (§16) and the interpreter's worker scheduling
+  to docs/tools.md; the package paragraph of §13 shrank to a link. Section
+  numbers 1-19 are unchanged (§11 and §16 remain as pointers), because
+  lib/v2/prelude.tn, tests and study notes cite them. Study kits copy
+  quickstart, reference, library and tools (tools/study.py); doctest reads
+  README.md and every docs/*.md (the same 8 programs).
+- **A gate against stale paths** (tenon.md §6, "No staleness"):
+  tools/doclinks.tn, run by `tenon run` in ./check, fails when a relative
+  link or a repository path in README.md or docs/**/*.md names nothing;
+  exceptions with reasons in tools/doclinks_ignore.txt. Its first run
+  reported 48 paths: 34 in this log and the cleanup plan (dated records,
+  now exempt; e.g. selfhost/tenonc.tn, tools/fixpoint.sh, tests/pending/),
+  6 study-kit paths (exempt), 7 code fragments and punctuation the tool now
+  tells apart, and one link written before its file; none stale in the
+  current user docs, whose stale facts were in the moved notes (below). It
+  checks 272 paths in about 0.15 s.
+- **Stale facts fixed:** the checker notes' `tests/pending/` (gone); the
+  fixed "known difference" of 25f3385 listed among the interpreter's
+  differences; the program count (10 scenarios: 9 in programs/, 1 in
+  programs/v2); `./check` times now only in STATUS.md and ./check's own
+  table; the README layout gains `check`, `tests/fmt`, `tests/lsp`,
+  `target/` and `.evidence/`; the quickstart says how to run, build and test
+  a program; user docs no longer mention the seed except docs/tools.md's
+  note on it.

@@ -267,7 +267,7 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
 
 ## Batch E: docs layout and accuracy
 
-### E1. Docs restructure. M, low risk.
+### E1. Docs restructure. M, low risk. Done in 701ae89 (the move) and the Cleanup E commits after it: docs/dev/compiler.md (the three notes merged), docs/dev/testing.md (the one description of ./check; the `check` header points to it), docs/dev/cleanup_plan.md; plus docs/library.md (see E3); docs/log.md entry 24.
 
 See the target structure below. Today:
 
@@ -275,20 +275,20 @@ See the target structure below. Today:
 - **What `./check` runs** is described in `check:2-12`, twice in `SELFHOST.md` (`:86-99` and `:136-144`), in `log.md:341` and in `CHECKER_NOTES.md:85`.
 - **The subcommand list** appears in 6 places, already out of sync (B2).
 
-### E2. User docs say `tenon` (the bootstrap) where tenonc is meant. S.
+### E2. User docs say `tenon` (the bootstrap) where tenonc is meant. S. Done: B1 made `tenon` the self-hosted binary; the seed is no longer mentioned in the user docs except docs/tools.md "The seed"; the quickstart says how to run, build, check, format and test a program.
 
 - `reference.md:27-30,192` say `tenon run` and `tenon build`; `:976` and `:767` say "tenonc only".
 - `tenon.md:247` says `tenon fmt`.
 - `quickstart.md` never says how to run a program.
 - B1 makes all of these true by renaming the binary.
 
-### E3. `reference.md` is over 1000 lines. S.
+### E3. `reference.md` is over 1000 lines. S. Done: 1292 -> 1006 lines. Moving only the items below would have left 1225, so the builtin API (§11) and the standard library also moved, to docs/library.md; section numbers are unchanged (§11 and §16 are pointers) because lib/v2/prelude.tn, tests and study notes cite them. §19 is current (workers landed).
 
 - Move §16 Formatting (`:928-972`) and the CLI and cache text (`:27-32`) to `docs/tools.md`.
 - Shrink the package paragraph in §13 (`:767-783`, which duplicates `packages.md`) to a link.
 - Update §18 "Not yet implemented" when concurrency lands.
 
-### E4. Stale facts. S.
+### E4. Stale facts. S. Done: each item below is fixed or no longer applies (unmet.md was rewritten in C2 and has no program list or check time; `check` says `--fast` means the same). New gate against stale paths: tools/doclinks.tn in ./check (docs/dev/testing.md, "Doc checks").
 
 - `CHECKER_NOTES.md:80` mentions `tests/pending/`, which does not exist.
 - `SELFHOST.md:88` says the suite runs `tests`; it runs `tests tests/v2`.
@@ -299,7 +299,7 @@ See the target structure below. Today:
 - The README layout omits `tests/fmt`, `tests/lsp`, `target/`, `check` and `.evidence/`.
 - `check:4-5` documents `--fast`, but the script ignores its argument. Either say so in the usage text or remove the flag everywhere.
 
-### E5. `docs/log.md`. S.
+### E5. `docs/log.md`. S. Done: entries 20-24 (numbering, formatter, language server, VS Code, the traits effect and test count, batch E); the out-of-order headings are explained, not edited.
 
 - Missing entries for the formatter, the language server and VS Code.
 - Headings are out of order: `:267` "10-28/29" comes before four later "10-28" entries.
@@ -366,12 +366,14 @@ target/release/tenon-seed  the frozen Rust seed (scripts call it $SEED); builds 
 ```
 README.md                what it is, install (build target/tenon), 5-line tour, layout
 docs/quickstart.md       user: first program, run/build/test
-docs/reference.md        user: the language only (< 1000 lines)
+docs/reference.md        user: the language only (~1000 lines)
+docs/library.md          user: the builtin API and the standard library (added in E3)
 docs/tools.md            user: the CLI table above, env vars, cache, fmt rules, LSP/VS Code
 docs/packages.md         user: tenon.toml, tenon.lock
 docs/dev/compiler.md     contributor: SELFHOST + CHECKER_NOTES + EMITTER_NOTES merged
                          (module tables, fidelity rules, known differences)
 docs/dev/testing.md      contributor: the one description of ./check, evidence and test dirs
+docs/dev/cleanup_plan.md contributor: this plan
 docs/log.md              iteration log (append-only, numbered entries)
 governance/README.md     unchanged
 STATUS.md                generated only; unmet goals per milestone come from a data file
