@@ -244,28 +244,15 @@ fn emit_c(sys: Sys, file: Str, root: Str) -> Result[emit.CParts, Int] {
     }
 }
 
-// A content hash for build cache names: two polynomial hashes modulo primes
-// below 2^31 (Int arithmetic must not overflow), as 16 hex digits. A hit is
-// verified against the whole C text, so the hash only spreads names.
-pub fn hash_hex(s: Str) -> Str {
-    var a = 0
-    var b = 7
-    for i in 0..s.len() {
-        let c = s.byte(i) + 1
-        a = (a * 31 + c) % 2147483629
-        b = (b * 37 + c) % 2147483587
-    }
-    "{a:08x}{b:08x}"
-}
-
-// The cache entry for this C text, compiler and flags, if the cache is on.
+// The cache entry for this C text, compiler and flags, if the cache is on. A
+// hit is verified against the whole C text, so the hash only spreads names.
 fn cache_entry(p: Proc, code: Str, cc: Str, opt: Str) -> Option[Str] {
     if p.env("TENON_KEEP_C").is_some() { return None }
     let dir = match p.env("TENON_CACHE") {
         Some(d) => if d == "off" { return None } else { d },
         None => path_join(p.env("TMPDIR").unwrap_or("/tmp"), "tenon-cache"),
     }
-    Some(path_join(dir, "t" + hash_hex(code + "|" + cc + "|" + opt) + "-{code.len()}"))
+    Some(path_join(dir, "t" + pkg.hash([0, 7], code + "|" + cc + "|" + opt) + "-{code.len()}"))
 }
 
 // A program with more than SPLIT_BYTES of function definitions is compiled
