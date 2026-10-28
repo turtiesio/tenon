@@ -4,7 +4,7 @@ set -u
 cd "$(dirname "$0")/.."
 src=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-git clone -q "$src" "$tmp/r" && cd "$tmp/r"
+git clone -q --depth 1 "file://$src" "$tmp/r" && cd "$tmp/r"
 git config user.email t@t && git config user.name t
 mkdir -p governance tools && cp "$src/tools/approvals.py" tools/ && cp "$src/governance/"* governance/
 git add -A && git commit -qm base --allow-empty
