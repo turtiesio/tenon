@@ -250,7 +250,7 @@ impl<'a> Emitter<'a> {
             polymorphic_recursion(&format!("the type {} keeps growing", crate::interp::display(&t.to_string())));
         }
         let name = match t {
-            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn" | "Poller") => {
+            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Str" | "Console" | "Clock" | "Fs" | "Net" | "Listener" | "Conn" | "Poller" | "Proc") => {
                 format!("tn_{}", n)
             }
             Ty::Con(n, a) if n == "List" && (a[0].is("Str") || a[0].is("Int")) => format!("tn_List_{}", a[0]),
@@ -712,7 +712,7 @@ impl<'a> Emitter<'a> {
             let n = self.cty(&sys);
             let _ = writeln!(
                 s,
-                "    {n} sys = {{ .f_console = 0, .f_fs = tn_fs_make(tn_str_lit(\"\", 0), false, true), .f_clock = 0, .f_net = 0, .f_args = tn_args() }};"
+                "    {n} sys = {{ .f_console = 0, .f_fs = tn_fs_make(tn_str_lit(\"\", 0), false, true), .f_clock = 0, .f_net = 0, .f_proc = 0, .f_args = tn_args() }};"
             );
             "sys".to_string()
         };

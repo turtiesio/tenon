@@ -21,7 +21,9 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <spawn.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -2301,6 +2303,63 @@ static TN_UNUSED tn_List_Str tn_args(void) {
         tn_List_Str_push(&out, tn_buf_finish(&b));
     }
     return out;
+}
+
+/* ---------- processes (Proc) ---------- */
+
+extern char **environ;
+typedef uint8_t tn_Proc;
+TN_TRIVIAL(tn_Proc)
+TN_INCOMPARABLE(tn_Proc)
+static TN_UNUSED void tn_Proc_show(tn_buf *b, tn_Proc x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Proc>"); }
+/* A NUL-terminated heap copy of s (the caller frees it). */
+static char *tn_proc_cstr(tn_Str s) {
+    char *c = tn_alloc((size_t)s.len + 1);
+    memcpy(c, s.p, (size_t)s.len);
+    c[s.len] = 0;
+    return c;
+}
+static TN_UNUSED int tn_proc_run(tn_Str cmd, tn_List_Str args, tn_Int *res, tn_Str *msg) {
+    int64_t n = tn_List_Str_len(args);
+    bool nul = memchr(cmd.p, 0, (size_t)cmd.len) != NULL;
+    for (int64_t i = 0; i < n; i++) nul = nul || memchr(args->data[i].p, 0, (size_t)args->data[i].len) != NULL;
+    if (nul) { *msg = tn_io_msg(TN_IO_FAILED, cmd, "argument contains a NUL byte"); return TN_IO_FAILED; }
+    tn_flush(); /* the command's output follows everything printed so far */
+    char **argv = tn_alloc(sizeof(char *) * (size_t)(n + 2));
+    argv[0] = tn_proc_cstr(cmd);
+    for (int64_t i = 0; i < n; i++) argv[i + 1] = tn_proc_cstr(args->data[i]);
+    argv[n + 1] = NULL;
+    pid_t pid;
+    int e = posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ);
+    int st = 0;
+    if (e == 0) {
+        while (waitpid(pid, &st, 0) < 0) {
+            if (errno != EINTR) { e = errno; break; }
+        }
+    }
+    for (int64_t i = 0; i <= n; i++) tn_free(argv[i]);
+    tn_free(argv);
+    if (e != 0) {
+        int k = tn_io_kind(e);
+        *msg = tn_io_msg(k, cmd, strerror(e));
+        return k;
+    }
+    if (WIFEXITED(st)) { *res = WEXITSTATUS(st); return TN_IO_OK; }
+    char why[64];
+    snprintf(why, sizeof why, "terminated by signal %d", WIFSIGNALED(st) ? WTERMSIG(st) : 0);
+    *msg = tn_io_msg(TN_IO_FAILED, cmd, why);
+    return TN_IO_FAILED;
+}
+static TN_UNUSED bool tn_proc_env(tn_Str name, tn_Str *out) {
+    if (name.len == 0 || memchr(name.p, 0, (size_t)name.len) || memchr(name.p, '=', (size_t)name.len)) return false;
+    char *c = tn_proc_cstr(name);
+    const char *v = getenv(c);
+    tn_free(c);
+    if (!v) return false;
+    tn_buf b = tn_buf_new(); /* invalid UTF-8 becomes U+FFFD, as in the interpreter */
+    tn_utf8_lossy(v, (int64_t)strlen(v), &b);
+    *out = tn_buf_finish(&b);
+    return true;
 }
 
 #endif

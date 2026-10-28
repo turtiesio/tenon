@@ -307,6 +307,18 @@ impl<'a> Emitter<'a> {
                 self.line(&format!("tn_free({ev});"));
                 bor(l)
             }
+            "Proc.run" => {
+                let (r, m) = (self.fresh("r"), self.fresh("m"));
+                self.line(&format!("tn_Int {} = 0; tn_Str {} = {{0}};", r, m));
+                let k = self.tmp_val(&Ty::int(), &format!("tn_proc_run({}, {}, &{}, &{})", a[1], a[2], r, m)).code;
+                self.io_result(t, &k, &r, &m)
+            }
+            "Proc.env" => {
+                let s = self.fresh("s");
+                self.line(&format!("tn_Str {} = {{0}};", s));
+                let ok = self.tmp_val(&Ty::bool(), &format!("tn_proc_env({}, &{})", a[1], s)).code;
+                self.some_none(t, &ok, &s)
+            }
             "Clock.now_ms" => self.tmp_val(t, "tn_now_ms()"),
             "Clock.mono_ns" => self.tmp_val(t, "tn_mono_ns()"),
             "Clock.sleep_ms" => {

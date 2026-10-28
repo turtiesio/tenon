@@ -151,7 +151,7 @@ impl<'a> Emitter<'a> {
 
     pub fn trivial(&mut self, t: &Ty) -> bool {
         match t {
-            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Console" | "Clock" | "Net") => true,
+            Ty::Con(n, a) if a.is_empty() && matches!(n.as_str(), "Int" | "Float" | "Bool" | "Unit" | "Console" | "Clock" | "Net" | "Proc") => true,
             Ty::Tuple(ts) => ts.clone().iter().all(|t| self.trivial(t)),
             Ty::Con(n, _) if n == "List" || n == "Map" || n == "Str" || n == "Fs" => false,
             Ty::Con(..) => {

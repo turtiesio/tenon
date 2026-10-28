@@ -1,0 +1,2 @@
+// error: values of type Proc cannot be compared
+fn main(sys: Sys) { let b = sys.proc == sys.proc }

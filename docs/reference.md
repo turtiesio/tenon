@@ -69,7 +69,7 @@ unchanged program is instant (cache in `$TENON_CACHE`, default
 | `fn(A, B) -> R` | Function value (named function or closure). |
 | `Option[T]` | `Some(T)` or `None`. There is no null. |
 | `Result[T, E]` | `Ok(T)` or `Err(E)`. |
-| `Console`, `Fs`, `Clock` | Capabilities (§10). |
+| `Console`, `Fs`, `Clock`, `Net`, `Proc` | Capabilities (§10). |
 
 There is **no implicit conversion** of any kind: `1 + 2.0` is a type error;
 write `1.to_float() + 2.0`.
@@ -451,13 +451,13 @@ A program can only affect the outside world through capabilities, and the only
 source of capabilities is the `Sys` value passed to `main`:
 
 ```tenon
-struct Sys { console: Console, fs: Fs, clock: Clock, net: Net, args: List[Str] }
+struct Sys { console: Console, fs: Fs, clock: Clock, net: Net, proc: Proc, args: List[Str] }
 ```
 
 `sys.args` holds the command-line arguments *after* the program name. Paths
 given to the unattenuated `sys.fs` are relative to the current directory (or
 absolute; `sys.fs.within("/srv/data")` is fine). `sys.net` is the network
-capability (§15). There are no global functions for I/O, no ambient file system access, and no
+capability (§15); `sys.proc` runs other programs (below). There are no global functions for I/O, no ambient file system access, and no
 way to construct a capability. Functions that need authority take it as a
 parameter, so a signature shows what a function can touch. Attenuate before
 passing on:
@@ -677,6 +677,19 @@ Highlights:
   separator; `read_all`, `Fs.read` and `s.split("\n")` keep every `"\r"`.
 - Paths: `path_join(a, b)`, `path_parent(p)`, `path_base(p)` (§10).
 - `Clock`: `now_ms mono_ns sleep_ms`.
+- `Proc`: `run env`. `p.run(cmd, args)` (`Result[Int, IoError]`) runs the
+  program `cmd` (looked up in `PATH` unless it contains a `/`) with the
+  arguments `args`, no shell involved, sharing standard input, output and
+  error; standard output is flushed first. It waits and gives the exit
+  status: `Ok(3)` for a command that exits with 3. `Err(NotFound(cmd))` if
+  there is no such program, `Err(Denied(cmd))` if it is not executable,
+  `Err(Failed("cmd: reason"))` otherwise (`"sh: terminated by signal 9"`, or
+  `"argument contains a NUL byte"`). `p.env(name)` (`Option[Str]`) reads an
+  environment variable (`None` if unset, or if `name` is empty or contains
+  `=` or a NUL byte; invalid UTF-8 becomes U+FFFD). A `Proc` is the whole
+  authority of the user (a command can do anything), so hand it only to
+  the code that must run commands: `fn build(p: Proc, out: Str)` says so in
+  its signature.
 
 ## 12. Obligations: linear and unique types
 
@@ -770,8 +783,8 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   makes a module the only place that can create a value of its type or finish
   a linear one: privacy is unforgeability.
 - The builtin types (`Int`, `Float`, `Bool`, `Str`, `Unit`, `List`, `Map`, and
-  the capabilities `Console`, `Fs`, `Clock`, `Net`, `Listener`, `Conn`,
-  `Poller`) have no declaring module, so any file may add methods to them:
+  the capabilities `Console`, `Fs`, `Clock`, `Net`, `Proc`, `Listener`,
+  `Conn`, `Poller`) have no declaring module, so any file may add methods to them:
   `fn Str.shout(self) -> Str { self.upper() + "!" }` in a main file makes
   `"hi".shout()` work. Such a method is private to its file unless declared
   `pub` (then importers can call it too). There is one method of a given name
