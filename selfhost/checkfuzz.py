@@ -109,7 +109,7 @@ def run_one(args):
             want = "<bootstrap timeout>"
         try:
             b = subprocess.run([ck, "check", rel, ROOT], cwd=tmp, capture_output=True, text=True, timeout=20)
-            got = (b.stdout.splitlines() or [b.stderr.strip() or "<no output, exit %d>" % b.returncode])[0]
+            got = first_line(b)
         except subprocess.TimeoutExpired:
             got = "<selfhost timeout>"
         if want != got:

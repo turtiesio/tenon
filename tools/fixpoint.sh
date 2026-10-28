@@ -11,7 +11,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 T=target/release/tenon
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-"$T" build selfhost/tenonc.tn -o "$tmp/stage1" -O0
+# stage1 is $TENONC when set (./check builds it with the bootstrap once)
+if [ -n "${TENONC:-}" ]; then cp "$TENONC" "$tmp/stage1"; else "$T" build selfhost/tenonc.tn -o "$tmp/stage1" -O0; fi
 "$tmp/stage1" build selfhost/tenonc.tn -o "$tmp/stage2" -O0
 "$T" emit selfhost/tenonc.tn > "$tmp/boot.c"
 "$tmp/stage1" emit selfhost/tenonc.tn > "$tmp/stage1.c"

@@ -21,11 +21,11 @@ pub fn ext_names() -> List[Str] {
         "Str.from_utf8_lossy", "Str.lines", "Str.words", "List.len", "List.slice", "List.join", "Map.len",
         "Map.get", "Map.keys", "Map.values", "Option.unwrap", "Option.expect", "Result.unwrap", "Result.expect",
         "Console.print", "Console.println", "Console.eprintln", "Console.read_line", "Console.read_all",
-        "Console.read_all_bytes", "Console.write_bytes", "Console.flush",
+        "Console.read_all_bytes", "Console.write_bytes", "Console.flush", "Console.read_bytes",
     ] + icap.cap_names()
 }
 
-pub const FIRST_CAP: Int = 57
+pub const FIRST_CAP: Int = 58
 
 // `mut self` builtins.
 pub const M_PUSH: Int = 0
@@ -190,6 +190,7 @@ pub fn call(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast
             it.con.flush()
             Ok(ival.unit())
         }
+        57 => Ok(ival.bytes_val(it.con.read_bytes(a[1].i))),
         _ => panic("interp: missing builtin {it.fns[fi].name}"),
     }
 }

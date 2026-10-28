@@ -22,7 +22,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TENON = os.path.join(ROOT, "target", "release", "tenon")
+TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "release", "tenon")  # ./check: tenonc
 DOCS = ["docs/reference.md", "docs/quickstart.md"]
 FENCE = re.compile(r"^(\s*)```(\S*)\s*$")
 

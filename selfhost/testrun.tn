@@ -1,0 +1,249 @@
+// module (imported by tenonc.tn)
+// `tenonc test DIR... [--bless]`: the test runner, a port of
+// bootstrap/src/testrun.rs. The contract a landing must pass:
+//
+//   DIR/run/NAME.tn      run with the interpreter AND the C backend; both must
+//                        match NAME.out (stdout + "exit: N" + stderr lines)
+//   DIR/reject/NAME.tn   must fail to compile; first line `// error: TEXT`
+//                        names a substring of the expected diagnostic
+//
+// Optional first-line directives in run tests: `// stdin: TEXT` (\n escapes,
+// and \xHH for any byte, so stdin can be invalid UTF-8) and `// args: A B C`.
+// Files whose first line is `// module` are imported by tests, not run.
+//
+// Every command runs under Proc.run_with with a 20 s timeout. The tests are
+// shared among 8 workers (this program again, `test --worker I/N`, started
+// together by one `sh`); each writes its failures and counts to a file.
+// The runner invokes itself as $TENONC (default `tenonc`, from PATH).
+import front
+
+const TIMEOUT_MS: Int = 20000
+const WORKERS: Int = 8
+
+struct Outcome { out: Str, err: Str, code: Int }
+
+fn lossy(b: List[Int]) -> Str { Str.from_utf8_lossy(b) }
+
+// Run a command with stdin, capturing its output; killed after the timeout.
+fn run_cmd(p: Proc, cmd: Str, args: List[Str], dir: Str, input: List[Int]) -> Outcome {
+    match p.run_with(cmd, args, dir, input, TIMEOUT_MS) {
+        Ok(o) => {
+            var err = lossy(o.err)
+            if o.timed_out { err += "<killed after {TIMEOUT_MS / 1000}s>\n" }
+            Outcome { out: lossy(o.out), err, code: o.status }
+        }
+        Err(e) => Outcome { out: "", err: "cannot run {cmd}: {e}\n", code: -1 },
+    }
+}
+
+fn render(o: Outcome) -> Str {
+    var s = o.out
+    if not s.is_empty() and not s.ends_with("\n") { s += "\n<no newline>\n" }
+    s += "exit: {o.code}\n"
+    for l in o.err.lines() { s += "stderr: {l}\n" }
+    s
+}
+
+fn directive(src: Str, key: Str) -> Option[Str] {
+    let lines = src.lines()
+    for i in 0..lines.len().min(3) {
+        match lines[i].strip_prefix("// " + key + ":") {
+            Some(rest) => return Some(rest.trim().replace("\\n", "\n")),
+            None => {}
+        }
+    }
+    None
+}
+
+fn hex_digit(c: Int) -> Int {
+    if c.is_digit() { c - 48 } else if c >= 97 and c <= 102 { c - 87 } else if c >= 65 and c <= 70 { c - 55 } else { -1 }
+}
+
+// "\xHH" (two hex digits) is that byte; everything else is kept as is.
+fn hex_escapes(s: Str) -> List[Int] {
+    let b = s.bytes()
+    var out: List[Int] = []
+    var i = 0
+    while i < b.len() {
+        if b[i] == 92 and i + 4 <= b.len() and b[i + 1] == 120 {
+            let h = hex_digit(b[i + 2])
+            let l = hex_digit(b[i + 3])
+            if h >= 0 and l >= 0 {
+                out.push(h * 16 + l)
+                i += 4
+                continue
+            }
+        }
+        out.push(b[i])
+        i += 1
+    }
+    out
+}
+
+fn words(s: Str) -> List[Str] { s.words() }
+
+// The test programs in dir (sorted), without the modules they import.
+fn files(fs: Fs, dir: Str) -> List[Str] {
+    let names = match fs.list(dir) {
+        Ok(ns) => ns,
+        Err(_) => return [],
+    }
+    var out: List[Str] = []
+    for n in names {
+        let p = front.join(dir, n)
+        if n.ends_with(".tn") and not fs.read(p).unwrap_or("").starts_with("// module") { out.push(p) }
+    }
+    out
+}
+
+// Where to run a test from (its directory) and the bare file name, so that
+// trap locations in golden files do not depend on where the suite runs.
+fn split_path(p: Str) -> (Str, Str) {
+    match p.rsplit_once("/") {
+        Some((d, n)) => (if d == "" { "/" } else { d }, n),
+        None => ("", p),
+    }
+}
+
+struct Ctx { exe: Str, root: Str, tmp: Str, bless: Bool }
+
+fn check_run(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
+    let src = sys.fs.read(tn).map_err(fn(e) => "{e}")?
+    let stdin = hex_escapes(directive(src, "stdin").unwrap_or(""))
+    let args = words(directive(src, "args").unwrap_or(""))
+    let (dir, name) = split_path(tn)
+    let p = sys.proc
+    let interp = run_cmd(p, cx.exe, ["run", "--root", cx.root, name] + args, dir, stdin)
+    let bin = front.join(cx.tmp, name.slice(0, name.len() - 3))
+    let build = run_cmd(p, cx.exe, ["build", name, "-o", bin, "-O0", "--root", cx.root], dir, [])
+    if build.code != 0 { return Err("C build failed:\n" + build.out + build.err) }
+    let native = run_cmd(p, bin, args, dir, stdin)
+    let _ = sys.fs.remove(bin)
+    let ri = render(interp)
+    let rn = render(native)
+    if ri != rn { return Err("backends disagree\n--- interpreter\n" + ri + "--- C\n" + rn) }
+    let golden = tn.slice(0, tn.len() - 3) + ".out"
+    match sys.fs.read(golden) {
+        Ok(g) if g == ri => Ok(()),
+        _ if cx.bless => sys.fs.write(golden, ri).map_err(fn(e) => "{e}"),
+        Ok(g) => Err("output differs from " + golden + "\n--- expected\n" + g + "--- got\n" + ri),
+        Err(_) => Err("missing " + golden + " (run `tenonc test --bless`)\n--- got\n" + ri),
+    }
+}
+
+fn check_reject(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
+    let src = sys.fs.read(tn).map_err(fn(e) => "{e}")?
+    let want = directive(src, "error").ok_or("reject test needs a first line `// error: TEXT`")?
+    let (dir, name) = split_path(tn)
+    let o = run_cmd(sys.proc, cx.exe, ["check", name, "--root", cx.root], dir, [])
+    if o.code == 0 { return Err("compiled, but must be rejected") }
+    if not o.err.contains(want) { return Err("expected an error containing " + encode(want) + ", got:\n" + o.err) }
+    Ok(())
+}
+
+// Absolute form of a path: tests run from their own directories.
+fn absolute(p: Proc, path: Str) -> Str {
+    if path.starts_with("/") { return path }
+    let cwd = p.env("PWD").unwrap_or(".")
+    if path == "." { cwd } else { path_join(cwd, path) }
+}
+
+fn quote(s: Str) -> Str { "'" + s.replace("'", "'\\''") + "'" }
+
+pub fn main(sys: Sys, args: List[Str], root0: Str) -> Int {
+    let p = sys.proc
+    let con = sys.console
+    let start = sys.clock.mono_ns()
+    let bless = args.contains("--bless")
+    var dirs: List[Str] = []
+    var worker = ""
+    var tmp = ""
+    var i = 0
+    while i < args.len() {
+        let a = args[i]
+        if a == "--root" or a == "--worker" or a == "--tmp" {
+            if i + 1 < args.len() {
+                if a == "--worker" { worker = args[i + 1] }
+                if a == "--tmp" { tmp = args[i + 1] }
+            }
+            i += 2
+        } else {
+            if not a.starts_with("--") { dirs.push(a) }
+            i += 1
+        }
+    }
+    let root = absolute(p, root0)
+    let exe0 = p.env("TENONC").unwrap_or("tenonc")
+    let exe = if exe0.contains("/") { absolute(p, exe0) } else { exe0 }
+    var jobs: List[(Bool, Str)] = []
+    for d in dirs {
+        for f in files(sys.fs, front.join(d, "run")) { jobs.push((true, f)) }
+        for f in files(sys.fs, front.join(d, "reject")) { jobs.push((false, f)) }
+    }
+    let runs = jobs.count(fn(j) => j.0)
+    if worker != "" {
+        // one worker: the jobs i with i % n == k
+        let (ks, ns) = worker.split_once("/").unwrap_or(("0", "1"))
+        let k = ks.to_int().unwrap_or(0)
+        let n = ns.to_int().unwrap_or(1)
+        let cx = Ctx { exe, root, tmp, bless }
+        var failed = 0
+        for j in 0..jobs.len() {
+            if j % n == k {
+                let (is_run, path) = jobs[j]
+                let r = if is_run { check_run(sys, cx, path) } else { check_reject(sys, cx, path) }
+                match r {
+                    Ok(_) => {}
+                    Err(e) => {
+                        con.println("FAIL {path}\n{e}\n")
+                        failed += 1
+                    }
+                }
+            }
+        }
+        con.println("RESULT {failed}")
+        return 0
+    }
+    let mk = run_cmd(p, "mktemp", ["-d"], "", [])
+    let dir = mk.out.trim()
+    if mk.code != 0 or dir == "" {
+        con.eprintln("tenonc: cannot make a temporary directory: " + mk.err)
+        return 2
+    }
+    var script = ""
+    let common = (if bless { " --bless" } else { "" }) + " --root " + quote(root) + " --tmp " + quote(dir) + dirs.map(fn(d) => " " + quote(d)).join("")
+    for w in 0..WORKERS {
+        script += quote(exe) + " test --worker {w}/{WORKERS}" + common + " > " + quote(front.join(dir, "w{w}.txt")) + " 2>&1 &\n"
+    }
+    script += "wait\n"
+    let _ = p.run_with("sh", ["-c", script], "", [], 0)
+    var failed = 0
+    var complete = true
+    for w in 0..WORKERS {
+        let text = sys.fs.read(front.join(dir, "w{w}.txt")).unwrap_or("")
+        var seen = false
+        for l in text.split("\n") {
+            match l.strip_prefix("RESULT ") {
+                Some(n) => {
+                    failed += n.to_int().unwrap_or(0)
+                    seen = true
+                }
+                None => {}
+            }
+        }
+        if not seen { complete = false }
+        let body = match text.rfind("RESULT ") {
+            Some(at) => text.slice(0, at),
+            None => text,
+        }
+        con.print(body)
+    }
+    let _ = p.run("rm", ["-rf", dir])
+    if not complete {
+        con.println("FAIL a test worker did not finish")
+        failed += 1
+    }
+    let secs = (sys.clock.mono_ns() - start).to_float() / 1000000000.0
+    con.println("tests: {runs} run (x2 backends), {jobs.len() - runs} reject, {failed} failed, {secs:.1}s")
+    if failed == 0 { 0 } else { 1 }
+}

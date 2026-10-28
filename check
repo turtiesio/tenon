@@ -3,13 +3,22 @@
 # mode, with every run test executed by BOTH backends (differential smoke).
 #   ./check --fast     what workers run before landing
 #   ./check            same today; slower evidence lives in tools/evidence
+# The compiler under test is the self-hosted one: the bootstrap (frozen seed,
+# governance/README.md) builds stage1 tenonc, which then runs the whole suite,
+# the program scenarios, the doc programs and the grammar check. The
+# bootstrap's own `tenon test` runs the suite once more as the differential
+# reference; selfhost.sh and fixpoint.sh compare the two compilers.
 set -euo pipefail
 cd "$(dirname "$0")"
 cargo build --release --quiet
+target/release/tenon build selfhost/tenonc.tn -o target/tenonc
+export TENONC=$PWD/target/tenonc TENON_ROOT=$PWD
+TENON=$TENONC target/tenonc test tests
 target/release/tenon test tests
-python3 tools/doctest.py
-python3 tools/vscode_grammar_check.py
-tools/programs.sh
+TENON=$TENONC python3 tools/doctest.py
+TENON=$TENONC python3 tools/vscode_grammar_check.py
+TENON=$TENONC tools/programs.sh
+tools/cache_test.sh
 tools/selfhost.sh
 tools/fmt_check.sh
 tools/fixpoint.sh
