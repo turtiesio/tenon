@@ -173,6 +173,12 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Milestones 3 and 4 merged:** one third milestone (tenon.md §6), 18 items in
+  dependency order, from open correctness findings and staleness gates through
+  type-system gaps, effects, contracts, property tests, macros, the standard
+  library, packages, debugging, tools in Tenon, the operations system, the console,
+  distributed execution and operations, to the larger-program study and evidence.
+
 - **Milestones 3 and 4 in dependency order:** both are numbered lists in which each
   item names what it needs and is built after it (tenon.md §6, §7): correctness
   findings and staleness gates first, then type-system gaps, effects, contracts,

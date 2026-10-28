@@ -256,11 +256,13 @@ is built once, in Tenon, not mirrored in two front ends.
 
 ## 6. Third milestone: definition of done
 
-Scope chosen by the user after milestone 2's plan (decisions in docs/log.md), split
-by dependency from milestone 4 (§7). AI models count as real users. No Windows or
-WebAssembly target. Items are listed in dependency order: each needs only items
-above it ("needs:" names them), so they are built top to bottom; items without a
-"needs:" can start at any time.
+Scope chosen by the user after milestone 2's plan (decisions in docs/log.md); the
+former third and fourth milestones merged into one. AI models count as real users.
+No Windows or WebAssembly target. Items are listed in dependency order: each needs
+only items above it ("needs:" names them), so they are built top to bottom; items
+without a "needs:" can start at any time. Distributed execution, distributed
+operations and macros are added only with measurements showing they pay for
+themselves (§4).
 
 1. **Open correctness findings fixed.** Every open finding (correctness reviews,
    mutation survivors, fuzzing) fixed with a guarded regression test, before new
@@ -270,7 +272,8 @@ above it ("needs:" names them), so they are built top to bottom; items without a
    lines or a function over ~80 lines without a stated reason, unformatted code,
    and a STATUS.md older than the last evidence run. A weekly hygiene review,
    alongside the weekly correctness review, audits for drift (KISS, DRY, single
-   responsibility, docs versus behaviour) and lands fixes.
+   responsibility, docs versus behaviour) and lands fixes. Holds for the whole
+   milestone.
 3. **Type-system gaps.** Needs: 1. User Eq/Ord/Hash impls (used consistently by
    maps and sorting in both backends), trait type parameters and supertraits.
 4. **Effects.** Needs: 3. A function's effects (I/O, nondeterminism, traps)
@@ -282,33 +285,35 @@ above it ("needs:" names them), so they are built top to bottom; items without a
 6. **Property-based testing.** Needs: 3 (generators as traits), 5 (contracts as
    properties). In the standard library, used by the corpus. Evidence for 4-6:
    bugs prevented, measured on the corpus and the correctness reviews' findings.
-7. **Concurrency and tooling gaps.** Needs: 1. Channels the event loop can wait
+7. **Macros or compile-time code generation.** Needs: 3-5. Hygienic, with the
+   generated code visible to the formatter, the language server and the checker.
+8. **Concurrency and tooling gaps.** Needs: 1. Channels the event loop can wait
    on; every diagnostic in the language server; the small language gaps the
    studies found.
-8. **Standard library for real use.** Needs: 4 (effects on every outside-world
-   function), 7 (event loop and channels for servers). JSON, time and dates,
+9. **Standard library for real use.** Needs: 4 (effects on every outside-world
+   function), 8 (event loop and channels for servers). JSON, time and dates,
    hashing and cryptographic primitives, subprocesses on top of `Proc`, HTTP client
    and server, with explicit authority for everything that touches the outside
    world.
-9. **Packages for real use.** Needs: 8 (cryptographic hashing). Per-package module
-   namespaces; a cryptographic content hash in the lockfile.
-10. **Debugging.** Needs: 3-5 (the language settled enough that traces and
-    profiles name stable constructs). Source-level stack traces on traps,
+10. **Packages for real use.** Needs: 9 (cryptographic hashing). Per-package
+    module namespaces; a cryptographic content hash in the lockfile.
+11. **Debugging.** Needs: 3-5, 7 (traces and profiles name stable constructs,
+    including generated code). Source-level stack traces on traps,
     `tenon run --trace`, a profiler that attributes time to Tenon functions.
-11. **Tools in Tenon (dogfooding).** Needs: 8, 9. The repository's own tools move
+12. **Tools in Tenon (dogfooding).** Needs: 9, 10. The repository's own tools move
     from Python and shell to Tenon where Tenon can do the job, starting with the
     gate, landing, approvals and status; the evidence loop reports dead and
     duplicated code as tasks.
-12. **The operations system in Tenon, centralized.** Needs: 8, 11. The whole flow
-    is defined in Tenon and only realized by a host. The definition (gates,
-    landing, approvals, guarded and frozen paths, schedules, roles and briefs,
-    budgets, the kill switch, the queue and what counts as a regression) is Tenon
-    code and data in this repository, run as `tenon ops ...`.
+13. **The operations system in Tenon.** Needs: 9, 12. The whole flow is defined in
+    Tenon and only realized by a host. The definition (gates, landing, approvals,
+    guarded and frozen paths, schedules, roles and briefs, budgets, the kill
+    switch, the queue and what counts as a regression) is Tenon code and data in
+    this repository, run as `tenon ops ...`.
     - One Tenon system owns the task queue, governance, the evidence record and
       the agent harness (starting Codex, Claude or other agents through `Proc`,
       with their briefs, budgets, kill switch and audit log); its state is durable
       and versioned in the repository or a store it controls. It runs on one
-      machine at a time in this milestone.
+      machine here; item 16 distributes it.
     - A host such as GitHub Actions only executes it: its workflow files are thin
       shims generated from the definition (a check fails if they drift), and the
       same definition runs unchanged on another host (the local scheduler, a
@@ -317,31 +322,22 @@ above it ("needs:" names them), so they are built top to bottom; items without a
     - Agents authenticate with their providers' supported sign-in (Codex through
       OpenAI's OAuth login, model gpt-6.1-sol; Claude through its own login),
       never with credentials in the repository.
-13. **Console.** Needs: 8 (HTTP server), 12 (the state it shows). An operations
+14. **Console.** Needs: 9 (HTTP server), 13 (the state it shows). An operations
     console served by a Tenon program: STATUS and correctness trends, the task
     queue, running and past agent runs with their logs and diffs, budgets,
     approvals waiting for the owner, and the kill switch. It reads the state the
     operations system owns; it is not a second source of truth.
-14. **Evidence.** Needs: all above. Benchmarks within 1.5x of C, `check --fast`
-    within 60 s and landing within 5 min, and no regression in a usability wave on
-    fresh tasks.
-
-## 7. Fourth milestone: definition of done
-
-Builds on §6 (scope chosen by the user; split from the original third milestone).
-Listed in dependency order, as in §6.
-
-1. **Distributed execution.** Needs: §6 (all). Workers on other machines with the
-   same isolation and `Send` rules as local workers, and failures surfaced, never
-   hidden.
-2. **Distributed operations.** Needs: 1, §6.12. The Tenon-defined operations
-   system runs on several runners with the same rules as centralized.
-3. **Macros or compile-time code generation.** Needs: §6.3-6.5. Hygienic, with the
-   generated code visible to the formatter, the language server and the checker.
-   Added only with measurements showing it pays for itself (§4), as are 1 and 2.
-4. **Usability by real users, at scale.** Needs: 1-3. A study wave in which model
-   authors (Claude, Codex and others; at least two families) build three larger
-   outside-style programs (a web service, a CLI tool, a data pipeline) from
-   specifications and maintain them through two rounds of changed requirements;
-   time, defects and change effort reported per language as in §2.6.
-5. **No staleness** (§6.2) keeps holding, measured over the milestone.
+15. **Distributed execution.** Needs: 8, 9 (network and event loop). Workers on
+    other machines with the same isolation and `Send` rules as local workers, and
+    failures surfaced, never hidden.
+16. **Distributed operations.** Needs: 13, 15. The operations system runs on
+    several runners with the same rules as on one; the console (14) shows them.
+17. **Usability by real users, at scale.** Needs: 3-11, 15. A study wave in which
+    model authors (Claude, Codex and others; at least two families) build three
+    larger outside-style programs (a web service, a CLI tool, a data pipeline)
+    from specifications and maintain them through two rounds of changed
+    requirements; time, defects and change effort reported per language as in
+    §2.6.
+18. **Evidence.** Needs: all above. Benchmarks within 1.5x of C on every platform
+    CI runs, `check --fast` within 60 s and landing within 5 min, no regression in
+    a usability wave on fresh tasks, and no staleness (2) held over the milestone.
