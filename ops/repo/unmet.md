@@ -18,3 +18,5 @@ Only what ops/repo/status.py cannot compute; the verdicts above come from data.
   docs/reference.md §18, programs/v2/scan, bench/v2).
 - **Landing time** is printed by ops/repo/land.sh on each landing but not
   collected anywhere, so the "landing <= 5 min" goals are not measured here.
+
+- Milestone 2 closed by the owner (2026-10-28) on wave 7: no regression against wave 6 (lines 0.89x of Python, was 0.93x; per-task writing 1.24x, was 1.38x; iterating 1.8x, was 2.5x; total minutes 1.51x, was 1.47x, inside the 1.46x-1.69x wave-to-wave spread). evidence/study/results/wave7/.

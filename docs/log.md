@@ -173,6 +173,12 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Milestone 2 closed:** the final wave (7) counts as no regression against wave
+  6: lines 0.89x of Python (was 0.93x), per-task median writing 1.24x (was 1.38x)
+  and iterating 1.8x (was 2.5x); the total-minutes ratio 1.51x (was 1.47x) is
+  inside the wave-to-wave spread (1.46x-1.69x). Every other milestone-2 item was
+  met before (tenon.md §5). Milestone 3 (§6) is next.
+
 - **Correctness review models per part:** conformance runs on Codex gpt-6.1-sol;
   authority on Codex gpt-daybreak-blue-latest with `--cyber-access-program
   daybreak_blue`, since gpt-6.1-sol refuses the authority brief ("flagged for
