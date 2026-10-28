@@ -1,0 +1,257 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Tenon",
+  "scopeName": "source.tenon",
+  "fileTypes": ["tn"],
+  "comment": "Tenon strings, raw strings and interpolations cannot span lines, so every begin/end rule also ends at the end of the line. Regexes stay within the subset that Oniguruma and Python's re agree on (checked by tools/vscode_grammar_check.py).",
+  "patterns": [
+    { "include": "#import" },
+    { "include": "#expression" }
+  ],
+  "repository": {
+    "expression": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#raw-string" },
+        { "include": "#string" },
+        { "include": "#char" },
+        { "include": "#numbers" },
+        { "include": "#function-decl" },
+        { "include": "#type-decl" },
+        { "include": "#keywords" },
+        { "include": "#types" },
+        { "include": "#calls" },
+        { "include": "#operators" },
+        { "include": "#punctuation" }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.tenon",
+          "match": "(//).*$",
+          "captures": { "1": { "name": "punctuation.definition.comment.tenon" } }
+        }
+      ]
+    },
+    "import": {
+      "patterns": [
+        {
+          "match": "^\\s*(import)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.control.import.tenon" },
+            "2": { "name": "entity.name.namespace.tenon" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "comment": "The union of these alternations must equal the bootstrap lexer's KEYWORDS (checked).",
+      "patterns": [
+        { "name": "keyword.control.tenon", "match": "\\b(if|else|while|for|in|match|return|break|continue)\\b" },
+        { "name": "keyword.operator.logical.tenon", "match": "\\b(and|or|not)\\b" },
+        { "name": "keyword.control.import.tenon", "match": "\\b(import)\\b" },
+        { "name": "storage.type.tenon", "match": "\\b(fn|let|var|struct|enum|const)\\b" },
+        { "name": "storage.modifier.tenon", "match": "\\b(pub|linear|unique|mut|ref|extern)\\b" },
+        { "name": "constant.language.boolean.tenon", "match": "\\b(true|false)\\b" },
+        { "name": "variable.language.self.tenon", "match": "\\b(self)\\b" }
+      ]
+    },
+    "function-decl": {
+      "patterns": [
+        {
+          "comment": "fn name, fn Type.method",
+          "match": "\\b(fn)\\s+(?:([A-Z][A-Za-z0-9_]*)\\s*(\\.)\\s*)?([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.function.tenon" },
+            "2": { "name": "entity.name.type.tenon" },
+            "3": { "name": "punctuation.accessor.tenon" },
+            "4": { "name": "entity.name.function.tenon" }
+          }
+        }
+      ]
+    },
+    "type-decl": {
+      "patterns": [
+        {
+          "match": "\\b(struct|enum)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "storage.type.tenon" },
+            "2": { "name": "entity.name.type.tenon" }
+          }
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "comment": "Type.Variant",
+          "match": "\\b([A-Z][A-Za-z0-9_]*)(\\.)([A-Z][A-Za-z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.type.tenon" },
+            "2": { "name": "punctuation.accessor.tenon" },
+            "3": { "name": "variable.other.enummember.tenon" }
+          }
+        },
+        { "name": "variable.other.enummember.tenon", "match": "\\b(Some|None|Ok|Err)\\b" },
+        { "name": "variable.other.constant.tenon", "match": "\\b[A-Z][A-Z0-9_]*[A-Z0-9]\\b" },
+        { "name": "support.type.builtin.tenon", "match": "\\b(Int|Float|Bool|Str|Unit|List|Map|Set|Option|Result|IoError|Sys)\\b" },
+        { "name": "support.type.capability.tenon", "match": "\\b(Console|Fs|Clock|Net|Listener|Conn|Poller)\\b" },
+        {
+          "comment": "A capitalized name before ( is a variant (constructor or pattern); before => or | it is a payload-free variant in a match arm.",
+          "name": "variable.other.enummember.tenon",
+          "match": "\\b[A-Z][A-Za-z0-9_]*(?=\\s*\\(|\\s*=>|\\s*\\|)"
+        },
+        { "name": "entity.name.type.tenon", "match": "\\b[A-Z][A-Za-z0-9_]*\\b" }
+      ]
+    },
+    "calls": {
+      "patterns": [
+        {
+          "match": "\\b([a-z_][A-Za-z0-9_]*)(?=\\s*\\(|\\[[A-Za-z0-9_\\s,\\[\\]]*\\]\\s*\\()",
+          "captures": { "1": { "name": "entity.name.function.call.tenon" } }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        { "name": "constant.numeric.hex.tenon", "match": "\\b0x[0-9A-Fa-f][0-9A-Fa-f_]*\\b" },
+        { "name": "constant.numeric.binary.tenon", "match": "\\b0b[01][01_]*\\b" },
+        { "name": "constant.numeric.octal.tenon", "match": "\\b0o[0-7][0-7_]*\\b" },
+        { "name": "invalid.illegal.numeric.tenon", "match": "\\b0[xboXBO][A-Za-z0-9_]*" },
+        {
+          "comment": "t.0.1: digits right after a single '.' are a tuple index, never a float",
+          "name": "constant.numeric.integer.tuple-index.tenon",
+          "match": "(?<=\\.)(?<!\\.\\.)[0-9]+\\b"
+        },
+        {
+          "name": "constant.numeric.float.tenon",
+          "match": "(?:(?<![A-Za-z0-9_.])|(?<=\\.\\.))[0-9][0-9_]*(?:\\.[0-9][0-9_]*(?:[eE][+-]?[0-9]+)?|[eE][+-]?[0-9]+)\\b"
+        },
+        {
+          "name": "constant.numeric.integer.tenon",
+          "match": "(?:(?<![A-Za-z0-9_.])|(?<=\\.\\.))[0-9][0-9_]*\\b"
+        }
+      ]
+    },
+    "char": {
+      "patterns": [
+        {
+          "name": "string.quoted.single.char.tenon",
+          "match": "(')(\\\\[ntr0\\\\'\"])(')",
+          "captures": {
+            "1": { "name": "punctuation.definition.char.begin.tenon" },
+            "2": { "name": "constant.character.escape.tenon" },
+            "3": { "name": "punctuation.definition.char.end.tenon" }
+          }
+        },
+        {
+          "name": "string.quoted.single.char.tenon",
+          "match": "(')[^'\\\\\\n](')",
+          "captures": {
+            "1": { "name": "punctuation.definition.char.begin.tenon" },
+            "2": { "name": "punctuation.definition.char.end.tenon" }
+          }
+        },
+        { "name": "invalid.illegal.char.tenon", "match": "'\\\\[^']*'" }
+      ]
+    },
+    "raw-string": {
+      "name": "string.quoted.double.raw.tenon",
+      "begin": "\\b(r)(\")",
+      "beginCaptures": {
+        "1": { "name": "storage.type.string.tenon" },
+        "2": { "name": "punctuation.definition.string.begin.tenon" }
+      },
+      "end": "(\")|$",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.tenon" } }
+    },
+    "string": {
+      "name": "string.quoted.double.tenon",
+      "begin": "\"",
+      "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.tenon" } },
+      "end": "(\")|$",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.tenon" } },
+      "patterns": [
+        { "include": "#string-escape" },
+        { "include": "#interpolation" }
+      ]
+    },
+    "string-escape": {
+      "patterns": [
+        { "name": "constant.character.escape.tenon", "match": "\\\\[ntr0\\\\\"{}]" },
+        { "name": "invalid.illegal.escape.tenon", "match": "\\\\." }
+      ]
+    },
+    "interpolation": {
+      "comment": "{expr} or {expr:SPEC}; the spec starts at the first ':' outside ( ) [ ] { } (the groups below swallow nested ones), exactly as the lexer decides.",
+      "name": "meta.interpolation.tenon",
+      "begin": "\\{",
+      "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.tenon" } },
+      "end": "(\\})|(?=$)",
+      "endCaptures": { "1": { "name": "punctuation.section.interpolation.end.tenon" } },
+      "contentName": "meta.embedded.expression.tenon",
+      "patterns": [
+        { "include": "#format-spec" },
+        { "include": "#interp-groups" },
+        { "include": "#expression" }
+      ]
+    },
+    "format-spec": {
+      "match": "(:)([^}\"]*)",
+      "captures": {
+        "1": { "name": "punctuation.separator.format-spec.tenon" },
+        "2": { "name": "constant.other.format-spec.tenon" }
+      }
+    },
+    "interp-groups": {
+      "patterns": [
+        {
+          "begin": "\\(",
+          "beginCaptures": { "0": { "name": "punctuation.brace.round.tenon" } },
+          "end": "(\\))|(?=$)",
+          "endCaptures": { "1": { "name": "punctuation.brace.round.tenon" } },
+          "patterns": [ { "include": "#interp-groups" }, { "include": "#expression" } ]
+        },
+        {
+          "begin": "\\[",
+          "beginCaptures": { "0": { "name": "punctuation.brace.square.tenon" } },
+          "end": "(\\])|(?=$)",
+          "endCaptures": { "1": { "name": "punctuation.brace.square.tenon" } },
+          "patterns": [ { "include": "#interp-groups" }, { "include": "#expression" } ]
+        },
+        {
+          "begin": "\\{",
+          "beginCaptures": { "0": { "name": "punctuation.brace.curly.tenon" } },
+          "end": "(\\})|(?=$)",
+          "endCaptures": { "1": { "name": "punctuation.brace.curly.tenon" } },
+          "patterns": [ { "include": "#interp-groups" }, { "include": "#expression" } ]
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        { "name": "keyword.operator.arrow.tenon", "match": "->|=>" },
+        { "name": "keyword.operator.range.tenon", "match": "\\.\\." },
+        { "name": "keyword.operator.question.tenon", "match": "\\?" },
+        { "name": "keyword.operator.comparison.tenon", "match": "==|!=|<=|>=|<|>" },
+        { "name": "keyword.operator.assignment.compound.tenon", "match": "[+\\-*/%]=" },
+        { "name": "keyword.operator.assignment.tenon", "match": "=" },
+        { "name": "keyword.operator.arithmetic.tenon", "match": "[+\\-*/%]" },
+        { "name": "keyword.operator.pattern.or.tenon", "match": "\\|" },
+        { "name": "variable.language.wildcard.tenon", "match": "(?<![A-Za-z0-9_])_(?![A-Za-z0-9_])" }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        { "name": "punctuation.separator.comma.tenon", "match": "," },
+        { "name": "punctuation.terminator.statement.tenon", "match": ";" },
+        { "name": "punctuation.separator.colon.tenon", "match": ":" },
+        { "name": "punctuation.accessor.tenon", "match": "\\." },
+        { "name": "punctuation.brace.round.tenon", "match": "[()]" },
+        { "name": "punctuation.brace.square.tenon", "match": "[\\[\\]]" },
+        { "name": "punctuation.brace.curly.tenon", "match": "[{}]" }
+      ]
+    }
+  }
+}
