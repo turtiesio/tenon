@@ -526,6 +526,8 @@ fn assign(m: mut emit.Em, target: ckast.Expr, op: Option[Str], value: ckast.Expr
 
 // ---- expressions ----
 
+// An expression-dispatch match (one arm per expression kind; the long ones
+// are functions below).
 pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
     let t = m.ety(e)
     match e.k {
@@ -558,34 +560,7 @@ pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
             m.tmp_val(t, code)
         }
         XBinary(op, l, r) => binary(mut m, e, op, l, r),
-        XIf(c, then, els) => {
-            let res = m.result_var(t)
-            let cv = expr(mut m, c)
-            m.line("if (" + cv.code + ") \{")
-            m.st.indent += 1
-            block_into(mut m, then, res, t)
-            m.st.indent -= 1
-            match els {
-                Some(x) => {
-                    m.line("} else \{")
-                    m.st.indent += 1
-                    m.push(SkBlock)
-                    let v = expr(mut m, x)
-                    match res {
-                        Some(r) => {
-                            let code = m.own(v, t)
-                            m.line(r + " = " + code + ";")
-                        }
-                        None => {}
-                    }
-                    m.pop()
-                    m.st.indent -= 1
-                }
-                None => {}
-            }
-            m.line("}")
-            m.finish_result(res, t)
-        }
+        XIf(c, then, els) => if_value(mut m, e, c, then, els, t),
         XBlock(b) => {
             let res = m.result_var(t)
             m.line("\{")
@@ -596,46 +571,8 @@ pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
             m.finish_result(res, t)
         }
         XMatch(s, arms) => emitctl.match_expr(mut m, e, s, arms, t),
-        XList(xs) => {
-            let vs = eval_list(mut m, xs)
-            if vs.is_empty() {
-                let ln = m.cty(t)
-                return emit.bor("((" + ln + ") NULL)")
-            }
-            let et = t.args()[0]
-            let ln = m.cty(t)
-            let l = m.tmp_owned(t, ln + "_alloc({vs.len()})")
-            for i in 0..vs.len() {
-                let code = m.own(vs[i], et)
-                m.line(l.code + "->data[{i}] = " + code + ";")
-            }
-            m.line(l.code + "->len = {xs.len()};")
-            l
-        }
-        XMap(ps) => {
-            var refs: List[ckast.Expr] = []
-            for p in ps {
-                refs.push(p.0)
-                refs.push(p.1)
-            }
-            let vs = eval_list(mut m, refs)
-            if vs.is_empty() {
-                let mn = m.cty(t)
-                return emit.bor("((" + mn + ") NULL)")
-            }
-            let kt = t.args()[0]
-            let vt = t.args()[1]
-            let mn = m.cty(t)
-            let mp = m.tmp_owned(t, "NULL")
-            var i = 0
-            while i + 1 < vs.len() {
-                let kc = m.own(vs[i], kt)
-                let vc = m.own(vs[i + 1], vt)
-                m.line(mn + "_insert(&" + mp.code + ", " + kc + ", " + vc + ");")
-                i += 2
-            }
-            mp
-        }
+        XList(xs) => list_lit(mut m, e, xs, t),
+        XMap(ps) => map_lit(mut m, e, ps, t),
         XTuple(xs) => {
             let ts = match t {
                 Tup(a) => a,
@@ -647,48 +584,121 @@ pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
             let tn = m.cty(t)
             m.tmp_owned(t, "(" + tn + ")\{ " + codes.join(", ") + " }")
         }
-        XNew(_, fields, base) => {
-            let decl = m.struct_fields(t).unwrap()
-            var refs = fields.map(fn(f) => f.1)
-            match base {
-                Some(b) => refs.push(b),
-                None => {}
-            }
-            var vs = eval_list(mut m, refs)
-            let base_cv = if base.is_some() { vs.pop() } else { None }
-            var inits: List[Str] = []
-            for i in 0..fields.len() {
-                let f = fields[i].0
-                var ft = cktypes.t_unit()
-                for d in decl {
-                    if d.0 == f {
-                        ft = d.1
-                        break
-                    }
-                }
-                let code = m.own(vs[i], ft)
-                inits.push(".f_" + f + " = " + code)
-            }
-            match base_cv {
-                Some(bv) => {
-                    for d in decl {
-                        if not fields.any(fn(g) => g.0 == d.0) {
-                            let code = m.own(emit.bor("(" + bv.code + ").f_" + d.0), d.1)
-                            inits.push(".f_" + d.0 + " = " + code)
-                        }
-                    }
-                }
-                None => {}
-            }
-            let tn = m.cty(t)
-            m.tmp_owned(t, "(" + tn + ")\{ " + inits.join(", ") + " }")
-        }
+        XNew(_, fields, base) => struct_lit(mut m, e, fields, base, t),
         XTry(x) => emitctl.try_expr(mut m, e, x, t),
         XLambda(params, _, body) => emitctl.lambda(mut m, e, params, body, t),
         XMutArg(_) => panic("emit: mut arguments are handled at calls"),
         XFmt(_, _) => panic("emit: format specs are handled in strings"),
         XDyn(_, x) => emittrait.dyn_value(mut m, x, t),
     }
+}
+
+fn if_value(m: mut emit.Em, e: ckast.Expr, c: ckast.Expr, then: ckast.Block, els: Option[ckast.Expr], t: cktypes.Ty) -> emit.CV {
+    let res = m.result_var(t)
+    let cv = expr(mut m, c)
+    m.line("if (" + cv.code + ") \{")
+    m.st.indent += 1
+    block_into(mut m, then, res, t)
+    m.st.indent -= 1
+    match els {
+        Some(x) => {
+            m.line("} else \{")
+            m.st.indent += 1
+            m.push(SkBlock)
+            let v = expr(mut m, x)
+            match res {
+                Some(r) => {
+                    let code = m.own(v, t)
+                    m.line(r + " = " + code + ";")
+                }
+                None => {}
+            }
+            m.pop()
+            m.st.indent -= 1
+        }
+        None => {}
+    }
+    m.line("}")
+    m.finish_result(res, t)
+}
+
+fn list_lit(m: mut emit.Em, e: ckast.Expr, xs: List[ckast.Expr], t: cktypes.Ty) -> emit.CV {
+    let vs = eval_list(mut m, xs)
+    if vs.is_empty() {
+        let ln = m.cty(t)
+        return emit.bor("((" + ln + ") NULL)")
+    }
+    let et = t.args()[0]
+    let ln = m.cty(t)
+    let l = m.tmp_owned(t, ln + "_alloc({vs.len()})")
+    for i in 0..vs.len() {
+        let code = m.own(vs[i], et)
+        m.line(l.code + "->data[{i}] = " + code + ";")
+    }
+    m.line(l.code + "->len = {xs.len()};")
+    l
+}
+
+fn map_lit(m: mut emit.Em, e: ckast.Expr, ps: List[(ckast.Expr, ckast.Expr)], t: cktypes.Ty) -> emit.CV {
+    var refs: List[ckast.Expr] = []
+    for p in ps {
+        refs.push(p.0)
+        refs.push(p.1)
+    }
+    let vs = eval_list(mut m, refs)
+    if vs.is_empty() {
+        let mn = m.cty(t)
+        return emit.bor("((" + mn + ") NULL)")
+    }
+    let kt = t.args()[0]
+    let vt = t.args()[1]
+    let mn = m.cty(t)
+    let mp = m.tmp_owned(t, "NULL")
+    var i = 0
+    while i + 1 < vs.len() {
+        let kc = m.own(vs[i], kt)
+        let vc = m.own(vs[i + 1], vt)
+        m.line(mn + "_insert(&" + mp.code + ", " + kc + ", " + vc + ");")
+        i += 2
+    }
+    mp
+}
+
+fn struct_lit(m: mut emit.Em, e: ckast.Expr, fields: List[(Str, ckast.Expr)], base: Option[ckast.Expr], t: cktypes.Ty) -> emit.CV {
+    let decl = m.struct_fields(t).unwrap()
+    var refs = fields.map(fn(f) => f.1)
+    match base {
+        Some(b) => refs.push(b),
+        None => {}
+    }
+    var vs = eval_list(mut m, refs)
+    let base_cv = if base.is_some() { vs.pop() } else { None }
+    var inits: List[Str] = []
+    for i in 0..fields.len() {
+        let f = fields[i].0
+        var ft = cktypes.t_unit()
+        for d in decl {
+            if d.0 == f {
+                ft = d.1
+                break
+            }
+        }
+        let code = m.own(vs[i], ft)
+        inits.push(".f_" + f + " = " + code)
+    }
+    match base_cv {
+        Some(bv) => {
+            for d in decl {
+                if not fields.any(fn(g) => g.0 == d.0) {
+                    let code = m.own(emit.bor("(" + bv.code + ").f_" + d.0), d.1)
+                    inits.push(".f_" + d.0 + " = " + code)
+                }
+            }
+        }
+        None => {}
+    }
+    let tn = m.cty(t)
+    m.tmp_owned(t, "(" + tn + ")\{ " + inits.join(", ") + " }")
 }
 
 fn spec_char(c: Str) -> Str { if c == "" { "0" } else { "'" + c + "'" } }
