@@ -9,7 +9,8 @@ runtime/tenon.h). Copies the repository to a scratch directory, then for
 each mutant: applies one small change (flip a comparison, swap +/-, negate a
 boolean, swap and/or, ...), builds `tenon` from the mutated source as
 ./check does (the seed builds stage0 with -O0, stage0 builds stage1), and
-runs its test suite (`tenon test tests tests/v2`, both backends) as the
+runs its test suite (`tenon test tests tests/v2`, both backends, then
+ops/gates/pkg_test.sh, the only test of the package code) as the
 oracle. A mutant the seed cannot compile "did not build"; one whose stage0
 cannot build stage1 is killed (./check fails); one that builds and passes
 every test "survived": the tests do not notice that change. Survivors are
@@ -54,7 +55,10 @@ def verdict(work, env):
         return "nobuild"
     if run([s0, "build", "compiler/tenon.tn", "-o", s1], work, 600, env) != 0:
         return "killed"
-    return "killed" if run([s1, "test", "tests", "tests/v2"], work, 900, env) != 0 else "SURVIVED"
+    if run([s1, "test", "tests", "tests/v2"], work, 900, env) != 0:
+        return "killed"
+    # packages (pkg.tn, pkgtoml.tn) are trusted but only ops/gates/pkg_test.sh exercises them
+    return "killed" if run(["ops/gates/pkg_test.sh"], work, 300, dict(env, TENON=s1)) != 0 else "SURVIVED"
 
 
 def main():
@@ -64,7 +68,7 @@ def main():
     # the seed's build cache is shared; tenon's (the mutants' C) stays in the scratch directory
     env = dict(os.environ, TENON_ROOT=work, TENON_CACHE=os.path.join(work, ".cache"))
     try:
-        for d in ["compiler", "runtime", "lib", "tests"]:
+        for d in ["compiler", "runtime", "lib", "tests", "ops"]:
             shutil.copytree(os.path.join(ROOT, d), os.path.join(work, d), symlinks=True)
         if verdict(work, env) != "SURVIVED":
             raise SystemExit("mutate: the unmutated tree does not build or pass its tests")

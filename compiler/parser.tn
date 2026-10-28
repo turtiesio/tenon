@@ -199,8 +199,11 @@ pub fn Parser.tok(self) -> lexer.Tok { self.toks[self.pos].tok }
 pub fn Parser.tok_at(self, n: Int) -> lexer.Tok { self.toks[(self.pos + n).min(self.toks.len() - 1)].tok }
 pub fn Parser.here(self) -> Pos { Pos { line: self.toks[self.pos].line, col: self.toks[self.pos].col } }
 pub fn Parser.at_eof(self) -> Bool { self.tok() == Eof }
+// Every caller has matched the current token first, so this never runs at
+// Eof (the last token); the guard keeps pos on Eof even so. (Mutation issue
+// #2: `len() - 1` -> `len() + 1` was equivalent, so the guard names Eof.)
 pub fn Parser.advance(mut self) {
-    if self.pos < self.toks.len() - 1 { self.pos += 1 }
+    if self.tok() != Eof { self.pos += 1 }
 }
 pub fn Parser.is_sym(self, s: Str) -> Bool { self.tok() == Sym(s) }
 pub fn Parser.is_kw(self, s: Str) -> Bool { self.tok() == Kw(s) }
