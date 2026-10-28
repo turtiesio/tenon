@@ -194,7 +194,7 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
 
 ## Batch D: DRY inside the compiler (low risk, mostly S)
 
-### D1. Path helpers: use the prelude's `path_join`, `path_parent` and `path_base` (`lib/prelude.tn:599-625`). S. (after concurrency lands, for `testrun` and `tenonc`)
+### D1. Path helpers: use the prelude's `path_join`, `path_parent` and `path_base` (`lib/prelude.tn:599-625`). S. Done in fcb24aa (front.join/parent, lspquery.join, testrun.split_path removed; `front.importer_dir` keeps the "" of a bare file name).
 
 - **Copies:**
   - `front.tn:42` `parent` and `:48` `pub join`. `join` is used 10× in `testrun.tn`, plus `tenonc.tn:114` and `tenonlsp.tn:38`.
@@ -203,27 +203,27 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
   - `testrun.tn:107` `split_path`.
 - **Caution:** `front.parent("x")` returns `""` while `path_parent("x")` returns `"."`. Keep the `""` semantics at the module-lookup call site, or diagnostics change.
 
-### D2. Hashes. S. (after concurrency lands, for `tenonc.tn`)
+### D2. Hashes. S. Done in 3b76a62 (`pkg.hash(seeds, s)`; cache names and tenon.lock hashes unchanged, checked by comparing both binaries).
 
 - `tenonc.tn:144` `hash_hex` and `pkg.tn:260` `hash_name` are the same loop with different seeds.
 - `pkg.tn:239` `content_hash` is the same loop widened to 4 primes.
 - **Fix:** keep one `hash_hex(s, k)` in `pkg.tn`, or a small `selfhost/hash.tn`. Changing a seed only renames cache entries.
 - Do **not** change `content_hash`'s output: it is recorded in users' `tenon.lock`.
 
-### D3. Lexer tables. S.
+### D3. Lexer tables. S. Done in aa9de51.
 
 - `fmtlex.tn:16-29` copies `lexer.tn:19-29`, keywords and symbols; its own comment at `:15` admits it.
 - `fmtlex.tn:31-33` and `lexer.tn:31-33` re-implement the prelude's `is_digit`, `is_alpha` and `is_alnum`.
 - **Fix:** make `lexer.symbols` public and import both lists. The editor grammar check already derives its keywords from `lexer.tn` (`vscode_grammar_check.py:223`).
 - The number and string scanning in `fmtlex.tn:71-166` is a second implementation, but `fmt.tn` cross-checks it against `lexer.tn`. Leave it.
 
-### D4. Small duplicates. S.
+### D4. Small duplicates. S. Done in c25bcf5 (hex digits: `lexer.digit_value`; quoting: `lexer.quoted`, also in ival; the std modules are the files in ROOT/lib/std).
 
 - **Hex digit, five copies:** `testrun.tn:64`, `icodec.tn:199`, `lsppos.tn:138`, `json.tn:171` and `lexer.tn:180`. Use `Str.to_int_radix(16)` or `lexer.digit_value`.
 - **Quoting:** `astdump.tn:21` `quote` is identical to `lexer.tn:394` `quoted`. `ival.tn:228` `quote` (21 lines) re-implements the runtime's string display.
 - **The std module list** is a second copy of the bootstrap's `STD`: `front.tn:11` `std_modules()`. Derive it by listing `ROOT/lib/std/*.tn`.
 
-### D5. Interpreter builtins are numbered by position. M, medium risk. (after concurrency lands; the concurrency builtins are being added here now)
+### D5. Interpreter builtins are numbered by position. M, medium risk. Done in a0d9d77 (variants, `ibuiltin.Bi`, named in one table; exhaustive matches).
 
 - **Evidence:**
   - `ibuiltin.tn:14-25` `ext_names()`, `:28 FIRST_CAP = 58`, `:101-102` range tests (`id >= 15 and id < 38`).
