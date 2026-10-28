@@ -79,10 +79,16 @@ of a review run.
 2. The workflow (`agent.yml`, step "finish", with `tools/gh.py` as main has
    it) opens the listed issues, runs `./check`, and then `tools/gh.py pr`:
    it commits the change on a branch, runs main's `tools/approvals.py --pr`,
-   pushes, opens the pull request with auto-merge (squash), and starts
-   `ci.yml` on the branch. A pull request opened with the workflow's own
-   token starts no `pull_request` workflow (GitHub's rule against loops),
-   hence the explicit start.
+   pushes, opens the pull request with auto-merge (squash), and approves
+   CI's `pull_request` run. GitHub holds that run ("action_required") while
+   `github-actions[bot]` counts as a first-time contributor (the approval
+   policy of this public repository), and only a `pull_request` run counts
+   for branch protection: on the first nightly pull request (#7) a
+   `workflow_dispatch` run of the same commit passed and the pull request
+   stayed blocked until the held run was approved. If the token may not
+   approve it, the pull request waits for the owner (Actions, the run,
+   "Approve and run"); if no run appears, `tools/gh.py` starts `ci.yml` on
+   the branch.
 3. Branch protection on main requires the checks `fast (ubuntu-latest)`,
    `fast (macos-latest)` and `approvals`, from GitHub Actions, before a pull
    request merges; it requires no review and not an up-to-date branch (a
@@ -112,6 +118,12 @@ the owner's approval; the pull request names the test and shows both runs.
 The workflow refuses such a fix when it adds no line to
 `governance/guarded.txt`; that the test fails before the fix is shown in
 the pull request, not re-run by the workflow.
+
+**No AI credit lines** (owner rule, docs/log.md): the briefs forbid
+`Co-Authored-By` trailers and "Generated with" lines naming Claude,
+Anthropic, OpenAI, Codex or GPT, and `tools/gh.py` drops any such line from
+the commits, pull requests and issues it writes. The model that ran is
+recorded as a sentence in the pull request instead.
 
 ## The owner's side
 

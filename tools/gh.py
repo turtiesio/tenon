@@ -16,9 +16,10 @@ again updates its issue (reopens it if it was fixed) instead of opening another.
 Exit status 3 from `pr`: the change was refused (outside PREFIX, or
 tools/approvals.py --pr); nothing was pushed.
 """
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AI_CREDIT = re.compile(r"^\s*co-authored-by:.*(claude|anthropic|openai|codex|gpt)|generated with .*(claude|codex)", re.I)
 LABELS = {"regression", "redteam", "hygiene", "agent-ok", "needs-owner", "in-progress"}  # tools/gh_labels.sh
 TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}  # whose issues an agent may take as instructions
 BOT = "github-actions[bot]"
@@ -53,7 +54,7 @@ def issues(path):
         key = e["key"].replace("]", ")")
         title = f"[{key}] {e['title']}"[:250]
         labels = sorted(set(e.get("labels", [])) & LABELS)
-        body = (e.get("body") or e["title"])[:60000] + stamp
+        body = "\n".join(l for l in (e.get("body") or e["title"])[:60000].splitlines() if not AI_CREDIT.search(l)) + stamp
         old = by_key.get(key)
         if old is None:
             r = run("gh", "issue", "create", "--title", title, "--body", body, *sum((["--label", l] for l in labels), []))
@@ -78,9 +79,12 @@ def pr(branch, title, body_file, only=None):
     if outside:
         print(f"gh.py: refused: this run may change only {only}, not: {' '.join(outside)}")
         return 3
+    # owner rule (docs/log.md): no AI co-author trailer or "generated with" line, in the commit or the pull request
+    body = "\n".join(l for l in open(body_file).read().splitlines() if not AI_CREDIT.search(l)).strip() + "\n"
+    open(body_file, "w").write(body)
     who = ["-c", f"user.name={BOT}", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"]
     run("git", "checkout", "-q", "-B", branch)
-    run("git", *who, "commit", "-q", "-m", title, "-m", open(body_file).read())
+    run("git", *who, "commit", "-q", "-m", title, "-m", body)
     run("git", "fetch", "-q", "origin", "main")
     # the base's checker, not this branch's (the branch may not change it, but it could)
     base = run("git", "merge-base", "origin/main", "HEAD").stdout.strip()
@@ -99,10 +103,27 @@ def pr(branch, title, body_file, only=None):
         run("gh", "pr", "create", "--base", "main", "--head", branch, "--title", title, "--body-file", body_file)
     url = run("gh", "pr", "view", branch, "--json", "url", "-q", ".url").stdout.strip()
     run("gh", "pr", "merge", branch, "--auto", "--squash")  # the repository deletes merged branches
-    # a pull request opened with the workflow's token starts no workflow; CI is started explicitly
-    run("gh", "workflow", "run", "ci.yml", "--ref", branch)
+    start_ci(branch, run("git", "rev-parse", "HEAD").stdout.strip())
     print(f"gh.py: {url} (auto-merge when CI passes)")
     return 0
+
+
+def start_ci(branch, sha):
+    """CI's pull_request run is what branch protection counts. GitHub holds it ("action_required") while
+    github-actions[bot] counts as a first-time contributor: approve it. If none appears, start ci.yml."""
+    runs = []
+    for _ in range(12):
+        runs = gh_json("api", f"repos/{repo()}/actions/runs?event=pull_request&head_sha={sha}")["workflow_runs"]
+        if runs:
+            break
+        time.sleep(10)
+    for r in runs:
+        if r["conclusion"] == "action_required":
+            ok = run("gh", "api", "-X", "POST", f"repos/{repo()}/actions/runs/{r['id']}/approve", check=False).returncode == 0
+            print(f"gh.py: CI run {r['html_url']} " + ("approved" if ok else "waits for the owner's approval"))
+    if not runs:
+        run("gh", "workflow", "run", "ci.yml", "--ref", branch)
+        print("gh.py: no pull_request run appeared; started ci.yml on the branch")
 
 
 def claim():

@@ -634,3 +634,15 @@ four later "2026-10-28" entries because those were landed after it.
   a history (`.evidence/history.jsonl`) shown as "Correctness over time" in
   STATUS.md with findings opened and fixed; asan.sh, tsan.sh, fuzz.py,
   interp_diff.py and mutate.py name their failures in their JSON.
+- **First nightly run** (2026-10-28, run 40653048629, 13 minutes on
+  ubuntu-latest, commit c3a007b): fuzz 200 programs, 0 disagreements;
+  ASan+UBSan 121 programs and ThreadSanitizer 20 programs (60 runs) clean;
+  interp_diff 0 of 777 differ; checkfuzz 300 mutants, 0 disagreements;
+  mutation 3 of 5 killed (survivors: issues #2 and #3, `agent-ok`);
+  `./check` 62.3 s on the runner. Benchmarks on Linux/gcc are far from
+  the macOS numbers (worst 1.48x there): calc 6.03x, fib 3.34x, mdhtml
+  1.51x of C (issues #4-#6, for the owner). STATUS.md came as pull request
+  #7, which merged itself once its `pull_request` CI run, held by GitHub
+  for `github-actions[bot]` as a first-time contributor, was approved; a
+  `workflow_dispatch` run of the same commit did not count for branch
+  protection, so tools/gh.py now approves the held run instead.

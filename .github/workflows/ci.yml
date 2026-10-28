@@ -1,8 +1,9 @@
 name: ci
 # The gate on Linux and macOS for every push to main and every pull request;
-# for pull requests also the approvals guard (docs/dev/automation.md). Pull
-# requests opened by the workflows' own token start no `pull_request` run, so
-# tools/gh.py starts this workflow on the branch with workflow_dispatch.
+# for pull requests also the approvals guard (docs/dev/automation.md).
+# GitHub holds the pull_request run of a pull request opened by the workflows'
+# own token until it is approved; tools/gh.py approves it (workflow_dispatch:
+# its fallback, and by hand).
 on:
   push:
     branches: [main]
