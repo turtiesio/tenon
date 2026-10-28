@@ -173,6 +173,10 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Agents never wait for CI:** `./check` gates landing; CI and the nightly run
+  report back on their own (blocked merges, regression issues). Added to
+  ops/agents/common.md.
+
 - **Lean 4 formal track:** Tenon's concept and correctness are proved in Lean 4 (a
   core calculus with soundness, capability safety, linear/unique soundness, worker
   isolation, traits, then effects and contracts) and mechanically linked to the

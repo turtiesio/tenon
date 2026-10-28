@@ -45,6 +45,12 @@ when CI passes. You only edit the working tree and write these files in
   lines to `ops/governance/guarded.txt`, never remove one.
 - One concern per run, the smallest sufficient change, and the docs that
   describe the behaviour updated in the same change.
+- Never wait for CI or the nightly run. `./check` is the gate: when it passes,
+  land or open the pull request and finish. CI and the nightly evidence run
+  report back on their own (a failing check blocks the merge; a regression
+  becomes an issue), so polling them only idles the run. Platform-specific
+  results you cannot measure locally are left to the nightly run and said so in
+  the report.
 - Run only targeted evidence (`ops/evidence/asan.sh`, `python3 ops/evidence/fuzz.py 20`,
   `python3 ops/evidence/mutate.py 1`), not `ops/evidence/evidence.sh`.
 - No AI credit lines anywhere (owner rule, docs/log.md): never write a
