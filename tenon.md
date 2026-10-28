@@ -290,6 +290,26 @@ count as real users. No Windows or WebAssembly target in this milestone.
 - **Gaps carried over:** user Eq/Ord/Hash impls, trait type parameters and
   supertraits, channels the event loop can wait on, all diagnostics in the
   language server, and the small language gaps the studies found.
+- **Self-governing infrastructure in Tenon.** The authority over the project's
+  process lives in Tenon programs, not in any hosting service:
+  - One Tenon system (`tenon ops` or similar) owns the task queue, governance
+    (approvals, frozen paths, guarded tests), the evidence record and the agent
+    harness (starting Codex, Claude or other agents through `Proc`, with their
+    briefs, budgets, kill switch and audit log). Its state is durable and
+    versioned in the repository or a store it controls.
+  - It runs centralized (one machine) or distributed (several runners, using the
+    milestone's distributed workers), with the same rules either way.
+  - GitHub Actions, the local T3 scheduler or any other host is only an adapter
+    that runs it and reports to it; replacing the host changes no rule. GitHub
+    issues, if used, mirror the queue rather than define it.
+  - Agents authenticate with their providers' supported sign-in (Codex through
+    OpenAI's OAuth login, models gpt-6.1-terra at xhigh and gpt-6-luna at high;
+    Claude through its own login), never with credentials in the repository.
+- **Console.** An operations console, served by a Tenon program: STATUS and
+  correctness trends, the task queue, running and past agent runs with their
+  logs and diffs, budgets, approvals waiting for the owner, and the kill switch.
+  It reads the same state the Tenon system owns; it is not a second source of
+  truth.
 - **No staleness.** The repository stays clean as it grows, by mechanism:
   - `./check` fails on: a doc claim without a test or command behind it, a path in
     the docs that does not exist, a file over ~1000 lines or a function over ~80

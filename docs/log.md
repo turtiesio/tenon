@@ -173,6 +173,13 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Authority belongs to Tenon, not the host (milestone 3):** GitHub Actions is
+  only one mechanism that enforces the repository's safety rules; it is not the
+  source of truth. A Tenon system will own the queue, governance, evidence and
+  agent harness, centralized or distributed, with an operations console served by
+  Tenon. Codex runs through OpenAI's OAuth sign-in on gpt-6.1-terra (xhigh) and
+  gpt-6-luna (high). Added to tenon.md section 6.
+
 - **No AI co-author trailers, ever:** commits carry no `Co-Authored-By` line for
   Claude, Anthropic, OpenAI, Codex or GPT. tools/land.sh no longer adds one and
   refuses to push a commit that has one; CI fails on any in the history once the
