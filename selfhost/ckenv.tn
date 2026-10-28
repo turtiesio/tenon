@@ -24,7 +24,7 @@ pub struct FnInfo {
 // What a name, call or pattern resolved to (bootstrap/src/check.rs `Res`).
 pub enum Res {
     RLocal(Str),
-    RFn(Int, List[cktypes.Ty]),          // function index, type args (all tparams)
+    RFn(Int, List[cktypes.Ty]),           // function index, type args (all tparams)
     RVariant(Int, Int, List[cktypes.Ty]), // enum, variant, enum type args
     RField(Int),
     RMethod(Int, List[cktypes.Ty]),
@@ -39,7 +39,7 @@ pub struct Env {
     pub struct_ix: Map[Str, Int], pub enum_ix: Map[Str, Int], pub fn_ix: Map[Str, Int],
     pub variant_ix: Map[Str, List[(Int, Int)]], // variant name -> (enum, variant), in declaration order
     pub modules: List[Str], pub imports: List[List[Str]],
-    pub cur: Int, // file (module) being checked
+    pub cur: Int,                      // file (module) being checked
     pub prelude_items: Map[Str, Bool], // top-level names the prelude declares (hidden by the main file's own)
 }
 

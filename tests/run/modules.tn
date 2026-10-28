@@ -1,6 +1,6 @@
 import shapes
 
-fn area(x: Int) -> Int { x }   // no clash with shapes' private area()
+fn area(x: Int) -> Int { x } // no clash with shapes' private area()
 
 fn main(sys: Sys) {
     var c = shapes.Canvas.new("demo")

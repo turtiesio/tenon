@@ -14,7 +14,7 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
     c.println("{d.read("bin")}")
     c.println("{Str.from_utf8(back)} {Str.from_utf8_lossy(back).bytes().len()}")
     d.append_bytes("bin", [0xE2, 0x82])?
-    d.append_bytes("bin", [0xAC])?          // completes a euro sign
+    d.append_bytes("bin", [0xAC])? // completes a euro sign
     d.append("bin", "!")?
     c.println(hex(d.read_bytes("bin")?))
     // the valid prefix of a torn record

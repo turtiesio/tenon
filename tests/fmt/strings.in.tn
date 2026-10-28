@@ -1,0 +1,22 @@
+// String literals are copied byte for byte: interpolations, format specs and
+// raw strings keep their text; only the code around them is respaced.
+import regex
+
+fn main(sys: Sys)->Result[Unit,Str] {
+    let con=sys.console
+    let m: Map[Str, Int] = ["k:v": 7, "n" : -2]
+    con.println("{m["k:v"]:>5}|{m.get_or( "n",0 ):05}|{ 1234567 :,}")
+    con.println("{"{"x":<3}={-m["n"]:x}":>12}")
+    let date = regex.compile(r"(\d{4})-(\d{2})").unwrap()
+    match date.full("2024-03") {
+        Some(g) => con.println("{g[1]} {g[2]}"),
+        None => con.println(r"no {match} \here"),
+    }
+    let lo = -1
+    let hi = - lo+3
+    for i in lo .. hi { con.print("{i:+>3}") }
+    con.println("")
+    let c = '{'
+    con.println("{c} {-(lo - 1)} {(-lo).max(0)} {'\''}")
+    Ok(())
+}

@@ -1,0 +1,15 @@
+# Files tools/fmt_check.sh does not require to be in canonical layout (shell
+# globs; every other .tn file must pass `tenonfmt --check`). The meaning and
+# idempotence checks still run on all of them.
+study/*            # published evidence: the participants' code as written
+tests/redteam/*    # repro cases kept byte for byte as reported
+tests/lex/*        # malformed inputs for the lexer cross-check
+tests/parse/*      # malformed inputs for the parser cross-check
+tests/fmt/*.in.tn  # formatter inputs, unformatted on purpose
+# guarded tests (governance/guarded.txt) whose whole text is the expectation:
+# reformatting them would need an approval (tools/approvals.py)
+tests/run/trap_*.tn
+tests/run/io_fs.tn
+tests/run/linear.tn
+tests/run/exit_reserved.tn
+tests/run/cap_probe_*.tn

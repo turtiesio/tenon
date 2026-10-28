@@ -1,0 +1,37 @@
+enum Shape { Circle(Int), Rect(Int, Int), Empty, }
+
+struct Box { w: Int, h: Int, label: Str }
+
+fn area(s: Shape) -> Int {
+    match s {
+        Circle(r) if r>100 => 3*r*r,
+        Circle(r) => 3 * r * r,
+        Rect(w,h) => {
+            w*h
+        }
+        Empty => 0
+    }
+}
+
+fn label(b: Box) -> Str {
+    match b.w {
+        0 => "flat",
+        _ => if b.h == 0 { "thin" } else { b.label }
+    }
+}
+
+fn main(sys: Sys) {
+    let b = Box {
+        w: 2,
+        h: 3,
+        label: "box"
+    }
+    let wide = Box {
+        w: 10,
+        ..b
+    }
+    let shapes = [Circle(1), Rect(2, 3), Empty,]
+    for s in shapes { sys.console.println("{area(s)}") }
+    sys.console.println(label(wide))
+    if shapes.len() > 5 { }
+}

@@ -1,0 +1,68 @@
+// tenonfmt: the Tenon formatter (the layout rules: docs/reference.md, "Formatting").
+//   tenonfmt FILE...           rewrite each file in its canonical layout (atomically)
+//   tenonfmt --check FILE...   list the files that are not in canonical layout; exit 1 if any
+//   tenonfmt -                 format standard input to standard output
+// Exit status 2 if a file cannot be read, parsed or written.
+// Build: target/release/tenon build selfhost/tenonfmt.tn -o target/tenonfmt
+import fmt
+
+fn usage(con: Console) -> Int {
+    con.eprintln("usage: tenonfmt [--check] FILE... | tenonfmt -")
+    2
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    let args = sys.args
+    if args.is_empty() { return usage(con) }
+    if args.len() == 1 and args[0] == "-" {
+        return match fmt.format(con.read_all()) {
+            Ok(text) => {
+                con.print(text)
+                0
+            }
+            Err(e) => {
+                con.eprintln("tenonfmt: <stdin>:{e}")
+                2
+            }
+        }
+    }
+    let check = args[0] == "--check"
+    let files = if check { args.slice(1, args.len()) } else { args }
+    if files.is_empty() { return usage(con) }
+    var status = 0
+    for f in files {
+        let src = match sys.fs.read(f) {
+            Ok(s) => s,
+            Err(e) => {
+                con.eprintln("tenonfmt: cannot read {f}: {e}")
+                status = 2
+                continue
+            }
+        }
+        let out = match fmt.format(src) {
+            Ok(s) => s,
+            Err(e) => {
+                con.eprintln("tenonfmt: {f}:{e}")
+                status = 2
+                continue
+            }
+        }
+        if out == src { continue }
+        if check {
+            con.println(f)
+            status = status.max(1)
+            continue
+        }
+        let tmp = f + ".tenonfmt.tmp"
+        match sys.fs.write(tmp, out).and_then(fn(_) => sys.fs.rename(tmp, f)) {
+            Ok(_) => {}
+            Err(e) => {
+                con.eprintln("tenonfmt: cannot write {f}: {e}")
+                let _ = sys.fs.remove(tmp)
+                status = 2
+            }
+        }
+    }
+    status
+}

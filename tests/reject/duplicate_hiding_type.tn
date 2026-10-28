@@ -3,4 +3,4 @@
 // when the name hides a prelude type.
 struct Option { x: Int }
 enum Option { Yes, No }
-fn main() { }
+fn main() {}

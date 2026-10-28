@@ -2,4 +2,4 @@
 linear struct Claim { id: Int }
 fn Claim.done(self) {}
 fn main() { let r: Result[Claim, Str] = decode("Claim \{ id: 1 }")
- match r { Ok(c) => c.done(), Err(_) => {} } }
+    match r { Ok(c) => c.done(), Err(_) => {} } }

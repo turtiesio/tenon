@@ -54,7 +54,7 @@ pub enum EK {
     XNew(Str, List[(Str, Expr)], Option[Expr]),
     XTry(Expr),
     XLambda(List[(Str, Option[TExpr])], Option[TExpr], Expr),
-    XMutArg(Expr), // `mut place` as an argument to a `mut` parameter
+    XMutArg(Expr),           // `mut place` as an argument to a `mut` parameter
     XFmt(Expr, parser.Spec), // `{e:SPEC}` inside an XStr (bootstrap/src/ast.rs StrSeg::Expr with a spec)
 }
 pub struct Expr { pub id: Int, pub sp: Span, pub k: EK }

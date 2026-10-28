@@ -1,0 +1,29 @@
+
+
+// Comments are kept: own-line comments take the indentation of the next line,
+// end-of-line comments on consecutive lines are aligned.
+struct Point {
+  x: Int,     // across
+      y: Int, // down
+}
+
+
+
+fn main(sys: Sys) {
+
+        // the console
+  let con = sys.console
+  var total = 0 // running sum
+  for i in 0..3 {
+    total += i   // add
+         // a note before the closing brace
+  }
+
+  con.println("{total}")      // print it
+      con.println("{Point { x: 1, y: 2 }}")
+// at column 0 inside a block
+
+
+}
+// the end
+

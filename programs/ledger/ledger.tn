@@ -19,8 +19,8 @@ enum Record {
 
 struct Ledger {
     balances: Map[Str, Int],
-    applied: Map[Str, Record],   // transfer id -> record (dedup)
-    torn: Int,                   // records ignored during recovery
+    applied: Map[Str, Record], // transfer id -> record (dedup)
+    torn: Int,                 // records ignored during recovery
 }
 
 enum Outcome { Done(Str), Duplicate(Str), Rejected(Str) }

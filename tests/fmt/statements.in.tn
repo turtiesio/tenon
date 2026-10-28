@@ -1,0 +1,21 @@
+// One statement per line in a multi-line block; a block written on one line
+// stays on one line. Spacing around operators, commas and colons.
+struct Counter{n:Int}
+
+fn Counter.bump(mut self)->Int{ self.n+=1; self.n }
+
+fn sum(xs:List[Int])->Int{
+    var t=0; var i=0
+    while i<xs.len(){ t+=xs[i]; i+=1 }
+    t
+}
+
+fn main(sys: Sys) {
+    var c = Counter { n: 0 };
+    let _ = c.bump(); let _ = c.bump()
+    let pair = (sum([1,2,3]),c.n)
+    sys.console.println("{pair.0} {pair.1} {( pair.0+1 )}")
+    let f = fn(a: Int, b: Int) -> Int { a*b }
+    let g = fn(x) => x+1
+    sys.console.println("{f(2,3)} {g(4)}")
+}

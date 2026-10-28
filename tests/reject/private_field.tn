@@ -1,4 +1,4 @@
 // error: field 'secret' of 'shapes.Canvas' is private to its module
 import shapes
 fn main() { let c = shapes.Canvas.new("x")
- let s = c.secret }
+    let s = c.secret }

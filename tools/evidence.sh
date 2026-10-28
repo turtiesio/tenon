@@ -15,6 +15,7 @@ cargo build --release --quiet || { echo "evidence: main does not build"; exit 1;
 log=.evidence/last-run.txt; mkdir -p .evidence; : > "$log"
 python3 tools/fuzz.py 300 "$(date +%s)" 2>&1 | tail -3 | tee -a "$log"
 tools/asan.sh 2>&1 | tail -3 | tee -a "$log"
+tools/fmt_check.sh --all 2>&1 | tail -3 | tee -a "$log"
 nice -n 15 python3 tools/mutate.py 20 "$(date +%s)" 2>&1 | tail -6 | tee -a "$log"
 BENCH_RUNS=5 python3 tools/bench.py 2>&1 | tee -a "$log"
 python3 tools/status.py | tee -a "$log"

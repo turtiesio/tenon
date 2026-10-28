@@ -906,6 +906,51 @@ block on a slow peer); `close(id)` closes a connection or listener. Events are
 reported in increasing id order. A struct holding a `Poller` must be declared
 `unique struct`. See programs/chat for a complete server.
 
-## 16. Not yet implemented
+## 16. Formatting
+
+`tenonfmt FILE...` rewrites files in the one canonical layout (atomically);
+`tenonfmt --check FILE...` lists the files that are not in it and exits 1;
+`tenonfmt -` formats standard input to standard output. Build it with
+`tenon build selfhost/tenonfmt.tn -o target/tenonfmt`. A file that does not
+parse is refused and left unchanged. The rules:
+
+- Line breaks are the author's: long lines are not reflowed, and lines are
+  never joined. The only line added splits `a; b` in a block written on
+  several lines (a block written on one line, `{ t += x; i += 1 }`, stays).
+- Indentation is 4 spaces per line that opened a bracket still open (several
+  brackets opened on one line count once). A line starting with `)`, `]` or
+  `}` is indented as the line that opened it.
+- In a block, a line that continues the previous one (it starts with `.`,
+  `and`, `or` or a binary operator, or the previous line ends with `=`,
+  `=>`, `->`, an operator...) is indented 4 more than the first line of its
+  statement. A line starting with `else` lines up with its `if`. A block
+  after a head that spans lines (`if a` / `and b {`) is indented from the
+  head's first line.
+- One space around binary operators, `=`, `->`, `=>` and `|`, after `,`,
+  `;` and `:`, and inside braces written on one line (`Point { x: 1 }`; but
+  `{}`). No space before `(` and `[` in calls, indexing and generics
+  (`f(x)`, `xs[i]`, `List[Int]`), after a unary `-`, around `.` and `..`
+  (`0..n`, `..base`), or before `?`, `,`, `:` and closing brackets.
+- A list whose closing bracket starts a line (arguments, parameters,
+  elements, struct fields, enum variants, match arms) ends with a comma,
+  except after a block arm's `}` or a struct literal's `..base`. A list
+  closed on the same line has no trailing comma. A `;` at the end of a line
+  is removed where the newline ends the statement anyway.
+- Comments are kept. A comment on its own line takes the indentation of the
+  next line (one level deeper before a closing bracket); end-of-line comments
+  on consecutive lines are aligned one space after the longest line of code.
+- At most one blank line in a row, and none at the start or end of the file,
+  after an opening bracket or before a closing one.
+- String and character literals are copied byte for byte, interpolations
+  and format specs included.
+
+The formatter checks its own output before writing it: the formatted text
+must lex to the same tokens as the original (up to a `,` or `;` before a
+closing bracket) and must parse. `tools/fmt_check.sh` (run by `./check`)
+also checks that every file in the repository except those listed in
+`tools/fmt_skip.txt` is formatted, that formatting is idempotent, and that
+`tenon ast` of each file it changes is unchanged except positions.
+
+## 17. Not yet implemented
 
 Multi-core parallelism; see `docs/log.md`.

@@ -12,7 +12,7 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
     j.append("two")?
     let text = d.read("log")?
     let lines = text.split("\n")
-    d.write("log", lines[0] + "\r\n" + lines[1] + "\n")?   // a CR after the first record
+    d.write("log", lines[0] + "\r\n" + lines[1] + "\n")? // a CR after the first record
     let l = j.load()?
     c.println("{l.records} {l.rejected} {encode(d.read("log.rejected")?.slice(0, 5))}")
     c.println("{j.load()?.records} {j.load()?.rejected}")

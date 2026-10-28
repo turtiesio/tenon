@@ -22,11 +22,11 @@ struct Rule { name: Str, deps: List[Str], cmd: Str }
 
 struct Plan {
     rules: List[Rule],
-    index: Map[Str, Int],      // target name -> position in rules
+    index: Map[Str, Int], // target name -> position in rules
     mtimes: Map[Str, Int],
-    state: Map[Str, Int],      // absent: unvisited, 1: on the current path, 2: done
-    rebuild: Map[Str, Bool],   // decided for every state-2 target
-    reached: List[Int],        // positions of visited targets
+    state: Map[Str, Int],    // absent: unvisited, 1: on the current path, 2: done
+    rebuild: Map[Str, Bool], // decided for every state-2 target
+    reached: List[Int],      // positions of visited targets
 }
 
 fn parse_rule(line: Str, n: Int) -> Result[Rule, Str] {

@@ -33,13 +33,13 @@ pub struct Scope { pub kind: Sk, pub owned: List[(Str, cktypes.Ty)] }
 pub struct FnState {
     pub out: Str,
     pub scopes: List[Scope],
-    pub tps: List[Str],          // type parameters of the instance being emitted
-    pub tas: List[cktypes.Ty],   // ... and their types
+    pub tps: List[Str],        // type parameters of the instance being emitted
+    pub tas: List[cktypes.Ty], // ... and their types
     pub ret: cktypes.Ty,
     pub self_ptr: Bool,
     pub indent: Int,
-    pub muts: Map[Str, Bool],    // `var` locals: values bound from them must be retained
-    pub mut_params: List[Str],   // `x: mut T` parameters, passed as pointers (p_x)
+    pub muts: Map[Str, Bool],  // `var` locals: values bound from them must be retained
+    pub mut_params: List[Str], // `x: mut T` parameters, passed as pointers (p_x)
 }
 
 pub fn new_state() -> FnState {

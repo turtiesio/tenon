@@ -1,0 +1,38 @@
+// Long lines are not reflowed: line breaks inside expressions are kept, and a
+// continuation line is indented 4 more than the line its statement starts on.
+fn classify(n: Int, big: Bool) -> Str {
+    let kind = if n < 0 { "negative" } else if n == 0 { "zero" }
+        else if n < 10 { "small" } else { "large" }
+    if big
+        and n > 1000 {
+        return "huge"
+    }
+    let total = n * 2 + n * 3 + n * 4 + n * 5 + n * 6 + n * 7 + n * 8 + n * 9 + n * 10 + n * 11
+        + n * 12 + n * 13
+    if total > 0 { kind } else { "none" }
+}
+
+fn words(text: Str) -> List[Str] {
+    text.lower()
+        .split(" ")
+        .filter(fn(w) => not w.is_empty())
+        .map(fn(w) => w.trim())
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let msg =
+        classify(5, false)
+    con.println(msg)
+    con.println(classify(-3,
+        false))
+    let ws = words("The quick  brown fox")
+    con.println(ws.join(
+        ",",
+    ))
+    let table = [
+        ["a", "b"],
+        ["c", "d"],
+    ]
+    con.println("{table.len()}")
+}

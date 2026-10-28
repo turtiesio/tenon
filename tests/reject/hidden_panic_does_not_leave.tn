@@ -1,7 +1,7 @@
 // error: the 'else' block of 'let ... else' must leave
 // This file's `panic` hides the prelude's and returns normally, so a call to
 // it does not leave the 'else' block.
-fn panic(msg: Str) { }
+fn panic(msg: Str) {}
 fn main() {
     let Some(n) = "x".to_int() else { panic("not a number") }
     assert(n == 0)

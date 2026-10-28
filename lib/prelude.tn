@@ -564,9 +564,9 @@ extern fn Console.eprintln(self, s: Str)
 // trailing "\r" (also from a last line without "\n").
 extern fn Console.read_line(self) -> Option[Str]
 extern fn Console.read_all(self) -> Str
-extern fn Console.read_all_bytes(self) -> List[Int] // the rest of stdin, unchanged
+extern fn Console.read_all_bytes(self) -> List[Int]  // the rest of stdin, unchanged
 extern fn Console.write_bytes(self, data: List[Int]) // raw bytes to stdout; an element outside 0..255 traps
-extern fn Console.flush(self) // output is also flushed before any blocking read and at exit
+extern fn Console.flush(self)                        // output is also flushed before any blocking read and at exit
 
 // Paths are relative to the Fs root. `within` narrows the root; an attenuated
 // Fs rejects absolute paths and `..`. `read_only` drops write authority.
@@ -583,8 +583,8 @@ extern fn Fs.truncate(self, path: Str, len: Int) -> Result[Unit, IoError]
 extern fn Fs.exists(self, path: Str) -> Bool
 extern fn Fs.remove(self, path: Str) -> Result[Unit, IoError] // file or empty directory
 extern fn Fs.list(self, dir: Str) -> Result[List[Str], IoError]
-extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError] // also creates missing parents
-extern fn Fs.mkdir_one(self, path: Str) -> Result[Unit, IoError] // exactly one; parent must exist, path must not
+extern fn Fs.mkdir(self, path: Str) -> Result[Unit, IoError]           // also creates missing parents
+extern fn Fs.mkdir_one(self, path: Str) -> Result[Unit, IoError]       // exactly one; parent must exist, path must not
 extern fn Fs.rename(self, from: Str, to: Str) -> Result[Unit, IoError] // atomic; replaces `to`
 extern fn Fs.is_dir(self, path: Str) -> Bool
 extern fn Fs.within(self, dir: Str) -> Fs
@@ -607,7 +607,7 @@ fn path_parent(p: Str) -> Str {
     while n > 0 and p.byte(n - 1) == '/' { n -= 1 } // drop trailing slashes
     while n > 0 and p.byte(n - 1) != '/' { n -= 1 } // drop the last component
     if n == 0 { return if p.starts_with("/") { "/" } else { "." } }
-    while n > 1 and p.byte(n - 1) == '/' { n -= 1 }  // drop the separator(s)
+    while n > 1 and p.byte(n - 1) == '/' { n -= 1 } // drop the separator(s)
     p.slice(0, n)
 }
 // The last component; trailing slashes are ignored. path_base("a/b") == "b",
@@ -628,14 +628,14 @@ extern fn Net.connect(self, host: Str, port: Int) -> Result[Conn, IoError]
 extern fn Listener.port(self) -> Int
 extern fn Listener.accept(self) -> Result[Conn, IoError]
 extern fn Conn.read_line(self) -> Result[Option[Str], IoError] // None at end of stream; drops "\n", then one trailing "\r", like Console.read_line
-extern fn Conn.read(self, n: Int) -> Result[Str, IoError]       // up to n bytes; fewer only at end
+extern fn Conn.read(self, n: Int) -> Result[Str, IoError]      // up to n bytes; fewer only at end
 extern fn Conn.write(self, s: Str) -> Result[Unit, IoError]
 
 // Event loop: one Poller owns many sockets, named by Int ids. wait() returns
 // what happened, in id order: new connections are accepted for you.
 pub enum NetEvent { Accepted(Int, Int), Data(Int, Str), Closed(Int), Timeout }
 extern fn Net.poller(self) -> Poller
-extern fn Poller.listen(self, port: Int) -> Result[Int, IoError] // a listener id
+extern fn Poller.listen(self, port: Int) -> Result[Int, IoError]             // a listener id
 extern fn Poller.connect(self, host: Str, port: Int) -> Result[Int, IoError] // a connection id
 extern fn Poller.port(self, id: Int) -> Int
 extern fn Poller.wait(self, timeout_ms: Int) -> List[NetEvent] // -1: no timeout

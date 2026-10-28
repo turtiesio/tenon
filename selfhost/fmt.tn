@@ -1,0 +1,86 @@
+// module (imported by tenonfmt.tn)
+// The formatter: fmtlex.tn scans, fmtlayout.tn lays out, and the result is
+// checked before it is returned, so that formatting cannot change a program:
+// the formatted text must lex (lexer.tn, with statement separators) to the
+// same tokens as the original, except for `,` and `;` directly before a
+// closing bracket (which the parser skips), and it must parse.
+
+import lexer
+import parser
+import fmtlex
+import fmtlayout
+
+fn closes(t: lexer.Tok) -> Bool { t == Sym(")") or t == Sym("]") or t == Sym("}") }
+fn is_sep(t: lexer.Tok) -> Bool { t == Sym(",") or t == Sym(";") }
+
+// The tokens without positions, and without separators before a closing bracket.
+fn norm(toks: List[lexer.Token], out: List[Str]) -> List[Str] {
+    var o = out
+    for i in 0..toks.len() {
+        let t = toks[i].tok
+        if is_sep(t) {
+            var j = i + 1
+            while j < toks.len() and is_sep(toks[j].tok) { j += 1 }
+            if j < toks.len() and closes(toks[j].tok) { continue }
+        }
+        match t {
+            Ident(s) => o.push("ident " + s),
+            Kw(s) => o.push("kw " + s),
+            Sym(s) => o.push("sym " + s),
+            IntTok(v) => o.push("int {v}"),
+            FloatTok(f) => o.push("float {f}"),
+            StrTok(parts) => {
+                o.push("str")
+                for p in parts {
+                    match p {
+                        Lit(l) => o.push("lit " + [l].to_str()),
+                        Interp(ts, spec) => {
+                            o.push("expr")
+                            o = norm(ts, o)
+                            match spec {
+                                Some(sp) => o.push("spec " + [sp.text].to_str()),
+                                None => o.push("nospec"),
+                            }
+                        }
+                    }
+                }
+                o.push("end")
+            }
+            Eof => o.push("eof"),
+        }
+    }
+    o
+}
+
+fn first_difference(a: List[Str], b: List[Str]) -> Str {
+    var i = 0
+    while i < a.len() and i < b.len() and a[i] == b[i] { i += 1 }
+    let x = if i < a.len() { a[i] } else { "end" }
+    let y = if i < b.len() { b[i] } else { "end" }
+    "token {i}: {x} became {y}"
+}
+
+// The canonical layout of `src`, or "LINE:COL: message" if it does not parse.
+pub fn format(src: Str) -> Result[Str, Str] {
+    match parser.parse(src) {
+        Ok(_) => {}
+        Err(e) => return Err("{e.line}:{e.col}: {e.msg}"),
+    }
+    let out = fmtlayout.layout(fmtlayout.edit(fmtlex.scan(src)?))
+    let before = match lexer.lex(src) {
+        Ok(t) => norm(t, []),
+        Err(e) => return Err("{e.line}:{e.col}: {e.msg}"),
+    }
+    let after = match lexer.lex(out) {
+        Ok(t) => norm(t, []),
+        Err(e) => return Err("internal error: the formatted text does not lex: {e.line}:{e.col}: {e.msg}"),
+    }
+    if before != after {
+        return Err("internal error: formatting would change the program ({first_difference(before, after)})")
+    }
+    match parser.parse(out) {
+        Ok(_) => {}
+        Err(e) => return Err("internal error: the formatted text does not parse: {e.line}:{e.col}: {e.msg}"),
+    }
+    Ok(out)
+}

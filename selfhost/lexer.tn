@@ -18,14 +18,14 @@ struct Lx { src: Str, pos: Int, line: Int, col: Int }
 
 fn keywords() -> List[Str] {
     ["fn", "let", "var", "if", "else", "while", "for", "in", "match", "return", "break",
-     "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
-     "unique", "import", "extern", "pub", "ref", "const"]
+        "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
+        "unique", "import", "extern", "pub", "ref", "const"]
 }
 
 // Longest first so that greedy matching works.
 fn symbols() -> List[Str] {
     ["..", "==", "!=", "<=", ">=", "->", "=>", "+=", "-=", "*=", "/=", "%=", "+", "-", "*", "/",
-     "%", "<", ">", "=", "(", ")", "[", "]", "\{", "}", ",", ":", ";", ".", "?", "|", "_"]
+        "%", "<", ">", "=", "(", ")", "[", "]", "\{", "}", ",", ":", ";", ".", "?", "|", "_"]
 }
 
 fn is_digit(c: Int) -> Bool { c >= 48 and c <= 57 }
@@ -283,7 +283,7 @@ fn Lx.string(mut self) -> Result[Tok, LexError] {
     let _ = self.bump()
     var parts: List[Part] = []
     var lit = ""
-    var run = self.pos   // start of the pending run of plain bytes
+    var run = self.pos // start of the pending run of plain bytes
     while true {
         if self.pos >= self.src.len() { return Err(self.fail(line, col, "unterminated string")) }
         let at = self.pos
