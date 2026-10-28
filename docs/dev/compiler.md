@@ -224,8 +224,9 @@ functions taking `m: mut emit.Em`. The modules import each other in a cycle
 ### Building
 
 `build` uses the `Proc` capability (lib/prelude.tn, docs/library.md) to
-read `$CC` and `$TENON_KEEP_C` and to run `$CC OPT -w -std=gnu11 -pthread -o OUT
-OUT.c -lm`, as the bootstrap does, with the same kind of build cache
+read `$CC` and `$TENON_KEEP_C` and to run `$CC OPT -w -std=gnu11 -pthread
+-fno-tree-slp-vectorize -o OUT OUT.c -lm` (tenon.tn `cc_flags`; the bootstrap
+does the same without the last flag), with the same kind of build cache
 ("The build cache"); its own messages start with `tenon:`. Unlike the
 bootstrap, a program with more than 400 kB of function definitions (`tenon`
 itself: 6 MB of C) is compiled as up to 8 translation units by parallel
@@ -233,6 +234,17 @@ itself: 6 MB of C) is compiled as up to 8 translation units by parallel
 runtime's state is shared through `TN_STATE` in runtime/tenon.h): cc -O2 on
 tenon.tn takes about 3 s instead of 13 s. `emit` and the cache still see one
 C text.
+
+The C that `build` compiles differs from what `emit` prints (the
+bootstrap's, ops/gates/selfhost.sh) in two places, for GCC (`emit.Em.build`;
+runtime/tenon.h `TN_PAYLOADS`, `TN_RC_INLINE`, which leave clang's C as it
+was): the payloads of a by-value enum are side by side in a struct instead
+of a union, and retain/release helpers are `inline`. GCC copies a value that
+holds a union through memory (no SRA), a failed store-to-load forward per
+copy, and at -O2 calls retain/release that clang inlines; with
+`-fno-tree-slp-vectorize` (GCC's SLP vectorizer reloads a struct passed in
+two registers as one vector, the same stall), bench/calc on Linux went from
+5x the time of C to 1.4x (macOS/clang: 1.4x before and after).
 
 ### Fidelity rules that matter for identical C
 

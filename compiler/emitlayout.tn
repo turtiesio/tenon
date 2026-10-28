@@ -47,10 +47,19 @@ pub fn fields_of(m: mut emit.Em, t: cktypes.Ty) -> List[(Str, cktypes.Ty)] {
     }
 }
 
-fn union_def(m: mut emit.Em, vs: List[(Str, List[cktypes.Ty])]) -> Str {
+// The variants' payloads: a union; under `tenon build` (Em.build), for a
+// by-value enum, TN_PAYLOADS, which runtime/tenon.h makes a struct for GCC
+// (the payloads side by side). GCC does not split a value that contains a
+// union into scalars (SRA), so it copies such a value through memory:
+// written field by field and read back 16 bytes at a time, a failed
+// store-to-load forward on every copy; bench/calc, whose evaluator returns a
+// Result[Int, Str] per node, took 4x as long as with clang (Linux, gcc 13).
+// The struct takes the sum of the payloads instead of the largest (the same
+// with one payload, as Option). Heap nodes of boxed enums keep the union.
+fn union_def(m: mut emit.Em, vs: List[(Str, List[cktypes.Ty])], boxed: Bool) -> Str {
     var s = ""
     if vs.any(fn(v) => not v.1.is_empty()) {
-        s += " union \{"
+        s += if boxed or not m.build { " union \{" } else { " TN_PAYLOADS \{" }
         for i in 0..vs.len() {
             let fs = vs[i].1
             if fs.is_empty() { continue }
@@ -99,7 +108,7 @@ pub fn assemble(m: mut emit.Em, runtime: Str) -> Str {
             _ => {
                 if m.is_ptr_kind(t) {
                     let vs = m.enum_variants(t).unwrap()
-                    let u = union_def(mut m, vs)
+                    let u = union_def(mut m, vs, true)
                     out += "struct " + n + "_s \{ int64_t rc; int32_t tag;" + u + " };\n"
                 }
             }
@@ -147,7 +156,7 @@ fn define_value(m: mut emit.Em, t: cktypes.Ty, done: mut Map[cktypes.Ty, Bool], 
     }
     match m.enum_variants(t) {
         Some(vs) => {
-            let u = union_def(mut m, vs)
+            let u = union_def(mut m, vs, false)
             out += "struct " + n + " \{ int32_t tag;" + u + " };\n"
             return
         }
@@ -179,9 +188,16 @@ fn shown_count(m: mut emit.Em, t: cktypes.Ty) -> Int {
     }
 }
 
+// Under `tenon build` (Em.build) retain and release are TN_RC_INLINE, which
+// runtime/tenon.h makes `inline` for GCC, so that at -O2 it inlines them as
+// clang does (bench/calc released each Result[Int, Str] of its evaluator
+// through a call: 10% of its time, Linux, gcc 13).
+fn inline_kw(m: emit.Em) -> Str { if m.build { "TN_RC_INLINE " } else { "" } }
+
 fn helpers_for(m: mut emit.Em, t: cktypes.Ty, protos: mut Str, b: mut Str) {
     let n = m.tnames[t]
-    protos += "static TN_UNUSED {n} {n}_retain({n} x); static TN_UNUSED void {n}_release({n} x); " +
+    let inl = inline_kw(m)
+    protos += "static {inl}TN_UNUSED {n} {n}_retain({n} x); static {inl}TN_UNUSED void {n}_release({n} x); " +
         "static TN_UNUSED bool {n}_eq({n} a, {n} b); static TN_UNUSED int {n}_cmp({n} a, {n} b); " +
         "static TN_UNUSED uint64_t {n}_hash({n} x); static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode); " +
         "static inline TN_UNUSED bool {n}_same({n} a, {n} b) \{ (void)a; (void)b; return false; } " +
@@ -205,6 +221,7 @@ fn helpers_for(m: mut emit.Em, t: cktypes.Ty, protos: mut Str, b: mut Str) {
 
 // The helpers of a struct or tuple type t (C name n).
 fn struct_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, b: mut Str) {
+    let inl = inline_kw(m)
     let fs = fields_of(mut m, t)
     var rc = ""
     var rl = ""
@@ -253,8 +270,8 @@ fn struct_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, b: mut Str) {
     } else if not fs.is_empty() {
         sh += "tn_buf_cstr(b, \" }\"); "
     }
-    b += "static TN_UNUSED {n} {n}_retain({n} x) \{ {rc}return x; }\n"
-    b += "static TN_UNUSED void {n}_release({n} x) \{ {rl}(void)x; }\n"
+    b += "static {inl}TN_UNUSED {n} {n}_retain({n} x) \{ {rc}return x; }\n"
+    b += "static {inl}TN_UNUSED void {n}_release({n} x) \{ {rl}(void)x; }\n"
     b += "static TN_UNUSED bool {n}_eq({n} a, {n} b) \{ (void)a; (void)b; return {eq}; }\n"
     b += "static TN_UNUSED int {n}_cmp({n} a, {n} b) \{ int c; (void)a; (void)b; (void)c; {cm}return 0; }\n"
     b += "static TN_UNUSED uint64_t {n}_hash({n} x) \{ uint64_t h = 3; {hs}(void)x; return h; }\n"
@@ -295,6 +312,7 @@ fn each(m: mut emit.Em, vs: List[(Str, List[cktypes.Ty])], acc: Str, kind: Int) 
 }
 
 fn enum_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, vs: List[(Str, List[cktypes.Ty])], protos: mut Str, b: mut Str) {
+    let inl = inline_kw(m)
     let boxed = m.is_boxed(t)
     let acc = if boxed { "->" } else { "." }
     // (with workers the allocator's free lists, which are per thread, do this)
@@ -336,16 +354,16 @@ fn enum_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, vs: List[(Str, List[cktyp
     if boxed {
         // with workers the shared nullary nodes keep their counts (TN_RC_STATIC)
         let st = if m.mt { "if (x->rc < TN_RC_STATIC) " } else { "" }
-        b += "static TN_UNUSED {n} {n}_retain({n} x) \{ {st}x->rc++; return x; }\n"
+        b += "static {inl}TN_UNUSED {n} {n}_retain({n} x) \{ {st}x->rc++; return x; }\n"
         // freed nodes are kept on a small per-type list and reused by the constructors
         let put = if pool { "if ({n}_pool_n < TN_POOL_MAX) \{ *(void **)x = {n}_pool; {n}_pool = x; {n}_pool_n++; } else tn_free(x); " } else { "tn_free(x); " }
         b += "static void {n}_free(void *p) \{ {n} x = p; tn_rel_depth++; switch (x->tag) \{ {rl}} " + put + "tn_rel_depth--; }\n"
         let st2 = if m.mt { "x->rc >= TN_RC_STATIC || " } else { "" }
-        b += "static TN_UNUSED void {n}_release({n} x) \{ if (!x || {st2}--x->rc) return; " +
+        b += "static {inl}TN_UNUSED void {n}_release({n} x) \{ if (!x || {st2}--x->rc) return; " +
             "if (tn_rel_depth > 1000) \{ tn_defer(x, {n}_free); return; } {n}_free(x); if (tn_rel_depth == 0) tn_drain(); }\n"
     } else {
-        b += "static TN_UNUSED {n} {n}_retain({n} x) \{ switch (x.tag) \{ {rc}} return x; }\n"
-        b += "static TN_UNUSED void {n}_release({n} x) \{ switch (x.tag) \{ {rl}} }\n"
+        b += "static {inl}TN_UNUSED {n} {n}_retain({n} x) \{ switch (x.tag) \{ {rc}} return x; }\n"
+        b += "static {inl}TN_UNUSED void {n}_release({n} x) \{ switch (x.tag) \{ {rl}} }\n"
     }
     b += "static TN_UNUSED bool {n}_eq({n} a, {n} b) \{ if (a{acc}tag != b{acc}tag) return false; switch (a{acc}tag) \{ {eq}} return true; }\n"
     b += "static TN_UNUSED int {n}_cmp({n} a, {n} b) \{ int c = 0; if (a{acc}tag != b{acc}tag) return a{acc}tag < b{acc}tag ? -1 : 1; switch (a{acc}tag) \{ {cm}} return c; }\n"

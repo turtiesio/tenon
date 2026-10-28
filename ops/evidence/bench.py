@@ -19,6 +19,11 @@ TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenon")
 os.environ.setdefault("TENON_ROOT", ROOT)
 OUT = os.path.join(ROOT, "bench", "out")
 RUNS = int(os.environ.get("BENCH_RUNS", "3"))
+# The C programs are built by the C compiler `tenon build` uses ($CC, default
+# cc) with the flags it passes (compiler/tenon.tn cc_flags): the same compiler
+# and flags on both sides.
+CC = os.environ.get("CC") or "cc"
+CFLAGS = ["-O2", "-w", "-std=gnu11", "-pthread", "-fno-tree-slp-vectorize"]
 
 
 def timed(cmd, stdin_path):
@@ -50,7 +55,7 @@ def parallel():
         line = f"{name:10} serial {serial:.3f}s"
         if os.path.exists(os.path.join(d, name + ".c")):
             # -ffp-contract=off: no fused multiply-add, as Tenon's floats (same results)
-            subprocess.run(["cc", "-O2", "-ffp-contract=off", "-o", c_bin, os.path.join(d, name + ".c")], check=True)
+            subprocess.run([CC] + CFLAGS + ["-ffp-contract=off", "-o", c_bin, os.path.join(d, name + ".c"), "-lm"], check=True)
             c_t, c_out = timed([c_bin], None)
             if out != c_out:
                 raise SystemExit(f"{name}: Tenon and C disagree")
@@ -88,7 +93,7 @@ def main():
                 subprocess.run([sys.executable, "gen.py"], cwd=d, check=True)
         tn_bin, c_bin = os.path.join(OUT, name + "_tn"), os.path.join(OUT, name + "_c")
         subprocess.run([TENON, "build", os.path.join(d, name + ".tn"), "-o", tn_bin], check=True)
-        subprocess.run(["cc", "-O2", "-o", c_bin, os.path.join(d, name + ".c")], check=True)
+        subprocess.run([CC] + CFLAGS + ["-o", c_bin, os.path.join(d, name + ".c"), "-lm"], check=True)
         impls = [("tenon", [tn_bin]), ("c", [c_bin]), ("python", [sys.executable, os.path.join(d, name + ".py")])]
         rs = os.path.join(d, name + ".rs")
         if os.path.exists(rs):

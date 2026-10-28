@@ -31,6 +31,20 @@
 #define TN_NORETURN __attribute__((noreturn))
 #define TN_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
+/* What `tenon build` writes for GCC only (compiler/emitlayout.tn union_def,
+ * inline_kw; `tenon emit` writes neither): the payloads of a by-value enum
+ * side by side in a struct, since GCC copies a value holding a union through
+ * memory (a failed store-to-load forward per copy), and retain/release
+ * inline, since GCC -O2 otherwise calls them. Clang does well with neither
+ * (bench/calc on macOS: the struct 10% slower). */
+#if defined(__GNUC__) && !defined(__clang__)
+#define TN_PAYLOADS struct
+#define TN_RC_INLINE inline
+#else
+#define TN_PAYLOADS union
+#define TN_RC_INLINE
+#endif
+
 /* Reserved exit codes (also in seed/src/interp.rs). */
 #define TN_EXIT_ERR 1
 #define TN_EXIT_TRAP 70

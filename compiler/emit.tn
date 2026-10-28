@@ -76,11 +76,15 @@ pub struct Em {
     // every type gets a deep copy helper), and the helpers made so far
     pub mt: Bool,
     pub wk: Map[Str, Str],
+    // the C is for `tenon build`, not `tenon emit`: laid out for GCC
+    // (emitlayout.tn union_def, inline_kw); `tenon emit` prints the
+    // bootstrap's C (ops/gates/selfhost.sh)
+    pub build: Bool,
 }
 
 // The C program for a checked program; Err(message) if it cannot be compiled.
 pub fn emit(c: checker.Checked, names: List[Str], runtime: Str) -> Result[Str, Str] {
-    let p = emit_parts(c, names, runtime)?
+    let p = emit_parts(c, names, runtime, false)?
     Ok(p.text())
 }
 
@@ -92,11 +96,11 @@ pub struct CParts { pub head: Str, pub protos: Str, pub helpers: Str, pub bodies
 
 pub fn CParts.text(self) -> Str { self.head + self.protos + self.helpers + self.bodies + self.main_c }
 
-pub fn emit_parts(c: checker.Checked, names: List[Str], runtime: Str) -> Result[CParts, Str] {
+pub fn emit_parts(c: checker.Checked, names: List[Str], runtime: Str, build: Bool) -> Result[CParts, Str] {
     var m = Em {
         c, names, tnames: [:], tlist: [], boxed: [:], fn_names: [:], fn_queue: [], wrappers: [:],
         protos: "", bodies: "", helpers: "", counter: 0, st: new_state(), err: "",
-        show_tr: emittrait.show_trait(c.env), show_ovs: [:], dboxes: [:], vtables: [:], mt: uses_workers(c), wk: [:],
+        show_tr: emittrait.show_trait(c.env), show_ovs: [:], dboxes: [:], vtables: [:], mt: uses_workers(c), wk: [:], build,
     }
     let main_name = emitbody.fn_inst(mut m, c.main, [])
     while let Some(job) = m.fn_queue.pop() {

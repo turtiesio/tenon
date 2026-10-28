@@ -225,7 +225,8 @@ fn fetch(sys: Sys, o: Opts) -> Int {
 }
 
 // The C program for FILE, or the exit status after reporting why there is none.
-fn emit_c(sys: Sys, file: Str, root: Str) -> Result[emit.CParts, Int] {
+// build: for `tenon build`, laid out for GCC (emit.Em.build).
+fn emit_c(sys: Sys, file: Str, root: Str, build: Bool) -> Result[emit.CParts, Int] {
     let con = sys.console
     let fr = load(sys, root, file)?
     let runtime = match sys.fs.read(path_join(root, "runtime/tenon.h")) {
@@ -235,7 +236,7 @@ fn emit_c(sys: Sys, file: Str, root: Str) -> Result[emit.CParts, Int] {
             return Err(2)
         }
     }
-    match emit.emit_parts(fr.checked, fr.files.map(fn(f) => f.0), runtime) {
+    match emit.emit_parts(fr.checked, fr.files.map(fn(f) => f.0), runtime, build) {
         Ok(c) => Ok(c),
         Err(msg) => {
             con.eprintln("tenon: " + msg)
@@ -252,7 +253,7 @@ fn cache_entry(p: Proc, code: Str, cc: Str, opt: Str) -> Option[Str] {
         Some(d) => if d == "off" { return None } else { d },
         None => path_join(p.env("TMPDIR").unwrap_or("/tmp"), "tenon-cache"),
     }
-    Some(path_join(dir, "t" + pkg.hash([0, 7], code + "|" + cc + "|" + opt) + "-{code.len()}"))
+    Some(path_join(dir, "t" + pkg.hash([0, 7], code + "|" + cc + "|" + opt + " " + cc_flags().join(" ")) + "-{code.len()}"))
 }
 
 // A program with more than SPLIT_BYTES of function definitions is compiled
@@ -305,13 +306,21 @@ fn run_cc(p: Proc, cmd: Str, args: List[Str], what: Str) -> Result[Unit, Str] {
     }
 }
 
+// The C compiler's flags after the -O level; ops/evidence/bench.py builds the
+// C of the benchmarks with the same. -fno-tree-slp-vectorize: GCC (12 and
+// later, at -O2) copies a struct passed in two registers by storing both and
+// loading them back as one 16-byte vector, a failed store-to-load forward
+// on every call; bench/calc's evaluator lost 25% to it (Linux, gcc 13).
+// Clang accepts the flag; without it its SLP vectorizer gains nothing here.
+fn cc_flags() -> List[Str] { ["-w", "-std=gnu11", "-pthread", "-fno-tree-slp-vectorize"] }
+
 fn compile(sys: Sys, p: emit.CParts, cc: Str, out: Str, opt: Str) -> Result[Unit, Str] {
     let keep = sys.proc.env("TENON_KEEP_C").is_some()
     let n = (p.bodies.len() / SPLIT_BYTES).min(MAX_UNITS)
     if n < 2 or keep {
         let cpath = out + ".c"
         write(sys.fs, cpath, p.text())?
-        run_cc(sys.proc, cc, [opt, "-w", "-std=gnu11", "-pthread", "-o", out, cpath, "-lm"], cpath)?
+        run_cc(sys.proc, cc, [opt] + cc_flags() + ["-o", out, cpath, "-lm"], cpath)?
         if not keep { let _ = sys.fs.remove(cpath) }
         return Ok(())
     }
@@ -325,7 +334,8 @@ fn compile(sys: Sys, p: emit.CParts, cc: Str, out: Str, opt: Str) -> Result[Unit
         units.push(unit)
     }
     // one shell starts the compilers in the background and waits for them all
-    let script = "cc=$1; opt=$2; shift 2; pids=; for f do \"$cc\" \"$opt\" -w -std=gnu11 -pthread -fno-common -c -o \"$f.o\" \"$f\" & pids=\"$pids $!\"; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s"
+    let flags = cc_flags().join(" ")
+    let script = "cc=$1; opt=$2; shift 2; pids=; for f do \"$cc\" \"$opt\" {flags} -fno-common -c -o \"$f.o\" \"$f\" & pids=\"$pids $!\"; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s"
     let objs = units.map(fn(u) => u + ".o")
     var r = run_cc(sys.proc, "sh", ["-c", script, "sh", cc, opt] + units, out + ".*.c")
     if r.is_ok() { r = run_cc(sys.proc, cc, [opt, "-pthread", "-o", out] + objs + ["-lm"], out + ".*.o") }
@@ -336,7 +346,7 @@ fn compile(sys: Sys, p: emit.CParts, cc: Str, out: Str, opt: Str) -> Result[Unit
 fn build(sys: Sys, o: Opts) -> Int {
     let con = sys.console
     let file = o.pos[0]
-    let parts = match emit_c(sys, file, root_of(sys, o)) {
+    let parts = match emit_c(sys, file, root_of(sys, o), true) {
         Ok(c) => c,
         Err(status) => return status,
     }
@@ -451,7 +461,7 @@ fn main(sys: Sys) -> Int {
     match cmd {
         "run" => run(sys, o),
         "build" => build(sys, o),
-        "emit" => match emit_c(sys, o.pos[0], root_of(sys, o)) {
+        "emit" => match emit_c(sys, o.pos[0], root_of(sys, o), false) {
             Ok(c) => {
                 con.print(c.text())
                 0
