@@ -13,3 +13,7 @@ path docs/std-*.tn
 
 # Written by the evidence loop, absent from a fresh clone (docs/dev/testing.md).
 path .evidence/*
+
+# Scratch output of an agent run (the workflow reads and removes it); never
+# part of the repository.
+path .agent/*
