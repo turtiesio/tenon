@@ -1,0 +1,6 @@
+// error: type Fs does not implement Eq (needed by bound T: Eq of same)
+fn same[T: Eq](a: T, b: T) -> Bool { a == b }
+
+fn main(sys: Sys) {
+    let _ = same(sys.fs, sys.fs)
+}
