@@ -1,9 +1,9 @@
 // The v2 prelude: the self-hosted compiler appends this file to lib/prelude.tn
 // (selfhost/front.tn), so its items are prelude items. The bootstrap never
 // reads it, so it may use syntax the bootstrap cannot parse (traits). The
-// rule: lib/prelude.tn and lib/std stay bootstrap-compatible; tenonc-only
-// code lives under a v2/ directory (lib/v2, tests/v2), which the tools that
-// compare tenonc with the bootstrap skip.
+// rule: lib/prelude.tn and lib/std stay bootstrap-compatible; code that only
+// `tenon` reads lives under a v2/ directory (lib/v2, tests/v2), which the
+// tools that compare `tenon` with the bootstrap skip.
 
 // The derived traits. Every type satisfies them structurally, as `==`,
 // ordering, hashing and `to_str()` have always worked; as bounds

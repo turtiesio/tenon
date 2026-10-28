@@ -4,16 +4,19 @@
 # smoke), the program scenarios, the doc programs, the tools' own tests and
 # the cross-check against the seed. `--fast` is accepted and means the same
 # (tools/land.sh passes it); slower evidence is tools/evidence.sh.
-# The compiler under test is the self-hosted one: the frozen bootstrap (the
-# seed, governance/README.md) builds stage0 with -O0, stage0 builds stage1
-# (target/tenonc, -O2, in parallel translation units), and stage1 runs
-# everything. tools/selfhost.sh compares stage1 with the seed on the corpus
-# and stage0 with stage1 (the fixpoint). tests/v2 (and lib/v2) hold what only
-# tenonc understands (traits, workers): tenonc test checks both of its
-# backends on them. Ends with the time of each step.
+# The program under test is `tenon`, the self-hosted command line
+# (selfhost/tenon.tn, docs/tools.md): the frozen seed (bootstrap/,
+# target/release/tenon-seed, governance/README.md) builds stage0
+# (target/tenon0, -O0), stage0 builds stage1 (target/tenon, -O2, in parallel
+# translation units), and stage1 runs everything. tools/selfhost.sh compares
+# stage1 with the seed on the corpus and stage0 with stage1 (the fixpoint).
+# tests/v2 (and lib/v2) hold what only `tenon` understands (traits, workers):
+# `tenon test` checks both of its backends on them. The tools take the
+# binaries from $TENON, $TENON0 and $SEED (tools/corpus.py). Ends with the
+# time of each step.
 set -euo pipefail
 cd "$(dirname "$0")"
-export TENONC=$PWD/target/tenonc TENONC0=$PWD/target/tenonc0 TENON_ROOT=$PWD
+export SEED=$PWD/target/release/tenon-seed TENON0=$PWD/target/tenon0 TENON=$PWD/target/tenon TENON_ROOT=$PWD
 now() { perl -MTime::HiRes=time -e 'printf "%.1f", time'; }
 start=$(now); last=$start; table=""
 step() { # step NAME COMMAND...: run it, record its time; on failure print the table and stop
@@ -27,12 +30,13 @@ report() {
   printf 'check: seconds per step\n%s%7.1f  total (budget 60)%s\n' "$table" "$(awk "BEGIN { print $last - $start }")" "${1:+; $1}"
 }
 step "seed (cargo build)" cargo build --release --quiet
-step "stage0 (seed builds tenonc, -O0)" target/release/tenon build selfhost/tenonc.tn -o "$TENONC0" -O0
-step "stage1 (stage0 builds tenonc)" "$TENONC0" build selfhost/tenonc.tn -o "$TENONC"
-step "tenonc test tests tests/v2" "$TENONC" test tests tests/v2
-step "doctest" env TENON="$TENONC" python3 tools/doctest.py
-step "vscode grammar" env TENON="$TENONC" python3 tools/vscode_grammar_check.py
-step "programs" env TENON="$TENONC" tools/programs.sh
+step "stage0 (seed builds tenon, -O0)" "$SEED" build selfhost/tenon.tn -o "$TENON0" -O0
+step "stage1 (stage0 builds tenon)" "$TENON0" build selfhost/tenon.tn -o "$TENON"
+step "tenon test tests tests/v2" "$TENON" test tests tests/v2
+step "cli_test" tools/cli_test.sh
+step "doctest" python3 tools/doctest.py
+step "vscode grammar" python3 tools/vscode_grammar_check.py
+step "programs" tools/programs.sh
 step "cache_test" tools/cache_test.sh
 step "pkg_test" tools/pkg_test.sh
 step "selfhost (seed cross-check, fixpoint)" tools/selfhost.sh

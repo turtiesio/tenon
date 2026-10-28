@@ -1,6 +1,6 @@
 // module
 // Interpreter values: a port of bootstrap/src/value.rs (derived equality,
-// ordering and formatting) for `tenonc run` (selfhost/interp.tn).
+// ordering and formatting) for `tenon run` (selfhost/interp.tn).
 //
 // A value is one struct whose fields are used according to its kind `k`, so
 // that a part deep inside a value can be changed in place through a `mut`

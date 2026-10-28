@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generative differential testing of tenonc ($TENONC, default target/tenonc,
+"""Generative differential testing of `tenon` ($TENON, default target/tenon,
 the compiler in use): random well-typed Tenon programs are run by its
-reference interpreter (`tenonc run`) and its C backend (`tenonc build -O0`),
-and by the seed's interpreter (target/release/tenon run) as a third opinion;
+reference interpreter (`tenon run`) and its C backend (`tenon build -O0`),
+and by the seed's interpreter ($SEED run) as a third opinion;
 both checkers must give the same verdict. Any difference in stdout, stderr or
 exit code is a bug in one of them (or in the checker, if a program is
 rejected). Usage: tools/fuzz.py [COUNT] [SEED]. Failing programs are kept in
@@ -11,8 +11,8 @@ import json, os, random, subprocess, sys, tempfile, concurrent.futures as cf
 import corpus
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SEED = os.path.join(ROOT, "target", "release", "tenon")
-TENONC = os.environ.get("TENONC") or os.path.join(ROOT, "target", "tenonc")
+SEED = corpus.SEED
+TENON = corpus.TENON
 os.environ.setdefault("TENON_ROOT", ROOT)
 
 PRELUDE = """
@@ -262,15 +262,15 @@ def run_one(seed, tmp):
     src = Gen(seed).program()
     path = os.path.join(tmp, f"p{seed}.tn")
     open(path, "w").write(src)
-    chk = subprocess.run([TENONC, "check", path], capture_output=True, text=True)
+    chk = subprocess.run([TENON, "check", path], capture_output=True, text=True)
     seed_chk = subprocess.run([SEED, "check", path], capture_output=True, text=True)
     if (chk.returncode, chk.stderr.split("\n")[0]) != (seed_chk.returncode, seed_chk.stderr.split("\n")[0]):
-        return seed, "disagree", src, f"check: tenonc {chk.returncode} {chk.stderr.strip()[:300]}\n  seed {seed_chk.returncode} {seed_chk.stderr.strip()[:300]}"
+        return seed, "disagree", src, f"check: tenon {chk.returncode} {chk.stderr.strip()[:300]}\n  seed {seed_chk.returncode} {seed_chk.stderr.strip()[:300]}"
     if chk.returncode != 0:
         return seed, "rejected", src, chk.stderr
-    a = subprocess.run([TENONC, "run", path], capture_output=True, timeout=30)
+    a = subprocess.run([TENON, "run", path], capture_output=True, timeout=30)
     exe = os.path.join(tmp, f"p{seed}")
-    b = subprocess.run([TENONC, "build", path, "-o", exe, "-O0"], capture_output=True, text=True)
+    b = subprocess.run([TENON, "build", path, "-o", exe, "-O0"], capture_output=True, text=True)
     if b.returncode != 0:
         return seed, "build", src, b.stderr
     c = subprocess.run([exe], capture_output=True, timeout=30)
@@ -278,7 +278,7 @@ def run_one(seed, tmp):
     d = subprocess.run([SEED, "run", path], capture_output=True, timeout=30)
     out = lambda r: (r.stdout, r.stderr, r.returncode)
     if not out(a) == out(c) == out(d):
-        return seed, "disagree", src, show("tenonc run", a) + show("tenonc build", c) + show("seed run", d)
+        return seed, "disagree", src, show("tenon run", a) + show("tenon build", c) + show("seed run", d)
     return seed, "ok", None, None
 
 
@@ -297,7 +297,7 @@ def main():
     print(f"fuzz: {count} programs from seed {base}: {stats}")
     path = os.path.join(ROOT, ".evidence", "fuzz.json")
     old = json.load(open(path)) if os.path.exists(path) else {}
-    if old.get("compiler") != "tenonc":  # totals from when the seed was fuzzed are not carried over
+    if old.get("compiler") != "tenonc":  # the self-hosted compiler's tag (it was called tenonc); totals from when the seed was fuzzed are not carried over
         old = {"compiler": "tenonc"}
     old["programs"] = old.get("programs", 0) + count
     old["disagreements"] = old.get("disagreements", 0) + stats.get("disagree", 0) + stats.get("build", 0)

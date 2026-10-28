@@ -1,30 +1,28 @@
 #!/usr/bin/env bash
-# The formatter (selfhost/tenonfmt.tn, rules in docs/reference.md "Formatting")
-# on the whole corpus:
+# The formatter (`tenon fmt`: selfhost/fmtcmd.tn and fmt.tn, rules in
+# docs/reference.md "Formatting") on the whole corpus, through $TENON
+# (default target/tenon):
 #   1. every .tn file not listed in tools/fmt_skip.txt is in canonical layout
-#      (`tenonfmt --check`);
+#      (`tenon fmt --check`);
 #   2. formatting preserves meaning, on every .tn file it changes (skipped
-#      ones included; with --all on every file): `tenonc ast` of the original
+#      ones included; with --all on every file): `tenon ast` of the original
 #      and of the formatted text are identical except positions, and so are
-#      the tokens (`tenonc tokens`) except a `,` or `;` directly before a
-#      closing bracket (the self-hosted parser, so v2 files are covered too;
-#      tenonc is $TENONC, else built here);
+#      the tokens (`tenon tokens`) except a `,` or `;` directly before a
+#      closing bracket (the self-hosted parser, so v2 files are covered too);
 #   3. formatting is idempotent: the formatted text is in canonical layout;
-#   4. a file is refused (left unchanged) exactly when `tenonc ast` cannot
+#   4. a file is refused (left unchanged) exactly when `tenon ast` cannot
 #      parse it; files that do not parse are exempt from 1;
 #   5. tests/fmt/NAME.in.tn formats to tests/fmt/NAME.out.tn (and tests/v2/fmt).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-T=target/release/tenon
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-"$T" build selfhost/tenonfmt.tn -o "$tmp/tenonfmt"
-if [ -n "${TENONC:-}" ]; then A=$TENONC; else A=$tmp/tenonc; "$T" build selfhost/tenonc.tn -o "$A" -O0; fi
+A=${TENON:-target/tenon}
 python3 - "$A" "$tmp" "$@" <<'EOF'
 import fnmatch, os, re, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 T, tmp, every = os.path.abspath(sys.argv[1]), sys.argv[2], "--all" in sys.argv
-F = os.path.join(tmp, "tenonfmt")
+F = [T, "fmt"]
 sys.path.insert(0, "tools")
 import corpus
 files = corpus.files()
@@ -41,16 +39,16 @@ c = os.path.join(tmp, "c")
 for f in files:
     os.makedirs(os.path.join(c, os.path.dirname(f)), exist_ok=True)
     shutil.copyfile(f, os.path.join(c, f))
-r = run(F, *files, cwd=c)
-refused = set(re.findall(r"^tenonfmt: (.*?\.tn):", r.stderr, re.M))
-problems += [l for l in r.stderr.splitlines() if "internal error" in l or not re.match(r"^tenonfmt: .*?\.tn:", l)]
+r = run(*F, *files, cwd=c)
+refused = set(re.findall(r"^tenon: (.*?\.tn):", r.stderr, re.M))
+problems += [l for l in r.stderr.splitlines() if "internal error" in l or not re.match(r"^tenon: .*?\.tn:", l)]
 changed = [f for f in files if f not in refused and open(f, "rb").read() != open(os.path.join(c, f), "rb").read()]
 # 1. canonical layout
 for f in changed:
     if f not in skipped:
-        problems.append(f"{f}: not in canonical layout (run: target/tenonfmt {f})")
+        problems.append(f"{f}: not in canonical layout (run: target/tenon fmt {f})")
 # 3. idempotence
-r = run(F, "--check", *[f for f in files if f not in refused], cwd=c)
+r = run(*F, "--check", *[f for f in files if f not in refused], cwd=c)
 for f in r.stdout.split():
     problems.append(f"{f}: formatting is not idempotent")
 
@@ -77,9 +75,9 @@ def same(f):
     a = run(T, "ast", f)
     parses = not a.stdout.startswith("error ")
     if f in refused:
-        return [f"{f}: refused by tenonfmt, but `tenonc ast` parses it"] if parses else []
+        return [f"{f}: refused by tenon fmt, but `tenon ast` parses it"] if parses else []
     if not parses:
-        return [f"{f}: formatted by tenonfmt, but `tenonc ast` does not parse it"]
+        return [f"{f}: formatted by tenon fmt, but `tenon ast` does not parse it"]
     if f not in changed and not every:
         return []
     b = run(T, "ast", os.path.join(c, f))
@@ -99,7 +97,7 @@ pairs = sorted(os.path.join(d, f[:-6]) for d in ["tests/fmt", "tests/v2/fmt"] fo
 for name in pairs:
     src = open(f"{name}.in.tn").read()
     want = open(f"{name}.out.tn").read()
-    r = run(F, "-", stdin=src)
+    r = run(*F, "-", stdin=src)
     if r.returncode != 0 or r.stdout != want:
         problems.append(f"{name}.in.tn: does not format to {os.path.basename(name)}.out.tn{': ' + r.stderr.strip() if r.stderr else ''}")
 

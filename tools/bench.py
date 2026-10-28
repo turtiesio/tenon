@@ -3,19 +3,19 @@
 gen.py producing input.txt fed on stdin). Outputs must be identical across
 implementations. Writes .evidence/bench.json (median of N runs, wall time).
 
-Parallel benchmarks (workers, tenonc only): each bench/v2/NAME has NAME.tn,
+Parallel benchmarks (workers, v2): each bench/v2/NAME has NAME.tn,
 which takes the number of workers as its argument (0: the same function on
 one thread, the serial baseline), and optionally NAME.c, a serial C
 reference with the same output. Each is run serially and with 1, 2, 4 and 8 workers (PAR_WORKERS
 to change); the speedup is over the serial run of the same binary. Writes
 .evidence/bench_parallel.json. `bench.py --parallel` runs only these.
 
-Tenon programs are built (-O2) by tenonc, the compiler in use: $TENONC,
-default target/tenonc (./check and tools/evidence.sh build it)."""
+Tenon programs are built (-O2) by `tenon`, the compiler in use: $TENON,
+default target/tenon (./check and tools/evidence.sh build it)."""
 import json, os, statistics, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TENONC = os.environ.get("TENONC", os.path.join(ROOT, "target", "tenonc"))
+TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenon")
 os.environ.setdefault("TENON_ROOT", ROOT)
 OUT = os.path.join(ROOT, "bench", "out")
 RUNS = int(os.environ.get("BENCH_RUNS", "3"))
@@ -44,7 +44,7 @@ def parallel():
         if not os.path.isfile(os.path.join(d, name + ".tn")):
             continue
         tn_bin, c_bin = os.path.join(OUT, name + "_par"), os.path.join(OUT, name + "_par_c")
-        subprocess.run([TENONC, "build", os.path.join(d, name + ".tn"), "-o", tn_bin], check=True)
+        subprocess.run([TENON, "build", os.path.join(d, name + ".tn"), "-o", tn_bin], check=True)
         serial, out = timed([tn_bin, "0"], None)
         row = {"serial": round(serial, 4), "cores": os.cpu_count()}
         line = f"{name:10} serial {serial:.3f}s"
@@ -70,8 +70,8 @@ def parallel():
 
 
 def main():
-    if not os.path.exists(TENONC):
-        raise SystemExit(f"bench: no tenonc at {TENONC} (./check builds it)")
+    if not os.path.exists(TENON):
+        raise SystemExit(f"bench: no tenon at {TENON} (./check builds it)")
     if sys.argv[1:] == ["--parallel"]:
         return parallel()
     os.makedirs(OUT, exist_ok=True)
@@ -87,7 +87,7 @@ def main():
             if not os.path.exists(inp):
                 subprocess.run([sys.executable, "gen.py"], cwd=d, check=True)
         tn_bin, c_bin = os.path.join(OUT, name + "_tn"), os.path.join(OUT, name + "_c")
-        subprocess.run([TENONC, "build", os.path.join(d, name + ".tn"), "-o", tn_bin], check=True)
+        subprocess.run([TENON, "build", os.path.join(d, name + ".tn"), "-o", tn_bin], check=True)
         subprocess.run(["cc", "-O2", "-o", c_bin, os.path.join(d, name + ".c")], check=True)
         impls = [("tenon", [tn_bin]), ("c", [c_bin]), ("python", [sys.executable, os.path.join(d, name + ".py")])]
         rs = os.path.join(d, name + ".rs")

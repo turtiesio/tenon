@@ -1,6 +1,6 @@
 // module
 // Self-hosted lexer: a second, independent implementation of bootstrap/src/lexer.rs.
-// `lexer FILE` must print exactly what `tenon tokens FILE` prints, for every
+// `lexer FILE` must print exactly what `tenon-seed tokens FILE` prints, for every
 // file in the corpus (checked by tools/selfhost.sh).
 
 pub enum Tok { Ident(Str), Kw(Str), Sym(Str), IntTok(Int), FloatTok(Float), StrTok(List[Part]), Eof }

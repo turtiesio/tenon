@@ -1,5 +1,5 @@
 // module
-// The self-hosted parser's AST dump: `tenonc ast FILE` (compare: tenon ast FILE).
+// The self-hosted parser's AST dump: `tenon ast FILE` (compare: tenon-seed ast FILE).
 import parser
 
 fn tps(ps: List[Str]) -> Str { if ps.is_empty() { "" } else { "[" + ps.join(", ") + "]" } }

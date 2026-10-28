@@ -2,19 +2,19 @@
 """Differential mutation testing of the self-hosted checker: corpus programs
 are mutated at the token level (deleted/duplicated/swapped tokens, renamed
 identifiers and types, flipped let/var, mut/ref, literals ...) and both
-`tenon check` and `tenonc check` (selfhost/tenonc.tn) must report the same
-first line; when both accept a mutant, `tenon emit` and `tenonc emit` must
+`tenon-seed check` and `tenon check` (selfhost/tenon.tn) must report the same
+first line; when both accept a mutant, `tenon-seed emit` and `tenon emit` must
 print the same C (and exit with the same status).
 
 Usage: tools/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
-tenonc is $TENONC (tools/evidence.sh builds it), else built here.
+The binaries are $SEED and $TENON (tools/corpus.py; ./check and tools/evidence.sh build them).
 Disagreements are kept in .evidence/checkfuzz/ (mutant + both outputs);
 the totals go to .evidence/checkfuzz.json."""
 import os, random, re, shutil, subprocess, sys, tempfile, concurrent.futures as cf
 import corpus as corpus_
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TENON = os.path.join(ROOT, "target", "release", "tenon")
+SEED = corpus_.SEED
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|->|=>|==|!=|<=|>=|\+=|-=|\.\.|\S')
 TYPES = ["Int", "Str", "Bool", "Float", "Unit", "List[Int]", "Map[Str, Int]", "Option[Int]", "Result[Int, Str]",
          "(Int, Str)", "fn(Int) -> Int", "Fs", "Console", "List[T]", "T", "Option[T]", "Sys", "Conn"]
@@ -95,12 +95,12 @@ def run_one(args):
         target = os.path.join(d, os.path.basename(rel))
         open(target, "w", encoding="utf-8").write(mut)
         try:
-            a = subprocess.run([TENON, "check", rel], cwd=tmp, capture_output=True, text=True, timeout=20)
+            a = subprocess.run([SEED, "check", rel], cwd=tmp, capture_output=True, text=True, timeout=20)
             want = first_line(a)
         except subprocess.TimeoutExpired:
             want = "<bootstrap timeout>"
         try:
-            b = subprocess.run([ck, "check", rel, ROOT], cwd=tmp, capture_output=True, text=True, timeout=20)
+            b = subprocess.run([ck, "check", rel, "--root", ROOT], cwd=tmp, capture_output=True, text=True, timeout=20)
             got = first_line(b)
         except subprocess.TimeoutExpired:
             got = "<selfhost timeout>"
@@ -108,7 +108,7 @@ def run_one(args):
             return (rel, mut, want, got)
         if want == "ok":
             try:
-                a = subprocess.run([TENON, "emit", rel], cwd=tmp, capture_output=True, timeout=20)
+                a = subprocess.run([SEED, "emit", rel], cwd=tmp, capture_output=True, timeout=20)
                 b = subprocess.run([ck, "emit", rel, "--root", ROOT], cwd=tmp, capture_output=True, timeout=20)
                 if (a.returncode, a.stdout) != (b.returncode, b.stdout):
                     return (rel, mut, "emit: exit %d, %d bytes of C" % (a.returncode, len(a.stdout)),
@@ -122,13 +122,12 @@ def main():
     pos = [a for a in sys.argv[1:] if not a.startswith("-")]
     count = int(pos[0]) if len(pos) > 0 else 500
     seed = int(pos[1]) if len(pos) > 1 else 1
-    ck = os.environ.get("TENONC")
-    if not ck:
-        ck = os.path.join(tempfile.mkdtemp(), "tenonc")
-        subprocess.run([TENON, "build", os.path.join(ROOT, "selfhost", "tenonc.tn"), "-o", ck, "-O0"], check=True)
+    ck = corpus_.TENON
+    if not os.path.exists(ck):
+        raise SystemExit(f"checkfuzz: no tenon at {ck} (./check builds it)")
     files = corpus_.files(no_v2=True)  # v2/: syntax the seed cannot read
     # Mostly mutate programs the bootstrap accepts: their mutants reach the checker.
-    good = [f for f in files if subprocess.run([TENON, "check", f], cwd=ROOT, capture_output=True).returncode == 0]
+    good = [f for f in files if subprocess.run([SEED, "check", f], cwd=ROOT, capture_output=True).returncode == 0]
     r = random.Random(seed)
     jobs = [(n, seed, r.choice(good if r.random() < 0.85 else files), ck) for n in range(count)]
     out = os.path.join(ROOT, ".evidence", "checkfuzz")

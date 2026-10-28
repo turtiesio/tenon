@@ -14,7 +14,8 @@ import glob, json, os, re, shutil, statistics, subprocess, sys, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STUDY_ROOT = os.environ.get("STUDY_ROOT", "/tmp/tenon-study")
-# Authors use a frozen copy of the compiler (STUDY_ROOT/bin/tenon), made when
+# Authors use a frozen copy of `tenon` (STUDY_ROOT/bin/tenon, installed by
+# tools/install.sh with its lib/ and runtime/ in STUDY_ROOT/lib/tenon), made when
 # the first Tenon kit is created, so changes to the repo cannot affect a study.
 TENON = os.path.join(STUDY_ROOT, "bin", "tenon")
 EXT = {"tenon": "tn", "python": "py", "typescript": "ts"}
@@ -77,8 +78,8 @@ def kit(lang, author):
         "Tasks (run ./try.sh --start NAME to reveal a specification and start its clock):\n" + "".join(f"- {n}\n" for n in names))
     if lang == "tenon":
         if not os.path.exists(TENON):
-            os.makedirs(os.path.dirname(TENON), exist_ok=True)
-            shutil.copy(os.path.join(ROOT, "target", "release", "tenon"), TENON)
+            # the self-hosted tenon with its lib/ and runtime/ (STUDY_ROOT/lib/tenon), as installed
+            subprocess.run([os.path.join(ROOT, "tools", "install.sh"), STUDY_ROOT], check=True, stdout=subprocess.DEVNULL)
         os.makedirs(os.path.join(d, "docs"))
         shutil.copy(os.path.join(ROOT, "docs", "reference.md"), os.path.join(d, "docs", "reference.md"))
         shutil.copy(os.path.join(ROOT, "docs", "quickstart.md"), os.path.join(d, "docs", "quickstart.md"))

@@ -1,4 +1,4 @@
-// Parallel benchmark (v2, tenonc only): word frequencies, with data moving
+// Parallel benchmark (v2: workers): word frequencies, with data moving
 // between workers. Each of 64 chunks makes 200,000 pseudo-random words
 // (strings built and hashed: allocation-heavy) and counts them in a map;
 // the maps (up to 4,096 entries each) are copied back to main and merged.

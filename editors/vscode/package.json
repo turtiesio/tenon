@@ -42,13 +42,13 @@
       "properties": {
         "tenon.serverPath": {
           "type": "string",
-          "default": "tenonlsp",
-          "description": "The Tenon language server executable (built from selfhost/tenonlsp.tn); a name is looked up on PATH."
+          "default": "tenon",
+          "description": "The tenon executable (tools/install.sh), started as `tenon lsp`; a name is looked up on PATH."
         },
         "tenon.root": {
           "type": "string",
           "default": "",
-          "description": "The Tenon toolchain root, the directory holding lib/prelude.tn and lib/std/ (passed as --root). Empty: a workspace folder that contains lib/prelude.tn, else $TENON_ROOT."
+          "description": "The Tenon toolchain root, the directory holding lib/prelude.tn and lib/std/ (passed as --root). Empty: a workspace folder that contains lib/prelude.tn, else $TENON_ROOT, else the root next to the executable."
         }
       }
     },

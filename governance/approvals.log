@@ -1,3 +1,4 @@
 # Append-only. One line per approved weakening: DATE | APPROVER | PATH | reason
 2026-10-28 | user (david) | tools/study.py | Milestone 1 study line count excludes closer-only lines in every language (braces kept by user decision); raw line count still reported
 2026-10-28 | planner (rule change: user items hide prelude items, change safety) | tests/reject/redefine_prelude_fn.tn | a main-file path_join now hides the prelude one instead of being rejected; replaced by tests/run/hide_prelude_*.tn, duplicates in user code still rejected (tests/reject/duplicate_*.tn)
+2026-10-28 | user decision 2026-10-28: rename the seed to tenon-seed (docs/log.md) | bootstrap/Cargo.toml | the seed binary is target/release/tenon-seed; the self-hosted `tenon` takes the name (package name only, line count unchanged)

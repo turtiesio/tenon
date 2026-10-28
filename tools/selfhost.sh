@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# Cross-check of the self-hosted compiler (selfhost/tenonc.tn) against the
+# Cross-check of the self-hosted compiler (selfhost/tenon.tn) against the
 # seed (the frozen bootstrap), and its fixpoint, in one parallel pass over the
 # corpus (tools/corpus.py), deliberately malformed inputs (tests/lex,
 # tests/parse) and checker cases (tests/reject, tests/selfhost) included:
-#   stage0 = the seed building tenonc.tn      ($TENONC0; ./check: target/tenonc0)
-#   stage1 = stage0 building tenonc.tn        ($TENONC;  ./check: target/tenonc)
+#   stage0 = the seed building tenon.tn       ($TENON0; ./check: target/tenon0)
+#   stage1 = stage0 building tenon.tn         ($TENON;  ./check: target/tenon)
 # Every file outside v2/ directories (the seed cannot read those), seed vs
 # stage1:
-#   lexer:   `tenon tokens FILE`  vs `tenonc tokens FILE`
-#   parser:  `tenon ast FILE`     vs `tenonc ast FILE`
-#   checker: `tenon check FILE`   vs `tenonc check FILE`: the same exit status
+#   lexer:   `$SEED tokens FILE`  vs `tenon tokens FILE`
+#   parser:  `$SEED ast FILE`     vs `tenon ast FILE`
+#   checker: `$SEED check FILE`   vs `tenon check FILE`: the same exit status
 #            and the same first line of the diagnostic
-#   emitter: `tenon emit FILE`    vs `tenonc emit FILE`, for every file the
+#   emitter: `$SEED emit FILE`    vs `tenon emit FILE`, for every file the
 #            seed accepts: byte-identical C and the same exit status
 # Fixpoint, every file stage1 accepts (v2 files included): stage0 and stage1
-# emit byte-identical C. selfhost/tenonc.tn is one of them, so the seed,
+# emit byte-identical C. selfhost/tenon.tn is one of them, so the seed,
 # stage0 and stage1 print the same C for the compiler itself.
-# Without $TENONC0/$TENONC both stages are built here with -O0 (building is
+# Without $TENON0/$TENON both stages are built here with -O0 (building is
 # most of the cost, running is cheap).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-S=target/release/tenon
+S=${SEED:-target/release/tenon-seed}
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-if [ -n "${TENONC0:-}" ]; then cp "$TENONC0" "$tmp/stage0"; else "$S" build selfhost/tenonc.tn -o "$tmp/stage0" -O0; fi
-if [ -n "${TENONC:-}" ]; then cp "$TENONC" "$tmp/stage1"; else TENON_ROOT=$PWD "$tmp/stage0" build selfhost/tenonc.tn -o "$tmp/stage1" -O0; fi
+if [ -n "${TENON0:-}" ]; then cp "$TENON0" "$tmp/stage0"; else "$S" build selfhost/tenon.tn -o "$tmp/stage0" -O0; fi
+if [ -n "${TENON:-}" ]; then cp "$TENON" "$tmp/stage1"; else TENON_ROOT=$PWD "$tmp/stage0" build selfhost/tenon.tn -o "$tmp/stage1" -O0; fi
 
 # One job per file, run in parallel; each prints FAIL lines and one result line.
 one() {
@@ -59,7 +59,7 @@ one() {
     "$C1" emit "$f" > "$b" 2> /dev/null; sb=$?
     "$C0" emit "$f" > "$a" 2> /dev/null; sa=$?
     if [ $sa != $sb ] || ! cmp -s "$a" "$b"; then echo "FAIL fixpoint: stage0 and stage1 emit different C for $f"; diff "$a" "$b" | head -5; out=fail; else fix=same; fi
-    [ "$f" = selfhost/tenonc.tn ] && echo "SELF $(wc -c < "$b" | tr -d ' ') $fix"
+    [ "$f" = selfhost/tenon.tn ] && echo "SELF $(wc -c < "$b" | tr -d ' ') $fix"
   fi
   set -e
   rm -f "$a" "$b" "$e"
@@ -83,8 +83,8 @@ count() { grep -c "$1" "$tmp/results" || true; }
 n=$(count '^RESULT \(accepted\|rejected\)'); accepted=$(count '^RESULT accepted'); rejected=$(count '^RESULT rejected')
 same=$(count '^RESULT .* same$'); fail=$(count '^FAIL ')
 self=$(grep '^SELF ' "$tmp/results" || true)
-if [ "${self##* }" != same ]; then echo "FAIL fixpoint: selfhost/tenonc.tn was not compared (stage1 rejects it?)"; fail=$((fail + 1)); fi
+if [ "${self##* }" != same ]; then echo "FAIL fixpoint: selfhost/tenon.tn was not compared (stage1 rejects it?)"; fail=$((fail + 1)); fi
 echo "selfhost: lexer, parser and checker agree with the seed on $n files ($accepted accepted, $rejected rejected);" \
   "emitter on the $accepted accepted; fixpoint: stage0 = stage1 on $same accepted files, v2 included" \
-  "(selfhost/tenonc.tn: $(echo "$self" | cut -d' ' -f2) bytes of C); $fail disagreements"
+  "(selfhost/tenon.tn: $(echo "$self" | cut -d' ' -f2) bytes of C); $fail disagreements"
 [ "$fail" = 0 ]

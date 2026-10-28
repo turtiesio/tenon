@@ -44,7 +44,7 @@ PATTERNS = {
     "programs": r"programs: (\d+) scenario\(s\) x2 backends, (\S+) failed",
     "selfhost": r"selfhost: lexer, parser and checker agree with the seed on (\d+) files \((\d+) accepted, (\d+) rejected\);"
                 r" emitter on the \d+ accepted; fixpoint: stage0 = stage1 on (\d+) accepted files, v2 included"
-                r" \(selfhost/tenonc\.tn: (\d+) bytes of C\); (\d+) disagreements",
+                r" \(selfhost/tenon\.tn: (\d+) bytes of C\); (\d+) disagreements",
     "fmt": r"fmt: (\d+) files in canonical layout \((\d+) skipped by tools/fmt_skip\.txt, (\d+) more do not parse\).*?; (\d+) problems",
     "grammar": r"vscode grammar: ok: (\d+) files",
     "lsp": r"lsp: ok \(",
@@ -131,13 +131,13 @@ def main():
         w("\nHistory (passing runs): " + ", ".join(f"{d}: {v} s" for d, v in hist[-7:]))
 
     w("\n## Tests on main\n")
-    w(f"- `tenonc test tests tests/v2`: {g('tests', 1)} run programs, each executed by tenonc's interpreter **and** its C backend"
+    w(f"- `tenon test tests tests/v2`: {g('tests', 1)} run programs, each executed by tenon's interpreter **and** its C backend"
       f" and compared with golden output; {g('tests', 2)} reject programs (must fail to compile with a specific diagnostic);"
       f" {g('tests', 3)} lexer/parser cases; failed: {g('tests', 4)}")
     w(f"- program scenarios: {g('programs', 1)} real programs, each on both backends (`tools/programs.sh`); failed: {g('programs', 2)}")
     w(f"- cross-check with the seed (`tools/selfhost.sh`): tokens, AST, checker verdict and C agree on {g('selfhost', 1)} files"
       f" ({g('selfhost', 2)} accepted, {g('selfhost', 3)} rejected); fixpoint: stage0 and stage1 emit the same C on"
-      f" {g('selfhost', 4)} accepted files, selfhost/tenonc.tn ({g('selfhost', 5)} bytes of C) included; disagreements: {g('selfhost', 6)}")
+      f" {g('selfhost', 4)} accepted files, selfhost/tenon.tn ({g('selfhost', 5)} bytes of C) included; disagreements: {g('selfhost', 6)}")
     w(f"- doc programs: {g('doctest', 1)} compile (`tools/doctest.py`); formatter: {g('fmt', 1)} files canonical,"
       f" {g('fmt', 2)} skipped, {g('fmt', 4)} problems (`tools/fmt_check.sh`); packages: {g('pkg', 1)} checks (`tools/pkg_test.sh`);"
       f" language server: {'ok' if got['lsp'] else '?'} (`tools/lsp_test.py`); editor grammar: {g('grammar', 1)} files"
@@ -146,7 +146,7 @@ def main():
     w("\n## Evidence on main (`tools/evidence.sh`)\n")
     if fuzz:
         last = fuzz.get("last", {})
-        w(f"- differential fuzzing of tenonc (both backends, the seed's interpreter as a third opinion): {fuzz['programs']} generated"
+        w(f"- differential fuzzing of tenon (both backends, the seed's interpreter as a third opinion): {fuzz['programs']} generated"
           f" programs, {fuzz['disagreements']} disagreements, {fuzz['rejected']} rejected by the checker (generator imprecision);"
           f" last run {last.get('programs', '?')} programs, {when(fuzz)} (`tools/fuzz.py N`)")
         if last.get("disagreements"):
@@ -171,26 +171,26 @@ def main():
         else:
             w(f"- {name}: not run yet (`{tool}`)")
     if idiff:
-        w(f"- seed's interpreter vs tenonc's on the corpus: {idiff['same']} of {idiff['files']} files the same, {idiff['diff']} differ,"
+        w(f"- seed's interpreter vs tenon's on the corpus: {idiff['same']} of {idiff['files']} files the same, {idiff['diff']} differ,"
           f" {idiff['skipped']} skipped ({when(idiff)}; `tools/interp_diff.py`)")
         if idiff["diff"]:
-            regressions.append(f"interp_diff: {idiff['diff']} corpus files differ between `tenon run` and `tenonc run`")
+            regressions.append(f"interp_diff: {idiff['diff']} corpus files differ between `tenon-seed run` and `tenon run`")
     else:
-        w("- seed's interpreter vs tenonc's: not run yet (`tools/interp_diff.py`)")
+        w("- seed's interpreter vs tenon's: not run yet (`tools/interp_diff.py`)")
     if cfuzz:
-        w(f"- seed's checker and emitter vs tenonc's on {cfuzz['mutants']} mutated corpus programs: {cfuzz['disagreements']} disagreements"
+        w(f"- seed's checker and emitter vs tenon's on {cfuzz['mutants']} mutated corpus programs: {cfuzz['disagreements']} disagreements"
           f" ({when(cfuzz)}; `tools/checkfuzz.py N`)")
         if cfuzz["disagreements"]:
             regressions.append(f"checkfuzz: {cfuzz['disagreements']} disagreements (.evidence/checkfuzz/)")
     else:
-        w("- seed's checker vs tenonc's on mutated programs: not run yet (`tools/checkfuzz.py N`)")
+        w("- seed's checker vs tenon's on mutated programs: not run yet (`tools/checkfuzz.py N`)")
     if seedt:
-        w(f"- the seed's own suite (`target/release/tenon test tests`): {seedt['summary']} ({when(seedt)})")
+        w(f"- the seed's own suite (`tenon-seed test tests`): {seedt['summary']} ({when(seedt)})")
         m = re.search(r"(\d+) failed", seedt["summary"])
         if not m or m.group(1) != "0":
             regressions.append(f"the seed's own test suite: {seedt['summary']}")
 
-    w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`, Tenon built by tenonc -O2)\n")
+    w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`, Tenon built by tenon -O2)\n")
     worst = None
     if bench:
         w("| Program | Tenon | C (cc -O2) | Rust (-O) | Python | TypeScript (node) | Tenon / C | Binary (Tenon / C) |\n|---|---|---|---|---|---|---|---|")
@@ -225,7 +225,7 @@ def main():
     w("Non-blank, non-comment lines that must be correct for compiled programs to be correct (`corpus.trusted()`).")
     w("The interpreter, test runner, dumps, formatter and language server are checks and tools, not trusted code.\n")
     w("| Part | Files | Lines |\n|---|---|---|")
-    labels = {"compiler": "self-hosted compiler (compile path of `tenonc`)", "runtime": "runtime and the Tenon sources compiled into programs",
+    labels = {"compiler": "self-hosted compiler (compile path of `tenon`)", "runtime": "runtime and the Tenon sources compiled into programs",
               "seed": "seed (frozen bootstrap: builds stage0 only; anchor)"}
     for k in ["compiler", "runtime", "seed"]:
         w(f"| {labels[k]} | {len(groups[k])} | {sizes[k]} |")
@@ -238,8 +238,8 @@ def main():
     w("\n</details>\n")
 
     # milestone goals, judged from the data above where a number decides them
-    seed_t = best_of([os.path.join(ROOT, "target", "release", "tenon"), "emit", "selfhost/tenonc.tn"])
-    self_t = best_of([os.path.join(ROOT, "target", "tenonc"), "emit", "selfhost/tenonc.tn"])
+    seed_t = best_of([corpus.SEED, "emit", "selfhost/tenon.tn"])
+    self_t = best_of([corpus.TENON, "emit", "selfhost/tenon.tn"])
     progs = sorted(os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(ROOT, "programs", "*", "test.sh"))
                    + glob.glob(os.path.join(ROOT, "programs", "v2", "*", "test.sh")))
     wk_progs = [os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(ROOT, "programs", "v2", "*", "*.tn"))
@@ -283,7 +283,7 @@ def main():
     ratio = self_t / seed_t if seed_t else 0
     row("Fully self-hosted compiler: fixpoint, every test on both backends, frozen seed, compile time within 3x of the bootstrap's",
         verdict(sh_ok and tests_ok and frozen and ratio <= 3,
-                "fixpoint on %s files; tests failed: %s; seed frozen: %s; `emit selfhost/tenonc.tn` %.2f s vs the seed's %.2f s (%.2fx)"
+                "fixpoint on %s files; tests failed: %s; seed frozen: %s; `emit selfhost/tenon.tn` %.2f s vs the seed's %.2f s (%.2fx)"
                 % (g("selfhost", 4), g("tests", 4), frozen, self_t, seed_t, ratio)))
     row("Traits (bounds, `dyn`, derived traits, coherence)",
         "implemented (docs/reference.md §17); tests/v2: %d run and %d reject tests, all passing: %s" % (v2("run"), v2("reject"), tests_ok))

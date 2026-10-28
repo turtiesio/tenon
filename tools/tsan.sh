@@ -3,11 +3,11 @@
 # channels, traits) and every program that starts workers with
 # ThreadSanitizer, run each RUNS times (default 3: races depend on
 # scheduling), and require no ThreadSanitizer report and the exit status of
-# the golden file. Built by tenonc ($TENONC, default target/tenonc) with the
+# the golden file. Built by `tenon` ($TENON, default target/tenon) with the
 # runtime's normal allocator (free lists on), as programs run.
 set -u
 cd "$(dirname "$0")/.."
-C=${TENONC:-$PWD/target/tenonc}
+C=${TENON:-$PWD/target/tenon}
 RUNS=${RUNS:-3}
 export TENON_ROOT=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT

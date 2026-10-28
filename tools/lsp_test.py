@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Language server test: builds selfhost/tenonlsp.tn and drives it over stdio.
+"""Language server test: drives `tenon lsp` ($TENON, default target/tenon) over stdio.
 
     tools/lsp_test.py [-v]
 
@@ -15,13 +15,15 @@ called on a type parameter, a dyn value and a concrete type, which goes to
 the impl; lib/v2/prelude.tn; completion). Also runs the JSON tests (selfhost/jsontest.tn)
 and the VS Code client (editors/vscode/extension.js: `node --check`, then
 tools/lsp_client_test.js against the server; skipped without node), and
-reports how long the server takes to check selfhost/tenonc.tn.
+reports how long the server takes to check selfhost/tenon.tn.
 Exit status 1 on the first failure.
 """
 import json, os, shutil, subprocess, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TENON = os.path.join(ROOT, "target", "release", "tenon")
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import corpus  # noqa: E402
+TENON = corpus.TENON
 LSP = os.path.join(ROOT, "tests", "lsp")
 VERBOSE = "-v" in sys.argv
 
@@ -37,7 +39,7 @@ def uri(path):
 
 class Server:
     def __init__(self, exe):
-        self.p = subprocess.Popen([exe, "--root", ROOT], stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=ROOT)
+        self.p = subprocess.Popen([exe, "lsp", "--root", ROOT], stdin=subprocess.PIPE, stdout=subprocess.PIPE, cwd=ROOT)
         self.next_id = 1
         self.pending = []  # notifications received while waiting for a response
         self.timer = threading.Timer(30, self.p.kill)
@@ -417,7 +419,7 @@ def traits(srv):
 
 
 def packages(srv, tmp):
-    """A file in a package imports a path dependency (after `tenonc fetch`)."""
+    """A file in a package imports a path dependency (after `tenon fetch`)."""
     ws = os.path.realpath(tmp)
     app, util = os.path.join(ws, "app"), os.path.join(ws, "util")
     for d in (app, util):
@@ -431,13 +433,12 @@ def packages(srv, tmp):
     doc = Doc(os.path.join(app, "src", "main.tn"), "import util\n\nfn main(sys: Sys) { sys.console.println(\"{util.double(2)}\") }\n")
     srv.notify("textDocument/didOpen", {"textDocument": {"uri": doc.uri, "languageId": "tenon", "version": 1, "text": doc.text}})
     expect("package file without tenon.lock", [x["message"] for x in srv.diagnostics(doc.uri)],
-           ["no %s/tenon.lock for %s/tenon.toml; run `tenonc fetch`" % (app, app)])
-    tenonc = os.environ.get("TENONC") or os.path.join(ROOT, "target", "tenonc")
-    r = subprocess.run([tenonc, "fetch", app], cwd=ROOT, capture_output=True, text=True)
+           ["no %s/tenon.lock for %s/tenon.toml; run `tenon fetch`" % (app, app)])
+    r = subprocess.run([TENON, "fetch", app], cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
-        fail("tenonc fetch: " + r.stdout + r.stderr)
+        fail("tenon fetch: " + r.stdout + r.stderr)
     srv.notify("textDocument/didSave", {"textDocument": {"uri": doc.uri}})
-    expect("package file after tenonc fetch", srv.diagnostics(doc.uri), [])
+    expect("package file after tenon fetch", srv.diagnostics(doc.uri), [])
     expect("definition in a dependency", definition(srv, doc, "util.double", "double"),
            location(os.path.join(util, "src", "util.tn"), "pub fn double", "double"))
     srv.notify("textDocument/didClose", {"textDocument": {"uri": doc.uri}})
@@ -445,27 +446,24 @@ def packages(srv, tmp):
 
 
 def latency(srv):
-    path = os.path.join(ROOT, "selfhost", "tenonc.tn")
+    path = os.path.join(ROOT, "selfhost", "tenon.tn")
     doc = Doc(path)
     t = time.time()
     srv.notify("textDocument/didOpen", {"textDocument": {"uri": doc.uri, "languageId": "tenon", "version": 1, "text": doc.text}})
-    expect("diagnostics of selfhost/tenonc.tn", srv.diagnostics(doc.uri), [])
+    expect("diagnostics of selfhost/tenon.tn", srv.diagnostics(doc.uri), [])
     open_ms = (time.time() - t) * 1000
     t = time.time()
     r = srv.request("textDocument/hover", {"textDocument": {"uri": doc.uri}, "position": doc.pos("front.load_in(sys.fs", "load_in")})
     hover_ms = (time.time() - t) * 1000
     if "front.load" not in r["result"]["contents"]["value"]:
-        fail("hover in tenonc.tn: %s" % r)
+        fail("hover in tenon.tn: %s" % r)
     return open_ms, hover_ms
 
 
 def main():
     t0 = time.time()
     tmp = tempfile.mkdtemp()
-    exe = os.path.join(tmp, "tenonlsp")
-    r = subprocess.run([TENON, "build", "selfhost/tenonlsp.tn", "-o", exe, "-O0"], cwd=ROOT, capture_output=True, text=True)
-    if r.returncode != 0:
-        fail("cannot build selfhost/tenonlsp.tn:\n" + r.stderr)
+    exe = TENON
     r = subprocess.run([TENON, "run", "selfhost/jsontest.tn"], cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0:
         fail(r.stdout + r.stderr)
@@ -496,7 +494,7 @@ def main():
                 fail(" ".join(cmd[:2]) + ":\n" + r.stdout + r.stderr)
         client = r.stdout.strip()
     shutil.rmtree(tmp)
-    print("lsp: ok (%s; %s; check of selfhost/tenonc.tn through the server %.0f ms, hover %.0f ms, -O0 build; %.1fs)"
+    print("lsp: ok (%s; %s; check of selfhost/tenon.tn through the server %.0f ms, hover %.0f ms; %.1fs)"
           % (json_result, client, open_ms, hover_ms, time.time() - t0))
 
 

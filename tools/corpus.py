@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""The corpus and the default parallelism of the tools, defined once (and
-`record`, the one way evidence tools write .evidence/NAME.json).
+"""The corpus, the binaries and the default parallelism of the tools,
+defined once (and `record`, the one way evidence tools write
+.evidence/NAME.json).
 
     tools/corpus.py            every .tn file of the corpus, one path per line (sorted, relative)
     tools/corpus.py --no-v2    the same without files under a v2/ directory
     tools/corpus.py --jobs     the default number of parallel jobs
 
 Python tools import it (`sys.path` holds tools/ when they run):
-`corpus.files(no_v2=False)` and `corpus.JOBS`.
+`corpus.files(no_v2=False)`, `corpus.JOBS`, `corpus.TENON`, `corpus.SEED`.
+
+The binaries (shell tools use the same variables and defaults):
+TENON, the self-hosted `tenon` under test ($TENON, default target/tenon,
+stage1); TENON0, stage0 ($TENON0, default target/tenon0); SEED, the frozen
+bootstrap ($SEED, default target/release/tenon-seed), which only builds
+stage0 and is the cross-check's other opinion. ./check builds all three.
 
 The corpus is every .tn file under DIRS. Files under a v2/ directory
-(lib/v2, tests/v2, programs/v2, bench/v2) use what only tenonc has (traits,
-workers): the bootstrap cannot read them, so cross-checks against the
-bootstrap skip them. JOBS is the core count, capped at 8 (the machine is
+(lib/v2, tests/v2, programs/v2, bench/v2) use what only `tenon` has
+(traits, workers): the seed cannot read them, so cross-checks against the
+seed skip them. JOBS is the core count, capped at 8 (the machine is
 shared with other workers, tenon.md §2.4)."""
 import os
 import sys
@@ -20,11 +27,14 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIRS = ["lib", "tests", "programs", "selfhost", "bench", "study"]
 JOBS = max(1, min(os.cpu_count() or 4, 8))
+TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenon")
+TENON0 = os.environ.get("TENON0") or os.path.join(ROOT, "target", "tenon0")
+SEED = os.environ.get("SEED") or os.path.join(ROOT, "target", "release", "tenon-seed")
 
 
 def trusted():
     """What a compiled program's correctness depends on, as {group: [paths]}:
-    the self-hosted compiler's compile path (tenonc check/build/emit: loading,
+    the self-hosted compiler's compile path (tenon check/build/emit: loading,
     lexing, parsing, checking, packages, the C backend), the runtime and the
     Tenon sources compiled into programs, and the seed that builds stage0.
     The interpreter, test runner, dumps, formatter and language server are
@@ -34,7 +44,7 @@ def trusted():
     not_seed = {"interp.rs", "builtins.rs", "codec.rs", "testrun.rs", "astdump.rs"}
     return {
         "compiler": g("selfhost/lexer.tn", "selfhost/parser.tn", "selfhost/front.tn", "selfhost/pkg.tn", "selfhost/pkgtoml.tn",
-                      "selfhost/checker.tn", "selfhost/ck*.tn", "selfhost/emit*.tn", "selfhost/tenonc.tn"),
+                      "selfhost/checker.tn", "selfhost/ck*.tn", "selfhost/emit*.tn", "selfhost/tenon.tn"),
         "runtime": g("runtime/tenon.h", "lib/prelude.tn", "lib/v2/prelude.tn", "lib/std/*.tn"),
         "seed": [p for p in g("bootstrap/src/*.rs") if os.path.basename(p) not in not_seed],
     }

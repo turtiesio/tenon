@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# The build cache of `tenonc build` (selfhost/tenonc.tn): a hit reuses the
+# The build cache of `tenon build` (selfhost/tenon.tn): a hit reuses the
 # cached executable only when the cached C text is exactly the new one;
-# TENON_CACHE=off and TENON_KEEP_C bypass it. Uses $TENONC (default: built here).
+# TENON_CACHE=off and TENON_KEEP_C bypass it. Uses $TENON (default target/tenon).
 set -u
 cd "$(dirname "$0")/.."
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-C=${TENONC:-}
-if [ -z "$C" ]; then target/release/tenon build selfhost/tenonc.tn -o "$tmp/tenonc" -O0 && C=$tmp/tenonc; fi
+C=${TENON:-$PWD/target/tenon}
 export TENON_ROOT=$PWD TENON_CACHE=$tmp/cache
 unset TENON_KEEP_C
 printf 'fn main(sys: Sys) { sys.console.println("fresh") }\n' > "$tmp/p.tn"
@@ -28,5 +27,5 @@ printf '#!/bin/sh\necho cached\n' > "$tmp/cache/$entry"
 TENON_CACHE=off "$C" build "$tmp/p.tn" -o "$tmp/p" -O0; expect fresh "TENON_CACHE=off compiles"
 TENON_KEEP_C=1 "$C" build "$tmp/p.tn" -o "$tmp/p" -O0; expect fresh "TENON_KEEP_C compiles"
 [ -f "$tmp/p.c" ] || { echo "cache_test: FAIL: TENON_KEEP_C did not keep p.c"; fail=1; }
-[ $fail = 0 ] && echo "cache_test: tenonc build cache hits only on identical C (5 scenarios)"
+[ $fail = 0 ] && echo "cache_test: tenon build cache hits only on identical C (5 scenarios)"
 exit $fail

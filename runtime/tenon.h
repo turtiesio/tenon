@@ -55,8 +55,8 @@ typedef uint8_t tn_Clock;
  * Reference counts stay plain integers in both cases: values move between
  * workers only as deep copies (section "workers and channels"). */
 /* The runtime's state (the variables marked TN_STATE). A program is one C
- * file, where the state is static; `tenonc build` compiles a large program
- * as several translation units (selfhost/tenonc.tn): the state is then
+ * file, where the state is static; `tenon build` compiles a large program
+ * as several translation units (selfhost/tenon.tn): the state is then
  * defined in the unit with TN_SPLIT 1 and extern in those with TN_SPLIT 2. */
 #if !defined(TN_SPLIT)
 #define TN_STATE static
