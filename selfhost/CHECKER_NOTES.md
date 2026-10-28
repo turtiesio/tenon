@@ -1,9 +1,9 @@
 # Self-hosted checker: notes
 
 `selfhost/check.tn FILE [ROOT]` is a second, independent implementation of
-the bootstrap's front end after parsing: module loading (src/main.rs
-`front`), src/check.rs, src/check_expr.rs, src/exhaust.rs, src/linear.rs and
-the Subst/unify code of src/types.rs. It prints `ok` or the first diagnostic
+the bootstrap's front end after parsing: module loading (bootstrap/src/main.rs
+`front`), bootstrap/src/check.rs, bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs, bootstrap/src/linear.rs and
+the Subst/unify code of bootstrap/src/types.rs. It prints `ok` or the first diagnostic
 as `PATH:LINE:COL: error: MESSAGE`. `tools/selfhost.sh` compares it with
 `tenon check` on every `.tn` file in the corpus.
 

@@ -1,7 +1,7 @@
 /* Tenon C runtime: the only C the compiler relies on. Depends on libc only.
  * Every type N used by generated code has helpers N_retain, N_release, N_eq,
  * N_cmp, N_hash and N_show; the list/map macros below build on that.
- * Semantics must match the reference interpreter (src/interp.rs, src/value.rs). */
+ * Semantics must match the reference interpreter (bootstrap/src/interp.rs, bootstrap/src/value.rs). */
 #ifndef TENON_H
 #define TENON_H
 #include <dirent.h>
@@ -29,7 +29,7 @@
 #define TN_NORETURN __attribute__((noreturn))
 #define TN_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
-/* Reserved exit codes (also in src/interp.rs). */
+/* Reserved exit codes (also in bootstrap/src/interp.rs). */
 #define TN_EXIT_ERR 1
 #define TN_EXIT_TRAP 70
 #define TN_EXIT_OOM 71
@@ -608,7 +608,7 @@ static TN_UNUSED void tn_Clock_show(tn_buf *b, tn_Clock x, int mode) { (void)x; 
 TN_INCOMPARABLE(tn_Console)
 TN_INCOMPARABLE(tn_Clock)
 
-/* ---------- derived codec: strict decoding (see src/codec.rs) ---------- */
+/* ---------- derived codec: strict decoding (see bootstrap/src/codec.rs) ---------- */
 
 typedef struct { const char *p; int64_t n, pos, err; } tn_dec;
 static bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out);

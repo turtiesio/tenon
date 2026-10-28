@@ -1,5 +1,5 @@
 // module (imported by the self-hosted checker)
-// Linear and unique types, run after type checking: a port of src/linear.rs
+// Linear and unique types, run after type checking: a port of bootstrap/src/linear.rs
 // (flow-sensitive consumption analysis) including the codec restrictions.
 
 import ckast
@@ -132,7 +132,7 @@ fn Walk.end_scope(mut self, mark: Int, sp: ckast.Span) -> Result[Unit, ckast.Dia
     Ok(())
 }
 
-// ---- alternative paths (src/linear.rs `branches`) ----
+// ---- alternative paths (bootstrap/src/linear.rs `branches`) ----
 
 fn Walk.br_start(self) -> Br { Br { before: self.vars, outs: [], all_div: true } }
 

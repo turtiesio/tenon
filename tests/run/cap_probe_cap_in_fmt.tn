@@ -1,0 +1,2 @@
+// Capability probe: formatting a capability prints only its type name, never its authority (root, handles).
+fn main(sys: Sys) { sys.console.println("{sys.fs} {sys.console} {sys.net} {sys.clock}") }

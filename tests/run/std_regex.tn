@@ -2,7 +2,7 @@
 // against Python's `re` (re.ASCII, with `$` written as `\Z`): the same patterns
 // and subjects were run through a throwaway script that printed exactly this
 // output, and the two were identical. The differences from Python that are
-// intended are listed in the header of std/regex.tn; the cases that exercise
+// intended are listed in the header of lib/std/regex.tn; the cases that exercise
 // them are in `differences` below and were checked by hand.
 //
 // Each row prints, for a pattern and a subject: the groups of a full match, the

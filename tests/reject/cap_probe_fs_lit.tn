@@ -1,0 +1,2 @@
+// error: 'Fs' is not a struct
+fn main(sys: Sys) { let f = Fs { root: "/" }; }

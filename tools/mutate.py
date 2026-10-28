@@ -12,8 +12,8 @@ change. Survivors are written to .evidence/mutation.json as tasks.
 import json, os, random, re, shutil, subprocess, sys, tempfile, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TARGETS = ["src/check.rs", "src/check_expr.rs", "src/linear.rs", "src/exhaust.rs", "src/emit_body.rs",
-           "src/emit_ctl.rs", "src/emit_builtins.rs", "runtime/tenon.h", "src/lexer.rs", "src/parser.rs"]
+TARGETS = ["bootstrap/src/check.rs", "bootstrap/src/check_expr.rs", "bootstrap/src/linear.rs", "bootstrap/src/exhaust.rs", "bootstrap/src/emit_body.rs",
+           "bootstrap/src/emit_ctl.rs", "bootstrap/src/emit_builtins.rs", "runtime/tenon.h", "bootstrap/src/lexer.rs", "bootstrap/src/parser.rs"]
 OPS = [(r" < ", " <= "), (r" <= ", " < "), (r" > ", " >= "), (r" >= ", " > "), (r" == ", " != "),
        (r" != ", " == "), (r" \+ 1", " - 1"), (r" - 1", " + 1"), (r"\btrue\b", "false"), (r"\bfalse\b", "true"),
        (r" && ", " || "), (r" \|\| ", " && ")]
@@ -43,7 +43,7 @@ def main():
     rnd = random.Random(int(sys.argv[2]) if len(sys.argv) > 2 else int(time.time()))
     work = tempfile.mkdtemp(prefix="tenon-mutate-")
     try:
-        for d in ["src", "runtime", "std", "tests"]:
+        for d in ["bootstrap", "runtime", "lib", "tests"]:
             shutil.copytree(os.path.join(ROOT, d), os.path.join(work, d), symlinks=True)
         for f in ["Cargo.toml", "Cargo.lock"]:
             shutil.copy(os.path.join(ROOT, f), work)

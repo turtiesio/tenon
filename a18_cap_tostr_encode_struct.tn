@@ -1,2 +1,0 @@
-struct Holder { c: Console }
-fn main(sys: Sys) { let h = Holder { c: sys.console }; let s = encode(h) }

@@ -8,7 +8,7 @@
 // State is an append-only journal (DIR/journal). Every record is appended and
 // fsynced before the command is acknowledged; each line carries a checksum so a
 // torn or corrupted tail is detected and ignored on recovery (never applied twice,
-// never half-applied). The journal format lives in std/journal.
+// never half-applied). The journal format lives in lib/std/journal.tn.
 
 import journal
 

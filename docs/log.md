@@ -289,3 +289,14 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   STATUS now shows the sanitizer result itself (91 programs, all clean).
 - **Study ops**: a Claude API rate limit stopped six wave-6 authors mid-task;
   their kits were set aside unscored and the authors rerun on fresh kits.
+
+## 2026-10-28 — repository layout
+
+- **One purpose per directory**, no behaviour change: the Rust bootstrap is the
+  `bootstrap/` package of a root Cargo workspace (binary still
+  `target/release/tenon`); the prelude and standard modules are `lib/prelude.tn`
+  and `lib/std/` (their displayed names stay `<prelude>` and `<std>/NAME.tn`);
+  the red-team report and repros are `tests/redteam/`. The 24 capability-escape
+  probes committed at the root by accident became tests: 18 in
+  `tests/reject/cap_probe_*`, 5 in `tests/run/cap_probe_*` (now guarded), one
+  repro (`tests/redteam/repros/25-*`). Entries above name the old paths.

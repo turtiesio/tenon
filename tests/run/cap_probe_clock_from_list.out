@@ -1,0 +1,3 @@
+exit: 70
+stderr: trap: index 0 out of bounds for length 0
+stderr:   at cap_probe_clock_from_list.tn:2:57

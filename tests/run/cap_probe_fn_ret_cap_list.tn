@@ -1,0 +1,2 @@
+// Capability probe: capabilities may be copied into a list and used from it; this grants nothing new.
+fn main(sys: Sys) { let xs = [sys.console, sys.console]; xs[0].println("a") }

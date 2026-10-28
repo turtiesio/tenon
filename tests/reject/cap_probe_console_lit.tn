@@ -1,0 +1,2 @@
+// error: 'Console' is not a struct
+fn main(sys: Sys) { let c = Console { }; c.println("x") }

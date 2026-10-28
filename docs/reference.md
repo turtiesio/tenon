@@ -3,7 +3,7 @@
 This is the single source document for the language. Together with the one-page
 docs/quickstart.md (a translation table from Python and TypeScript) it is the
 only documentation given to authors in the usability study, so it must be
-enough to write real programs. Builtin APIs are listed in the prelude (`src/prelude.tn` in the repository; `docs/prelude.tn` in a study kit),
+enough to write real programs. Builtin APIs are listed in the prelude (`lib/prelude.tn` in the repository; `docs/prelude.tn` in a study kit),
 which is ordinary Tenon source and the single source of the builtin API.
 
 Every claim here is checked by a test in `tests/` (run `./check`).
@@ -515,7 +515,7 @@ are lexical: they never touch the disk, and `..` is not resolved.
 
 ## 11. Builtin API
 
-See the prelude (`src/prelude.tn`, or `docs/prelude.tn` in a study kit) for the full list with signatures.
+See the prelude (`lib/prelude.tn`, or `docs/prelude.tn` in a study kit) for the full list with signatures.
 Highlights:
 
 - `Str`: `len byte slice find split lines words trim trim_start trim_end
@@ -779,8 +779,8 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   (`fn Str.trim`), or one that another module of the program also defines, is
   an error (`function 'Str.shout' is already defined`).
 - Standard library modules: `journal` (append-only, checksummed, crash-safe
-  record log) and `regex` (below). Their source is `std/journal.tn` and
-  `std/regex.tn` in the repository, `docs/std-journal.tn` and
+  record log) and `regex` (below). Their source is `lib/std/journal.tn` and
+  `lib/std/regex.tn` in the repository, `docs/std-journal.tn` and
   `docs/std-regex.tn` in a study kit; either way `import journal` and
   `import regex` find them.
 - `journal` has its own on-disk format: each record is one line
@@ -791,7 +791,7 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 
 ### `regex`
 
-Regular expressions, written in Tenon (`std/regex.tn`, or `docs/std-regex.tn`
+Regular expressions, written in Tenon (`lib/std/regex.tn`, or `docs/std-regex.tn`
 in a study kit; its header comment is the full specification). Matching is by backtracking, character by character over
 UTF-8; offsets are byte offsets.
 

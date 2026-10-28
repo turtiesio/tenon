@@ -8,3 +8,5 @@ tests/run/linear.tn
 tests/run/linear.out
 tests/run/exit_reserved.tn
 tests/run/exit_reserved.out
+tests/run/cap_probe_*.tn
+tests/run/cap_probe_*.out
