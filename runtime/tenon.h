@@ -722,7 +722,7 @@ TN_INCOMPARABLE(tn_Clock)
 /* ---------- derived codec: strict decoding (see seed/src/codec.rs) ---------- */
 
 typedef struct { const char *p; int64_t n, pos, err; } tn_dec;
-static bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out);
+static bool tn_utf8_valid(const char *p, int64_t n);
 static bool tn_str_to_int(tn_Str s, tn_Int *out);
 static bool tn_str_to_float(tn_Str s, tn_Float *out);
 static inline bool tn_dec_fail(tn_dec *d, int64_t at) {
@@ -832,10 +832,7 @@ static TN_UNUSED bool tn_Str_dec(tn_dec *d, tn_Str *out) {
         tn_buf_add(&b, &v, 1);
     }
     tn_Str r = tn_buf_finish(&b);
-    tn_buf chk = tn_buf_new();
-    bool valid = tn_utf8_lossy(r.p, r.len, &chk);
-    tn_free(chk.p);
-    if (!valid) { tn_Str_release(r); return tn_dec_fail(d, st); }
+    if (!tn_utf8_valid(r.p, r.len)) { tn_Str_release(r); return tn_dec_fail(d, st); }
     tn_buf q = tn_buf_new();
     tn_Str_show(&q, r, 0);
     if (!tn_dec_canon(d, &q, (tn_Str){d->p + st, d->pos - st, NULL}, st)) { tn_Str_release(r); return false; }
@@ -1353,11 +1350,16 @@ static inline TN_UNUSED tn_Int tn_str_byte(tn_Str s, tn_Int i, const char *loc) 
 static inline bool tn_is_boundary(tn_Str s, int64_t i) {
     return i == 0 || i == s.len || ((uint8_t)s.p[i] & 0xC0) != 0x80;
 }
-static TN_UNUSED tn_Str tn_str_slice(tn_Str s, tn_Int a, tn_Int b, const char *loc) {
+TN_NORETURN static TN_UNUSED void tn_str_slice_fail(tn_Str s, tn_Int a, tn_Int b, const char *loc) {
     if (a < 0 || b < a || b > s.len)
         tn_trapf(loc, "slice [%lld, %lld) out of bounds for length %lld", (long long)a, (long long)b, (long long)s.len);
-    if (!tn_is_boundary(s, a) || !tn_is_boundary(s, b))
-        tn_trapf(loc, "slice [%lld, %lld) is not on a character boundary", (long long)a, (long long)b);
+    tn_trapf(loc, "slice [%lld, %lld) is not on a character boundary", (long long)a, (long long)b);
+}
+/* Inline, the traps out of line: `out += s.slice(i, j)` is the inner loop of
+ * text processing (bench/mdhtml), and GCC -O2 otherwise calls it. */
+static inline TN_UNUSED tn_Str tn_str_slice(tn_Str s, tn_Int a, tn_Int b, const char *loc) {
+    if (TN_UNLIKELY(a < 0 || b < a || b > s.len || !tn_is_boundary(s, a) || !tn_is_boundary(s, b)))
+        tn_str_slice_fail(s, a, b, loc);
     return tn_str_view(s, a, b);
 }
 static TN_UNUSED int64_t tn_str_find(tn_Str s, tn_Str sub, int64_t from) {
@@ -1541,10 +1543,10 @@ static TN_UNUSED tn_Str tn_str_concat(tn_Str a, tn_Str b) {
     return (tn_Str){(const char *)(o + 1), a.len + b.len, o};
 }
 /* x += y. Appends in place when x is the only reference to its buffer and
- * starts at its beginning (amortized O(1)); otherwise copies. */
-static TN_UNUSED void tn_str_append(tn_Str *x, tn_Str y) {
+ * starts at its beginning (amortized O(1)); otherwise copies. The case with
+ * room left is inline (tn_str_append); growing or copying is not. */
+static TN_UNUSED void tn_str_append_slow(tn_Str *x, tn_Str y) {
     tn_rc *o = x->o;
-    if (y.len == 0) return;
     if (o && o->rc == 1 && x->p == (const char *)(o + 1) && y.o != o) {
         if (x->len + y.len > o->cap) {
             int64_t cap = o->cap * 2;
@@ -1562,6 +1564,16 @@ static TN_UNUSED void tn_str_append(tn_Str *x, tn_Str y) {
     tn_Str r = tn_str_concat(*x, y);
     tn_Str_release(*x);
     *x = r;
+}
+static inline TN_UNUSED void tn_str_append(tn_Str *x, tn_Str y) {
+    tn_rc *o = x->o;
+    if (y.len == 0) return;
+    if (o && o->rc == 1 && x->p == (const char *)(o + 1) && y.o != o && x->len + y.len <= o->cap) {
+        memcpy((char *)(o + 1) + x->len, y.p, (size_t)y.len);
+        x->len += y.len;
+        return;
+    }
+    tn_str_append_slow(x, y);
 }
 static TN_UNUSED tn_Int tn_str_char_count(tn_Str s) {
     tn_Int n = 0; /* code points: every byte that is not a UTF-8 continuation byte */
@@ -1614,41 +1626,60 @@ static TN_UNUSED tn_Int tn_float_to_int(tn_Float x, const char *loc) {
     return (tn_Int)x;
 }
 
+/* The index of the first byte >= 0x80 in s[i, n), or n; eight bytes at a time. */
+static inline int64_t tn_ascii_end(const unsigned char *s, int64_t i, int64_t n) {
+    for (; i + 8 <= n; i += 8) {
+        uint64_t w;
+        memcpy(&w, s + i, 8);
+        if (w & 0x8080808080808080ULL) break;
+    }
+    while (i < n && s[i] < 0x80) i++;
+    return i;
+}
+/* One UTF-8 sequence at s[i] (a byte >= 0x80): returns where it ends and sets
+ * *ok to whether it is valid; an invalid one is a maximal invalid subpart. */
+static int64_t tn_utf8_seq(const unsigned char *s, int64_t i, int64_t n, bool *ok) {
+    unsigned c = s[i];
+    int need;
+    unsigned lo = 0x80, hi = 0xBF;
+    if (c >= 0xC2 && c <= 0xDF) need = 1;
+    else if (c == 0xE0) { need = 2; lo = 0xA0; }
+    else if (c >= 0xE1 && c <= 0xEC) need = 2;
+    else if (c == 0xED) { need = 2; hi = 0x9F; }
+    else if (c >= 0xEE && c <= 0xEF) need = 2;
+    else if (c == 0xF0) { need = 3; lo = 0x90; }
+    else if (c >= 0xF1 && c <= 0xF3) need = 3;
+    else if (c == 0xF4) { need = 3; hi = 0x8F; }
+    else { *ok = false; return i + 1; }
+    int64_t j = i + 1;
+    int got = 0;
+    while (got < need && j < n) {
+        unsigned d = s[j];
+        if (got == 0 ? (d < lo || d > hi) : (d < 0x80 || d > 0xBF)) break;
+        j++, got++;
+    }
+    *ok = got == need;
+    return j;
+}
+/* Is p[0, n) valid UTF-8? Reads it without copying. */
+static bool tn_utf8_valid(const char *p, int64_t n) {
+    const unsigned char *s = (const unsigned char *)p;
+    bool ok = true;
+    for (int64_t i = tn_ascii_end(s, 0, n); i < n && ok; i = tn_ascii_end(s, i, n))
+        i = tn_utf8_seq(s, i, n, &ok);
+    return ok;
+}
 /* Decode UTF-8, replacing each maximal invalid subpart with U+FFFD (as Rust's
  * String::from_utf8_lossy does). Returns false if the input was invalid. */
 static TN_UNUSED bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out) {
     bool ok = true;
-    int64_t i = 0, run = 0; /* bytes [run, i) are valid and not yet copied */
+    int64_t run = 0; /* bytes [run, i) are valid and not yet copied */
     const unsigned char *s = (const unsigned char *)p;
     tn_buf_grow(out, n);
-    while (i < n) {
-        unsigned c = s[i];
-        int need;
-        unsigned lo = 0x80, hi = 0xBF;
-        if (c < 0x80) { i++; continue; }
-        else if (c >= 0xC2 && c <= 0xDF) need = 1;
-        else if (c == 0xE0) { need = 2; lo = 0xA0; }
-        else if (c >= 0xE1 && c <= 0xEC) need = 2;
-        else if (c == 0xED) { need = 2; hi = 0x9F; }
-        else if (c >= 0xEE && c <= 0xEF) need = 2;
-        else if (c == 0xF0) { need = 3; lo = 0x90; }
-        else if (c >= 0xF1 && c <= 0xF3) need = 3;
-        else if (c == 0xF4) { need = 3; hi = 0x8F; }
-        else {
-            tn_buf_add(out, (const char *)s + run, i - run);
-            tn_buf_add(out, "\xEF\xBF\xBD", 3);
-            ok = false;
-            run = ++i;
-            continue;
-        }
-        int64_t j = i + 1;
-        int got = 0;
-        while (got < need && j < n) {
-            unsigned d = s[j];
-            if (got == 0 ? (d < lo || d > hi) : (d < 0x80 || d > 0xBF)) break;
-            j++, got++;
-        }
-        if (got != need) {
+    for (int64_t i = tn_ascii_end(s, 0, n); i < n; i = tn_ascii_end(s, i, n)) {
+        bool v;
+        int64_t j = tn_utf8_seq(s, i, n, &v);
+        if (!v) {
             tn_buf_add(out, (const char *)s + run, i - run);
             tn_buf_add(out, "\xEF\xBF\xBD", 3);
             ok = false;
@@ -1711,17 +1742,6 @@ found:;
     tn_utf8_lossy(tn_in_buf + tn_in_pos, end - tn_in_pos, &b);
     tn_in_pos = next;
     *out = tn_buf_finish(&b);
-    return true;
-}
-static bool tn_utf8_valid(const char *p, int64_t n) {
-    tn_buf scratch = {0};
-    for (int64_t i = 0; i < n; i++)
-        if ((unsigned char)p[i] >= 0x80) {
-            scratch = tn_buf_new();
-            bool ok = tn_utf8_lossy(p + i, n - i, &scratch);
-            tn_free(scratch.p);
-            return ok;
-        }
     return true;
 }
 static tn_Str tn_read_all_u(void) {
@@ -1937,10 +1957,7 @@ static TN_UNUSED int tn_fs_read(tn_Fs f, tn_Str p, tn_Str *res, tn_Str *msg) {
         tn_buf_add(&b, chunk, r);
     }
     close(fd);
-    tn_buf chk = tn_buf_new();
-    bool valid = tn_utf8_lossy(b.p + sizeof(tn_rc), b.len, &chk);
-    tn_free(chk.p);
-    if (!valid) {
+    if (!tn_utf8_valid(b.p + sizeof(tn_rc), b.len)) {
         tn_free(b.p);
         *msg = tn_io_msg(TN_IO_FAILED, p, "invalid UTF-8");
         tn_free(pb.p);

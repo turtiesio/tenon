@@ -262,6 +262,16 @@ balanced tree but an if/else chain to a sequence of tests: bench/mdhtml's
 runs such chains on both backends, and ops/gates/cli_test.sh checks which of
 its functions get a switch.
 
+The runtime's text primitives matter for the same benchmark (runtime/tenon.h;
+the same C for `emit` and `build`, since the seed embeds this file): reading
+input checks UTF-8 without copying it (`tn_utf8_valid`, eight bytes at a time
+while they are ASCII; `read_all` used to decode the whole input into a scratch
+buffer), and `tn_str_slice` and the in-place case of `tn_str_append` are
+inline with their traps and slow paths out of line (GCC -O2 called them in
+the `out += s.slice(i, j)` loops). bench/mdhtml on GitHub ubuntu/gcc 13,
+before and after on one runner: 1.57-1.63x the time of C, then 1.17-1.22x
+(issue #6; macOS/clang 1.20x, then 1.14x).
+
 ### Fidelity rules that matter for identical C
 
 - Every fresh name (`t12`, `r3`, `f_main_4`, `t7_Point`) comes from one
