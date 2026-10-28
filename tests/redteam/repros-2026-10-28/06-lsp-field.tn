@@ -1,0 +1,8 @@
+struct Point {
+    // x is the coordinate.
+    x: Int,
+}
+fn main(sys: Sys) {
+    let p = Point { x: 1 }
+    sys.console.println("{p.x}")
+}

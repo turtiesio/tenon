@@ -1,0 +1,1 @@
+fn main(sys: Sys) { sys.console.println(INT_MIN.fmt_fixed(2)) }

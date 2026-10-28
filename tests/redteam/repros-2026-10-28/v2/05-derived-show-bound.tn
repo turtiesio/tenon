@@ -1,0 +1,3 @@
+struct Box { c: Console }
+fn show[T: Show](x: T) -> Str { x.to_str() }
+fn main(sys: Sys) { sys.console.println(show(Box { c: sys.console })) }

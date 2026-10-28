@@ -1,0 +1,3 @@
+struct Box[T] { x: T }
+impl[T: Hash] Show for Box[T] { fn to_str(self) -> Str { "hashable" } }
+fn main(sys: Sys) { sys.console.println("{Box { x: 1.5 }}") }
