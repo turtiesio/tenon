@@ -15,12 +15,18 @@ base freezes and adds files HEAD freezes, so both need the approval and the
 line count is compared across the rename). A guarded file deleted while the
 same content is added at a path HEAD guards is a rename, not a weakening.
 
+A `theorems GLOB` line guards the theorem statements of Lean files (formal/,
+tenon.md §6): a statement that the change alters or removes (and that no
+file under such a line still states, word for word) needs an approval line
+naming the file, like a weakened test; proofs may change, theorems may be
+added.
+
 With --pr (CI on pull requests, docs/dev/automation.md) approvals come only
 from the owner, so the change may not touch the approvals log at all, may
 only add lines to ops/governance/guarded.txt, and may not change a path under an
 `owner GLOB` line (the gate, this checker, CI): such a change needs the owner.
 """
-import fnmatch, os, subprocess, sys
+import fnmatch, os, re, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG = "ops/governance/approvals.log"
@@ -63,6 +69,49 @@ def frozen_growth(base, paths):
     return grew
 
 
+def strip_lean_comments(text):
+    out, i, depth = [], 0, 0
+    while i < len(text):
+        if text.startswith("/-", i):
+            depth, i = depth + 1, i + 2
+        elif depth and text.startswith("-/", i):
+            depth, i = depth - 1, i + 2
+        elif depth:
+            i += 1
+        elif text.startswith("--", i):
+            j = text.find("\n", i)
+            i = len(text) if j < 0 else j
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out)
+
+
+def statements(text):
+    """The theorem statements of a Lean file: {name: statement}, the text from
+    the name to the `:=` that ends the statement (outside brackets), comments
+    dropped and whitespace normalized."""
+    src = strip_lean_comments(text or "")
+    found = {}
+    for m in re.finditer(r"(?<![\w.])theorem\s+([^\s(\[{:]+)", src):
+        depth, i = 0, m.end()
+        while i < len(src):
+            c = src[i]
+            if c in "([{⟨":
+                depth += 1
+            elif c in ")]}⟩":
+                depth -= 1
+            elif depth == 0 and src.startswith(":=", i):
+                break
+            i += 1
+        found[m.group(1)] = " ".join(src[m.end():i].split())
+    return found
+
+
+def tree(rev):
+    return [p for p in git("ls-tree", "-r", "--name-only", rev).splitlines() if p]
+
+
 def rules_of(text):
     return [l.strip() for l in (text or "").splitlines() if l.strip() and not l.startswith("#")]
 
@@ -75,10 +124,13 @@ def main():
     head_rules = rules_of(show("HEAD", GUARDED))
     base_rules = rules_of(at_base(base, GUARDED))
     rules = head_rules + [r for r in base_rules if r not in head_rules]
-    head_globs = [r for r in head_rules if not r.startswith(("frozen ", "owner "))]
+    kinds = ("frozen ", "owner ", "theorems ")
+    head_globs = [r for r in head_rules if not r.startswith(kinds)]
     frozen = [r[len("frozen "):].strip() for r in rules if r.startswith("frozen ")]
     owner = [r[len("owner "):].strip() for r in rules if r.startswith("owner ")]
-    globs = [r for r in rules if not r.startswith(("frozen ", "owner "))]
+    theorems = [r[len("theorems "):].strip() for r in rules if r.startswith("theorems ")]
+    head_theorems = [r[len("theorems "):].strip() for r in head_rules if r.startswith("theorems ")]
+    globs = [r for r in rules if not r.startswith(kinds)]
     problems = []
     old_log = at_base(base, LOG) or ""
     new_log = show("HEAD", LOG) or ""
@@ -108,6 +160,18 @@ def main():
         if status == "A":
             added_as.setdefault(new_blob, []).append(path)
     frozen_changed = []
+    # every statement HEAD still states in a file it guards (a theorem may move between them)
+    stated = set()
+    for path in tree("HEAD"):
+        if any(fnmatch.fnmatch(path, g) for g in head_theorems):
+            stated.update(statements(show("HEAD", path)).items())
+    for status, path, _, _ in changed:
+        if status == "A" or not any(fnmatch.fnmatch(path, g) for g in theorems):
+            continue
+        lost = [n for n, st in statements(show(base, path)).items() if (n, st) not in stated]
+        if lost and path not in approved:
+            problems.append(f"{path}: theorem statement changed or removed ({', '.join(lost)});"
+                            f" add an approval line to {LOG}")
     for status, path, old_blob, _ in changed:
         if pr and any(fnmatch.fnmatch(path, g) for g in owner):
             problems.append(f"{path}: changes need the owner (`owner` in {GUARDED}); not in a pull request")

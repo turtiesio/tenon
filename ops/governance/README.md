@@ -29,7 +29,14 @@ Start minimal; grow only from incidents (tenon.md §2.5).
    the old and the new paths, and the line count is compared across it; a
    guarded test moved unchanged to a path that is still guarded is not a
    weakening. Its test: `ops/gates/approvals_test.sh`.
-4. **Mutation testing** is evidence, not a gate (`ops/evidence/mutate.py`; survivors
+4. **Theorem statements.** `theorems GLOB` lines in
+   `ops/governance/guarded.txt` (`theorems formal/TenonCore/Theorems.lean`,
+   tenon.md §6) guard the statements of Lean theorems: a change that alters
+   or removes a statement (the text from the theorem's name to its `:=`,
+   comments and layout ignored) that no guarded file still states needs an
+   approval line naming the file, as a weakened test does. Proofs may change
+   and theorems may be added freely. Its test: `ops/gates/approvals_test.sh`.
+5. **Mutation testing** is evidence, not a gate (`ops/evidence/mutate.py`; survivors
    go to .evidence/mutation.json as tasks).
 
 Mechanisms added from incidents:

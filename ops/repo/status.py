@@ -56,13 +56,14 @@ PATTERNS = {
     "pkg": r"pkg: ok \((\d+) checks",
     "doctest": r"doctest: (\d+) doc program\(s\) checked, (\d+) failed",
     "approvals": r"approvals_test: refuses .* \((\d+) scenarios\)",
+    "formal": r"formal_check: formal/ builds; no sorry; (\d+) guarded theorems",
 }
 
 
 def excerpt(tool, needle, n=6):
     """The lines of TOOL's last output (.evidence/NAME.log, ops/evidence/evidence.sh) from the first one naming NEEDLE."""
     name = {"ops/evidence/asan.sh": "asan", "ops/evidence/tsan.sh": "tsan", "ops/evidence/interp_diff.py": "interp_diff",
-            "ops/evidence/checkfuzz.py": "checkfuzz"}[tool]
+            "ops/evidence/checkfuzz.py": "checkfuzz", "ops/gates/formal_diff.py": "formal_diff"}[tool]
     p = os.path.join(EV, name + ".log")
     out = open(p, errors="replace").read().splitlines() if os.path.exists(p) else []
     i = next((i for i, l in enumerate(out) if needle in l), None)
@@ -180,6 +181,7 @@ def main():
     sizes = {k: sum(n for _, n in v) for k, v in groups.items()}
     fuzz, mut, asan, tsan = load("fuzz.json"), load("mutation.json"), load("asan.json"), load("tsan.json")
     idiff, cfuzz, seedt = load("interp_diff.json"), load("checkfuzz.json"), load("seed_test.json")
+    fdiff = load("formal_diff.json")
     bench, par = load("bench.json"), load("bench_parallel.json")
     wave, rows = latest_wave()
     usab = study.summarize(rows) if rows else None
@@ -218,7 +220,8 @@ def main():
     w(f"- doc programs: {g('doctest', 1)} compile (`ops/gates/doctest.py`); formatter: {g('fmt', 1)} files canonical,"
       f" {g('fmt', 2)} skipped, {g('fmt', 4)} problems (`ops/gates/fmt_check.sh`); packages: {g('pkg', 1)} checks (`ops/gates/pkg_test.sh`);"
       f" language server: {'ok' if got['lsp'] else '?'} (`ops/gates/lsp_test.py`); editor grammar: {g('grammar', 1)} files"
-      f" (`ops/gates/vscode_grammar_check.py`); approvals checker: {g('approvals', 1)} scenarios (`ops/gates/approvals_test.sh`)")
+      f" (`ops/gates/vscode_grammar_check.py`); approvals checker: {g('approvals', 1)} scenarios (`ops/gates/approvals_test.sh`);"
+      f" proofs: {g('formal', 1)} guarded theorems check (`ops/gates/formal_check.sh`)")
 
     w("\n## Evidence on main (`ops/evidence/evidence.sh`)\n")
     if fuzz:
@@ -262,6 +265,15 @@ def main():
                 f"```\n{excerpt('ops/evidence/interp_diff.py', f)}\n```")
     else:
         w("- seed's interpreter vs tenon's: not run yet (`ops/evidence/interp_diff.py`)")
+    if fdiff:
+        w(f"- Lean core semantics vs `tenon run` (formal/README.md): {fdiff['subset']} of {fdiff['programs']} corpus programs in"
+          f" the core's subset; {fdiff['same']} agree, {fdiff['diff']} differ, {fdiff.get('stuck', 0)} accepted by the checker"
+          f" but stuck in the core ({when(fdiff)}; `ops/gates/formal_diff.py`)")
+        for f in fdiff.get("differ", []) + fdiff.get("stuck_files", []):
+            reg(f"formal_diff:{f}", f"formal_diff: the Lean core and `tenon run` disagree on {f}",
+                f"```\n{excerpt('ops/gates/formal_diff.py', f)}\n```")
+    else:
+        w("- Lean core semantics vs `tenon run`: not run yet (`ops/gates/formal_diff.py`)")
     if cfuzz:
         w(f"- seed's checker and emitter vs tenon's on {cfuzz['mutants']} mutated corpus programs: {cfuzz['disagreements']} disagreements"
           f" ({when(cfuzz)}; `ops/evidence/checkfuzz.py N`)")

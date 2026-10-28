@@ -1,0 +1,22 @@
+name = "tenon-formal"
+version = "0.1.0"
+defaultTargets = ["TenonCore", "Front", "tenon-core"]
+
+# The core calculus, its evaluator and the proofs (formal/README.md).
+# Built by the gate: no `sorry`, no axioms beyond Lean's standard three
+# (ops/gates/formal_check.sh).
+[[lean_lib]]
+name = "TenonCore"
+
+# The translator from `tenon ast` dumps to the core (not part of the proofs).
+[[lean_lib]]
+name = "Front"
+
+# Unfinished statements (tracked in formal/README.md, "TODO"). Not a default
+# target: the gate does not build it, and it may contain `sorry`.
+[[lean_lib]]
+name = "Todo"
+
+[[lean_exe]]
+name = "tenon-core"
+root = "Main"

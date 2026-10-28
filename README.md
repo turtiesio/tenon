@@ -39,6 +39,7 @@ have (traits, workers) are used only under `v2/` directories.
 - [docs/dev/testing.md](docs/dev/testing.md): what `./check` runs, the test directories, adding a test, guarded tests, the evidence loop.
 - [docs/dev/automation.md](docs/dev/automation.md): what runs unattended on GitHub (nightly evidence, the weekly reviews, the fixer), the issue queue, and how agents' pull requests are guarded.
 - [docs/dev/cleanup_plan.md](docs/dev/cleanup_plan.md): the cleanup audit and its batches.
+- [formal/README.md](formal/README.md): Tenon Core in Lean 4: capability safety, obligation soundness and worker isolation proved; the core's evaluator run against `tenon run` on the corpus.
 
 ## Layout
 
@@ -56,6 +57,7 @@ tests/        run/ reject/ (both backends), lex/ parse/ selfhost/ (against the s
 programs/     real programs with scenario tests (ops/gates/programs.sh); v2/ (scan, with workers)
 bench/        benchmarks against C, Rust, Python, TypeScript (ops/evidence/bench.py); v2/ parallel ones
 docs/         user docs (quickstart, reference, library, tools, packages), the decision log; dev/ for contributors
+formal/       the formal track in Lean 4 (formal/README.md): the core calculus, its evaluator, the proofs, the translator
 editors/      vscode/: syntax highlighting and a language-server client, no build step
 ops/          the process, in one place (tenon.md §6); corpus.py: the corpus and the binaries, for every tool
   gates/        the steps of ./check, with the lists they read (fmt_skip.txt, doclinks_ignore.txt)

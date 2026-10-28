@@ -9,3 +9,4 @@ __pycache__/
 
 # Study fixtures deliberately named *.tmp (stale temp files the tasks must handle)
 !evidence/study/**/setup/**/*.tmp
+/formal/.lake

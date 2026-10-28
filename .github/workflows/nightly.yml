@@ -33,6 +33,18 @@ jobs:
         with:
           ref: main
       - uses: dtolnay/rust-toolchain@stable
+      # the Lean toolchain for formal/ (ops/gates/formal_check.sh, ops/gates/formal_diff.py); as in ci.yml
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.elan
+            formal/.lake
+          key: lean-${{ runner.os }}-${{ hashFiles('formal/lean-toolchain') }}-${{ hashFiles('formal/**/*.lean', 'formal/lakefile.toml') }}
+          restore-keys: lean-${{ runner.os }}-${{ hashFiles('formal/lean-toolchain') }}-
+      - name: Lean toolchain (formal/lean-toolchain)
+        run: |
+          [ -x "$HOME/.elan/bin/elan" ] || curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       # .evidence/ carries the running totals and the history between nights
       - uses: actions/cache/restore@v4
         with:

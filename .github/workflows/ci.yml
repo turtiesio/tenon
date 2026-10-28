@@ -22,6 +22,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # The proof gate (ops/gates/formal_check.sh): elan installs the toolchain
+      # pinned in formal/lean-toolchain; the toolchain and formal/.lake are cached.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.elan
+            formal/.lake
+          key: lean-${{ runner.os }}-${{ hashFiles('formal/lean-toolchain') }}-${{ hashFiles('formal/**/*.lean', 'formal/lakefile.toml') }}
+          restore-keys: lean-${{ runner.os }}-${{ hashFiles('formal/lean-toolchain') }}-
+      - name: Lean toolchain (formal/lean-toolchain)
+        run: |
+          [ -x "$HOME/.elan/bin/elan" ] || curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
       - name: check --fast
         run: ./check --fast
   trailers:

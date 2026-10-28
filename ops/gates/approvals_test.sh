@@ -64,5 +64,23 @@ echo "more" >> ops/governance/README.md && git commit -qam "edit an owner path"
 expect REFUSE "a pull request that changes a path under an owner rule" --pr
 echo "// x" > tests/new_guard.tn && echo "tests/new_guard.tn" >> ops/governance/guarded.txt && git add -A && git commit -qm "guard a new regression test"
 expect OK "a pull request that adds a guarded regression test" --pr
-[ $fail = 0 ] && echo "approvals_test: refuses unapproved weakening, unapproved or growing changes to the frozen seed (renames included), and self-approval in pull requests (19 scenarios)"
+# theorem statements (`theorems GLOB`, formal/): a changed or removed statement needs an approval
+thm=formal/TenonCore/Theorems.lean
+mkdir -p "$(dirname "$thm")"
+printf '%s\n' '/-- doc -/' 'theorem keep (n : Nat) (h : 0 < n) : n ≠ 0 := by omega' \
+  'theorem other : True := trivial' > "$thm"
+grep -q "^theorems $thm" ops/governance/guarded.txt || echo "theorems $thm" >> ops/governance/guarded.txt
+git add -A && git commit -qm "a guarded theorem file"
+base=$(git rev-parse HEAD)
+sed -i.bak 's/(h : 0 < n) : n ≠ 0/(h : 1 < n) : n ≠ 0/' "$thm" && rm -f "$thm.bak" && git commit -qam "strengthen a hypothesis"
+expect REFUSE "changing a guarded theorem statement without approval"
+sed -i.bak '/^theorem other/d' "$thm" && rm -f "$thm.bak" && git commit -qam "drop a theorem"
+expect REFUSE "removing a guarded theorem without approval"
+sed -i.bak 's/:= by omega/:= by\n  omega/' "$thm" && rm -f "$thm.bak" && echo "-- a comment" >> "$thm" && git commit -qam "proof and layout only"
+expect OK "changing a guarded theorem's proof, comments and layout"
+echo 'theorem more : 1 = 1 := rfl' >> "$thm" && git commit -qam "a new theorem"
+expect OK "adding a theorem to a guarded file"
+sed -i.bak 's/(h : 0 < n)/(h : 1 < n)/' "$thm" && rm -f "$thm.bak" && echo "2026-10-28 | tester | $thm | statement intentionally changed" >> ops/governance/approvals.log && git commit -qam "approved change"
+expect OK "changing a guarded theorem statement with an approval line"
+[ $fail = 0 ] && echo "approvals_test: refuses unapproved weakening, unapproved or growing changes to the frozen seed (renames included), changed theorem statements, and self-approval in pull requests (24 scenarios)"
 exit $fail

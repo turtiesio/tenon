@@ -35,4 +35,5 @@ step "selfhost (seed cross-check, fixpoint)" ops/gates/selfhost.sh
 step "fmt_check" ops/gates/fmt_check.sh
 step "lsp_test" python3 ops/gates/lsp_test.py
 step "approvals_test" ops/gates/approvals_test.sh
+step "formal (lake build, no sorry)" ops/gates/formal_check.sh
 report

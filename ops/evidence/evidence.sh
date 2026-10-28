@@ -39,6 +39,7 @@ ev seed_test 1 "$SEED" test tests
 tail -1 .evidence/seed_test.log |
   python3 -c 'import sys; sys.path.insert(0, "ops"); import corpus; corpus.record("seed_test", {"summary": sys.stdin.read().strip()})'
 ev interp_diff 3 python3 ops/evidence/interp_diff.py
+ev formal_diff 3 python3 ops/gates/formal_diff.py
 ev checkfuzz 3 python3 ops/evidence/checkfuzz.py "${CHECKFUZZ_N:-500}" "$seed"
 ev mutation 6 nice -n 15 python3 ops/evidence/mutate.py "${MUTATE_N:-20}" "$seed"
 ev bench 100 env BENCH_RUNS="${BENCH_RUNS:-5}" python3 ops/evidence/bench.py

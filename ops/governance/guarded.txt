@@ -54,6 +54,9 @@ tests/v2/run/linear_inflight_ok.tn
 tests/v2/run/linear_inflight_ok.out
 tests/run/net_drop_closes.tn
 tests/run/net_drop_closes.out
+# The guarantees as Lean theorems (tenon.md §6, formal/README.md): changing or
+# removing a theorem statement needs an approval line, like weakening a test.
+theorems formal/TenonCore/Theorems.lean
 # The bootstrap is a frozen seed (tenon.md §5): any change to it needs an
 # approval line, and its line count may only shrink (ops/repo/approvals.py).
 frozen seed/*

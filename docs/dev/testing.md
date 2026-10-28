@@ -40,6 +40,7 @@ far. The binaries are passed to the tools as `$SEED`, `$TENON0` and
 | `ops/gates/fmt_check.sh` | the corpus is formatted (except `ops/gates/fmt_skip.txt`), formatting is idempotent and keeps the syntax tree, the `tests/fmt` goldens |
 | `ops/gates/lsp_test.py` | scripted language-server sessions on `tests/lsp` and `tests/v2/lsp`, the JSON tests, the VS Code client (with node) |
 | `ops/gates/approvals_test.sh` | the approvals checker refuses real weakenings and changes to the frozen seed |
+| `ops/gates/formal_check.sh` | `lake build` of formal/ (the Lean core, its evaluator and every proof) succeeds, no built file uses `sorry` or adds an axiom, and the guarded theorems depend only on Lean's standard axioms (below) |
 
 `ops/repo/land.sh` also runs `python3 ops/repo/approvals.py origin/main` before
 the check (ops/governance/README.md); CI runs `ops/repo/approvals.py --pr` on pull
@@ -109,6 +110,30 @@ any change to the frozen seed (`seed/`), whose line count may only
 shrink. `ops/repo/approvals.py` enforces this on every landing; the rules are
 in [ops/governance/README.md](../../ops/governance/README.md).
 
+## The formal track
+
+formal/ is a Lean 4 project (tenon.md §6, [formal/README.md](../../formal/README.md)): Tenon Core, a
+core calculus with a computable evaluator, and proofs about it of capability
+safety, obligation soundness (each linear value consumed exactly once,
+unique values never duplicated) and worker isolation. The toolchain is
+pinned in `formal/lean-toolchain`; elan installs it (CI caches it).
+
+- `ops/gates/formal_check.sh` (a `./check` step) builds formal/ and fails on
+  a proof that no longer checks, on `sorry`, `admit` or a new `axiom` in a
+  built file, and on a guarded theorem that depends on an axiom beyond
+  `propext`, `Classical.choice` and `Quot.sound` (`formal/Axioms.lean`).
+  Statements that are not proved yet live in `formal/Todo/`, which the gate
+  does not build.
+- The statements in `formal/TenonCore/Theorems.lean` are guarded like tests
+  (`theorems` in `ops/governance/guarded.txt`): changing or removing one needs
+  an approval line ([ops/governance/README.md](../../ops/governance/README.md)).
+- `ops/gates/formal_diff.py` (the evidence loop) runs the corpus through
+  `tenon ast`, the Lean translator and the core's evaluator, and compares the
+  output and exit status with `tenon run`; programs that use what the core does
+  not model are counted as outside the subset. Every disagreement, and every
+  accepted program on which the core gets stuck, is a finding
+  (tests/redteam/, `FINDINGS-DATE-formal.md`).
+
 ## Doc checks
 
 - `ops/gates/doctest.py [DOC...]`: whole programs in the user docs compile.
@@ -139,6 +164,7 @@ does, and runs, each writing `.evidence/NAME.json` (`corpus.record`):
 | `ops/gates/fmt_check.sh --all` | meaning preserved on every file, not only the ones formatting changes |
 | `tenon-seed test tests` | the seed's own run of the v1 suite (a reference for its interpreter) |
 | `ops/evidence/interp_diff.py` | the seed's interpreter and `tenon run` on every corpus file: the same output, errors and exit status |
+| `ops/gates/formal_diff.py` | the Lean core's evaluator and `tenon run` on every corpus program the core covers: the same output and exit status; and no program `tenon check` accepts gets stuck in the core (below) |
 | `ops/evidence/checkfuzz.py N SEED` | token-level mutants of corpus programs: both checkers print the same first line, accepted mutants emit the same C (disagreements in `.evidence/checkfuzz/`) |
 | `ops/evidence/mutate.py N SEED` | mutants of the trusted compile path and the runtime; survivors (the tests did not notice) become tasks |
 | `ops/evidence/bench.py` | the benchmarks against C, Rust, Python and TypeScript (`--parallel`: the worker speedups) |
