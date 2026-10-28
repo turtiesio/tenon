@@ -1,0 +1,23 @@
+// Proc: running commands and reading the environment. Only main's Sys has
+// one; a function that runs commands says so in its signature.
+fn run(p: Proc, cmd: Str, args: List[Str]) -> Str {
+    match p.run(cmd, args) {
+        Ok(code) => "exit {code}",
+        Err(e) => "error {e}",
+    }
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let p = sys.proc
+    con.println("before")                                         // flushed before the child runs
+    con.println(run(p, "sh", ["-c", "echo from the child; exit 3"]))
+    con.println(run(p, "sh", ["-c", "exit 0"]))
+    con.println(run(p, "true", []))
+    con.println(run(p, "tenon-no-such-command", ["x"]))
+    con.println(run(p, "/etc/hosts", []))                         // not executable
+    con.println(run(p, "sh", ["-c", "kill -9 $$"]))
+    con.println(run(p, "sh", ["-c", "echo a\0b"]))
+    con.println("{p} {p.env("") } {p.env("A=B")} {p.env("TENON_SURELY_UNSET_VARIABLE")}")
+    con.println("{p.env("PATH").is_some()}")
+}

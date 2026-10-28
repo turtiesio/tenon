@@ -19,14 +19,14 @@ pub fn builtin_arity(n: Str) -> Int {
         "Int" | "Float" | "Bool" | "Str" | "Unit" => 0,
         "List" => 1,
         "Map" => 2,
-        "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" | "Poller" => 0,
+        "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" | "Poller" | "Proc" => 0,
         _ => -1,
     }
 }
 pub fn is_builtin(n: Str) -> Bool { builtin_arity(n) >= 0 }
 pub fn is_capability(n: Str) -> Bool {
     match n {
-        "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" | "Poller" => true,
+        "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" | "Poller" | "Proc" => true,
         _ => false,
     }
 }

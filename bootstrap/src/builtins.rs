@@ -112,6 +112,32 @@ impl<'a> Interp<'a> {
             (n, _) => panic!("interp: missing mutating builtin {}", n),
         }
     }
+    // Proc.run: the exit status of `cmd args...`, sharing the standard streams.
+    fn proc_run(&mut self, cmd: &str, args: &V) -> V {
+        let V::List(xs) = args else { unreachable!() };
+        let args: Vec<String> = xs.iter().map(|x| match x {
+            V::Str(s) => s.to_string(),
+            _ => unreachable!(),
+        }).collect();
+        if cmd.contains('\0') || args.iter().any(|a| a.contains('\0')) {
+            return self.io_err("Failed", format!("{}: argument contains a NUL byte", cmd));
+        }
+        let _ = self.out.flush();
+        match std::process::Command::new(cmd).args(&args).status() {
+            Ok(st) => match st.code() {
+                Some(c) => self.ok(V::Int(c as i64)),
+                None => {
+                    use std::os::unix::process::ExitStatusExt;
+                    self.io_err("Failed", format!("{}: terminated by signal {}", cmd, st.signal().unwrap_or(0)))
+                }
+            },
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::NotFound => self.io_err("NotFound", cmd.to_string()),
+                std::io::ErrorKind::PermissionDenied => self.io_err("Denied", cmd.to_string()),
+                _ => self.io_err("Failed", format!("{}: {}", cmd, os_msg(&e))),
+            },
+        }
+    }
     fn io_err(&self, kind: &str, msg: String) -> V {
         let e = self.variant("IoError", kind, vec![V::Str(msg.into())]);
         self.variant("Result", "Err", vec![e])
@@ -364,6 +390,12 @@ impl<'a> Interp<'a> {
             n if n.starts_with("Fs.") => return self.fs_op(n, &args, sp),
             n if n.starts_with("Poller.") || n == "Net.poller" => return Ok(self.poller_op(n, &args)),
             n if n.starts_with("Net.") || n.starts_with("Listener.") || n.starts_with("Conn.") => return Ok(self.net_op(n, &args)),
+            "Proc.run" => return Ok(self.proc_run(s(1), &a[2])),
+            "Proc.env" => {
+                let n = s(1);
+                let v = if n.is_empty() || n.contains('=') || n.contains('\0') { None } else { std::env::var_os(n) };
+                self.opt(v.map(|x| strv(&x.to_string_lossy())))
+            }
             "Clock.now_ms" => Int(std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)

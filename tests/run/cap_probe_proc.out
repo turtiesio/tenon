@@ -1,0 +1,12 @@
+before
+from the child
+exit 3
+exit 0
+exit 0
+error NotFound("tenon-no-such-command")
+error Denied("/etc/hosts")
+error Failed("sh: terminated by signal 9")
+error Failed("sh: argument contains a NUL byte")
+<Proc> None None None
+true
+exit: 0

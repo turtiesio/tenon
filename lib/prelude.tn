@@ -8,7 +8,7 @@ enum Result[T, E] { Ok(T), Err(E) }
 enum IoError { NotFound(Str), Denied(Str), Failed(Str) }
 
 // The authority a program starts with; only `main` receives one.
-pub struct Sys { pub console: Console, pub fs: Fs, pub clock: Clock, pub net: Net, pub args: List[Str] }
+pub struct Sys { pub console: Console, pub fs: Fs, pub clock: Clock, pub net: Net, pub proc: Proc, pub args: List[Str] }
 
 extern fn panic[T](msg: Str) -> T
 extern fn assert(cond: Bool)
@@ -645,3 +645,16 @@ extern fn Poller.close(self, id: Int)
 extern fn Clock.now_ms(self) -> Int
 extern fn Clock.mono_ns(self) -> Int
 extern fn Clock.sleep_ms(self, ms: Int)
+
+// Processes. `Proc` is full authority over the machine (a command can do
+// anything the user can), so pass it only to the code that must run commands.
+// run(cmd, args): runs `cmd` (looked up in PATH when it has no '/') with
+// `args`, sharing standard input, output and error; standard output is
+// flushed first. Waits and gives the exit status. NotFound(cmd) if there is
+// no such program, Denied(cmd) if it is not executable, Failed("cmd: ...")
+// otherwise (also when it is killed by a signal, or an argument contains a
+// NUL byte).
+extern fn Proc.run(self, cmd: Str, args: List[Str]) -> Result[Int, IoError]
+// The environment variable `name` (None if unset, or if `name` is empty or
+// contains '=' or a NUL byte); invalid UTF-8 becomes U+FFFD.
+extern fn Proc.env(self, name: Str) -> Option[Str]

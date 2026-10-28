@@ -96,7 +96,7 @@
         { "name": "variable.other.enummember.tenon", "match": "\\b(Some|None|Ok|Err)\\b" },
         { "name": "variable.other.constant.tenon", "match": "\\b[A-Z][A-Z0-9_]*[A-Z0-9]\\b" },
         { "name": "support.type.builtin.tenon", "match": "\\b(Int|Float|Bool|Str|Unit|List|Map|Set|Option|Result|IoError|Sys)\\b" },
-        { "name": "support.type.capability.tenon", "match": "\\b(Console|Fs|Clock|Net|Listener|Conn|Poller)\\b" },
+        { "name": "support.type.capability.tenon", "match": "\\b(Console|Fs|Clock|Net|Proc|Listener|Conn|Poller)\\b" },
         {
           "comment": "A capitalized name before ( is a variant (constructor or pattern); before => or | it is a payload-free variant in a match arm.",
           "name": "variable.other.enummember.tenon",

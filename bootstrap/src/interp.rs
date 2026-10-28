@@ -352,6 +352,7 @@ impl<'a> Interp<'a> {
             V::Cap(Rc::new(Cap::Fs { root: String::new(), attenuated: false, writable: true })),
             V::Cap(Rc::new(Cap::Clock)),
             V::Cap(Rc::new(Cap::Net)),
+            V::Cap(Rc::new(Cap::Proc)),
             args,
         ]))
     }
