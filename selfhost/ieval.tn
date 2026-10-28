@@ -37,6 +37,7 @@ pub unique struct Interp {
     pub net_state: icap.NetState,
     pub bp: Poller, pub pp0: Poller, pub pp1: Poller, pub pp2: Poller, pub pp3: Poller,
     pub wk: iwork.Sched,
+    pub bis: List[ibuiltin.Bi], pub mbis: List[ibuiltin.MutOp], // the builtins numbered by icode.lower
 }
 
 pub fn trap[T](msg: Str, sp: ckast.Span) -> Result[T, Ctl] { Err(CTrap(msg, sp)) }
@@ -182,7 +183,7 @@ pub enum MOp {
     MSet(ival.Val),
     MTake,
     MBin(Int, ival.Val, ckast.Span),
-    MExt(Int, List[ival.Val], List[ival.Val]), // builtin `mut self` method, arguments, sort keys
+    MExt(ibuiltin.MutOp, List[ival.Val], List[ival.Val]), // builtin `mut self` method, arguments, sort keys
 }
 
 fn eval_steps(it: mut Interp, fr: mut List[ival.Val], steps: List[icode.PStep]) -> Result[List[RStep], Ctl] {
@@ -257,7 +258,7 @@ fn leaf(v: mut ival.Val, op: MOp, sp: ckast.Span, names: ival.Names, ix: Ix) -> 
             }
             Ok(ival.unit())
         }
-        MExt(id, args, keys) => ibuiltin.mut_op(mut v, id, args, keys, sp, ix),
+        MExt(m, args, keys) => ibuiltin.mut_op(mut v, m, args, keys, sp, ix),
     }
 }
 
@@ -623,13 +624,15 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
             for a in args { av.push(ev(mut it, mut fr, a)?) }
             // sort_by keys are computed first, element by element
             var keys: List[ival.Val] = []
-            if id == ibuiltin.M_SORT_BY or id == ibuiltin.M_SORT_BY_DESC {
+            if id < 0 { panic("interp: missing builtin") }
+            let op = it.mbis[id]
+            if op == BmSortBy or op == BmSortByDesc {
                 let cur = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MGet, pl.sp, it.names, it.ix))?
                 for x in cur.xs { keys.push(apply(mut it, av[0], [x], sp)?) }
             } else if not steps.is_empty() {
                 let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MCheck, pl.sp, it.names, it.ix))?
             }
-            nk(mut it, nav(mut fr[pl.root], steps, 0, false, MExt(id, av, keys), sp, it.names, it.ix))
+            nk(mut it, nav(mut fr[pl.root], steps, 0, false, MExt(op, av, keys), sp, it.names, it.ix))
         }
         _ => panic("interp: unexpected node"),
     }
