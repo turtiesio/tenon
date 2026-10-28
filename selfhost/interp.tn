@@ -4,6 +4,7 @@
 // and ival). It runs the checked program and gives the exit status
 // `tenon-seed run` gives, after printing what it prints.
 import ckast
+import ckenv
 import front
 import icode
 import ival
@@ -21,9 +22,9 @@ fn display(n: Str) -> Str {
 
 fn span0() -> ckast.Span { ckast.Span { file: 0, line: 0, col: 0 } }
 
-pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
-    let c = fr.checked
-    let env = c.env
+// The names the interpreter shows values with: struct fields (a module's
+// private ones hidden), variants, and the types with a Show impl.
+fn names_of(env: ckenv.Env) -> ival.Names {
     var snames: List[Str] = []
     var shown: List[List[Option[Str]]] = []
     var full: List[List[Option[Str]]] = []
@@ -62,7 +63,13 @@ pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
             }
         }
     }
-    let names = ival.Names { snames, shown, full, vnames, ovs }
+    ival.Names { snames, shown, full, vnames, ovs }
+}
+
+pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
+    let c = fr.checked
+    let env = c.env
+    let names = names_of(env)
     let bis = ibuiltin.table()
     let mbis = ibuiltin.mut_table()
     let code = icode.lower(c, ibuiltin.numbering(bis), ibuiltin.numbering(mbis))

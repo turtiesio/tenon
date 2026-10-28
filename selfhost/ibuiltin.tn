@@ -89,10 +89,6 @@ fn strs(xs: List[Str]) -> ival.Val {
     ival.vlist(out)
 }
 
-fn trap_oob(i: Int, n: Int, sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
-    ieval.trap("index {i} out of bounds for length {n}", sp)
-}
-
 // The bytes of a List[Int] value; an element outside 0..255 traps.
 pub fn list_bytes(l: ival.Val, sp: ckast.Span) -> Result[List[Int], ieval.Ctl] {
     var out: List[Int] = []
@@ -190,7 +186,7 @@ fn core_op(it: mut ieval.Interp, op: CoreOp, a: List[ival.Val], sp: ckast.Span) 
             let n = a[0].xs.len()
             let x = a[1].i
             let y = a[2].i
-            if x < 0 or y < x or y > n { return ieval.trap("slice [{x}, {y}) out of bounds for length {n}", sp) }
+            if x < 0 or y < x or y > n { return ieval.trap_slice(x, y, n, sp) }
             Ok(ival.vlist(a[0].xs.slice(x, y)))
         }
         BxListJoin => Ok(ival.vstr(str_list(a[0]).join(a[1].s))),
@@ -264,20 +260,20 @@ fn str_op(it: mut ieval.Interp, op: StrOp, a: List[ival.Val], sp: ckast.Span) ->
         BsLen => Ok(ival.vint(s.len())),
         BsByte => {
             let i = a[1].i
-            if i < 0 or i >= s.len() { return trap_oob(i, s.len(), sp) }
+            if i < 0 or i >= s.len() { return ieval.trap_oob(i, s.len(), sp) }
             Ok(ival.vint(s.byte(i)))
         }
         BsSlice => {
             let x = a[1].i
             let y = a[2].i
-            if x < 0 or y < x or y > s.len() { return ieval.trap("slice [{x}, {y}) out of bounds for length {s.len()}", sp) }
+            if x < 0 or y < x or y > s.len() { return ieval.trap_slice(x, y, s.len(), sp) }
             if not boundary(s, x) or not boundary(s, y) { return ieval.trap("slice [{x}, {y}) is not on a character boundary", sp) }
             Ok(ival.vstr(s.slice(x, y)))
         }
         BsFind => Ok(opt_int(ix, s.find(a[1].s))),
         BsFindFrom => {
             let from = a[2].i
-            if from < 0 or from > s.len() { return trap_oob(from, s.len(), sp) }
+            if from < 0 or from > s.len() { return ieval.trap_oob(from, s.len(), sp) }
             Ok(opt_int(ix, s.find_from(a[1].s, from)))
         }
         BsSplit => {
@@ -373,12 +369,12 @@ pub fn mut_op(v: mut ival.Val, op: MutOp, a: List[ival.Val], keys: List[ival.Val
         },
         BmInsert => {
             let i = a[0].i
-            if i < 0 or i > v.xs.len() { return trap_oob(i, v.xs.len(), sp) }
+            if i < 0 or i > v.xs.len() { return ieval.trap_oob(i, v.xs.len(), sp) }
             v.xs.insert(i, a[1])
         }
         BmRemove => {
             let i = a[0].i
-            if i < 0 or i >= v.xs.len() { return trap_oob(i, v.xs.len(), sp) }
+            if i < 0 or i >= v.xs.len() { return ieval.trap_oob(i, v.xs.len(), sp) }
             return Ok(v.xs.remove(i))
         }
         BmClear => v.xs.clear(),

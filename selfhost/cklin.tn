@@ -416,8 +416,8 @@ fn Walk.bad_key(self, t: cktypes.Ty) -> Option[(cktypes.Ty, Str)] {
     None
 }
 
-// An expression-dispatch match (one arm per expression kind; the long ones
-// are methods below).
+// Over 80 lines: an expression-dispatch match (one arm per expression kind;
+// the long ones are methods below).
 fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag] {
     // A linear value that is only inspected must live in a variable;
     // otherwise it is created here and dropped right away.

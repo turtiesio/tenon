@@ -200,7 +200,11 @@ fn helpers_for(m: mut emit.Em, t: cktypes.Ty, protos: mut Str, b: mut Str) {
         }
         None => {}
     }
-    // struct or tuple
+    struct_helpers(mut m, t, n, mut b)
+}
+
+// The helpers of a struct or tuple type t (C name n).
+fn struct_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, b: mut Str) {
     let fs = fields_of(mut m, t)
     var rc = ""
     var rl = ""
