@@ -1,0 +1,420 @@
+// module
+// The parser's expressions (parser.tn has the tree, items, statements, types
+// and patterns): free functions on parser.Parser, agreeing with
+// bootstrap/src/parser.rs. `if let` and `while let` are desugared here.
+
+import lexer
+import parser
+
+pub fn expr(prs: mut parser.Parser) -> Result[parser.Expr, parser.ParseError] {
+    let e = binary(mut prs, 0)?
+    if prs.is_sym("..") and not prs.no_struct {
+        return Err(parser.err_at(prs.here(), "ranges `a..b` are only allowed in `for` loops; use a list or a loop"))
+    }
+    Ok(e)
+}
+
+pub fn binop(t: lexer.Tok) -> Option[(Str, Int)] {
+    match t {
+        Kw(k) if k == "or" => Some(("Or", 1)),
+        Kw(k) if k == "and" => Some(("And", 2)),
+        Sym(s) => match s {
+            "==" => Some(("Eq", 3)),
+            "!=" => Some(("Ne", 3)),
+            "<" => Some(("Lt", 3)),
+            "<=" => Some(("Le", 3)),
+            ">" => Some(("Gt", 3)),
+            ">=" => Some(("Ge", 3)),
+            "+" => Some(("Add", 4)),
+            "-" => Some(("Sub", 4)),
+            "*" => Some(("Mul", 5)),
+            "/" => Some(("Div", 5)),
+            "%" => Some(("Rem", 5)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn binary(prs: mut parser.Parser, min: Int) -> Result[parser.Expr, parser.ParseError] {
+    var lhs = unary(mut prs)?
+    while true {
+        let (op, prec) = match binop(prs.tok()) {
+            Some(b) => b,
+            None => break,
+        }
+        if prec < min { break }
+        let at = prs.here()
+        prs.advance()
+        let rhs = binary(mut prs, prec + 1)?
+        if prec == 3 {
+            match binop(prs.tok()) {
+                Some((_, 3)) => return Err(parser.err_at(prs.here(), "comparisons cannot be chained; use 'and'")),
+                _ => {}
+            }
+        }
+        lhs = parser.Expr { at, kind: Binary(op, lhs, rhs) }
+    }
+    Ok(lhs)
+}
+
+pub fn unary(prs: mut parser.Parser) -> Result[parser.Expr, parser.ParseError] {
+    let at = prs.here()
+    if prs.is_sym("-") {
+        match prs.tok_at(1) {
+            IntTok(i) => {
+                prs.advance()
+                prs.advance()
+                return postfix_from(mut prs, parser.Expr { at, kind: EInt(-i) })
+            }
+            FloatTok(f) => {
+                prs.advance()
+                prs.advance()
+                return postfix_from(mut prs, parser.Expr { at, kind: EFloat(-f) })
+            }
+            _ => {}
+        }
+    }
+    if prs.eat_sym("-") {
+        let e = unary(mut prs)?
+        return Ok(match e.kind {
+            EInt(i) => parser.Expr { at, kind: EInt(-i) },
+            EFloat(f) => parser.Expr { at, kind: EFloat(-f) },
+            _ => parser.Expr { at, kind: Unary("neg", e) },
+        })
+    }
+    if prs.eat_kw("not") {
+        let e = unary(mut prs)?
+        return Ok(parser.Expr { at, kind: Unary("not", e) })
+    }
+    let e = primary(mut prs)?
+    postfix_from(mut prs, e)
+}
+
+pub fn args(prs: mut parser.Parser, close: Str) -> Result[List[parser.Expr], parser.ParseError] {
+    let save = prs.no_struct
+    prs.no_struct = false
+    var args: List[parser.Expr] = []
+    while not prs.eat_sym(close) {
+        let at = prs.here()
+        if prs.eat_kw("mut") {
+            args.push(parser.Expr { at, kind: MutArg(expr(mut prs)?) })
+        } else {
+            args.push(expr(mut prs)?)
+        }
+        if not prs.is_sym(close) { prs.expect_sym(",")? }
+    }
+    prs.no_struct = save
+    Ok(args)
+}
+
+pub fn postfix_from(prs: mut parser.Parser, start: parser.Expr) -> Result[parser.Expr, parser.ParseError] {
+    var e = start
+    while true {
+        let at = prs.here()
+        if prs.eat_sym("(") {
+            e = parser.Expr { at, kind: Call(e, args(mut prs, ")")?) }
+        } else if prs.eat_sym("[") {
+            let save = prs.no_struct
+            prs.no_struct = false
+            let i = expr(mut prs)?
+            prs.no_struct = save
+            prs.expect_sym("]")?
+            e = parser.Expr { at, kind: Index(e, i) }
+        } else if prs.eat_sym("?") {
+            e = parser.Expr { at, kind: Try(e) }
+        } else if prs.eat_sym(".") {
+            match prs.tok() {
+                IntTok(i) => {
+                    prs.advance()
+                    e = parser.Expr { at, kind: TField(e, i) }
+                    continue
+                }
+                _ => {}
+            }
+            let name = prs.ident()?
+            if prs.eat_sym("(") {
+                e = parser.Expr { at, kind: Method(e, name, args(mut prs, ")")?) }
+            } else {
+                e = parser.Expr { at, kind: Field(e, name) }
+            }
+        } else {
+            return Ok(e)
+        }
+    }
+    Ok(e)
+}
+
+pub fn primary(prs: mut parser.Parser) -> Result[parser.Expr, parser.ParseError] {
+    let at = prs.here()
+    match prs.tok() {
+        IntTok(i) => {
+            prs.advance()
+            Ok(parser.Expr { at, kind: EInt(i) })
+        }
+        FloatTok(f) => {
+            prs.advance()
+            Ok(parser.Expr { at, kind: EFloat(f) })
+        }
+        Kw(k) if k == "true" or k == "false" => {
+            prs.advance()
+            Ok(parser.Expr { at, kind: EBool(k == "true") })
+        }
+        Kw(k) if k == "self" => {
+            prs.advance()
+            Ok(parser.Expr { at, kind: Name("self") })
+        }
+        StrTok(parts) => str_lit(mut prs, at, parts),
+        Sym(s) if s == "(" => {
+            prs.advance()
+            let elems = args(mut prs, ")")?
+            Ok(match elems.len() {
+                0 => parser.Expr { at, kind: EUnit },
+                1 => elems[0],
+                _ => parser.Expr { at, kind: ETuple(elems) },
+            })
+        }
+        Sym(s) if s == "[" => bracket(mut prs, at),
+        Sym(s) if s == "\{" => Ok(parser.Expr { at, kind: EBlock(prs.block()?) }),
+        Kw(k) if k == "if" => if_expr(mut prs),
+        Kw(k) if k == "return" or k == "break" or k == "continue" => {
+            let st = prs.stmt()?
+            Ok(parser.Expr { at, kind: EBlock(parser.Block { at, stmts: [st] }) })
+        }
+        Kw(k) if k == "match" => match_expr(mut prs, at),
+        Kw(k) if k == "fn" => lambda(mut prs, at),
+        Kw(k) if k == "dyn" => {
+            prs.advance()
+            let (n, _) = prs.trait_name()?
+            prs.expect_sym("(")?
+            let save = prs.no_struct
+            prs.no_struct = false
+            let x = expr(mut prs)?
+            prs.no_struct = save
+            prs.expect_sym(")")?
+            Ok(parser.Expr { at, kind: EDyn(n, x) })
+        }
+        Ident(name) => name_expr(mut prs, at, name),
+        _ => Err(prs.fail("an expression")),
+    }
+}
+
+fn str_lit(prs: mut parser.Parser, at: parser.Pos, parts: List[lexer.Part]) -> Result[parser.Expr, parser.ParseError] {
+    prs.advance()
+    var segs: List[parser.Seg] = []
+    for p in parts {
+        match p {
+            Lit(s) => segs.push(SLit(s)),
+            Interp(toks, spec) => {
+                var sub = parser.Parser { toks, pos: 0, no_struct: false }
+                let e = expr(mut sub)?
+                if not sub.at_eof() { return Err(sub.fail("'}' to close interpolation")) }
+                match spec {
+                    Some(st) => match parser.parse_spec(st.text) {
+                        Ok(f) => segs.push(SFmt(e, f)),
+                        Err(m) => return Err(parser.err_at(parser.Pos { line: st.line, col: st.col }, m)),
+                    },
+                    None => segs.push(SExpr(e)),
+                }
+            }
+        }
+    }
+    Ok(parser.Expr { at, kind: EStr(segs) })
+}
+
+fn name_expr(prs: mut parser.Parser, at: parser.Pos, name: Str) -> Result[parser.Expr, parser.ParseError] {
+    prs.advance()
+    let up = parser.upper(name)
+    if up and prs.is_sym(".") {
+        match prs.tok_at(1) {
+            Ident(m) => {
+                prs.advance()
+                prs.advance()
+                return Ok(parser.Expr { at, kind: Path(name, m) })
+            }
+            _ => {}
+        }
+    }
+    if up and not prs.no_struct and prs.is_sym("\{") { return struct_lit(mut prs, at, name) }
+    // module.Type { ... }
+    if not up and not prs.no_struct and prs.is_sym(".") and prs.tok_at(2) == Sym("\{") {
+        match prs.tok_at(1) {
+            Ident(t) if parser.upper(t) => {
+                prs.advance()
+                prs.advance()
+                return struct_lit(mut prs, at, name + "." + t)
+            }
+            _ => {}
+        }
+    }
+    Ok(parser.Expr { at, kind: Name(name) })
+}
+
+pub fn bracket(prs: mut parser.Parser, at: parser.Pos) -> Result[parser.Expr, parser.ParseError] {
+    prs.advance()
+    if prs.eat_sym(":") {
+        prs.expect_sym("]")?
+        return Ok(parser.Expr { at, kind: EMap([]) })
+    }
+    if prs.eat_sym("]") { return Ok(parser.Expr { at, kind: EList([]) }) }
+    let save = prs.no_struct
+    prs.no_struct = false
+    let first = expr(mut prs)?
+    let kind = if prs.eat_sym(":") {
+        let v = expr(mut prs)?
+        var pairs = [(first, v)]
+        while prs.eat_sym(",") {
+            if prs.is_sym("]") { break }
+            let k = expr(mut prs)?
+            prs.expect_sym(":")?
+            pairs.push((k, expr(mut prs)?))
+        }
+        prs.expect_sym("]")?
+        EMap(pairs)
+    } else {
+        var elems = [first]
+        while prs.eat_sym(",") {
+            if prs.is_sym("]") { break }
+            elems.push(expr(mut prs)?)
+        }
+        prs.expect_sym("]")?
+        EList(elems)
+    }
+    prs.no_struct = save
+    Ok(parser.Expr { at, kind })
+}
+
+pub fn match_expr(prs: mut parser.Parser, at: parser.Pos) -> Result[parser.Expr, parser.ParseError] {
+    prs.advance()
+    let scrut = prs.head_expr()?
+    prs.expect_sym("\{")?
+    let save = prs.no_struct
+    prs.no_struct = false
+    var arms: List[parser.Arm] = []
+    prs.skip_seps()
+    while not prs.eat_sym("}") {
+        let pat = prs.pattern()?
+        let guard = if prs.eat_kw("if") { Some(expr(mut prs)?) } else { None }
+        prs.expect_sym("=>")?
+        // An arm body is an expression or an assignment (`None => n += 1`).
+        let bat = prs.here()
+        let st = prs.stmt()?
+        let body = match st.kind {
+            ExprStmt(e) => e,
+            _ => parser.Expr { at: bat, kind: EBlock(parser.Block { at: bat, stmts: [st] }) },
+        }
+        arms.push(parser.Arm { pat, guard, body, fallback: false })
+        if not prs.sep_or_close() { return Err(prs.fail("',' or '}' after match arm")) }
+        prs.skip_seps()
+    }
+    prs.no_struct = save
+    Ok(parser.Expr { at, kind: Match(scrut, arms) })
+}
+
+pub fn lambda(prs: mut parser.Parser, at: parser.Pos) -> Result[parser.Expr, parser.ParseError] {
+    prs.advance()
+    prs.expect_sym("(")?
+    var params: List[(Str, Option[parser.Ty])] = []
+    while not prs.eat_sym(")") {
+        let n = if prs.eat_sym("_") { "_" } else { prs.ident()? }
+        let t = if prs.eat_sym(":") { Some(prs.type_expr()?) } else { None }
+        params.push((n, t))
+        if not prs.is_sym(")") { prs.expect_sym(",")? }
+    }
+    let ret = if prs.eat_sym("->") { Some(prs.type_expr()?) } else { None }
+    let body = if prs.eat_sym("=>") {
+        let save = prs.no_struct
+        prs.no_struct = false
+        let e = expr(mut prs)?
+        prs.no_struct = save
+        e
+    } else {
+        let bat = prs.here()
+        parser.Expr { at: bat, kind: EBlock(prs.block()?) }
+    }
+    Ok(parser.Expr { at, kind: Lambda(params, ret, body) })
+}
+
+pub fn struct_lit(prs: mut parser.Parser, at: parser.Pos, name: Str) -> Result[parser.Expr, parser.ParseError] {
+    prs.expect_sym("\{")?
+    var fields: List[(Str, parser.Expr)] = []
+    var base: Option[parser.Expr] = None
+    prs.skip_seps()
+    while not prs.eat_sym("}") {
+        if prs.eat_sym("..") {
+            base = Some(expr(mut prs)?)
+            prs.skip_seps()
+            prs.expect_sym("}")?
+            break
+        }
+        let fat = prs.here()
+        let f = prs.ident()?
+        let v = if prs.eat_sym(":") { expr(mut prs)? } else { parser.Expr { at: fat, kind: Name(f) } }
+        fields.push((f, v))
+        if not prs.sep_or_close() { return Err(prs.fail("',' or '}'")) }
+        prs.skip_seps()
+    }
+    Ok(parser.Expr { at, kind: New(name, fields, base) })
+}
+
+pub fn if_expr(prs: mut parser.Parser) -> Result[parser.Expr, parser.ParseError] {
+    let at = prs.here()
+    prs.advance()
+    if prs.eat_kw("let") { return if_let(mut prs, at) }
+    let cond = prs.head_expr()?
+    let then = prs.block()?
+    var els: Option[parser.Expr] = None
+    if prs.eat_kw("else") {
+        if prs.is_kw("if") {
+            els = Some(if_expr(mut prs)?)
+        } else {
+            let bat = prs.here()
+            els = Some(parser.Expr { at: bat, kind: EBlock(prs.block()?) })
+        }
+    }
+    Ok(parser.Expr { at, kind: If(cond, then, els) })
+}
+
+// `if let` and `while let` are desugared by the parser, as bootstrap/src/parser.rs does
+// (see its `if_let` for the reasons):
+//   if let P = E { A } else B    =>  match E { P => { A }, _ => B }
+//   if let P = E { A }           =>  match E { P => { A }, _ => () }
+//   while let P = E { A }        =>  while true { match E { P => { A }, _ => break } }
+// The added `_` arm is marked `fallback`; synthetic nodes take the keyword's position.
+pub fn if_let(prs: mut parser.Parser, at: parser.Pos) -> Result[parser.Expr, parser.ParseError] {
+    let pat = prs.pattern()?
+    prs.expect_sym("=")?
+    let scrut = prs.head_expr()?
+    let bat = prs.here()
+    let then = parser.Expr { at: bat, kind: EBlock(prs.block()?) }
+    var els = parser.Expr { at, kind: EUnit }
+    if prs.eat_kw("else") {
+        if prs.is_kw("if") {
+            els = if_expr(mut prs)?
+        } else {
+            let eat = prs.here()
+            els = parser.Expr { at: eat, kind: EBlock(prs.block()?) }
+        }
+    }
+    Ok(let_match(at, pat, scrut, then, els))
+}
+
+pub fn while_let(prs: mut parser.Parser, at: parser.Pos) -> Result[parser.Stmt, parser.ParseError] {
+    let pat = prs.pattern()?
+    prs.expect_sym("=")?
+    let scrut = prs.head_expr()?
+    let bat = prs.here()
+    let body = parser.Expr { at: bat, kind: EBlock(prs.block()?) }
+    let brk = parser.Expr { at, kind: EBlock(parser.Block { at, stmts: [parser.Stmt { at, kind: Break }] }) }
+    let m = let_match(at, pat, scrut, body, brk)
+    let cond = parser.Expr { at, kind: EBool(true) }
+    Ok(parser.Stmt { at, kind: While(cond, parser.Block { at, stmts: [parser.Stmt { at, kind: ExprStmt(m) }] }) })
+}
+
+pub fn let_match(at: parser.Pos, pat: parser.Pattern, scrut: parser.Expr, then: parser.Expr, els: parser.Expr) -> parser.Expr {
+    let arms = [
+        parser.Arm { pat, guard: None, body: then, fallback: false },
+        parser.Arm { pat: parser.Pattern { at, kind: Wild }, guard: None, body: els, fallback: true },
+    ]
+    parser.Expr { at, kind: Match(scrut, arms) }
+}
