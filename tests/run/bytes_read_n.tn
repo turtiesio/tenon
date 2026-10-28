@@ -1,0 +1,14 @@
+// stdin: Content-Length: 5\x0d\n\x0d\n{"a"}rest\xff\nmore
+// read_bytes(n) gives the next n bytes of stdin (fewer only at its end, [] for n <= 0),
+// after any line read_line took, so a framed message can be read exactly.
+fn main(sys: Sys) {
+    let c = sys.console
+    let head = c.read_line().unwrap()
+    let blank = c.read_line().unwrap()
+    let n = head.strip_prefix("Content-Length: ").unwrap().to_int().unwrap()
+    let body = c.read_bytes(n)
+    c.println("{head.len()} {blank.len()} {Str.from_utf8(body)}")
+    c.println("{c.read_bytes(0)} {c.read_bytes(-3)} {c.read_bytes(5)}")
+    c.println("{c.read_line()}")
+    c.println("{c.read_bytes(100)} {c.read_bytes(1)} {c.read_line()}")
+}

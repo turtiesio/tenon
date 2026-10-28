@@ -206,6 +206,7 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
         }
         "Console.read_all" => m.tmp_owned(t, "tn_read_all()"),
         "Console.read_all_bytes" => m.tmp_owned(t, "tn_read_all_bytes()"),
+        "Console.read_bytes" => m.tmp_owned(t, "tn_read_bytes(" + a[1] + ")"),
         "Console.write_bytes" => {
             m.line("tn_write_bytes(" + a[1] + ", " + loc + ");")
             emit.bor("0")

@@ -627,7 +627,7 @@ Highlights:
   binary value half to even, like printf). There are no bitwise operators: use
   `/`, `%` and `pow` (`x / 2.pow(k)` shifts right by `k` for `x >= 0`).
 - `Console`: `print println eprintln read_line read_all flush read_all_bytes
-  write_bytes`. `read_line` returns `None` at end of input; it removes the
+  read_bytes write_bytes`. `read_line` returns `None` at end of input; it removes the
   line's `"\n"` and then one trailing `"\r"` from every line, including a
   last line that has no `"\n"` (`"a\r\r\nb\r"` reads as `"a\r"`, `"b"`);
   `read_all` keeps every `"\r"`.
@@ -644,7 +644,10 @@ Highlights:
     `fs.write_bytes(path, data)` replaces a file atomically like `write`,
     `fs.append_bytes(path, data)` appends like `append`.
     `con.read_all_bytes()` returns the rest of standard input unchanged
-    (after any lines `read_line` took); `con.write_bytes(data)` writes to
+    (after any lines `read_line` took); `con.read_bytes(n)` returns the next
+    `n` bytes, waiting for them, and fewer only at the end of input (`[]`
+    there, and for `n <= 0`), so a header line read with `read_line` can
+    announce a body of exactly `n` bytes; `con.write_bytes(data)` writes to
     standard output. Writing an element outside 0..255 traps, before any file
     is touched.
   - `s.bytes()` is the UTF-8 encoding of `s`. `Str.from_utf8(bytes)` is

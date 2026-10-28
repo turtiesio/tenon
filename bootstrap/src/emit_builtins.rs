@@ -202,6 +202,7 @@ impl<'a> Emitter<'a> {
             }
             "Console.read_all" => self.tmp_owned(t, "tn_read_all()"),
             "Console.read_all_bytes" => self.tmp_owned(t, "tn_read_all_bytes()"),
+            "Console.read_bytes" => self.tmp_owned(t, &format!("tn_read_bytes({})", a[1])),
             "Console.write_bytes" => {
                 self.line(&format!("tn_write_bytes({}, {});", a[1], loc));
                 bor("0")

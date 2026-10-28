@@ -567,6 +567,8 @@ extern fn Console.read_all(self) -> Str
 extern fn Console.read_all_bytes(self) -> List[Int]  // the rest of stdin, unchanged
 extern fn Console.write_bytes(self, data: List[Int]) // raw bytes to stdout; an element outside 0..255 traps
 extern fn Console.flush(self)                        // output is also flushed before any blocking read and at exit
+// The next n bytes of stdin, fewer only at its end ([] there, and for n <= 0).
+extern fn Console.read_bytes(self, n: Int) -> List[Int]
 
 // Paths are relative to the Fs root. `within` narrows the root; an attenuated
 // Fs rejects absolute paths and `..`. `read_only` drops write authority.
