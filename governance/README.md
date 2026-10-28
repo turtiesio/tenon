@@ -15,7 +15,17 @@ Start minimal; grow only from incidents (tenon.md §2.5).
    (`// error:` line) or changing its golden output. `tools/approvals.py`
    checks this on every landing, and also refuses any edit to existing log
    lines (history is never rewritten). Its own test: `tools/approvals_test.sh`.
-3. **Mutation testing** is evidence, not a gate (`tools/mutate.py`; survivors
+3. **Frozen seed.** The Rust bootstrap (`bootstrap/`, all of it) is the seed
+   that builds the self-hosted compiler (tenon.md §5); the compiler is
+   developed in Tenon (`selfhost/`). `frozen GLOB` lines in
+   `governance/guarded.txt` (`frozen bootstrap/*`) make `tools/approvals.py`
+   refuse any change under the glob (an added, changed or deleted file)
+   unless the same change adds an approval line naming the file, or a glob
+   covering it (`DATE | APPROVER | bootstrap/* | reason`). Independently, the
+   total line count of the frozen files may only shrink: growth is refused
+   even with an approval (a needed fix pays for its lines elsewhere in the
+   seed). Its test: `tools/approvals_test.sh`.
+4. **Mutation testing** is evidence, not a gate (`tools/mutate.py`; survivors
    go to .evidence/mutation.json as tasks).
 
 Mechanisms added from incidents:

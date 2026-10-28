@@ -26,5 +26,17 @@ sed -i.bak '1s/.*/# rewritten history/' governance/approvals.log && rm -f govern
 expect REFUSE "rewriting the approvals log"
 echo "// a comment" >> "$victim" && git commit -qam "harmless edit below the expectation"
 expect OK "editing a guarded test without changing what it expects"
-[ $fail = 0 ] && echo "approvals_test: refuses unapproved weakening (5 scenarios)"
+# the frozen bootstrap: any change needs an approval, and it may only shrink
+seed=bootstrap/src/diag.rs
+sed -i.bak 's/Diagnostics/Diagnostic notes/' "$seed" && rm -f "$seed.bak" && git commit -qam "edit the seed"
+expect REFUSE "changing a frozen bootstrap file without approval"
+echo "// new" > bootstrap/src/extra.rs && git add bootstrap/src/extra.rs && git commit -qm "add to the seed"
+expect REFUSE "adding a file under the frozen bootstrap without approval"
+sed -i.bak '$d' "$seed" && rm -f "$seed.bak" && echo "2026-10-28 | tester | $seed | drop a line" >> governance/approvals.log && git commit -qam "approved shrink"
+expect OK "shrinking a frozen file with an approval line"
+echo "// one more line" >> "$seed" && echo "2026-10-28 | tester | bootstrap/* | grow the seed" >> governance/approvals.log && git commit -qam "approved growth"
+expect REFUSE "growing the frozen bootstrap's line count, even with an approval"
+git rm -q "$seed" && echo "2026-10-28 | tester | bootstrap/* | remove a file" >> governance/approvals.log && git add -A && git commit -qm "approved removal"
+expect OK "removing a frozen file with an approval covering it"
+[ $fail = 0 ] && echo "approvals_test: refuses unapproved weakening and unapproved or growing changes to the frozen bootstrap (10 scenarios)"
 exit $fail

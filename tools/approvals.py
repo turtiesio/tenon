@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Refuse unapproved weakening of guarantee-bearing tests (governance/README.md).
+"""Refuse unapproved weakening of guarantee-bearing tests, and any unapproved
+change to a frozen path (governance/README.md).
 
     tools/approvals.py BASE       compare the working tree's HEAD with BASE
 
 Exit 0 if every deleted or weakened guarded file has an approval line added in
-this change, and the approvals log only grew; otherwise print why and exit 1.
+this change, every changed file under a frozen path (`frozen GLOB` lines of
+governance/guarded.txt: the bootstrap seed) has one too, the frozen paths did
+not grow in line count, and the approvals log only grew; otherwise print why
+and exit 1.
 """
 import fnmatch, os, subprocess, sys
 
@@ -29,9 +33,17 @@ def expected(text):
     return first if first.startswith("// error:") else text
 
 
+def frozen_lines(rev, frozen):
+    """Total line count of the files under the frozen globs at rev."""
+    files = [f for f in git("ls-tree", "-r", "--name-only", rev).splitlines() if any(fnmatch.fnmatch(f, g) for g in frozen)]
+    return sum((show(rev, f) or "").count("\n") for f in files)
+
+
 def main():
     base = sys.argv[1] if len(sys.argv) > 1 else "origin/main"
-    globs = [l.strip() for l in open(os.path.join(ROOT, "governance", "guarded.txt")) if l.strip() and not l.startswith("#")]
+    rules = [l.strip() for l in open(os.path.join(ROOT, "governance", "guarded.txt")) if l.strip() and not l.startswith("#")]
+    frozen = [r[len("frozen "):].strip() for r in rules if r.startswith("frozen ")]
+    globs = [r for r in rules if not r.startswith("frozen ")]
     problems = []
     old_log = show(base, LOG) or ""
     new_log = show("HEAD", LOG) or ""
@@ -48,6 +60,12 @@ def main():
     changed = git("diff", "--name-status", "--no-renames", base, "HEAD").splitlines()
     for row in changed:
         status, path = row.split("\t", 1)
+        if any(fnmatch.fnmatch(path, g) for g in frozen):
+            # a frozen path: any change at all (added, changed or deleted) needs
+            # an approval naming the file, or a glob that covers it
+            if not any(path == a or fnmatch.fnmatch(path, a) for a in approved):
+                problems.append(f"{path}: frozen (governance/guarded.txt); any change needs an approval line in {LOG}")
+            continue
         if not any(fnmatch.fnmatch(path, g) for g in globs):
             continue
         if status == "A":
@@ -57,6 +75,10 @@ def main():
         if weakened and path not in approved:
             what = "deleted" if after is None else "changed what it expects"
             problems.append(f"{path}: guarded test {what}; add an approval line to {LOG}")
+    if frozen:
+        was, now = frozen_lines(base, frozen), frozen_lines("HEAD", frozen)
+        if now > was:
+            problems.append(f"frozen paths grew from {was} to {now} lines; their line count may only shrink (an approval does not lift this)")
     for p in problems:
         print("approvals:", p)
     return 1 if problems else 0
