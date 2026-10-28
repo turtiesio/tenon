@@ -173,6 +173,14 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Milestone 3 scope (decided during milestone 2):** ready for real users (stdlib
+  breadth, package namespaces, debugging and profiling, a study where model authors
+  build and maintain larger programs; AI models count as real users), deeper
+  correctness (contracts, effects, property tests), scale (distributed workers,
+  macros), carried-over gaps, and a no-staleness mechanism (check gates, dead-code
+  reports, weekly hygiene review, dogfooding the tools in Tenon). No Windows or
+  WebAssembly. Definition of done: tenon.md section 6.
+
 - **CLI and seed (after the milestone-2 cleanup audit, docs/CLEANUP_PLAN.md):** one
   self-hosted `tenon` binary with subcommands (run build emit check test fmt lsp
   fetch tokens ast) replaces tenonc/tenonfmt/tenonlsp; the frozen Rust compiler is
