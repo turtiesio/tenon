@@ -4,8 +4,9 @@
 // a failure reports the same byte offset as the bootstrap and the C backend.
 import ckenv
 import cktypes
-import ival
 import ieval
+import ival
+import lexer
 
 struct Dec { s: Str, pos: Int, err: Int, env: ckenv.Env, names: ival.Names }
 
@@ -196,10 +197,6 @@ fn Dec.user(mut self, t: cktypes.Ty, n: Str) -> Option[ival.Val] {
     Some(ival.venum(ei, vi, payload))
 }
 
-fn hex(c: Int) -> Int {
-    if c.is_digit() { c - 48 } else if c >= 97 and c <= 102 { c - 87 } else if c >= 65 and c <= 70 { c - 55 } else { -1 }
-}
-
 fn Dec.string(mut self) -> Option[ival.Val] {
     let start = self.pos
     if not self.expect("\"") { return None }
@@ -220,12 +217,12 @@ fn Dec.string(mut self) -> Option[ival.Val] {
             else if e == 114 { out.push(13) }
             else if e == 117 {
                 if not self.expect("\{") { return None }
-                let h = self.run(fn(x) => hex(x) >= 0)
+                let h = self.run(fn(x) => lexer.digit_value(x) < 16)
                 // u8::from_str_radix: at least one digit, and the value fits a byte
                 var v = 0
                 var okv = h.len() > 0
                 for i in 0..h.len() {
-                    v = v * 16 + hex(h.byte(i))
+                    v = v * 16 + lexer.digit_value(h.byte(i))
                     if v > 255 { okv = false }
                     if v > 1000000 { v = 1000000 }
                 }

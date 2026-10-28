@@ -174,8 +174,9 @@ fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
     }
 }
 
-// The value of an ASCII digit or letter as a digit (`a`/`A` is 10), or 99.
-fn digit_value(c: Int) -> Int {
+// The value of an ASCII digit or letter as a digit (`a`/`A` is 10), or 99;
+// a hex digit is one below 16.
+pub fn digit_value(c: Int) -> Int {
     if c.is_digit() { c - '0' } else if c >= 'a' and c <= 'z' { c - 'a' + 10 } else if c >= 'A' and c <= 'Z' { c - 'A' + 10 } else { 99 }
 }
 
@@ -389,7 +390,8 @@ pub fn lex(src: Str) -> Result[List[Token], LexError] {
     Ok(insert_semis(lx.tokens(false)?))
 }
 
-fn quoted(s: Str) -> Str {
+// `s` as a string literal, as the runtime shows a string inside a collection.
+pub fn quoted(s: Str) -> Str {
     let q = [s].to_str()
     q.slice(1, q.len() - 1)
 }

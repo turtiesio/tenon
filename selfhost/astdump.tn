@@ -1,5 +1,6 @@
 // module
 // The self-hosted parser's AST dump: `tenon ast FILE` (compare: tenon-seed ast FILE).
+import lexer
 import parser
 
 fn tps(ps: List[Str]) -> Str { if ps.is_empty() { "" } else { "[" + ps.join(", ") + "]" } }
@@ -18,10 +19,6 @@ fn btps(ps: List[Str], bs: List[parser.Bound]) -> Str {
 fn vis(p: Bool) -> Str { if p { " pub" } else { "" } }
 fn kind(k: Str) -> Str { if k == "" { "" } else { " " + k } }
 fn at(p: parser.Pos) -> Str { "@{p.line}:{p.col}" }
-fn quote(s: Str) -> Str {
-    let q = [s].to_str()
-    q.slice(1, q.len() - 1)
-}
 fn list(xs: List[Str]) -> Str { xs.map(fn(x) => " " + x).join("") }
 
 fn ty(t: parser.Ty) -> Str {
@@ -76,7 +73,7 @@ fn pat(p: parser.Pattern) -> Str {
         Wild => "_",
         Bind(n) => "bind " + n,
         PInt(i) => "int {i}",
-        PStr(s) => "str " + quote(s),
+        PStr(s) => "str " + lexer.quoted(s),
         PBool(b) => "bool {b}",
         PTuple(ps) => "tuple" + list(ps.map(pat)),
         Variant(q, v, ps) => "variant " + q.map(fn(x) => x + ".").unwrap_or("") + v + list(ps.map(pat)),
@@ -87,9 +84,9 @@ fn pat(p: parser.Pattern) -> Str {
 
 fn seg(s: parser.Seg) -> Str {
     match s {
-        SLit(l) => quote(l),
+        SLit(l) => lexer.quoted(l),
         SExpr(e) => expr(e),
-        SFmt(e, f) => "(fmt " + expr(e) + " " + quote(f.text) + ")",
+        SFmt(e, f) => "(fmt " + expr(e) + " " + lexer.quoted(f.text) + ")",
     }
 }
 

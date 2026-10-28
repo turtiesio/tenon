@@ -26,6 +26,7 @@
 //   K_DYN    i (vtable: icode.Code.vts), xs ([the value])   a `dyn Trait` value
 //   K_RAW    s                                  text a Show impl made (formatting only, ieval.prerender)
 //   K_MAPV   xs (key, value, key, value, ...)   a map being formatted (formatting only)
+import lexer
 import parser
 
 pub const K_UNIT: Int = 0
@@ -229,26 +230,6 @@ pub struct Names {
     pub ovs: Map[(Int, Int), Int], // (0, struct) or (1, enum) with a Show impl: its `to_str`
 }
 
-pub fn quote(out: mut Str, s: Str) {
-    out += "\""
-    var start = 0
-    for i in 0..s.len() {
-        let c = s.byte(i)
-        if c < 32 or c == 34 or c == 92 {
-            out += s.slice(start, i)
-            start = i + 1
-            if c == 34 { out += "\\\"" }
-            else if c == 92 { out += "\\\\" }
-            else if c == 10 { out += "\\n" }
-            else if c == 9 { out += "\\t" }
-            else if c == 13 { out += "\\r" }
-            else { out += "\\u\{" + c.to_str_radix(16) + "}" }
-        }
-    }
-    out += s.slice(start, s.len())
-    out += "\""
-}
-
 fn cap_name(i: Int) -> Str {
     ["<Console>", "<Fs>", "<Clock>", "<Net>", "<Proc>", "<Listener>", "<Conn>", "<Poller>", "<Workers>", "<Sender>", "<Receiver>", "<Worker>"][i]
 }
@@ -266,7 +247,7 @@ pub fn show(out: mut Str, v: Val, top: Bool, n: Names, full: Bool) {
     if k == K_INT {
         out += v.i.to_str()
     } else if k == K_STR {
-        if top { out += v.s } else { quote(mut out, v.s) }
+        if top { out += v.s } else { out += lexer.quoted(v.s) }
     } else if k == K_FLOAT {
         out += v.f.to_str()
     } else if k == K_BOOL {

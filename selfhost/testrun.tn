@@ -22,6 +22,7 @@
 // together by one `sh`); each writes its failures and counts to a file.
 // The runner invokes itself: `exe` is the running executable's path
 // (selfhost/tenon.tn finds it), passed on to the workers as `--exe`.
+import lexer
 
 const TIMEOUT_MS: Int = 20000
 const WORKERS: Int = 8
@@ -61,10 +62,6 @@ fn directive(src: Str, key: Str) -> Option[Str] {
     None
 }
 
-fn hex_digit(c: Int) -> Int {
-    if c.is_digit() { c - 48 } else if c >= 97 and c <= 102 { c - 87 } else if c >= 65 and c <= 70 { c - 55 } else { -1 }
-}
-
 // "\xHH" (two hex digits) is that byte; everything else is kept as is.
 fn hex_escapes(s: Str) -> List[Int] {
     let b = s.bytes()
@@ -72,9 +69,9 @@ fn hex_escapes(s: Str) -> List[Int] {
     var i = 0
     while i < b.len() {
         if b[i] == 92 and i + 4 <= b.len() and b[i + 1] == 120 {
-            let h = hex_digit(b[i + 2])
-            let l = hex_digit(b[i + 3])
-            if h >= 0 and l >= 0 {
+            let h = lexer.digit_value(b[i + 2])
+            let l = lexer.digit_value(b[i + 3])
+            if h < 16 and l < 16 {
                 out.push(h * 16 + l)
                 i += 4
                 continue

@@ -7,9 +7,6 @@ import ckast
 import checker
 import pkg
 
-// Standard library modules (bootstrap/src/main.rs `STD`).
-fn std_modules() -> List[Str] { ["journal", "regex"] }
-
 // A loaded program: every source file (name, text) in load order, as
 // bootstrap/src/diag.rs `SourceMap` (file 0 is the prelude, 1 the main file).
 pub struct Front { pub files: List[(Str, Str)], pub checked: checker.Checked }
@@ -130,12 +127,13 @@ fn gather(fs: Fs, root: Str, path: Str, given: Option[Str], pk: Option[pkg.Ctx])
                 let file = match found {
                     Some(text) => (at, text),
                     None => {
-                        if not std_modules().contains(name) {
+                        let std = path_join(root, "lib/std/" + name + ".tn") // the standard library is ROOT/lib/std/*.tn
+                        if not fs.exists(std) {
                             let place = if pk.is_some() { local + ", a dependency in tenon.toml" } else { local }
                             return Err(diag(files, i, im.1.line, im.1.col,
                                 "cannot find module '{name}' ({place} or the standard library)"))
                         }
-                        match fs.read(path_join(root, "lib/std/" + name + ".tn")) {
+                        match fs.read(std) {
                             Ok(text) => ("<std>/" + name + ".tn", text),
                             Err(e) => return Err(io_fail("cannot read the standard library: {e}")),
                         }
