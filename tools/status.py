@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """Generate STATUS.md from measurements. Never edit STATUS.md by hand.
-Reads .evidence/*.json (written by tools/bench.py and others) and measures
-the fast loop and the trusted base itself."""
-import json, os, re, subprocess, time, datetime
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+Runs ./check (the loop time, its per-step times, the test counts and the
+cross-check), reads what the evidence tools wrote (.evidence/*.json, through
+corpus.record; tools/evidence.sh runs them all) and the published usability
+rows (study/results/waveN/rows.json), measures the trusted base
+(corpus.trusted()) and the self-hosted compile time, and judges each goal of
+milestones 1 and 2 (tenon.md §4, §5) from that data where a number decides it.
+tools/unmet.md holds only the prose that cannot be computed. A summary line
+of ./check that no longer parses is reported as an open regression, never
+silently skipped."""
+import glob, json, os, re, statistics, subprocess, sys, time, datetime
+
+import corpus
+import study
+
+ROOT = corpus.ROOT
 EV = os.path.join(ROOT, ".evidence")
 
 
@@ -12,114 +23,295 @@ def sh(cmd):
     return subprocess.run(cmd, shell=True, cwd=ROOT, capture_output=True, text=True)
 
 
-def loc(paths):
-    total = 0
-    rows = []
-    for p in paths:
-        n = sum(1 for l in open(os.path.join(ROOT, p)) if l.strip() and not l.strip().startswith("//"))
-        rows.append((p, n))
-        total += n
-    return total, rows
-
-
 def load(name):
     p = os.path.join(EV, name)
     return json.load(open(p)) if os.path.exists(p) else {}
 
 
+def code_lines(path):
+    """Non-blank lines that are not only a comment."""
+    n = 0
+    for line in open(os.path.join(ROOT, path)):
+        s = line.strip()
+        if s and not (s.startswith("//") or s.startswith("/*") or s.startswith("* ") or s in ("*", "*/")):
+            n += 1
+    return n
+
+
+# The summary lines of ./check that STATUS.md reports, by name.
+PATTERNS = {
+    "tests": r"tests: (\d+) run \(x2 backends\), (\d+) reject, (\d+) lex/parse, (\d+) failed",
+    "programs": r"programs: (\d+) scenario\(s\) x2 backends, (\S+) failed",
+    "selfhost": r"selfhost: lexer, parser and checker agree with the seed on (\d+) files \((\d+) accepted, (\d+) rejected\);"
+                r" emitter on the \d+ accepted; fixpoint: stage0 = stage1 on (\d+) accepted files, v2 included"
+                r" \(selfhost/tenonc\.tn: (\d+) bytes of C\); (\d+) disagreements",
+    "fmt": r"fmt: (\d+) files in canonical layout \((\d+) skipped by tools/fmt_skip\.txt, (\d+) more do not parse\).*?; (\d+) problems",
+    "grammar": r"vscode grammar: ok: (\d+) files",
+    "lsp": r"lsp: ok \(",
+    "pkg": r"pkg: ok \((\d+) checks",
+    "doctest": r"doctest: (\d+) doc program\(s\) checked, (\d+) failed",
+    "approvals": r"approvals_test: refuses .* \((\d+) scenarios\)",
+}
+
+
+def best_of(cmd, n=3):
+    ts = []
+    for _ in range(n):
+        t = time.perf_counter()
+        subprocess.run(cmd, cwd=ROOT, capture_output=True, env=dict(os.environ, TENON_ROOT=ROOT))
+        ts.append(time.perf_counter() - t)
+    return min(ts)
+
+
+def latest_wave():
+    waves = sorted(glob.glob(os.path.join(ROOT, "study", "results", "wave*", "rows.json")),
+                   key=lambda p: int(re.search(r"wave(\d+)", p).group(1)))
+    if not waves:
+        return None, None
+    p = waves[-1]
+    return int(re.search(r"wave(\d+)", p).group(1)), json.load(open(p))
+
+
+def verdict(ok, text):
+    return ("**met**" if ok else "**not met**") + (f": {text}" if text else "")
+
+
 def main():
     os.makedirs(EV, exist_ok=True)
-    t = time.time()
-    r = sh("./check --fast")
-    fast = time.time() - t
-    m = re.search(r"tests: (\d+) run \(x2 backends\), (\d+) reject, (\d+) failed", r.stdout)
-    runs, rejects, failed = (m.groups() if m else ("?", "?", "?"))
-    loops = load("loops.json")
     today = datetime.date.today().isoformat()
-    loops.setdefault("check_fast", {})[today] = round(fast, 2)
-    json.dump(loops, open(os.path.join(EV, "loops.json"), "w"), indent=1, sort_keys=True)
-
-    # Only what a compiled program's correctness depends on: the compile path,
-    # the runtime and the Tenon sources compiled into every program. The
-    # interpreter, test runner and dump tools are checks, not trusted code.
-    not_trusted = {"interp.rs", "builtins.rs", "codec.rs", "testrun.rs", "astdump.rs"}
-    rust = sorted("bootstrap/src/" + f for f in os.listdir(os.path.join(ROOT, "bootstrap", "src")) if f.endswith(".rs") and f not in not_trusted)
-    std = sorted("lib/std/" + f for f in os.listdir(os.path.join(ROOT, "lib", "std")) if f.endswith(".tn"))
-    trusted, rows = loc(rust + ["runtime/tenon.h", "lib/prelude.tn"] + std)
-    bench = load("bench.json")
-    fuzz = load("fuzz.json")
-    study = load("study.json")
     commit = sh("git rev-parse --short HEAD").stdout.strip()
+    t = time.time()
+    r = sh("./check --fast 2>&1")
+    total = time.time() - t
+    passed = r.returncode == 0
+    out = r.stdout
+    got = {k: re.search(p, out, re.M) for k, p in PATTERNS.items()}
+    regressions = []
+    if not passed:
+        regressions.append(f"`./check` fails at commit `{commit}`: " + (re.findall(r"FAILED at: (.*)", out) or ["see its output"])[-1])
+    for k, m in got.items():
+        if m is None and passed:
+            regressions.append(f"tools/status.py cannot read the `{k}` summary line of ./check (the line changed)")
+    g = lambda k, i, d="?": got[k].group(i) if got[k] else d
+    steps = re.findall(r"^\s+([\d.]+)  (.+)$", out.split("check: seconds per step")[-1], re.M) if "check: seconds per step" in out else []
+    loops = load("loops.json")
+    if passed:  # a failed run measures nothing
+        loops.setdefault("check_fast", {})[today] = round(total, 1)
+        json.dump(loops, open(os.path.join(EV, "loops.json"), "w"), indent=1, sort_keys=True)
+    hist = sorted(loops.get("check_fast", {}).items())
 
-    out = []
-    w = out.append
+    trusted = corpus.trusted()
+    groups = {k: [(p, code_lines(p)) for p in v] for k, v in trusted.items()}
+    sizes = {k: sum(n for _, n in v) for k, v in groups.items()}
+    fuzz, mut, asan, tsan = load("fuzz.json"), load("mutation.json"), load("asan.json"), load("tsan.json")
+    idiff, cfuzz, seedt = load("interp_diff.json"), load("checkfuzz.json"), load("seed_test.json")
+    bench, par = load("bench.json"), load("bench_parallel.json")
+    wave, rows = latest_wave()
+    usab = study.summarize(rows) if rows else None
+
+    def when(d):
+        return f"{d.get('date', '?')}, `{d.get('commit', '?')}`"
+
+    lines = []
+    w = lines.append
     w("# Status\n")
-    w(f"Generated by `tools/status.py` at commit `{commit}` on {today}. Do not edit by hand.\n")
+    w(f"Generated by `tools/status.py` at commit `{commit}` on {today}. Do not edit by hand.")
+    w("Evidence rows give the date and commit they were measured at (`tools/evidence.sh` runs them all).\n")
+
     w("## Loops\n")
     w("| Loop | Budget | Measured | Reproduce |\n|---|---|---|---|")
-    w(f"| `check --fast` | 60 s | {fast:.1f} s ({'PASS' if r.returncode == 0 else 'FAIL'}) | `./check --fast` |")
-    hist = loops.get("check_fast", {})
+    w(f"| `check --fast` | 60 s | {total:.1f} s ({'PASS' if passed else 'FAIL'}) | `./check --fast` |")
+    w("| landing | 5 min | not measured here (`tools/land.sh` prints its time) | `tools/land.sh MSG` |")
+    if steps:
+        w("\nPer step (this run; ./check prints the same table):\n")
+        w("| Step | Seconds |\n|---|---|")
+        for sec, name in steps:
+            w(f"| {name} | {sec} |")
     if len(hist) > 1:
-        w("\nHistory: " + ", ".join(f"{d}: {v}s" for d, v in sorted(hist.items())[-7:]))
+        w("\nHistory (passing runs): " + ", ".join(f"{d}: {v} s" for d, v in hist[-7:]))
+
     w("\n## Tests on main\n")
-    w(f"- {runs} run programs, each executed by the interpreter **and** the C backend and compared with golden output")
-    w(f"- {rejects} reject programs (must fail to compile with a specific diagnostic)")
-    w(f"- failed: {failed}")
+    w(f"- `tenonc test tests tests/v2`: {g('tests', 1)} run programs, each executed by tenonc's interpreter **and** its C backend"
+      f" and compared with golden output; {g('tests', 2)} reject programs (must fail to compile with a specific diagnostic);"
+      f" {g('tests', 3)} lexer/parser cases; failed: {g('tests', 4)}")
+    w(f"- program scenarios: {g('programs', 1)} real programs, each on both backends (`tools/programs.sh`); failed: {g('programs', 2)}")
+    w(f"- cross-check with the seed (`tools/selfhost.sh`): tokens, AST, checker verdict and C agree on {g('selfhost', 1)} files"
+      f" ({g('selfhost', 2)} accepted, {g('selfhost', 3)} rejected); fixpoint: stage0 and stage1 emit the same C on"
+      f" {g('selfhost', 4)} accepted files, selfhost/tenonc.tn ({g('selfhost', 5)} bytes of C) included; disagreements: {g('selfhost', 6)}")
+    w(f"- doc programs: {g('doctest', 1)} compile (`tools/doctest.py`); formatter: {g('fmt', 1)} files canonical,"
+      f" {g('fmt', 2)} skipped, {g('fmt', 4)} problems (`tools/fmt_check.sh`); packages: {g('pkg', 1)} checks (`tools/pkg_test.sh`);"
+      f" language server: {'ok' if got['lsp'] else '?'} (`tools/lsp_test.py`); editor grammar: {g('grammar', 1)} files"
+      f" (`tools/vscode_grammar_check.py`); approvals checker: {g('approvals', 1)} scenarios (`tools/approvals_test.sh`)")
+
+    w("\n## Evidence on main (`tools/evidence.sh`)\n")
     if fuzz:
-        w(f"- differential fuzzing: {fuzz.get('programs', 0)} generated programs, {fuzz.get('disagreements', 0)} backend disagreements, {fuzz.get('rejected', 0)} rejected by the checker (generator imprecision) (`tools/fuzz.py N`)")
+        last = fuzz.get("last", {})
+        w(f"- differential fuzzing of tenonc (both backends, the seed's interpreter as a third opinion): {fuzz['programs']} generated"
+          f" programs, {fuzz['disagreements']} disagreements, {fuzz['rejected']} rejected by the checker (generator imprecision);"
+          f" last run {last.get('programs', '?')} programs, {when(fuzz)} (`tools/fuzz.py N`)")
+        if last.get("disagreements"):
+            regressions.append(f"fuzzing: {last['disagreements']} disagreements in the last run (.evidence/fuzz-failures/)")
     else:
-        w("- differential fuzzing: not run yet")
-    mut = load("mutation.json")
+        w("- differential fuzzing: not run yet (`tools/fuzz.py N`)")
     if mut:
-        t = mut["killed"] + len(mut["survived"])
-        w(f"- mutation testing: {mut['killed']}/{t} mutants killed ({mut['score']}); survivors become tests or are judged equivalent (`tools/mutate.py N`)")
+        n = mut["killed"] + len(mut["survived"])
+        w(f"- mutation testing of the self-hosted compile path and the runtime: {mut['killed']}/{n} mutants killed ({mut['score']}),"
+          f" {mut['nobuild']} did not build; survivors become tests or are judged equivalent ({when(mut)}; `tools/mutate.py N`)")
+        for s in mut["survived"]:
+            w(f"  - survived: `{s['file']}:{s['line']}`: `{s['from']}` -> `{s['to']}`")
     else:
-        w("- mutation testing: not run yet")
-    san = load("asan.json")
-    if san:
-        verdict = "all clean" if san["failed"] == 0 else f"**{san['failed']} FAILED**"
-        w(f"- sanitizers: {san['programs']} run tests under ASan+UBSan, {verdict} ({san['date']}, {san['commit']}; `tools/asan.sh`)")
+        w("- mutation testing: not run yet (`tools/mutate.py N`)")
+    for name, d, tool, what in [("ASan+UBSan", asan, "tools/asan.sh", "run tests and programs"),
+                                ("ThreadSanitizer", tsan, "tools/tsan.sh", "programs with workers")]:
+        if d:
+            runs = f" ({d['runs']} runs)" if "runs" in d else ""
+            w(f"- {name}: {d['programs']} {what}{runs}, {'all clean' if d['failed'] == 0 else '**%d FAILED**' % d['failed']} ({when(d)}; `{tool}`)")
+            if d["failed"]:
+                regressions.append(f"{name}: {d['failed']} failed ({tool})")
+        else:
+            w(f"- {name}: not run yet (`{tool}`)")
+    if idiff:
+        w(f"- seed's interpreter vs tenonc's on the corpus: {idiff['same']} of {idiff['files']} files the same, {idiff['diff']} differ,"
+          f" {idiff['skipped']} skipped ({when(idiff)}; `tools/interp_diff.py`)")
+        if idiff["diff"]:
+            regressions.append(f"interp_diff: {idiff['diff']} corpus files differ between `tenon run` and `tenonc run`")
     else:
-        w("- sanitizers: not run yet (`tools/asan.sh`)")
-    tsan = load("tsan.json")
-    if tsan:
-        verdict = "all clean" if tsan["failed"] == 0 else f"**{tsan['failed']} FAILED**"
-        w(f"- ThreadSanitizer: {tsan['programs']} programs with workers ({tsan['runs']} runs), {verdict} ({tsan['date']}, {tsan['commit']}; `tools/tsan.sh`)")
-    w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`)\n")
+        w("- seed's interpreter vs tenonc's: not run yet (`tools/interp_diff.py`)")
+    if cfuzz:
+        w(f"- seed's checker and emitter vs tenonc's on {cfuzz['mutants']} mutated corpus programs: {cfuzz['disagreements']} disagreements"
+          f" ({when(cfuzz)}; `tools/checkfuzz.py N`)")
+        if cfuzz["disagreements"]:
+            regressions.append(f"checkfuzz: {cfuzz['disagreements']} disagreements (.evidence/checkfuzz/)")
+    else:
+        w("- seed's checker vs tenonc's on mutated programs: not run yet (`tools/checkfuzz.py N`)")
+    if seedt:
+        w(f"- the seed's own suite (`target/release/tenon test tests`): {seedt['summary']} ({when(seedt)})")
+        m = re.search(r"(\d+) failed", seedt["summary"])
+        if not m or m.group(1) != "0":
+            regressions.append(f"the seed's own test suite: {seedt['summary']}")
+
+    w("\n## Benchmarks (wall time, median; `python3 tools/bench.py`, Tenon built by tenonc -O2)\n")
+    worst = None
     if bench:
         w("| Program | Tenon | C (cc -O2) | Rust (-O) | Python | TypeScript (node) | Tenon / C | Binary (Tenon / C) |\n|---|---|---|---|---|---|---|---|")
         for k, v in sorted(bench.items()):
+            if not isinstance(v, dict):
+                continue
             opt = lambda key: f"{v[key]:.3f} s" if key in v else "-"
             w(f"| {k} | {v['tenon']:.3f} s | {v['c']:.3f} s | {opt('rust')} | {v['python']:.3f} s | {opt('typescript')} | {v['tenon_vs_c']}x | {v['size_tenon'] // 1024} KB / {v['size_c'] // 1024} KB |")
-        worst = max(v["tenon_vs_c"] for v in bench.values())
+        worst = max(v["tenon_vs_c"] for v in bench.values() if isinstance(v, dict))
         w(f"\nTarget: within 1.5x of C. Worst: {worst}x — {'met' if worst <= 1.5 else '**not met**'}.")
-    par = load("bench_parallel.json")
+    else:
+        w("Not run yet.")
+    s4 = None
     if par:
         w("\n### Parallel (workers; `python3 tools/bench.py --parallel`)\n")
-        ns = sorted(int(k[1:]) for k in next(iter(par.values())) if k.startswith("w"))
+        ns = sorted(int(k[1:]) for k in next(iter(par.values())) if re.fullmatch(r"w\d+", k))
         w("| Program | C (serial) | Tenon serial | " + " | ".join(f"{n} workers" for n in ns) + " |\n|---|---|---|" + "---|" * len(ns))
         for k, v in sorted(par.items()):
             c = f"{v['c']:.3f} s" if "c" in v else "-"
             w(f"| {k} | {c} | {v['serial']:.3f} s | " + " | ".join(f"{v[f'w{n}']:.3f} s ({v[f'speedup{n}']}x)" for n in ns) + " |")
         s4 = min(v.get("speedup4", 0) for v in par.values())
-        w(f"\nTarget: at least 3x on 4 cores. Lowest: {s4}x — {'met' if s4 >= 3 else '**not met**'}.")
+        cores = next(iter(par.values())).get("cores", "?")
+        w(f"\nTarget: at least 3x on 4 cores. Lowest: {s4}x on a {cores}-core machine — {'met' if s4 >= 3 else '**not met**'}.")
+
     w("\n## Usability study\n")
-    w(study.get("summary", "Not run yet. Task specifications: `study/tasks/`; hidden tests are kept out of authors' view.") + "\n")
+    if usab:
+        w(f"Wave {wave} (study/results/wave{wave}/rows.json). " + usab[0] + "\n")
+    else:
+        w("Not run yet. Task specifications: `study/tasks/`; hidden tests are kept out of authors' view.\n")
+
     w("## Trusted base\n")
-    w(f"Non-blank, non-comment lines that must be correct for compiled programs to be correct: **{trusted}**")
-    w("(plus the named trust anchors `rustc` and the C compiler).\n")
-    w("| File | Lines |\n|---|---|")
-    for p, n in rows:
-        w(f"| `{p}` | {n} |")
-    w("\n## Open regressions\n")
-    w("None recorded.\n")
-    w("## Unmet goals (milestone 1)\n")
-    w("See `docs/log.md` for the current plan; this list is maintained by hand in `tools/unmet.md`.\n")
+    w("Non-blank, non-comment lines that must be correct for compiled programs to be correct (`corpus.trusted()`).")
+    w("The interpreter, test runner, dumps, formatter and language server are checks and tools, not trusted code.\n")
+    w("| Part | Files | Lines |\n|---|---|---|")
+    labels = {"compiler": "self-hosted compiler (compile path of `tenonc`)", "runtime": "runtime and the Tenon sources compiled into programs",
+              "seed": "seed (frozen bootstrap: builds stage0 only; anchor)"}
+    for k in ["compiler", "runtime", "seed"]:
+        w(f"| {labels[k]} | {len(groups[k])} | {sizes[k]} |")
+    w(f"\nTrusted for a compiled program: **{sizes['compiler'] + sizes['runtime']}** (compiler + runtime), plus the seed's"
+      f" {sizes['seed']} and the named trust anchors `rustc` and the C compiler.\n")
+    w("<details><summary>Per file</summary>\n\n| File | Lines |\n|---|---|")
+    for k in ["compiler", "runtime", "seed"]:
+        for p, n in groups[k]:
+            w(f"| `{p}` | {n} |")
+    w("\n</details>\n")
+
+    # milestone goals, judged from the data above where a number decides them
+    seed_t = best_of([os.path.join(ROOT, "target", "release", "tenon"), "emit", "selfhost/tenonc.tn"])
+    self_t = best_of([os.path.join(ROOT, "target", "tenonc"), "emit", "selfhost/tenonc.tn"])
+    progs = sorted(os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(ROOT, "programs", "*", "test.sh"))
+                   + glob.glob(os.path.join(ROOT, "programs", "v2", "*", "test.sh")))
+    wk_progs = [os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(ROOT, "programs", "v2", "*", "*.tn"))
+                if "workers()" in open(p).read()]
+    fuzz_ok = bool(fuzz) and fuzz.get("disagreements", 1) == 0
+    nprog = int(g("programs", 1, "0")) if got["programs"] else 0
+    tn, py = (usab[1].get("tenon"), usab[1].get("python")) if usab else (None, None)
+    days = len(hist)
+    loop_ok = passed and all(v <= 60 for _, v in hist)
+    sh_ok = got["selfhost"] is not None and g("selfhost", 6) == "0"
+    tests_ok = got["tests"] is not None and g("tests", 4) == "0"
+    v2 = lambda d: len([f for f in glob.glob(os.path.join(ROOT, "tests", "v2", d, "*.tn")) if not open(f).readline().startswith("// module")])
+    row = lambda goal, status: w("| " + goal + " | " + status + " |")
+    w("## Milestones\n")
+    w("Judged by tools/status.py from the data above; hand-written notes follow (tools/unmet.md).\n")
+    w("Milestone 1 (tenon.md §4):\n")
+    w("| Goal | Status |\n|---|---|")
+    row("10 real programs, differential and fuzz testing green",
+        verdict(nprog >= 10 and fuzz_ok and g("programs", 2) == "0", "%d programs with scenarios (%s); fuzzing %s disagreements"
+                % (nprog, ", ".join(progs), fuzz.get("disagreements", "?"))))
+    if tn and py:
+        lines_ok, time_ok = tn["code_lines"] <= py["code_lines"], tn["minutes_total"] <= py["minutes_total"]
+        row("Blind usability study at or below Python on line count and task time",
+            verdict(lines_ok and time_ok, "wave %s: lines %s vs %s (%s); minutes %s vs %s (%.2fx Python, %s)"
+                    % (wave, tn["code_lines"], py["code_lines"], "met" if lines_ok else "not met", tn["minutes_total"],
+                       py["minutes_total"], tn["minutes_total"] / py["minutes_total"], "met" if time_ok else "not met")))
+    else:
+        row("Blind usability study at or below Python on line count and task time", "no published wave")
+    row("Performance within 1.5x of C on the program benchmarks",
+        verdict(worst <= 1.5, "worst %sx" % worst) if worst is not None else "not measured")
+    row("`check --fast` <= 60 s and landing <= 5 min over a week",
+        verdict(loop_ok and days >= 7, "check %.1f s now; %d day(s) of history, a week needed; every day <= 60 s: %s; landing not measured here"
+                % (total, days, loop_ok)))
+    row("Self-hosted lexer, parser and checker agree with the bootstrap on the full corpus",
+        verdict(sh_ok, "%s files, %s disagreements" % (g("selfhost", 1), g("selfhost", 6))))
+    row("Approvals log and checker exist and refused a real weakening in a test",
+        verdict(got["approvals"] is not None, "%s scenarios" % g("approvals", 1)))
+    w("\nMilestone 2 (tenon.md §5):\n")
+    w("| Goal | Status |\n|---|---|")
+    frozen = "frozen bootstrap/*" in open(os.path.join(ROOT, "governance", "guarded.txt")).read()
+    ratio = self_t / seed_t if seed_t else 0
+    row("Fully self-hosted compiler: fixpoint, every test on both backends, frozen seed, compile time within 3x of the bootstrap's",
+        verdict(sh_ok and tests_ok and frozen and ratio <= 3,
+                "fixpoint on %s files; tests failed: %s; seed frozen: %s; `emit selfhost/tenonc.tn` %.2f s vs the seed's %.2f s (%.2fx)"
+                % (g("selfhost", 4), g("tests", 4), frozen, self_t, seed_t, ratio)))
+    row("Traits (bounds, `dyn`, derived traits, coherence)",
+        "implemented (docs/reference.md §17); tests/v2: %d run and %d reject tests, all passing: %s" % (v2("run"), v2("reject"), tests_ok))
+    tsan_ok = bool(tsan) and tsan.get("failed", 1) == 0
+    row("Multi-core: isolated workers and channels, no data races (reject tests), `par_map`, >= 3x on 4 cores, a real program uses workers",
+        verdict(s4 is not None and s4 >= 3 and bool(wk_progs) and tsan_ok,
+                "lowest 4-worker speedup %sx; programs with workers: %s; ThreadSanitizer %s"
+                % (s4, ", ".join(wk_progs) or "none", "clean" if tsan_ok else "not clean or not run")))
+    fmt_all = got["fmt"] is not None and g("fmt", 2) == "0" and g("fmt", 4) == "0"
+    row("Tooling: `tenon fmt` on the whole corpus, language server, packages, VS Code",
+        "formatter " + verdict(fmt_all, "%s files canonical, %s skipped by tools/fmt_skip.txt" % (g("fmt", 1), g("fmt", 2)))
+        + "; language server %s; packages: %s checks; editor grammar checked on %s files"
+        % ("tested" if got["lsp"] else "?", g("pkg", 1), g("grammar", 1)))
+    new_wave = wave is not None and wave > 6
+    row("Evidence: a new usability wave without regression against wave 6; benchmarks within 1.5x of C; check <= 60 s, landing <= 5 min",
+        verdict(new_wave and worst is not None and worst <= 1.5 and loop_ok,
+                "latest wave %s%s; worst benchmark %sx; check %.1f s" % (wave, "" if new_wave else " (no new wave yet)", worst, total)))
+    w("\nMilestone 3 (tenon.md §6) is defined; its goals are not measured here yet.\n")
     um = os.path.join(ROOT, "tools", "unmet.md")
     if os.path.exists(um):
-        w(open(um).read())
-    open(os.path.join(ROOT, "STATUS.md"), "w").write("\n".join(out) + "\n")
-    print(f"STATUS.md written (check --fast {fast:.1f}s)")
+        w("### Notes (hand-written, tools/unmet.md)\n")
+        w(open(um).read().strip() + "\n")
+
+    w("## Open regressions\n")
+    w("Computed from the results above (a failing check, evidence tool or unreadable summary line).\n")
+    w("\n".join(f"- {x}" for x in regressions) if regressions else "None.")
+    open(os.path.join(ROOT, "STATUS.md"), "w").write("\n".join(lines) + "\n")
+    print(f"STATUS.md written (check --fast {total:.1f}s, {'PASS' if passed else 'FAIL'}; {len(regressions)} open regressions)")
 
 
 if __name__ == "__main__":

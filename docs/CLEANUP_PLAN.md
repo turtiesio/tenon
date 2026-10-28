@@ -77,7 +77,7 @@ evidence). Study stays as product evidence.
 
 ## Batch A: get `./check` back under 60 s (do first)
 
-### A1. Move the bootstrap's `tenon test tests` out of `check`, into evidence. S, low risk.
+### A1. Move the bootstrap's `tenon test tests` out of `check`, into evidence. S, low risk. Done in 5e2fca2 (it runs in tools/evidence.sh).
 
 - **Why:** it runs the v1 suite a second time (13 s cold, 2.6 s warm).
   - The bootstrap is frozen.
@@ -87,12 +87,12 @@ evidence). Study stays as product evidence.
 - **Evidence:** `check:19`.
 - **Dependencies:** none. It unblocks D3, which folds `tests/v2`.
 
-### A2. Make `approvals_test.sh` build a tiny fixture repo instead of cloning the whole tree. S, low risk.
+### A2. Make `approvals_test.sh` build a tiny fixture repo instead of cloning the whole tree. S, low risk. Done in 5e2fca2 (4.9 s -> 1.1 s).
 
 - **Evidence:** `tools/approvals_test.sh:7` runs `git clone --depth 1` on all 12.9k files. The test needs only `tools/approvals.py`, `governance/*`, one `tests/reject` file and `bootstrap/src/diag.rs`, plus the line count of the frozen glob.
 - **Saves:** 4-8 s.
 
-### A3. Stage1 build time. M, low risk.
+### A3. Stage1 build time. M, low risk. Done in 5e2fca2: option 2 plus option 3; the seed builds stage0 at -O0, stage0 builds stage1 in 8 parallel units (stage1 2.9 s, was 14 s).
 
 - **Option 1 (S):** build stage1 at `-O0` in `check:16`. Measured net gain is about 5 s when selfhost changed. The loss is about 13 s when only tests changed and the `-O2` stage1 would have been a cache hit.
 - **Option 2 (M, recommended):** split the C into N translation units when `build` compiles, keeping `emit` output unchanged so that `selfhost.sh` and `fixpoint.sh` stay byte-for-byte. Then run `cc -O2` in parallel. With 81k lines across 5771 functions, 8 TUs should give about 3-4 s. This also speeds up every user build of a large program.
@@ -100,7 +100,7 @@ evidence). Study stays as product evidence.
 - The C time is spread across the file, not concentrated in a few functions. Compiling the largest function (`emitbi.extern_call`, 5727 C lines) with `optnone` saved only 0.5 s.
 - **Evidence:** the measurements in section 0.
 
-### A4. Merge `selfhost.sh` and `fixpoint.sh` into one parallel pass over the corpus. M, low risk.
+### A4. Merge `selfhost.sh` and `fixpoint.sh` into one parallel pass over the corpus. M, low risk. Done in 5e2fca2 (tools/selfhost.sh; fixpoint = stage0 vs stage1).
 
 - **How:** one job per file runs bootstrap tokens/ast/check/emit, then stage1, then stage2 emit. Today both scripts walk the same corpus, and both run `stage1 check` and `emit` on the same files.
 - **Evidence:** `tools/selfhost.sh:24-56` and `tools/fixpoint.sh:31-42` are near copies, each with its own `one()` and `xargs -P 8`.
@@ -156,7 +156,7 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
 
 ## Batch C: evidence that tests the compiler actually used
 
-### C0. The evidence loop exercises the frozen seed, not tenonc. M, low risk. Highest-value non-time item.
+### C0. The evidence loop exercises the frozen seed, not tenonc. M, low risk. Highest-value non-time item. Done in 6ac36bd.
 
 - **Evidence:**
   - `tools/mutate.py:15` `TARGETS` lists only `bootstrap/src/*.rs` and `runtime/tenon.h`, and it rebuilds with cargo and runs `tenon test` (`:50-69`). Mutating a frozen file measures nothing that can change. It should mutate `selfhost/ck*.tn`, `emit*.tn` and `runtime/tenon.h`, rebuild stage1, and run `tenonc test`.
@@ -164,7 +164,7 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
   - `tools/interp_diff.py` and `selfhost/checkfuzz.py` are run by nothing: neither `check` nor `tools/evidence.sh:15-21` calls them. Add both to `evidence.sh`.
 - **Dependencies:** A1, since `tenon test` moves here.
 
-### C1. Dead code and files. S, low risk.
+### C1. Dead code and files. S, low risk. Done in 5e2fca2 (not done: examples/run lives only in the main checkout, untracked; the `pub` trimming).
 
 - `selfhost/check.tn`: 28 lines. Nothing runs or imports it, and its own comment says "`tenonc check` does the same". Delete it, and fix the references in `CHECKER_NOTES.md:3,20`, `EMITTER_NOTES.md:19,36`, `SELFHOST.md:143` and the headers of `checker.tn:1` and `front.tn:1`.
 - `selfhost/front.tn:73` `pub fn analyze`: no callers; the LSP uses `analyze_in`.
@@ -186,7 +186,7 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
   - `tools/unmet.md` is a hand-maintained section inside the "generated" file (tenon.md §3 calls for one generated status file). Move its content to `docs/log.md`, or into a milestone table that `status.py` reads.
 - **Fix:** have `check` print a machine-readable summary line, which `status.py` parses.
 
-### C3. One definition of the corpus and of parallelism. S, low risk.
+### C3. One definition of the corpus and of parallelism. S, low risk. Done in 5e2fca2 and 6ac36bd (tools/corpus.py; testrun.tn WORKERS stays 8: the bootstrap-compiled driver has no core count).
 
 - **Corpus:** `bootstrap lib tests programs selfhost bench study` is spelled out five times: `selfhost.sh:55`, `fixpoint.sh:41`, `fmt_check.sh:28`, `interp_diff.py:78` and `checkfuzz.py:15`. `bootstrap/` contains 0 `.tn` files. The `*/v2/*` exclusion is repeated in 7 files.
 - **Parallelism:** the job count 8 is hard-coded in 7 places: `selfhost.sh`, `fixpoint.sh`, `fmt_check.sh`, `doctest.py`, `interp_diff.py`, `fuzz.py`, and `testrun.tn:27 WORKERS`. tenon.md §2.4 asks for one machine-wide slot pool, which does not exist.
@@ -256,7 +256,7 @@ Fix: one argument parser for all subcommands, plus `--help`. The positional ROOT
   - `parser.tn` (1154): expressions into `parsexpr.tn`.
 - **Share between interpreter and C runtime:** the trap message strings (about 15, copied between `runtime/tenon.h` and `ibuiltin.tn`/`ieval.tn`). Also reuse `ibuiltin.tn:61` `trap_oob` at `ieval.tn:216,651`. Format specs (`ival.tn:360-428` vs `tenon.h:519-606`) cannot be shared without a new extern, which the frozen bootstrap blocks; leave them.
 
-### D7. Module headers and bootstrap framing. S, no risk.
+### D7. Module headers and bootstrap framing. S, no risk. Headers: done in 5e2fca2 (the lists dropped); the "a port of" wording is not done.
 
 - **Wrong `// module (imported by …)` headers:**
   - `lexer.tn:1` names `tokens.tn`, which does not exist.
