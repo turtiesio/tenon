@@ -173,6 +173,11 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Correctness first:** foundations such as correctness come before features.
+  Contracts and effects moved from milestone 4 into milestone 3, and milestone 3's
+  order of construction starts with correctness (open findings fixed with guarded
+  regression tests, contracts, effects, property tests).
+
 - **Milestone 3 split (owner request):** the large third milestone was split by
   dependency. Milestone 3 (tenon.md §6): carried-over gaps, stdlib and packages for
   real use, property tests, debugging, the Tenon-defined operations system

@@ -259,7 +259,21 @@ is built once, in Tenon, not mirrored in two front ends.
 Scope chosen by the user after milestone 2's plan (decisions in docs/log.md); the
 original scope was split by dependency: this milestone builds the foundations, and
 §7 builds on them. AI models count as real users. No Windows or WebAssembly target.
+Order of construction: correctness first (the gaps that weaken guarantees, the
+open correctness findings, contracts and effects, property tests), then the
+library, debugging, the Tenon-defined operations system and the console.
 
+- **Correctness by construction, deeper (first).**
+  - Every open correctness finding (correctness reviews, mutation survivors,
+    fuzzing) fixed with a guarded regression test before new features land on top.
+  - Contracts: `requires` / `ensures` / invariants, proved at compile time where a
+    simple decision procedure can, checked at run time otherwise, never silently
+    dropped.
+  - Effects beyond capabilities: a function's effects (I/O, nondeterminism,
+    traps) visible in its signature or inferred and checkable at boundaries.
+  - Property-based testing in the standard library, used by the corpus.
+  - Evidence: bugs prevented, measured on the corpus and the correctness reviews'
+    findings.
 - **Gaps carried over:** user Eq/Ord/Hash impls, trait type parameters and
   supertraits, channels the event loop can wait on, all diagnostics in the
   language server, and the small language gaps the studies found.
@@ -269,7 +283,6 @@ original scope was split by dependency: this milestone builds the foundations, a
     explicit authority for everything that touches the outside world.
   - Packages: per-package module namespaces; a cryptographic content hash in the
     lockfile.
-  - Property-based testing in the standard library, used by the corpus.
 - **Debugging:** source-level stack traces on traps, `tenon run --trace`, and a
   profiler that attributes time to Tenon functions.
 - **Self-governing infrastructure in Tenon, centralized.** The whole flow is
@@ -315,14 +328,6 @@ original scope was split by dependency: this milestone builds the foundations, a
 
 Builds on §6 (scope chosen by the user; split from the original third milestone).
 
-- **Correctness by construction, deeper.**
-  - Contracts: `requires` / `ensures` / invariants, proved at compile time where a
-    simple decision procedure can, checked at run time otherwise, never silently
-    dropped.
-  - Effects beyond capabilities: a function's effects (I/O, nondeterminism,
-    traps) visible in its signature or inferred and checkable at boundaries.
-  - Evidence: bugs prevented, measured on the corpus and the correctness reviews'
-    findings.
 - **Scale.**
   - Distributed execution: workers on other machines with the same isolation
     and `Send` rules as local workers, and failures surfaced, never hidden.
