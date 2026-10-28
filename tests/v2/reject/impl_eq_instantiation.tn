@@ -1,0 +1,10 @@
+// error: impl Eq for Box[Int] must cover every instantiation of Box, as `impl[T] Eq for Box[T]` does
+// An Eq, Ord or Hash impl covers every instantiation of its type: both
+// backends compare a value by its type's name, whatever its arguments.
+struct Box[T] { x: T }
+
+impl Eq for Box[Int] {
+    fn eq(self, other: Box[Int]) -> Bool { true }
+}
+
+fn main() {}

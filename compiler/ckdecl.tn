@@ -465,8 +465,8 @@ fn declare_impls(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.
         env.cur = im.sp.file
         let tr = env.resolve_trait(im.trait_name, im.trait_sp)?
         let tinfo = env.traits[tr]
-        if env.is_builtin_trait(tr) and tinfo.name != "Show" {
-            return ckast.fail(im.trait_sp, "{tinfo.name} is derived structurally for every type that supports it and cannot be implemented; only Show can be (to change how a type is formatted)")
+        if env.is_builtin_trait(tr) and tinfo.name == "Send" {
+            return ckast.fail(im.trait_sp, "Send is derived structurally for every type that supports it and cannot be implemented; only Show can be (to change how a type is formatted), and Eq, Ord and Hash (to change how its values compare and hash)")
         }
         for p in im.tparams {
             if not ckenv.is_tparam_name(p) {
@@ -497,11 +497,13 @@ fn declare_impls(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.
             let where = if type_file < 0 { tshow + " has no module of its own" } else { "it is neither in the module of " + tname + " nor in that of " + tshow }
             return ckast.fail(im.sp, "impl {tname} for {tshow} is not allowed here: {where} (an impl must be in the module of its trait or of its type)")
         }
+        let derived = env.is_builtin_trait(tr)
+        if derived and not env.is_show(tr) { eq_impl_ok(env, im, tinfo.name, target)? }
         for b in im.bounds {
             for r in b.traits {
                 let btr = env.resolve_trait(r.name, r.sp)?
-                if env.is_show(tr) and not env.is_builtin_trait(btr) {
-                    return ckast.fail(r.sp, "an impl of Show can only bound its type parameters by Eq, Ord, Hash or Show")
+                if derived and not env.is_builtin_trait(btr) {
+                    return ckast.fail(r.sp, "an impl of {tinfo.name} can only bound its type parameters by Eq, Ord, Hash or Show")
                 }
             }
         }
@@ -535,6 +537,35 @@ fn declare_impls(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.
             }
         }
     }
+    Ok(())
+}
+
+// An impl of the prelude's Eq, Ord or Hash (`tn`) applies to every
+// instantiation of a struct or enum: both backends compare, order and hash a
+// value by its type's name (the interpreter's values do not carry their type
+// arguments), and a linear or unique value cannot be given to `eq`, which
+// would consume it.
+fn eq_impl_ok(env: ckenv.Env, im: ckast.ImplDecl, tn: Str, target: cktypes.Ty) -> Result[Unit, ckast.Diag] {
+    let tshow = target.show()
+    let (n, args) = match target {
+        Con(n, args) if env.type_decl(n).is_some() => (n, args),
+        _ => return ckast.fail(im.target.sp, "an impl of {tn} must be for a struct or enum, not {tshow}"),
+    }
+    var seen: List[cktypes.Ty] = []
+    for a in args {
+        let fresh = match a {
+            Par(_) => not seen.contains(a),
+            _ => false,
+        }
+        if not fresh {
+            let ps = env.type_tparams(n)
+            return ckast.fail(im.target.sp, "impl {tn} for {tshow} must cover every instantiation of {ckenv.display(n)}, as `impl[" + ps.join(", ") + "] {tn} for {ckenv.display(n)}[" +
+                ps.join(", ") + "]` does: equality, ordering and hashing go by the type, whatever its arguments")
+        }
+        seen.push(a)
+    }
+    let k = env.kind_of(target)
+    if k != Plain { return ckast.fail(im.target.sp, "the {ckenv.word(k)} type {tshow} cannot implement {tn}: its methods would consume the values they compare") }
     Ok(())
 }
 

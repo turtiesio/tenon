@@ -1,0 +1,76 @@
+// Lawful Ord impls: a custom order used by `<` and the other comparisons,
+// cmp, sort, sort_by keys, sort_by_desc, max_by, Heap, lists and tuples of
+// such values, generic code with T: Ord, and a generic impl with a bound
+// (Rev[T] reverses any order). Eq stays derived and agrees with the order.
+struct Version { major: Int, minor: Int, tag: Str }
+
+// newest first: major descending, then minor descending, then tag
+impl Ord for Version {
+    fn cmp(self, other: Version) -> Ordering {
+        other.major.cmp(self.major).then(other.minor.cmp(self.minor)).then(self.tag.cmp(other.tag))
+    }
+}
+
+enum Size { Small, Large(Int), Medium }
+
+// Small < Medium < Large(n), Large by n
+impl Ord for Size {
+    fn cmp(self, other: Size) -> Ordering { rank(self).cmp(rank(other)) }
+}
+
+fn rank(s: Size) -> Int {
+    match s {
+        Small => 0,
+        Medium => 1,
+        Large(n) => 2 + n,
+    }
+}
+
+struct Rev[T] { x: T }
+
+impl[T: Ord] Ord for Rev[T] {
+    fn cmp(self, other: Rev[T]) -> Ordering { self.x.cmp(other.x).reverse() }
+}
+
+fn v(major: Int, minor: Int) -> Version { Version { major, minor, tag: "" } }
+
+fn show(xs: List[Version]) -> Str { xs.map(fn(x) => "{x.major}.{x.minor}{x.tag}").join(" ") }
+
+fn smallest[T: Ord](xs: List[T]) -> T {
+    var m = xs[0]
+    for x in xs {
+        if x < m { m = x }
+    }
+    m
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    var vs = [v(1, 0), v(2, 1), v(1, 5), v(2, 0), Version { major: 1, minor: 5, tag: "-rc" }, v(3, 0)]
+    vs.sort()
+    con.println(show(vs))
+    con.println("{v(1, 0) < v(2, 0)} {v(2, 0) > v(1, 0)} {v(1, 1) <= v(1, 1)} {v(1, 0).cmp(v(1, 0))} {smallest([v(1, 0), v(4, 4)]).major}")
+    var many: List[Version] = []
+    for i in 0..40 { many.push(v(i % 7, i % 5)) }
+    many.sort()
+    con.println(show(many.slice(0, 8)) + " ... " + show(many.slice(32, 40)))
+    var ws = ["b", "a", "c"].map(fn(t) => Version { major: 1, minor: 0, tag: t })
+    ws.sort_by(fn(x) => Rev { x })
+    con.println(show(ws))
+    var sizes = [Large(2), Small, Medium, Large(0), Small]
+    sizes.sort()
+    con.println("{sizes} {Large(0) > Medium} {[Small, Large(1)] < [Small, Large(2)]} {(Medium, 1) < (Large(0), 0)}")
+    var by = [3, 1, 2]
+    by.sort_by(fn(n) => if n == 1 { Large(9) } else { Small })
+    con.println("{by}")
+    by.sort_by_desc(fn(n) => Rev { x: n })
+    con.println("{by} {[1, 5, 3].max_by(fn(n) => Rev { x: n })}")
+    var h: Heap[Version] = Heap.new()
+    for x in [v(1, 0), v(3, 2), v(2, 2), v(3, 1)] { h.push(x) }
+    var out: List[Version] = []
+    while let Some(x) = h.pop() { out.push(x) }
+    con.println(show(out))
+    var rs = [Rev { x: 2 }, Rev { x: 9 }, Rev { x: 4 }]
+    rs.sort()
+    con.println("{rs.map(fn(r) => r.x)} {Rev { x: "a" } < Rev { x: "b" }}")
+}

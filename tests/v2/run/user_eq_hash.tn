@@ -1,0 +1,62 @@
+// Lawful Eq and Hash impls: case-insensitive names. One impl serves `==`,
+// `!=`, eq, lists, tuples and other values holding a Name, Map and Set keys
+// (also inside Option and tuple keys), map literals, `m[k] += 1`, remove,
+// contains and index_of, and map equality; Show stays the derived text.
+struct Name { s: Str }
+
+impl Eq for Name {
+    fn eq(self, other: Name) -> Bool { self.s.lower() == other.s.lower() }
+}
+
+impl Hash for Name {
+    fn hash(self) -> Int { self.s.lower().hash() }
+}
+
+// a generic type: its impl covers every Pair[A, B] and needs its parts' Eq
+struct Pair[A, B] { a: A, b: B }
+
+impl[A: Eq, B: Eq] Eq for Pair[A, B] {
+    fn eq(self, other: Pair[A, B]) -> Bool { self.a == other.a }
+}
+
+fn name(s: Str) -> Name { Name { s } }
+
+fn count[K: Hash](xs: List[K]) -> Map[K, Int] {
+    var m: Map[K, Int] = [:]
+    for x in xs { m[x] = m.get(x).unwrap_or(0) + 1 }
+    m
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let a = name("Alice")
+    let b = name("ALICE")
+    con.println("{a == b} {a != b} {a.eq(b)} {a == name("Bob")} {a.hash() == b.hash()}")
+    con.println("{[a, name("x")] == [b, name("X")]} {(a, 1) == (b, 1)} {Some(a) == Some(b)} {[a].contains(name("alice"))}")
+    con.println("{[name("bob"), b].index_of(name("aLiCe"))}")
+    var m: Map[Name, Int] = [:]
+    m[a] = 1
+    m[b] += 10
+    m.insert(name("Bob"), 2)
+    con.println("{m.len()} {m} {m[name("alice")]} {m.get(name("BOB"))} {m.contains(name("carol"))}")
+    con.println("{count([name("x"), name("X"), name("y"), name("x")])}")
+    let lit: Map[Name, Int] = [name("q"): 1, name("Q"): 2, name("r"): 3]
+    con.println("{lit.len()} {lit[name("Q")]} {lit.keys().map(fn(n) => n.s)}")
+    con.println("{m.remove(name("ALICE"))} {m.len()} {m.get(a)}")
+    let m2: Map[Name, Int] = [name("BOB"): 2]
+    con.println("{m == m2} {m2 == m}")
+    var set = Set.of([name("a"), name("A"), name("b")])
+    con.println("{set.len()} {set.contains(name("B"))} {set.insert(name("b"))} {set.insert(name("c"))} {set.len()}")
+    var om: Map[Option[Name], Int] = [:]
+    om[Some(name("k"))] = 1
+    om[Some(name("K"))] = 2
+    om[None] = 3
+    con.println("{om.len()} {om[Some(name("k"))]} {om[None]}")
+    var tm: Map[(Name, Int), Str] = [:]
+    tm[(name("t"), 1)] = "one"
+    tm[(name("T"), 1)] = "uno"
+    tm[(name("t"), 2)] = "two"
+    con.println("{tm.len()} {tm[(name("T"), 1)]}")
+    let p = Pair { a: 1, b: "x" }
+    con.println("{p == Pair { a: 1, b: "y" }} {p == Pair { a: 2, b: "x" }} {[p] == [Pair { a: 1, b: "z" }]}")
+}

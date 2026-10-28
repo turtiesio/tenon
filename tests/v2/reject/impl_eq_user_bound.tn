@@ -1,0 +1,14 @@
+// error: an impl of Eq can only bound its type parameters by Eq, Ord, Hash or Show
+// The interpreter calls an Eq impl by the value's type, once for all of its
+// instantiations, so its bounds are derived traits.
+trait Weight {
+    fn weight(self) -> Int
+}
+
+struct Box[T] { x: T }
+
+impl[T: Weight] Eq for Box[T] {
+    fn eq(self, other: Box[T]) -> Bool { self.x.weight() == other.x.weight() }
+}
+
+fn main() {}

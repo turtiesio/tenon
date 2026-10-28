@@ -1,0 +1,12 @@
+All: 6 None true true
+Same: 10 33 None
+Never: 3 None None [0, 1, 2]
+Never set: 2 false
+Above: 2 None Some("seven") Some("seven") [Above { n: 5 }: "seven", Above { n: 3 }: "three"]
+Above, 30 inserts: 30 None [30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+Liar: [9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30]
+Liar, 3: [3, 2, 1] false true
+Hands: [Rock, Rock, Rock, Rock, Paper, Paper, Paper, Paper, Paper, Paper, Scissors, Scissors, Rock, Rock, Rock, Rock, Paper, Paper, Paper, Paper, Paper, Paper, Scissors, Scissors, Rock, Rock, Paper, Paper, Paper, Paper]
+Hands desc: [Paper, Paper, Paper, Paper, Paper, Paper, Rock, Rock, Rock, Rock, Rock, Rock, Scissors, Scissors, Paper, Paper, Paper, Paper, Rock, Rock, Scissors, Scissors, Paper, Paper, Paper, Paper, Paper, Paper, Rock, Rock]
+Keyed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+exit: 0

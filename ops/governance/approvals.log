@@ -4,3 +4,4 @@
 2026-10-28 | user decision 2026-10-28: rename the seed to tenon-seed (docs/log.md) | bootstrap/Cargo.toml | the seed binary is target/release/tenon-seed; the self-hosted `tenon` takes the name (package name only, line count unchanged)
 2026-10-28 | owner: repository housekeeping 2026-10-28 (rename bootstrap/ -> seed/, no content change) | bootstrap/* | the seed leaves bootstrap/ for seed/, every file byte for byte (git mv)
 2026-10-28 | owner: repository housekeeping 2026-10-28 (rename bootstrap/ -> seed/, no content change) | seed/* | the same files at their new paths; the rule in ops/governance/guarded.txt is now `frozen seed/*`
+2026-10-28 | owner decision: milestone 3 item 3, user Eq/Ord/Hash impls (tenon.md §6) | tests/v2/reject/impl_eq.tn | Eq is implementable now; an empty impl is rejected for lacking method eq instead of for implementing Eq at all

@@ -1,0 +1,23 @@
+// encode and decode with Eq and Hash impls: decoding a map fails at a key
+// equal (by the impl) to an earlier one, as in C.
+struct Name { s: Str }
+
+impl Eq for Name {
+    fn eq(self, other: Name) -> Bool { self.s.lower() == other.s.lower() }
+}
+
+impl Hash for Name {
+    fn hash(self) -> Int { self.s.lower().hash() }
+}
+
+fn main(sys: Sys) {
+    let m: Map[Name, Int] = [Name { s: "a" }: 1, Name { s: "b" }: 2]
+    let text = encode(m)
+    sys.console.println(text)
+    let back: Result[Map[Name, Int], Str] = decode(text)
+    sys.console.println("{back}")
+    let r = back.unwrap()
+    sys.console.println("{r.get(Name { s: "A" })} {r == m}")
+    let dup: Result[Map[Name, Int], Str] = decode("[Name \{ s: \"a\" }: 1, Name \{ s: \"A\" }: 2]")
+    sys.console.println("{dup}")
+}

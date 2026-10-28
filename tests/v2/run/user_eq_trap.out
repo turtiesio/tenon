@@ -1,0 +1,4 @@
+Some(2) 2
+exit: 70
+stderr: trap: eq of 3 and 1
+stderr:   at user_eq_trap.tn:8:48

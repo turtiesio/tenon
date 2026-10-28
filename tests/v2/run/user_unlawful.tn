@@ -1,0 +1,103 @@
+// Impls that break the laws (docs/reference.md §17): the results are what
+// the rules for maps and sorting give, the same in the interpreter and in C,
+// and memory and capabilities stay safe (formal/TenonCore/TypeGaps.lean:
+// any comparator sorts to a permutation, a map holds only what was inserted).
+// A map hashes a key once and calls eq(key, entry) on the entries of the
+// same hash in insertion order; the first equal one is the key's.
+
+// Eq says every two values are equal, Hash is the derived one: equal keys
+// in different buckets stay apart, keys of one hash merge.
+struct All { n: Int }
+
+impl Eq for All {
+    fn eq(self, other: All) -> Bool { true }
+}
+
+// Eq is the derived one, Hash puts everything in one bucket: lawful (slow).
+struct Same { n: Int }
+
+impl Hash for Same {
+    fn hash(self) -> Int { 0 }
+}
+
+// Eq is never true: every insertion adds an entry, no lookup finds one.
+struct Never { n: Int }
+
+impl Eq for Never {
+    fn eq(self, other: Never) -> Bool { false }
+}
+
+impl Hash for Never {
+    fn hash(self) -> Int { 1 }
+}
+
+// Eq is not symmetric: an entry with a larger n equals a key with a smaller one.
+struct Above { n: Int }
+
+impl Eq for Above {
+    fn eq(self, other: Above) -> Bool { self.n >= other.n }
+}
+
+impl Hash for Above {
+    fn hash(self) -> Int { 7 }
+}
+
+// cmp always says Greater; and a cycle: rock < paper < scissors < rock.
+struct Liar { n: Int }
+
+impl Ord for Liar {
+    fn cmp(self, other: Liar) -> Ordering { Greater }
+}
+
+enum Hand { Rock, Paper, Scissors }
+
+impl Ord for Hand {
+    fn cmp(self, other: Hand) -> Ordering {
+        match (self, other) {
+            (Rock, Paper) | (Paper, Scissors) | (Scissors, Rock) => Less,
+            (Paper, Rock) | (Scissors, Paper) | (Rock, Scissors) => Greater,
+            _ => Equal,
+        }
+    }
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    var a: Map[All, Int] = [:]
+    for i in 0..6 { a[All { n: i }] = i }
+    con.println("All: {a.len()} {a.get(All { n: 99 })} {All { n: 1 } == All { n: 2 }} {[All { n: 1 }].contains(All { n: 5 })}")
+    var s: Map[Same, Int] = [:]
+    for i in 0..40 { s[Same { n: i % 10 }] = i }
+    con.println("Same: {s.len()} {s[Same { n: 3 }]} {s.get(Same { n: 10 })}")
+    var nv: Map[Never, Int] = [:]
+    for i in 0..3 { nv[Never { n: 1 }] = i }
+    con.println("Never: {nv.len()} {nv.get(Never { n: 1 })} {nv.remove(Never { n: 1 })} {nv.values()}")
+    var set = Set.of([Never { n: 1 }, Never { n: 1 }])
+    con.println("Never set: {set.len()} {set.contains(Never { n: 1 })}")
+    var ab: Map[Above, Str] = [:]
+    ab[Above { n: 5 }] = "five"
+    ab[Above { n: 3 }] = "three"
+    ab[Above { n: 9 }] = "nine"
+    ab[Above { n: 7 }] = "seven"
+    con.println("Above: {ab.len()} {ab.get(Above { n: 1 })} {ab.get(Above { n: 6 })} {ab.get(Above { n: 10 })} {ab}")
+    var big: Map[Above, Int] = [:]
+    for i in 0..30 { big[Above { n: 30 - i }] = i }
+    con.println("Above, 30 inserts: {big.len()} {big.get(Above { n: 0 })} {big.keys().map(fn(k) => k.n)}")
+    var ls: List[Liar] = []
+    for i in 0..40 { ls.push(Liar { n: i }) }
+    ls.sort()
+    con.println("Liar: {ls.map(fn(l) => l.n)}")
+    var short = [Liar { n: 1 }, Liar { n: 2 }, Liar { n: 3 }]
+    short.sort()
+    con.println("Liar, 3: {short.map(fn(l) => l.n)} {Liar { n: 1 } < Liar { n: 1 }} {Liar { n: 1 } > Liar { n: 1 }}")
+    var hands: List[Hand] = []
+    for i in 0..30 { hands.push(if i % 3 == 0 { Rock } else if i % 5 == 0 { Scissors } else { Paper }) }
+    var h2 = hands
+    hands.sort()
+    con.println("Hands: {hands}")
+    h2.sort_by_desc(fn(h) => h)
+    con.println("Hands desc: {h2}")
+    var keyed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    keyed.sort_by(fn(n) => if n % 3 == 0 { Rock } else if n % 3 == 1 { Paper } else { Scissors })
+    con.println("Keyed: {keyed}")
+}

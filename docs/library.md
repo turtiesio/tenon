@@ -584,10 +584,13 @@ a mutable place (reference §6). "Traps" means the program stops
 
 | Signature | Behaviour |
 |---|---|
-| `trait Eq {}` | derived: types without functions, capabilities or `dyn` values; `==` and `!=` (reference §17) |
-| `trait Ord {}` | derived: `Eq` types without maps; `<`, `sort` (reference §17) |
-| `trait Hash {}` | derived: `Eq` types without `Float`; usable as a map key or set element (reference §17) |
-| `trait Show` | `to_str()` and formatting; derived for types without functions or capabilities, and the only trait a type can implement (`impl Show for T`) |
+| `trait Eq` | `eq(self, other: Self) -> Bool`: `==`, `!=`, map keys; derived for types without functions, capabilities or `dyn` values, or given by an impl (reference §17) |
+| `trait Ord: Eq` | `cmp(self, other: Self) -> Ordering`: `<` and the other comparisons, `sort`, `Heap`; derived for `Eq` types without maps, or given by an impl (reference §17) |
+| `trait Hash: Eq` | `hash(self) -> Int`: map keys and set elements; derived for `Eq` types without `Float` (the hash maps use), or given by an impl (reference §17) |
+| `trait Show` | `to_str()` and formatting; derived for types without functions or capabilities, or given by an impl (`impl Show for T`) |
+| `enum Ordering { Less, Equal, Greater }` | what `cmp` returns: `a.cmp(b)` is Less when `a < b`, Equal when neither is smaller, Greater when `a > b` |
+| `Ordering.then(self, next: Ordering) -> Ordering` | `self` unless it is Equal, else `next`: compare by one key, then by another (`a.x.cmp(b.x).then(a.y.cmp(b.y))`) |
+| `Ordering.reverse(self) -> Ordering` | Less and Greater swapped, Equal kept: a descending order |
 
 #### Workers and channels (lib/v2/prelude.tn)
 

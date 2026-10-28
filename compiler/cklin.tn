@@ -465,7 +465,7 @@ fn is_place(e: ckast.Expr) -> Bool {
 // The first Map/Set inside t (outermost first) whose key type cannot be compared exactly.
 fn Walk.bad_key(self, t: cktypes.Ty) -> Option[(cktypes.Ty, Str)] {
     match t {
-        Con(n, a) if (n == "Map" or n == "Set") and not a.is_empty() => match self.env.incomparable_part(a[0], true) {
+        Con(n, a) if (n == "Map" or n == "Set") and not a.is_empty() => match self.env.incomparable_part(a[0], "Hash") {
             Some(b) => return Some((a[0], b)),
             None => {}
         },
@@ -619,6 +619,11 @@ fn Walk.method(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr]
             refs = self.ref_params(fi)
             self.no_early_exit([(recv, f.self_kind == ValSelf and not handle)] + arg_parts(args, refs))?
             self.expr(recv, f.self_kind == ValSelf and not handle)?
+        }
+        Some(RDerived(_)) => {
+            // eq, cmp and hash inspect their receiver and argument, as == does
+            refs = args.map(fn(_) => true)
+            self.expr(recv, false)?
         }
         Some(RTrait(tr, mi, _, _)) => {
             let tm = self.env.traits[tr].methods[mi]

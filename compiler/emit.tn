@@ -68,10 +68,12 @@ pub struct Em {
     pub st: FnState,
     pub err: Str, // set when the program cannot be compiled (polymorphic recursion)
     // traits (emittrait.tn)
-    pub show_tr: Int,                   // the prelude's Show if some type implements it, else -1
-    pub show_ovs: Map[cktypes.Ty, Str], // a type with a Show impl: its `to_str` instance
-    pub dboxes: Map[cktypes.Ty, Str],   // the box of `dyn` values of a type
-    pub vtables: Map[Str, Str],         // "trait:type" -> its vtable
+    pub show_tr: Int,                         // the prelude's Show if some type implements it, else -1
+    pub show_ovs: Map[cktypes.Ty, Str],       // a type with a Show impl: its `to_str` instance
+    pub cmp_trs: List[Int],                   // the prelude's Eq, Ord, Hash if some type implements it, else -1
+    pub cmp_ovs: Map[(Int, cktypes.Ty), Str], // (0 eq, 1 cmp, 2 hash, type) with an impl: its method's instance
+    pub dboxes: Map[cktypes.Ty, Str],         // the box of `dyn` values of a type
+    pub vtables: Map[Str, Str],               // "trait:type" -> its vtable
     // workers (emitbi.tn): the program starts workers (compiled with TN_MT,
     // every type gets a deep copy helper), and the helpers made so far
     pub mt: Bool,
@@ -100,7 +102,8 @@ pub fn emit_parts(c: checker.Checked, names: List[Str], runtime: Str, build: Boo
     var m = Em {
         c, names, tnames: [:], tlist: [], boxed: [:], fn_names: [:], fn_queue: [], wrappers: [:],
         protos: "", bodies: "", helpers: "", counter: 0, st: new_state(), err: "",
-        show_tr: emittrait.show_trait(c.env), show_ovs: [:], dboxes: [:], vtables: [:], mt: uses_workers(c), wk: [:], build,
+        show_tr: emittrait.show_trait(c.env), show_ovs: [:], cmp_trs: emittrait.cmp_traits(c.env), cmp_ovs: [:], dboxes: [:], vtables: [:],
+        mt: uses_workers(c), wk: [:], build,
     }
     let main_name = emitbody.fn_inst(mut m, c.main, [])
     while let Some(job) = m.fn_queue.pop() {

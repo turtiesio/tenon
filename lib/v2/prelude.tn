@@ -11,19 +11,47 @@
 // needs. Eq: no functions, capabilities or `dyn` values inside. Ord: Eq and
 // no maps. Hash (a map key): Eq and no Float. Show: no functions or
 // capabilities. A type parameter satisfies a bound only if it declares it.
+// Every type that satisfies them has their methods (`x.eq(y)` is `x == y`,
+// `x.cmp(y)` orders like `<`, `x.hash()` is the hash maps use).
 //
-// Only Show can be implemented: `impl Show for Point { fn to_str(self) -> Str { ... } }`
-// replaces the derived text wherever a Point is formatted (`"{p}"`,
-// `p.to_str()`, inside lists, maps and other values, `dyn` values, error
-// messages), but not in `encode`, which stays structural.
-pub trait Eq {}
+// Show, Eq, Ord and Hash can be implemented for a struct or enum of the
+// impl's module (docs/reference.md §17). `impl Show for Point { fn to_str(self)
+// -> Str { ... } }` replaces the derived text wherever a Point is formatted
+// (`"{p}"`, `p.to_str()`, inside lists, maps and other values, `dyn` values,
+// error messages), but not in `encode`, which stays structural. An impl of
+// Eq, Ord or Hash replaces equality, ordering or hashing everywhere: `==`,
+// `<`, sorting, map and set keys, heaps, inside other values; it covers
+// every instantiation of a generic type (`impl[T: Eq] Eq for Box[T]`).
+pub trait Eq {
+    fn eq(self, other: Self) -> Bool
+}
 
-pub trait Ord {}
+pub trait Ord: Eq {
+    fn cmp(self, other: Self) -> Ordering
+}
 
-pub trait Hash {}
+pub trait Hash: Eq {
+    fn hash(self) -> Int
+}
 
 pub trait Show {
     fn to_str(self) -> Str
+}
+
+// The result of `cmp`.
+pub enum Ordering { Less, Equal, Greater }
+
+// `a.cmp(b).then(c.cmp(d))`: this unless it is Equal, else `next`
+// (compare by one key, then by another).
+pub fn Ordering.then(self, next: Ordering) -> Ordering { if self == Equal { next } else { self } }
+
+// Greater for Less and the other way around (a descending order).
+pub fn Ordering.reverse(self) -> Ordering {
+    match self {
+        Less => Greater,
+        Equal => Equal,
+        Greater => Less,
+    }
 }
 
 // ---- Workers and channels (docs/reference.md §18) ----

@@ -153,18 +153,20 @@ cross-checked (the seed cannot parse them).
   own, bounds the impl's then its own) and every default body into a
   function generic in `Self` and the trait's type parameters, bounded by
   `Self: Trait[T..]` (`ODefault(t, m)`), appended after the file's
-  functions. lib/v2/prelude.tn (Eq, Ord, Hash, Show) is appended to the
-  prelude's text by front.gather.
+  functions. lib/v2/prelude.tn (Eq, `Ord: Eq`, `Hash: Eq`, Show, Ordering) is
+  appended to the prelude's text by front.gather.
 - **Declarations** (ckenv, ckdecl): traits are a namespace of their own
   (`trait_ix`, internal names like types'), registered before the types (a
   field may be `dyn T`), their supertraits (`TraitInfo.supers`, checked for
   cycles) and methods' signatures lowered after them (`Self` is `Par("Self")`,
   the trait's parameters `Par(T)`). A bound is a `ckenv.TB` (trait and type
   arguments); `lower_bounds` closes every type parameter's bounds under
-  supertraits (`Env.with_supers`). `declare_impls` checks each impl (the
-  trait's arguments, its methods and signatures, missing and extra methods,
-  the orphan rule, overlap with every earlier impl by unifying the targets
-  and trait arguments with their parameters renamed apart) and records
+  supertraits (`Env.with_supers`: `T: Ord` also gives `T: Eq`).
+  `declare_impls` checks each impl (the trait's arguments, its methods and
+  signatures, missing and extra methods, the orphan rule, overlap with every
+  earlier impl by unifying the targets and trait arguments with their
+  parameters renamed apart; for Eq, Ord and Hash `eq_impl_ok`: a struct or
+  enum, every instantiation, not linear or unique) and records
   `ImplInfo.fns`: per trait method the function, the impl's or the default;
   once all impls are known, every impl's supertraits must be implemented,
   given its bounds. Impl and default functions are not in `fn_ix`, so they
@@ -177,13 +179,17 @@ cross-checked (the seed cannot parse them).
   one may, or, for impls of one trait at different arguments, exactly one
   whose result type fits the expected type, `impl_fits`), giving an
   ordinary `RMethod` of the impl's function; `RTrait`'s type arguments are
-  the trait's then the method's own. Bounds are
+  the trait's then the method's own. `eq`, `cmp` and `hash` of the derived
+  traits (on a type without such a method or impl, or through a bound) are
+  `RDerived(k)`, computed like `==`, ordering and map hashing. Bounds are
   checked after the body (`pbounds`), when the types are known:
   `ckenv.implements` (a type parameter has the bounds it declares; derived
   traits structurally, Show through fields and payloads with
   `unshowable_part`, where a part whose Show impl applies, `show_impl`, is
-  shown; otherwise an impl whose target matches, and its bounds
-  recursively). `cklin`: a trait call with `self` consumes its
+  shown, and Eq, Ord and Hash through `incomparable_part` and `any_outside`,
+  where a part whose type has an impl of them, `user_impl`, is compared by
+  it if the impl's bounds hold; otherwise an impl whose target and
+  arguments match, and its bounds recursively). `cklin`: a trait call with `self` consumes its
   receiver; `dyn` cannot hold linear or unique values; an impl method's
   `self` may end unconsumed only in the type's own module (`Var.owned`:
   still moved at most once; a `mut self` is never moved).
@@ -225,6 +231,7 @@ program, the declarations and the type, resolution and capture side tables).
 | `emit.tn` | emit_c.rs, helpers of emit_body.rs | emitter state, C type names, boxing, scopes and temporaries, the driver |
 | `emitlayout.tn` | emit_c.rs | type definitions in dependency order, per-type helpers, decoders, `main`, assembly |
 | `emitbody.tn` | emit_body.rs | function instances, statements, loops, places, assignment, expressions, calls |
+| `emitops.tn` | emit_body.rs `binary` | operators, and `eq`/`cmp`/`hash` of the derived traits |
 | `emitctl.tn` | emit_ctl.rs | patterns, `match`, `?`, closures, function values |
 | `emitbi.tn` | emit_builtins.rs | the prelude's `extern fn`s |
 
@@ -338,6 +345,15 @@ v1 corpus stays byte-identical to the bootstrap's (ops/gates/selfhost.sh).
   formats (interpolation, lists, maps, traps, `main`'s error) uses it and
   `encode` (TN_FULL) does not. Its prototype goes with the helper
   prototypes, which come before the functions'.
+- **Eq, Ord and Hash impls** (emittrait.tn `note_cmp`): the same way, the
+  instances of a declared type's `eq`, `cmp` and `hash` (`ckenv.user_impl`:
+  an impl covers every instantiation) start its helpers `N_eq`, `N_cmp`
+  (`Ordering`'s tag minus 1) and `N_hash` (the Int as it is), so `==`,
+  ordering, sorting, maps and the helpers of every value holding it use
+  them. A map whose key type holds such a type (`user_keyed`) is
+  `TN_MAP_FUNCS_U` (runtime/tenon.h): a lookup hashes the key and calls
+  `K_eq(key, entry)` on the entries of that hash in insertion order (no
+  cached last entry; small maps hash too), the rule the interpreter follows.
 
 ### Workers and channels (v2, emitbi.tn `worker_call`)
 
@@ -376,6 +392,7 @@ A port of seed/src/interp.rs, builtins.rs, value.rs and codec.rs:
 | `ibuiltin.tn` | builtins.rs | numbers, strings, lists, maps, Option/Result, console |
 | `icap.tn` | builtins.rs | Fs, Net (blocking and the event loop), Clock, Proc |
 | `icodec.tn` | codec.rs | the strict decoder |
+| `iuser.tn` | (C's helpers) | Eq, Ord and Hash impls: equality, ordering, the C runtime's 64-bit hash, map keys and sorting as the C backend computes them |
 
 Design:
 
@@ -443,6 +460,19 @@ values reach it) and no value being produced still holds. While no socket
 is open (`icap.NetState.open`) it does nothing. A worker suspended to be
 replayed (CBlock) drops nothing.
 
+Eq, Ord and Hash impls (compiler/iuser.tn, by the value's struct or enum:
+`Interp.uimpl`): in a program with such impls, comparisons of values that
+are not numbers, `List.sort*`, map operations and decoding go through
+iuser, which computes them comparison for comparison as the C helpers and
+runtime do, so that impls that break the laws give the same results: eq
+and cmp through parts in order, the C hash (`tn_mix`, `tn_Str_hash`, `h * 31
++ part`) on 16-bit limbs, the C runtime's merge sorts (`L_msort`,
+`tn_msort_idx`), and map keys holding such a value as `ival.KUser` keys
+(their hash, a serial number, the key): a lookup calls `eq(key, entry)` on
+the entries of the same hash in insertion order (`TN_MAP_FUNCS_U`); a place
+`m[k]` resolves its keys just before it is used (`ieval.rsteps`). Every
+program uses iuser for the methods `eq`, `cmp` and `hash` (`NDerived`).
+
 A missing map key reached through a place (`m[k] += 1`) is shown with
 the key type's Show impl, as `m[k]` read as a value and C everywhere
 (ieval.nk; tests/v2/run/trait_show_key_place.tn).
@@ -456,6 +486,8 @@ From `tenon-seed run` (none is exercised by the corpus):
   segments becomes U+FFFD.
 - At most 4 `Poller`s per program.
 - A map used as a key of another map loses its insertion order.
+- A lookup in a map whose keys hold a type with an Eq or Hash impl scans the
+  map's entries (linear time; C uses its index).
 
 ### Workers and channels (v2)
 

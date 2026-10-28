@@ -1,0 +1,6 @@
+// error: type Map[Int, Int] does not implement Ord (needed by method 'cmp')
+// x.cmp(y) needs x's type to implement Ord (derived: no maps inside).
+fn main() {
+    let a: Map[Int, Int] = [:]
+    let _ = a.cmp(a)
+}

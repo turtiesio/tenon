@@ -1,0 +1,5 @@
+[Name { s: "a" }: 1, Name { s: "b" }: 2]
+Ok([Name { s: "a" }: 1, Name { s: "b" }: 2])
+Some(1) true
+Err("cannot decode Map[Name, Int] at byte 21")
+exit: 0

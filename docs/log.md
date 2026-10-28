@@ -768,3 +768,26 @@ stay where they were. Earlier entries keep the old paths.
   (ckdecl.lower_bounds), and an impl needs its supertraits' impls given its
   bounds (Traits.lean `ImplSupersOk`); traits with supertraits or type
   parameters are not `dyn` traits (yet).
+
+## 28. 2026-10-28 — Eq, Ord and Hash impls (milestone 3, item 3, first half)
+
+- **Decision: Eq, Ord and Hash impls choose by the type's name.** An impl of
+  Eq, Ord or Hash is for a struct or enum of its module and covers every
+  instantiation (`impl[T: Eq] Eq for Box[T]`, not `impl Eq for Box[Int]`).
+  Interpreter values do not carry their type arguments, so this is what lets
+  both backends pick the same impl without lowering every generic function
+  per type (as Show's typed mode does); it is also the Lean model's
+  elaboration (methods keyed by the type's head). Impls per instantiation,
+  with typed lowering, can come later without breaking programs.
+- **Decision: one rule for maps whose keys involve such impls**, so that
+  impls that break the laws give the same results on both backends: hash
+  the key once, call `eq(key, entry)` on the entries of the same 64-bit hash
+  in insertion order, the first equal one wins (runtime/tenon.h
+  `TN_MAP_FUNCS_U`; TypeGaps.lean `hget`/`hset` with the hash as the
+  bucket). Sorting is the C runtime's merge sorts in both backends. The
+  interpreter computes the C hash exactly (16-bit limbs), since `x.hash()`
+  is observable. Other programs' C is unchanged (selfhost: byte-identical).
+- **Decision: the derived traits have methods** (`eq`, `cmp` returning the
+  prelude's `Ordering`, `hash`) on every type that satisfies them, so impls
+  can be written from their parts (`self.name.lower().hash()`,
+  `a.cmp(b).then(c.cmp(d))`).

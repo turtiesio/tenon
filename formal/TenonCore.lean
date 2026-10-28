@@ -26,3 +26,4 @@ import TenonCore.Traits
 import TenonCore.TraitsCheck
 import TenonCore.TypeGaps
 import TenonCore.TypeGapsStable
+import TenonCore.TypeGapsLink

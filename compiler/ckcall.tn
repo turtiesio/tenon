@@ -289,7 +289,7 @@ pub fn method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args:
     let rt1 = ck.expr(recv, rt0)?
     let rt = ck.known(rt1, recv.sp, "the receiver")?
     if m == "to_str" and args.is_empty() {
-        ck.comparable(rt, e.sp)?
+        ck.comparable(rt, "", e.sp)?
         ck.pres[e.id] = RToStr
         return Ok(cktypes.t_str())
     }
@@ -315,6 +315,10 @@ pub fn method(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, m: Str, args:
         None => {
             match impl_method(mut ck, e, recv, rt, m, exp)? {
                 Some(i) => return method_call(mut ck, e, recv, m, args, i.0, i.1, owner),
+                None => {}
+            }
+            match derived_method(mut ck, e, rt, m, args)? {
+                Some(t) => return Ok(t),
                 None => {}
             }
             if owner == "" { return ckast.fail(e.sp, "type " + ck.show(rt) + " has no method '" + m + "'") }
@@ -466,7 +470,7 @@ fn trait_call(ck: mut ckinfer.Ck, e: ckast.Expr, recv: ckast.Expr, rt: cktypes.T
             Err(d) => return ckast.fail(d.sp, "'" + m + "' mutates its receiver: " + d.msg),
         }
     }
-    ck.pres[e.id] = RTrait(tr, mi, rt, bs[bi].args + mtargs)
+    ck.pres[e.id] = if ck.env.is_builtin_trait(tr) { RDerived(derived_kind(m)) } else { RTrait(tr, mi, rt, bs[bi].args + mtargs) }
     let roots0 = if tm.self_kind == MutSelf { [place_root(recv)] } else { [] }
     call_args_mut(mut ck, e.sp, params, tm.muts, args, "method '" + m + "'", roots0)?
     Ok(ret)
@@ -481,4 +485,24 @@ fn bound_fits(ck: ckinfer.Ck, b: ckenv.TB, mi: Int, rt: cktypes.Ty, exp: cktypes
     var own: List[cktypes.Ty] = []
     for _ in tm.tparams { own.push(trial.fresh()) }
     trial.unify(tm.ret.subst(["Self"] + t.tparams + tm.tparams, [rt] + b.args + own), exp)
+}
+
+// eq, cmp, hash: which method of the derived Eq, Ord and Hash (RDerived).
+fn derived_kind(m: Str) -> Int { if m == "eq" { 0 } else if m == "cmp" { 1 } else { 2 } }
+
+// `x.eq(y)`, `x.cmp(y)`, `x.hash()` on a type without a method of the name
+// and without an impl giving one: the derived Eq, Ord or Hash (the type must
+// implement it), computed as `==`, ordering and map keys compute them.
+fn derived_method(ck: mut ckinfer.Ck, e: ckast.Expr, rt: cktypes.Ty, m: Str, args: List[ckast.Expr]) -> Result[Option[cktypes.Ty], ckast.Diag] {
+    let tn = if m == "eq" { "Eq" } else if m == "cmp" { "Ord" } else if m == "hash" { "Hash" } else { "" }
+    let Some(tr) = ck.env.prelude_trait(tn) else { return Ok(None) }
+    let want = if m == "hash" { 0 } else { 1 }
+    if args.len() != want { return ckast.fail(e.sp, "method '" + m + "' takes {want} argument" + (if want == 1 { "" } else { "s" }) + ", found {args.len()}") }
+    for a in args {
+        let at = ck.expr(a, rt)?
+        if not ck.sub.unify(at, rt) { return ckast.fail(a.sp, "type mismatch: expected " + ck.show(rt) + ", found " + ck.show(at)) }
+    }
+    ck.pbounds.push((e.sp, rt, ckenv.TB { tr, args: [] }, "method '" + m + "'"))
+    ck.pres[e.id] = RDerived(derived_kind(m))
+    Ok(Some(if m == "eq" { cktypes.t_bool() } else if m == "cmp" { cktypes.con0("Ordering") } else { cktypes.t_int() }))
 }

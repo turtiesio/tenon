@@ -1,0 +1,7 @@
+// error: Send is derived structurally for every type that supports it and cannot be implemented
+// Send stays derived (what can go to another worker is decided by the type's contents).
+struct Job { n: Int }
+
+impl Send for Job {}
+
+fn main() {}

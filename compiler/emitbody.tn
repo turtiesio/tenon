@@ -10,6 +10,7 @@ import checker
 import emit
 import emitctl
 import emitbi
+import emitops
 import emittrait
 
 // A place being assigned or mutated: a C pointer to the root variable, then steps.
@@ -516,7 +517,7 @@ fn assign(m: mut emit.Em, target: ckast.Expr, op: Option[Str], value: ckast.Expr
         Some(o) => {
             m.reg(nv, t)
             let ptr = place_ptr(mut m, p, p.steps.len(), target.sp)
-            let r = arith(mut m, o, t, "(*" + ptr + ")", nv, s.sp)
+            let r = emitops.arith(mut m, o, t, "(*" + ptr + ")", nv, s.sp)
             let code2 = m.own(r, t)
             if not m.trivial(t) { m.line(tn + "_release(*" + ptr + ");") }
             m.line("*" + ptr + " = " + code2 + ";")
@@ -559,7 +560,7 @@ pub fn expr(m: mut emit.Em, e: ckast.Expr) -> emit.CV {
             let code = if op == "not" { "!(" + cv.code + ")" } else if t.is("Int") { "tn_neg(" + cv.code + ", " + m.loc(e.sp) + ")" } else { "(-(" + cv.code + "))" }
             m.tmp_val(t, code)
         }
-        XBinary(op, l, r) => binary(mut m, e, op, l, r),
+        XBinary(op, l, r) => emitops.binary(mut m, e, op, l, r),
         XIf(c, then, els) => if_value(mut m, e, c, then, els, t),
         XBlock(b) => {
             let res = m.result_var(t)
@@ -844,6 +845,7 @@ fn method(m: mut emit.Em, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr
             m.tmp_owned(cktypes.t_str(), "tn_buf_finish(&" + b + ")")
         }
         RMethod(fi, targs0) => method_fn(mut m, e, recv, args, t, fi, m.subs(targs0)),
+        RDerived(k) => emitops.derived(mut m, recv, args, t, k),
         RTrait(tr, mi, rt0, mt0) => {
             let rt = m.sub(rt0)
             if emittrait.is_dyn(rt) { return emittrait.dyn_call(mut m, recv, args, tr, mi, t) }
@@ -925,76 +927,4 @@ pub fn mut_args(m: mut emit.Em, args: List[ckast.Expr], ptys: List[cktypes.Ty]) 
         }
     }
     out
-}
-
-fn binary(m: mut emit.Em, e: ckast.Expr, op: Str, l: ckast.Expr, r: ckast.Expr) -> emit.CV {
-    if op == "And" or op == "Or" {
-        let lv = expr(mut m, l)
-        let res = m.fresh("b")
-        m.line("bool " + res + " = " + lv.code + ";")
-        m.line("if (" + (if op == "And" { "" } else { "!" }) + res + ") \{")
-        m.st.indent += 1
-        m.push(SkBlock)
-        let rv = expr(mut m, r)
-        m.line(res + " = " + rv.code + ";")
-        m.pop()
-        m.st.indent -= 1
-        m.line("}")
-        return emit.bor(res)
-    }
-    let lt = m.ety(l)
-    let vs = eval_list(mut m, [l, r])
-    let a = vs[0].code
-    let b = vs[1].code
-    let tn = m.cty(lt)
-    let scalar = lt.is("Int") or lt.is("Float") or lt.is("Bool") or lt.is("Unit")
-    let code = match op {
-        "Eq" | "Ne" => {
-            let neg = if op == "Ne" { "!" } else { "" }
-            if scalar { neg + "(" + a + " == " + b + ")" } else { neg + tn + "_eq(" + a + ", " + b + ")" }
-        }
-        "Lt" | "Le" | "Gt" | "Ge" => {
-            let o = match op {
-                "Lt" => "<",
-                "Le" => "<=",
-                "Gt" => ">",
-                _ => ">=",
-            }
-            if lt.is("Int") or lt.is("Float") {
-                "(" + a + " " + o + " " + b + ")"
-            } else {
-                if lt.any(fn(x) => x.is("Map")) { m.line("tn_cur_loc = " + m.loc(e.sp) + ";") }
-                "(" + tn + "_cmp(" + a + ", " + b + ") " + o + " 0)"
-            }
-        }
-        _ => return arith(mut m, op, lt, a, b, e.sp),
-    }
-    m.tmp_val(cktypes.t_bool(), code)
-}
-
-pub fn arith(m: mut emit.Em, op: Str, t: cktypes.Ty, a: Str, b: Str, sp: ckast.Span) -> emit.CV {
-    let loc = m.loc(sp)
-    if t.is("Int") {
-        let f = match op {
-            "Add" => "tn_add",
-            "Sub" => "tn_sub",
-            "Mul" => "tn_mul",
-            "Div" => "tn_div",
-            _ => "tn_rem",
-        }
-        return m.tmp_val(t, f + "(" + a + ", " + b + ", " + loc + ")")
-    }
-    if t.is("Float") {
-        let code = match op {
-            "Add" => "(" + a + " + " + b + ")",
-            "Sub" => "(" + a + " - " + b + ")",
-            "Mul" => "(" + a + " * " + b + ")",
-            "Div" => "(" + a + " / " + b + ")",
-            _ => "fmod(" + a + ", " + b + ")",
-        }
-        return m.tmp_val(t, code)
-    }
-    if t.is("Str") { return m.tmp_owned(t, "tn_str_concat(" + a + ", " + b + ")") }
-    let ln = m.cty(t)
-    m.tmp_owned(t, ln + "_concat(" + a + ", " + b + ")")
 }

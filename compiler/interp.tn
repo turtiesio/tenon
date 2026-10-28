@@ -69,6 +69,29 @@ fn names_of(env: ckenv.Env) -> ival.Names {
     ival.Names { snames, shown, full, vnames, ovs, typed }
 }
 
+// The types with Eq, Ord or Hash impls: (0, struct) or (1, enum) -> the
+// functions of eq, cmp and hash (-1: derived). An impl covers every
+// instantiation of its type (ckdecl.eq_impl_ok), so the value's struct or
+// enum decides (compiler/iuser.tn).
+fn user_impls(env: ckenv.Env) -> Map[(Int, Int), List[Int]] {
+    var out: Map[(Int, Int), List[Int]] = [:]
+    for im in env.impls {
+        let k = ["Eq", "Ord", "Hash"].index_of(env.traits[im.tr].name).unwrap_or(-1)
+        if k < 0 or env.traits[im.tr].file != 0 { continue }
+        let key = match im.target {
+            Con(n, _) => match env.struct_idx(n) {
+                Some(si) => (0, si),
+                None => (1, env.enum_idx(n).unwrap_or(-1)),
+            },
+            _ => (1, -1),
+        }
+        var fs = out.get(key).unwrap_or([-1, -1, -1])
+        fs[k] = im.fns[0]
+        out[key] = fs
+    }
+    out
+}
+
 pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
     let c = fr.checked
     let env = c.env
@@ -78,13 +101,13 @@ pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
     let code = icode.lower(c, ibuiltin.numbering(bis), ibuiltin.numbering(mbis))
     let ix = ieval.Ix {
         opt: env.enum_idx("Option").unwrap(), res: env.enum_idx("Result").unwrap(), io: env.enum_idx("IoError").unwrap(),
-        ev: env.enum_idx("NetEvent").unwrap(),
+        ev: env.enum_idx("NetEvent").unwrap(), ord: env.enum_idx("Ordering").unwrap_or(-1),
     }
     var it = ieval.Interp {
         fns: code.fns, lams: code.lams, vts: code.vts, fmts: code.fmts, vt_tys: code.vt_tys, fty: -1, names, ix, files: fr.files.map(fn(f) => f.0), site: span0(), depth: 0, checked: c,
         con: sys.console, clock: sys.clock, net: sys.net, proc: sys.proc, fss: [sys.fs], net_state: icap.new_net_state(),
         bp: sys.net.poller(), pp0: sys.net.poller(), pp1: sys.net.poller(), pp2: sys.net.poller(), pp3: sys.net.poller(),
-        wk: iwork.new_sched(), bis: bis.map(fn(b) => b.1), mbis: mbis.map(fn(b) => b.1), held: [],
+        wk: iwork.new_sched(), bis: bis.map(fn(b) => b.1), mbis: mbis.map(fn(b) => b.1), held: [], uimpl: user_impls(env), ukeys: 0,
     }
     var argv: List[ival.Val] = []
     for a in args { argv.push(ival.vstr(a)) }

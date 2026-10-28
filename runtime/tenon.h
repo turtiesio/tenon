@@ -1049,12 +1049,23 @@ TN_INCOMPARABLE(tn_fn)
         tn_free(tmp);                                                                       \
     }
 
-/* ---------- maps: insertion-ordered hash maps; NULL is the empty map ---------- */
+/* ---------- maps: insertion-ordered hash maps; NULL is the empty map ----------
+ * TN_MAP_FUNCS_U is for a key type with an Eq or Hash impl (compiler/emittrait.tn
+ * user_keyed): a lookup hashes the key once and calls K_eq(key, entry) on the
+ * entries of the same hash in insertion order; the first that is equal is the
+ * key's (formal/TenonCore/TypeGaps.lean hget/hset, the bucket being the hash).
+ * There is no cached last entry and small maps hash too, so even impls that
+ * break the laws (an Eq that disagrees with Hash) give the result the
+ * interpreter gives (compiler/iuser.tn), which follows the same rule. */
 
 #define TN_MAP_TYPE(M, K, V)                                                             \
     struct M##_e { K k; V v; uint64_t h; bool live; };                                   \
     struct M##_s { int64_t rc, len, n, cap, icap, last, last_slot; struct M##_e *e; int32_t *idx; };
-#define TN_MAP_FUNCS(M, K, V)                                                            \
+#define TN_MAP_FUNCS(M, K, V) TN_MAP_FUNCS_X(M, K, V, 0)
+#define TN_MAP_FUNCS_U(M, K, V) TN_MAP_FUNCS_X(M, K, V, 1)
+#define TN_MAP_U0(...)
+#define TN_MAP_U1(...) __VA_ARGS__
+#define TN_MAP_FUNCS_X(M, K, V, U)                                                       \
     static TN_UNUSED M M##_retain(M m) { if (m) m->rc++; return m; }                     \
     static TN_UNUSED void M##_release(M m) {                                             \
         if (m && --m->rc == 0) {                                                         \
@@ -1115,21 +1126,52 @@ TN_INCOMPARABLE(tn_fn)
         m->rc--;                                                                         \
         *p = c;                                                                          \
     }                                                                                    \
+    /* U: the entries of hash h on k's probe path, in insertion order (ascending index) */\
+    TN_MAP_U##U(                                                                         \
+        static TN_UNUSED int64_t M##_findu(M m, K k, uint64_t h, int64_t *slot) {        \
+            uint64_t s = h & (uint64_t)(m->icap - 1);                                    \
+            int64_t tomb = -1, nc = 0, cap = 8, buf[16], *c = buf; /* (entry, slot) pairs */\
+            for (;;) {                                                                   \
+                int64_t j = m->idx[s];                                                   \
+                if (j == -1) break;                                                      \
+                if (j == -2) { if (tomb < 0) tomb = (int64_t)s; }                        \
+                else if (m->e[j].h == h) {                                               \
+                    if (nc == cap) {                                                     \
+                        int64_t *d = tn_alloc(sizeof(int64_t) * (size_t)(4 * cap));      \
+                        memcpy(d, c, sizeof(int64_t) * (size_t)(2 * nc));                \
+                        if (c != buf) tn_free(c);                                        \
+                        c = d; cap *= 2;                                                 \
+                    }                                                                    \
+                    int64_t i = nc++;                                                    \
+                    while (i > 0 && c[2 * i - 2] > j) { c[2 * i] = c[2 * i - 2]; c[2 * i + 1] = c[2 * i - 1]; i--; }\
+                    c[2 * i] = j; c[2 * i + 1] = (int64_t)s;                             \
+                }                                                                        \
+                s = (s + 1) & (uint64_t)(m->icap - 1);                                   \
+            }                                                                            \
+            int64_t found = -1;                                                          \
+            for (int64_t i = 0; i < nc && found < 0; i++)                                \
+                if (K##_eq(k, m->e[c[2 * i]].k)) { found = c[2 * i]; if (slot) *slot = c[2 * i + 1]; }\
+            if (found < 0 && slot) *slot = tomb >= 0 ? tomb : (int64_t)s;                \
+            if (c != buf) tn_free(c);                                                    \
+            return found;                                                                \
+        }                                                                                \
+    )                                                                                    \
     /* index of the entry holding k, or -1; *slot gets the probe position */             \
     static TN_UNUSED int64_t M##_find(M m, K k, uint64_t h, int64_t *slot) {             \
-        if (m->last >= 0 && m->e[m->last].h == h && K##_eq(m->e[m->last].k, k)) {        \
+        if (!U && m->last >= 0 && m->e[m->last].h == h && K##_eq(m->e[m->last].k, k)) {  \
             if (slot) *slot = m->last_slot;                                              \
             return m->last;                                                              \
         }                                                                                \
         if (!m->idx) {                                                                   \
             if (slot) *slot = -1;                                                        \
             for (int64_t j = 0; j < m->n; j++)                                           \
-                if (m->e[j].live && m->e[j].h == h && K##_eq(m->e[j].k, k)) {            \
+                if (m->e[j].live && m->e[j].h == h && (U ? K##_eq(k, m->e[j].k) : K##_eq(m->e[j].k, k))) {\
                     m->last = j; m->last_slot = -1;                                      \
                     return j;                                                            \
                 }                                                                        \
             return -1;                                                                   \
         }                                                                                \
+        TN_MAP_U##U(return M##_findu(m, k, h, slot);)                                    \
         uint64_t s = h & (uint64_t)(m->icap - 1);                                        \
         int64_t tomb = -1;                                                               \
         for (;;) {                                                                       \
@@ -1145,12 +1187,12 @@ TN_INCOMPARABLE(tn_fn)
         }                                                                                \
     }                                                                                    \
     static inline uint64_t M##_khash(M m, K k) {                                          \
-        if (m->last >= 0 && K##_same(m->e[m->last].k, k)) return m->e[m->last].h;       \
+        if (!U && m->last >= 0 && K##_same(m->e[m->last].k, k)) return m->e[m->last].h; \
         return K##_hash(k);                                                              \
     }                                                                                    \
     static TN_UNUSED V *M##_get(M m, K k) {                                              \
         if (!m || !m->len) return NULL;                                                  \
-        if (!m->idx) { /* small map: compare keys, no hashing */                         \
+        if (!m->idx && !U) { /* small map: compare keys, no hashing */                   \
             for (int64_t j = 0; j < m->n; j++)                                           \
                 if (m->e[j].live && K##_eq(m->e[j].k, k)) return &m->e[j].v;             \
             return NULL;                                                                 \

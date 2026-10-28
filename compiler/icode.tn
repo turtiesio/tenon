@@ -25,7 +25,8 @@ pub enum Node {
     NDecode(cktypes.Ty, List[Node], ckast.Span, Bool),
     NCtor(Int, Int, List[Node]),
     NApply(Node, List[Node], ckast.Span),
-    NToStr(Node, Int), // the value, its type (Code.fmts; -1 unless Names.typed)
+    NToStr(Node, Int),                     // the value, its type (Code.fmts; -1 unless Names.typed)
+    NDerived(Int, List[Node], ckast.Span), // x.eq(y), x.cmp(y), x.hash() (ckenv.RDerived; compiler/iuser.tn)
     NMutSelf(Int, Place, List[Arg], ckast.Span, Bool),
     NExtMut(Int, Place, List[Node], ckast.Span, Bool),
     NMethodMut(Int, Node, List[Arg], ckast.Span, Bool),
@@ -158,6 +159,15 @@ pub fn typed_shows(env: ckenv.Env) -> Bool {
     })
 }
 
+// A method of an Eq, Ord or Hash impl: called by the value's type
+// (compiler/iuser.tn), so lowered once (its bounds are derived traits).
+pub fn cmp_method(env: ckenv.Env, fi: Int) -> Bool {
+    match env.fns[fi].origin {
+        OImpl(ii) => env.is_builtin_trait(env.impls[ii].tr) and not env.is_show(env.impls[ii].tr),
+        _ => false,
+    }
+}
+
 fn needs_types(env: ckenv.Env, fi: Int) -> Bool {
     let f = env.fns[fi]
     match f.origin {
@@ -173,7 +183,7 @@ pub fn lower(c: checker.Checked, exts: Map[Str, Int], mexts: Map[Str, Int]) -> C
     let n = c.prog.fns.len()
     let typed = typed_shows(c.env)
     var needs: List[Bool] = []
-    for fi in 0..n { needs.push(needs_types(c.env, fi) or (typed and not c.env.fns[fi].tparams.is_empty())) }
+    for fi in 0..n { needs.push(needs_types(c.env, fi) or (typed and not c.env.fns[fi].tparams.is_empty() and not cmp_method(c.env, fi))) }
     var cx = Cx {
         c, scope: [:], n: 0, lams: [], exts, mexts, tps: [], tas: [], needs, insts: [:], queue: [], out: [], vts: [],
         vt_ix: [:], typed, fmts: [], fmt_ix: [:], vt_tys: [], drops: [], held: [], temps: [],
@@ -831,6 +841,7 @@ fn Cx.method(mut self, e: ckast.Expr, recv: ckast.Expr, args: List[ckast.Expr]) 
             NToStr(r, self.fmt_ty(self.c.types[recv.id]))
         }
         Some(RMethod(fi, targs)) => self.method_fn(e, recv, args, fi, targs),
+        Some(RDerived(k)) => NDerived(k, [self.expr(recv)] + self.exprs(args), e.sp),
         Some(RTrait(tr, mi, rt0, mt)) => {
             let rt = self.st(rt0)
             if self.c.env.dyn_trait(rt).is_some() {

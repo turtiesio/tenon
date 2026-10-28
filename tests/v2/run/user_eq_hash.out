@@ -1,0 +1,13 @@
+true false true false true
+true true true true
+Some(1)
+2 [Name { s: "Alice" }: 11, Name { s: "Bob" }: 2] 11 Some(2) false
+[Name { s: "x" }: 3, Name { s: "y" }: 1]
+2 2 ["q", "r"]
+Some(11) 1 None
+true true
+2 true false true 3
+2 2 3
+2 uno
+true false true
+exit: 0

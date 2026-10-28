@@ -26,6 +26,7 @@
 //   K_DYN    i (vtable: icode.Code.vts), xs ([the value])   a `dyn Trait` value
 //   K_RAW    s                                  text a Show impl made (formatting only, ieval.prerender)
 //   K_MAPV   xs (key, value, key, value, ...)   a map being formatted (formatting only)
+//   K_UKEY   m (one entry: its key), xs ([the key value])  a map key found by Eq and Hash impls (compiler/iuser.tn)
 import lexer
 import parser
 
@@ -46,6 +47,7 @@ pub const K_CAP: Int = 13
 pub const K_DYN: Int = 14
 pub const K_RAW: Int = 15
 pub const K_MAPV: Int = 16
+pub const K_UKEY: Int = 17
 
 pub const CAP_CONSOLE: Int = 0
 pub const CAP_FS: Int = 1
@@ -75,6 +77,7 @@ pub enum Key {
     KEnum(Int, Int, List[Key]),
     KMap(List[(Key, Key)]), // entries sorted: maps are equal regardless of order
     KOther(Str),
+    KUser(Int, Int, Key), // a key compared by Eq and Hash impls (compiler/iuser.tn): its hash, a number that keeps entries apart, the key
 }
 
 pub fn unit() -> Val { Val { k: K_UNIT, i: 0, j: 0, f: 0.0, s: "", xs: [], m: [:] } }
@@ -110,6 +113,9 @@ pub fn to_key(v: Val) -> Key {
     if k == K_TUPLE { return KTuple(keys_of(v.xs)) }
     if k == K_STRUCT { return KStruct(v.i, keys_of(v.xs)) }
     if k == K_ENUM { return KEnum(v.i, v.j, keys_of(v.xs)) }
+    if k == K_UKEY {
+        for (key, _) in v.m { return key }
+    }
     if k == K_MAP {
         var es: List[(Key, Key)] = []
         for (a, b) in v.m { es.push((a, to_key(b))) }
@@ -124,6 +130,9 @@ fn keys_of(xs: List[Val]) -> List[Key] {
     for x in xs { out.push(to_key(x)) }
     out
 }
+
+// The key a K_UKEY stands for, as written (for messages).
+pub fn key_shown(v: Val) -> Val { if v.k == K_UKEY { v.xs[0] } else { v } }
 
 pub fn from_key(k: Key) -> Val {
     match k {
@@ -141,6 +150,7 @@ pub fn from_key(k: Key) -> Val {
             vmap(m)
         }
         KOther(_) => unit(),
+        KUser(_, _, x) => from_key(x),
     }
 }
 

@@ -1,0 +1,24 @@
+// A trap in an Eq impl stops the program where it happens, in both
+// backends: a map calls eq(key, entry) on the entries of the key's hash in
+// insertion order, so the lookup of Key { n: 3 } calls eq(3, 1).
+struct Key { n: Int }
+
+impl Eq for Key {
+    fn eq(self, other: Key) -> Bool {
+        if self.n == 3 and other.n == 1 { panic("eq of 3 and 1") }
+        self.n == other.n
+    }
+}
+
+impl Hash for Key {
+    fn hash(self) -> Int { self.n % 2 }
+}
+
+fn main(sys: Sys) {
+    var m: Map[Key, Int] = [:]
+    m[Key { n: 2 }] = 2
+    m[Key { n: 1 }] = 1
+    sys.console.println("{m.get(Key { n: 2 })} {m.len()}")
+    m[Key { n: 3 }] = 3
+    sys.console.println("not reached")
+}

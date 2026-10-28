@@ -1,4 +1,4 @@
-// error: Eq is derived structurally for every type that supports it and cannot be implemented; only Show can be
+// error: impl Eq for Point is missing method 'eq'
 struct Point { x: Int }
 
 impl Eq for Point {}

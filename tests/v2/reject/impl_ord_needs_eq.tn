@@ -1,0 +1,10 @@
+// error: impl Ord for Handler needs Handler to implement Eq (Eq is a supertrait of Ord)
+// Ord's supertrait is Eq: a type whose values cannot be compared for
+// equality structurally (a function inside) needs an Eq impl for an Ord one.
+struct Handler { prio: Int, run: fn(Int) -> Int }
+
+impl Ord for Handler {
+    fn cmp(self, other: Handler) -> Ordering { self.prio.cmp(other.prio) }
+}
+
+fn main() {}

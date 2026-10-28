@@ -1,0 +1,100 @@
+// module
+// Self-hosted C backend: operators (seed/src/emit_body.rs `binary`, `arith`)
+// and the methods of the derived traits, `x.eq(y)`, `x.cmp(y)` and
+// `x.hash()` (ckenv.RDerived), which compare and hash as the operators and
+// maps do (through the per-type helpers, so Eq, Ord and Hash impls apply).
+
+import ckast
+import cktypes
+import emit
+import emitbody
+
+pub fn binary(m: mut emit.Em, e: ckast.Expr, op: Str, l: ckast.Expr, r: ckast.Expr) -> emit.CV {
+    if op == "And" or op == "Or" {
+        let lv = emitbody.expr(mut m, l)
+        let res = m.fresh("b")
+        m.line("bool " + res + " = " + lv.code + ";")
+        m.line("if (" + (if op == "And" { "" } else { "!" }) + res + ") \{")
+        m.st.indent += 1
+        m.push(SkBlock)
+        let rv = emitbody.expr(mut m, r)
+        m.line(res + " = " + rv.code + ";")
+        m.pop()
+        m.st.indent -= 1
+        m.line("}")
+        return emit.bor(res)
+    }
+    let lt = m.ety(l)
+    let vs = emitbody.eval_list(mut m, [l, r])
+    let a = vs[0].code
+    let b = vs[1].code
+    let tn = m.cty(lt)
+    let scalar = lt.is("Int") or lt.is("Float") or lt.is("Bool") or lt.is("Unit")
+    let code = match op {
+        "Eq" | "Ne" => {
+            let neg = if op == "Ne" { "!" } else { "" }
+            if scalar { neg + "(" + a + " == " + b + ")" } else { neg + tn + "_eq(" + a + ", " + b + ")" }
+        }
+        "Lt" | "Le" | "Gt" | "Ge" => {
+            let o = match op {
+                "Lt" => "<",
+                "Le" => "<=",
+                "Gt" => ">",
+                _ => ">=",
+            }
+            if lt.is("Int") or lt.is("Float") {
+                "(" + a + " " + o + " " + b + ")"
+            } else {
+                if lt.any(fn(x) => x.is("Map")) { m.line("tn_cur_loc = " + m.loc(e.sp) + ";") }
+                "(" + tn + "_cmp(" + a + ", " + b + ") " + o + " 0)"
+            }
+        }
+        _ => return arith(mut m, op, lt, a, b, e.sp),
+    }
+    m.tmp_val(cktypes.t_bool(), code)
+}
+
+pub fn arith(m: mut emit.Em, op: Str, t: cktypes.Ty, a: Str, b: Str, sp: ckast.Span) -> emit.CV {
+    let loc = m.loc(sp)
+    if t.is("Int") {
+        let f = match op {
+            "Add" => "tn_add",
+            "Sub" => "tn_sub",
+            "Mul" => "tn_mul",
+            "Div" => "tn_div",
+            _ => "tn_rem",
+        }
+        return m.tmp_val(t, f + "(" + a + ", " + b + ", " + loc + ")")
+    }
+    if t.is("Float") {
+        let code = match op {
+            "Add" => "(" + a + " + " + b + ")",
+            "Sub" => "(" + a + " - " + b + ")",
+            "Mul" => "(" + a + " * " + b + ")",
+            "Div" => "(" + a + " / " + b + ")",
+            _ => "fmod(" + a + ", " + b + ")",
+        }
+        return m.tmp_val(t, code)
+    }
+    if t.is("Str") { return m.tmp_owned(t, "tn_str_concat(" + a + ", " + b + ")") }
+    let ln = m.cty(t)
+    m.tmp_owned(t, ln + "_concat(" + a + ", " + b + ")")
+}
+
+// `x.eq(y)` (k = 0), `x.cmp(y)` (1, an Ordering), `x.hash()` (2, the hash a
+// map uses, as an Int).
+pub fn derived(m: mut emit.Em, recv: ckast.Expr, args: List[ckast.Expr], t: cktypes.Ty, k: Int) -> emit.CV {
+    let rt = m.ety(recv)
+    let vs = emitbody.eval_list(mut m, [recv] + args)
+    let tn = m.cty(rt)
+    let a = vs[0].code
+    if k == 2 { return m.tmp_val(cktypes.t_int(), "(tn_Int)" + tn + "_hash(" + a + ")") }
+    let b = vs[1].code
+    if k == 0 { return m.tmp_val(cktypes.t_bool(), tn + "_eq(" + a + ", " + b + ")") }
+    let c = m.fresh("c")
+    m.line("int " + c + " = " + tn + "_cmp(" + a + ", " + b + ");")
+    let less = m.ctor(t, 0, [])
+    let equal = m.ctor(t, 1, [])
+    let greater = m.ctor(t, 2, [])
+    m.tmp_owned(t, "(" + c + " < 0 ? " + less + " : " + c + " > 0 ? " + greater + " : " + equal + ")")
+}

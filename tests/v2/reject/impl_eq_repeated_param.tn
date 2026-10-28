@@ -1,0 +1,9 @@
+// error: impl Ord for Twin[T, T] must cover every instantiation of Twin
+// A repeated type parameter does not cover every instantiation either.
+struct Twin[A, B] { a: A, b: B }
+
+impl[T: Ord] Ord for Twin[T, T] {
+    fn cmp(self, other: Twin[T, T]) -> Ordering { self.a.cmp(other.a) }
+}
+
+fn main() {}

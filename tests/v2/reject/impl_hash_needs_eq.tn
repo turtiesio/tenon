@@ -1,0 +1,9 @@
+// error: impl Hash for Handler needs Handler to implement Eq (Eq is a supertrait of Hash)
+// Hash's supertrait is Eq.
+struct Handler { name: Str, run: fn(Int) -> Int }
+
+impl Hash for Handler {
+    fn hash(self) -> Int { self.name.hash() }
+}
+
+fn main() {}

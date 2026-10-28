@@ -63,6 +63,7 @@ pub enum Res {
     RToStr,
     RCallValue,
     RTrait(Int, Int, cktypes.Ty, List[cktypes.Ty]), // trait, method, receiver type, the trait's then the method's own type args
+    RDerived(Int),                                  // x.eq(y) (0), x.cmp(y) (1), x.hash() (2) of the derived traits: as `==`, ordering and hashing do
 }
 
 pub struct Env {
@@ -89,6 +90,24 @@ pub fn is_tparam_name(s: Str) -> Bool {
 }
 
 pub fn Env.struct_idx(self, n: Str) -> Option[Int] { self.struct_ix.get(n) }
+
+// A type's name as written in its own module (`geo.Point` is Point).
+pub fn display(n: Str) -> Str {
+    var i = n.len() - 1
+    while i >= 0 and n.byte(i) != 46 { i -= 1 }
+    n.slice(i + 1, n.len())
+}
+
+// The type parameters of declared type n.
+pub fn Env.type_tparams(self, n: Str) -> List[Str] {
+    match self.struct_idx(n) {
+        Some(i) => self.structs[i].tparams,
+        None => match self.enum_idx(n) {
+            Some(i) => self.enums[i].tparams,
+            None => [],
+        },
+    }
+}
 pub fn Env.enum_idx(self, n: Str) -> Option[Int] { self.enum_ix.get(n) }
 pub fn Env.find_fn(self, full: Str) -> Option[Int] { self.fn_ix.get(full) }
 
@@ -311,24 +330,32 @@ fn Env.unsendable_walk(self, t: cktypes.Ty, seen0: List[cktypes.Ty]) -> (Option[
 // The first part of t that derived equality cannot handle exactly: functions
 // and capabilities (and, for map keys, Float, since NaN != NaN). Looks through
 // struct fields and enum payloads (seed/src/check_expr.rs `incomparable_part`).
-pub fn Env.incomparable_part(self, t: cktypes.Ty, key: Bool) -> Option[Str] {
-    self.incomparable_walk(t, key, []).0
+// `which`: Eq (`==`), Ord (ordering) or Hash (map keys, `key`); a part whose
+// type has an impl of it is compared by that impl, whatever it contains, if
+// the impl's bounds hold.
+pub fn Env.incomparable_part(self, t: cktypes.Ty, which: Str) -> Option[Str] {
+    self.incomparable_walk(t, which, []).0
 }
 
-fn Env.incomparable_walk(self, t: cktypes.Ty, key: Bool, seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
+fn Env.incomparable_walk(self, t: cktypes.Ty, which: Str, seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
     if seen0.contains(t) { return (None, seen0) }
     var seen = seen0
     seen.push(t)
+    let key = which == "Hash"
+    match self.user_impl(t, which) {
+        Some((ii, ts)) => return (self.user_bounds_fail(ii, ts), seen),
+        None => {}
+    }
     match t {
         Fun(_, _) => return (Some("the function type " + t.show()), seen),
         Con(n, _) if cktypes.is_capability(n) => return (Some("the capability " + n), seen),
         Con(n, _) if key and n == "Float" => return (Some("Float (NaN is not equal to itself)"), seen),
         Con(n, _) if is_dyn(n) => return (Some("the trait object type " + n), seen),
-        Tup(ts) => return self.incomparable_list(ts, key, seen),
+        Tup(ts) => return self.incomparable_list(ts, which, seen),
         Con(_, args) => {
             match self.struct_fields(t) {
                 Some(fs) => {
-                    let r = self.incomparable_list(fs.map(fn(f) => f.1), key, seen)
+                    let r = self.incomparable_list(fs.map(fn(f) => f.1), which, seen)
                     if r.0.is_some() { return r }
                     seen = r.1
                 }
@@ -336,24 +363,24 @@ fn Env.incomparable_walk(self, t: cktypes.Ty, key: Bool, seen0: List[cktypes.Ty]
                     Some(vs) => {
                         var all: List[cktypes.Ty] = []
                         for v in vs { all.extend(v.1) }
-                        let r = self.incomparable_list(all, key, seen)
+                        let r = self.incomparable_list(all, which, seen)
                         if r.0.is_some() { return r }
                         seen = r.1
                     }
                     None => {}
                 },
             }
-            return self.incomparable_list(args, key, seen)
+            return self.incomparable_list(args, which, seen)
         }
         _ => {}
     }
     (None, seen)
 }
 
-fn Env.incomparable_list(self, ts: List[cktypes.Ty], key: Bool, seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
+fn Env.incomparable_list(self, ts: List[cktypes.Ty], which: Str, seen0: List[cktypes.Ty]) -> (Option[Str], List[cktypes.Ty]) {
     var seen = seen0
     for x in ts {
-        let r = self.incomparable_walk(x, key, seen)
+        let r = self.incomparable_walk(x, which, seen)
         if r.0.is_some() { return r }
         seen = r.1
     }
@@ -383,7 +410,7 @@ pub fn Env.dyn_trait(self, t: cktypes.Ty) -> Option[Int] {
 
 // ---- traits ----
 
-// The derived traits: satisfied structurally; only Show may be implemented (to override formatting).
+// The derived traits: satisfied structurally; Show, Eq, Ord and Hash may be implemented (Send may not).
 pub fn builtin_trait_name(n: Str) -> Bool { n == "Eq" or n == "Ord" or n == "Hash" or n == "Show" or n == "Send" }
 pub fn Env.is_builtin_trait(self, ti: Int) -> Bool { self.traits[ti].file == 0 and builtin_trait_name(self.traits[ti].name) }
 pub fn Env.is_show(self, ti: Int) -> Bool { self.traits[ti].file == 0 and self.traits[ti].name == "Show" }
@@ -504,15 +531,19 @@ pub fn Env.implements(self, t: cktypes.Ty, tr: Int, args: List[cktypes.Ty], pb: 
         let n = self.traits[tr].name
         if n == "Show" { return self.unshowable_part(t, pb).is_none() }
         // every type parameter inside needs the bound itself
-        if t.any(fn(x) => match x {
+        if self.any_outside(t, n, fn(x) => match x {
             Par(p) => not pb.get(p).map_or(false, fn(bs) => has_tr(bs, tr)),
             _ => false,
         }) {
             return false
         }
         if n == "Send" { return self.unsendable_part(t).is_none() }
-        if self.incomparable_part(t, n == "Hash").is_some() { return false }
-        if n == "Ord" and t.any(fn(x) => x.is("Map")) { return false }
+        match self.user_impl(t, n) {
+            Some((ii, ts)) => return self.impl_bounds_hold(ii, ts, pb),
+            None => {}
+        }
+        if self.incomparable_part(t, n).is_some() { return false }
+        if n == "Ord" and self.any_outside(t, "Ord", fn(x) => x.is("Map")) { return false }
         return true
     }
     match self.dyn_trait(t) {
@@ -534,6 +565,61 @@ pub fn Env.impl_bounds_hold(self, ii: Int, ts: List[cktypes.Ty], pb: Map[Str, Li
         }
     }
     true
+}
+
+// The prelude's trait n (Eq, Ord, Hash, Show, Send).
+pub fn Env.prelude_trait(self, n: Str) -> Option[Int] {
+    match self.trait_ix.get(n) {
+        Some(tr) if self.traits[tr].file == 0 => Some(tr),
+        _ => None,
+    }
+}
+
+// The impl of the prelude's Eq, Ord or Hash (`which`) for t's type and its
+// type arguments: such an impl covers every instantiation of a struct or enum
+// (ckdecl.eq_impl_ok), so the type's name decides, in both backends.
+pub fn Env.user_impl(self, t: cktypes.Ty, which: Str) -> Option[(Int, List[cktypes.Ty])] {
+    match t {
+        Con(n, _) if self.type_decl(n).is_some() => {}
+        _ => return None,
+    }
+    let Some(tr) = self.prelude_trait(which) else { return None }
+    self.find_impl(tr, [], t)
+}
+
+// Why the bounds of user impl ii do not hold for its type arguments ts (None
+// if they do); arguments that mention type parameters are taken to hold, as
+// incomparable_part takes type parameters to be comparable.
+fn Env.user_bounds_fail(self, ii: Int, ts: List[cktypes.Ty]) -> Option[Str] {
+    let im = self.impls[ii]
+    for i in 0..ts.len().min(im.bounds.len()) {
+        if ts[i].any(fn(x) => match x {
+            Par(_) => true,
+            _ => false,
+        }) {
+            continue
+        }
+        for b in im.bounds[i] {
+            if not self.implements(ts[i], b.tr, b.args.map(fn(a) => a.subst(im.tparams, ts)), [:]) {
+                let tn = self.traits[im.tr].name
+                return Some(ts[i].show() + " (impl {tn} for {im.target.show()} needs {im.tparams[i]}: {self.tb_show(b)})")
+            }
+        }
+    }
+    None
+}
+
+// t.any(f), except inside parts whose type has an impl of `which` (Eq, Ord or
+// Hash): such a part is compared or hashed by its impl.
+pub fn Env.any_outside(self, t: cktypes.Ty, which: Str, f: fn(cktypes.Ty) -> Bool) -> Bool {
+    if f(t) { return true }
+    if self.impls.is_empty() { return t.any(f) }
+    if self.user_impl(t, which).is_some() { return false }
+    match t {
+        Con(_, a) | Tup(a) => a.any(fn(x) => self.any_outside(x, which, f)),
+        Fun(a, r) => a.any(fn(x) => self.any_outside(x, which, f)) or self.any_outside(r, which, f),
+        _ => false,
+    }
 }
 
 // The prelude's Show.

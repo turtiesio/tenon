@@ -440,9 +440,10 @@ fn not_comparable(t: cktypes.Ty) -> Bool {
     }
 }
 
-pub fn Ck.comparable(self, t: cktypes.Ty, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
+// `which`: the trait (Eq, Ord) whose impls compare the parts they cover; "" for none.
+pub fn Ck.comparable(self, t: cktypes.Ty, which: Str, sp: ckast.Span) -> Result[Unit, ckast.Diag] {
     let r = self.sub.resolve(t)
-    if r.any(not_comparable) { return ckast.fail(sp, "values of type " + r.show() + " cannot be compared") }
+    if self.env.any_outside(r, which, not_comparable) { return ckast.fail(sp, "values of type " + r.show() + " cannot be compared") }
     Ok(())
 }
 
@@ -609,13 +610,14 @@ fn Ck.binary(mut self, e: ckast.Expr, op: Str, l: ckast.Expr, r: ckast.Expr, exp
         let t0 = self.sub.fresh()
         let t = self.expr(l, t0)?
         let _ = self.expr(r, t)?
-        self.comparable(t, e.sp)?
+        let which = if op == "Eq" or op == "Ne" { "Eq" } else { "Ord" }
+        self.comparable(t, which, e.sp)?
         let rt = self.sub.resolve(t)
-        match self.env.incomparable_part(rt, false) {
+        match self.env.incomparable_part(rt, which) {
             Some(bad) => return ckast.fail(e.sp, "values of type " + rt.show() + " cannot be compared: they contain " + bad),
             None => {}
         }
-        if op != "Eq" and op != "Ne" and rt.any(fn(x) => x.is("Map")) {
+        if op != "Eq" and op != "Ne" and self.env.any_outside(rt, "Ord", fn(x) => x.is("Map")) {
             return ckast.fail(e.sp, "values of type " + rt.show() + " cannot be ordered: maps are not ordered")
         }
         return Ok(cktypes.t_bool())

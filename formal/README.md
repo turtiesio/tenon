@@ -22,6 +22,7 @@ project (`lakefile.toml`, toolchain pinned in `lean-toolchain`:
 | The hypotheses are satisfiable (a typed linear program) | `TenonCore/TypeExamples.lean` | **proved** |
 | Traits and coherence (impls, generic impls with bounds, supertraits, `dyn`) | `TenonCore/Traits.lean` | **proved** |
 | Milestone-3 item 3 specification (user `Eq`/`Ord`/`Hash`, sorting, maps) | `TenonCore/TypeGaps.lean` | **proved** (+ `TypeGapsStable.lean`) |
+| Item 3 as implemented: the prelude's `Ord: Eq` and `Hash: Eq`, maps with Eq/Hash impls as `hget`/`hset`, `Ordering`, impls of one trait at two arguments | `TenonCore/TypeGapsLink.lean` | **proved** (instances) |
 | The guarded theorem statements | `TenonCore/Theorems.lean` | guarded (ops/governance/guarded.txt) |
 | Translator from `tenon ast` dumps to the core | `Front/Parse.lean`, `Front/Translate.lean` | done |
 | The checker's driver: builtin signatures, the instances a program uses | `Front/Checker.lean` | done |

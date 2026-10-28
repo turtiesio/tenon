@@ -1,0 +1,13 @@
+// error: duplicate impl Eq for Point (line 5); a type can implement a trait only once
+// Coherence: one Eq impl per type.
+struct Point { x: Int }
+
+impl Eq for Point {
+    fn eq(self, other: Point) -> Bool { self.x == other.x }
+}
+
+impl Eq for Point {
+    fn eq(self, other: Point) -> Bool { true }
+}
+
+fn main() {}

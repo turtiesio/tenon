@@ -1,0 +1,9 @@
+// error: impl Eq for geo.Circle is not allowed here: it is neither in the module of Eq nor in that of geo.Circle
+// The orphan rule: an impl of the prelude's Eq belongs with its type.
+import geo
+
+impl Eq for geo.Circle {
+    fn eq(self, other: geo.Circle) -> Bool { true }
+}
+
+fn main() {}

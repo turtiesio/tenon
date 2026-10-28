@@ -1,0 +1,422 @@
+// module
+// Eq, Ord and Hash in the interpreter (docs/reference.md §17,
+// formal/TenonCore/TypeGaps.lean): equality, ordering, hashing, map keys
+// and sorting that call a type's impl where it has one, computed as the C
+// backend computes them (its per-type helpers, runtime/tenon.h), so that the
+// two backends agree comparison for comparison, also when an impl breaks the
+// laws:
+// - eq and cmp go through fields, payloads and elements in order and stop
+//   at the first difference (lists compare lengths first for eq; maps
+//   compare by lookups); an impl decides for its type (the value's struct
+//   or enum: an impl covers every instantiation, ckenv.user_impl);
+// - hash is the C runtime's 64-bit hash (tn_mix, tn_Str_hash, the helpers'
+//   `h * 31 +` combination), computed on four 16-bit limbs since Tenon has
+//   no unsigned or bit operations; an impl's hash is its Int;
+// - a map key that holds a value whose type has an Eq or Hash impl is a
+//   KUser key: a lookup hashes the key once and calls eq(key, entry) on the
+//   entries of the same hash in insertion order, the first equal one wins
+//   (TN_MAP_FUNCS_U). Other keys are found exactly (ival.Key), which gives
+//   the same answers, since only a key holding such a value can be equal to one;
+// - sort, sort_by and sort_by_desc are the C runtime's merge sorts
+//   (L_msort; tn_msort_idx over the keys).
+// A program without Eq, Ord or Hash impls uses this module only for the
+// methods eq, cmp and hash (ieval.NDerived); everything else stays in ival.
+import ckast
+import ival
+import ieval
+
+// ---- 64-bit arithmetic modulo 2^64 ----
+
+// Four 16-bit limbs, least significant first.
+pub struct Bits { a: Int, b: Int, c: Int, d: Int }
+
+const LIMB: Int = 65536
+
+fn limbs(x: Bits) -> List[Int] { [x.a, x.b, x.c, x.d] }
+fn of_limbs(l: List[Int]) -> Bits { Bits { a: l[0], b: l[1], c: l[2], d: l[3] } }
+
+// The bits of an Int (two's complement).
+pub fn u64(i: Int) -> Bits {
+    var x = i
+    var out: List[Int] = []
+    for _ in 0..4 {
+        let r = ((x % LIMB) + LIMB) % LIMB
+        out.push(r)
+        x = (x - r) / LIMB
+    }
+    of_limbs(out)
+}
+
+// As an Int (two's complement), as C's (tn_Int)h.
+pub fn Bits.int(self) -> Int {
+    let d = if self.d >= 32768 { self.d - LIMB } else { self.d }
+    ((d * LIMB + self.c) * LIMB + self.b) * LIMB + self.a
+}
+
+fn add(x: Bits, y: Bits) -> Bits {
+    let p = limbs(x)
+    let q = limbs(y)
+    var out: List[Int] = []
+    var carry = 0
+    for i in 0..4 {
+        let s = p[i] + q[i] + carry
+        out.push(s % LIMB)
+        carry = s / LIMB
+    }
+    of_limbs(out)
+}
+
+fn mul(x: Bits, y: Bits) -> Bits {
+    let p = limbs(x)
+    let q = limbs(y)
+    var out: List[Int] = []
+    var carry = 0
+    for k in 0..4 {
+        var s = carry
+        for i in 0..k + 1 { s += p[i] * q[k - i] }
+        out.push(s % LIMB)
+        carry = s / LIMB
+    }
+    of_limbs(out)
+}
+
+fn xor16(x0: Int, y0: Int) -> Int {
+    var x = x0
+    var y = y0
+    var r = 0
+    var bit = 1
+    while x > 0 or y > 0 {
+        if x % 2 != y % 2 { r += bit }
+        x = x / 2
+        y = y / 2
+        bit = bit * 2
+    }
+    r
+}
+
+fn xor(x: Bits, y: Bits) -> Bits { Bits { a: xor16(x.a, y.a), b: xor16(x.b, y.b), c: xor16(x.c, y.c), d: xor16(x.d, y.d) } }
+
+fn pow2(n: Int) -> Int {
+    var r = 1
+    for _ in 0..n { r = r * 2 }
+    r
+}
+
+fn shr(x: Bits, n: Int) -> Bits {
+    let q = n / 16
+    let lo = pow2(n % 16)
+    let hi = LIMB / lo
+    let p = limbs(x) + [0, 0, 0, 0, 0]
+    var out: List[Int] = []
+    for i in 0..4 { out.push(p[i + q] / lo + (p[i + q + 1] % lo) * hi) }
+    of_limbs(out)
+}
+
+fn small(i: Int) -> Bits { u64(i) }
+
+// tn_mix
+fn mix(h0: Bits) -> Bits {
+    var h = xor(h0, shr(h0, 33))
+    h = mul(h, Bits { a: 36045, b: 60757, c: 45015, d: 65361 })
+    h = xor(h, shr(h, 33))
+    h = mul(h, Bits { a: 60499, b: 6789, c: 47614, d: 50382 })
+    xor(h, shr(h, 33))
+}
+
+// The little-endian word of the n bytes of s at p.
+fn word(s: Str, p: Int, n: Int) -> Bits {
+    var l = [0, 0, 0, 0]
+    for i in 0..n { l[i / 2] += s.byte(p + i) * (if i % 2 == 0 { 1 } else { 256 }) }
+    of_limbs(l)
+}
+
+// tn_Str_hash
+fn str_hash(s: Str) -> Bits {
+    let n = s.len()
+    var h = xor(Bits { a: 31765, b: 32586, c: 31161, d: 40503 }, small(n))
+    var p = 0
+    while n - p >= 8 {
+        h = mul(xor(h, word(s, p, 8)), Bits { a: 58809, b: 7396, c: 18285, d: 48984 })
+        h = xor(h, shr(h, 31))
+        p += 8
+    }
+    mix(xor(h, word(s, p, n - p)))
+}
+
+// ---- eq, cmp and hash ----
+
+// The function of the impl's method (0 eq, 1 cmp, 2 hash) for v's type, if it has one.
+fn impl_of(it: ref ieval.Interp, v: ival.Val, k: Int) -> Option[Int] {
+    if it.uimpl.is_empty() or not (v.k == ival.K_STRUCT or v.k == ival.K_ENUM) { return None }
+    match it.uimpl.get((if v.k == ival.K_STRUCT { 0 } else { 1 }, v.i)) {
+        Some(fs) if fs[k] >= 0 => Some(fs[k]),
+        _ => None,
+    }
+}
+
+fn call(it: mut ieval.Interp, fi: Int, args: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    var av = args
+    ieval.call_fn(mut it, fi, mut av, sp)
+}
+
+// a == b (the type's Eq impl, else structurally: N_eq).
+pub fn eq(it: mut ieval.Interp, a: ival.Val, b: ival.Val, sp: ckast.Span) -> Result[Bool, ieval.Ctl] {
+    match impl_of(it, a, 0) {
+        Some(fi) => return Ok(call(mut it, fi, [a, b], sp)?.i == 1),
+        None => {}
+    }
+    let k = a.k
+    if k != b.k { return Ok(false) }
+    if k == ival.K_INT or k == ival.K_BOOL { return Ok(a.i == b.i) }
+    if k == ival.K_STR { return Ok(a.s == b.s) }
+    if k == ival.K_FLOAT { return Ok(a.f == b.f) }
+    if k == ival.K_UNIT { return Ok(true) }
+    if k == ival.K_MAP {
+        if a.m.len() != b.m.len() { return Ok(false) }
+        for (key, v) in a.m {
+            match find(mut it, b.m, ival.from_key(key), sp)? {
+                Some(bk) => if not eq(mut it, b.m[bk], v, sp)? { return Ok(false) },
+                None => return Ok(false),
+            }
+        }
+        return Ok(true)
+    }
+    if not (k == ival.K_LIST or k == ival.K_TUPLE or k == ival.K_STRUCT or k == ival.K_ENUM) { return Ok(false) }
+    if a.xs.len() != b.xs.len() or (k == ival.K_ENUM and a.j != b.j) { return Ok(false) }
+    for i in 0..a.xs.len() {
+        if not eq(mut it, a.xs[i], b.xs[i], sp)? { return Ok(false) }
+    }
+    Ok(true)
+}
+
+fn c3(lt: Bool, gt: Bool) -> Int { if lt { -1 } else if gt { 1 } else { 0 } }
+
+// The order of a and b, -1, 0 or 1 (the type's Ord impl, else structurally: N_cmp).
+pub fn cmp(it: mut ieval.Interp, a: ival.Val, b: ival.Val, sp: ckast.Span) -> Result[Int, ieval.Ctl] {
+    match impl_of(it, a, 1) {
+        Some(fi) => return Ok(call(mut it, fi, [a, b], sp)?.j - 1),
+        None => {}
+    }
+    let k = a.k
+    if k == ival.K_INT or k == ival.K_BOOL { return Ok(c3(a.i < b.i, a.i > b.i)) }
+    if k == ival.K_STR { return Ok(c3(a.s < b.s, a.s > b.s)) }
+    if k == ival.K_FLOAT { return Ok(c3(a.f < b.f, a.f > b.f)) }
+    if k == ival.K_MAP { return ieval.trap("maps are not ordered", sp) }
+    if k == ival.K_ENUM and a.j != b.j { return Ok(c3(a.j < b.j, a.j > b.j)) }
+    if not (k == ival.K_LIST or k == ival.K_TUPLE or k == ival.K_STRUCT or k == ival.K_ENUM) { return Ok(0) }
+    let n = a.xs.len().min(b.xs.len())
+    for i in 0..n {
+        let c = cmp(mut it, a.xs[i], b.xs[i], sp)?
+        if c != 0 { return Ok(c) }
+    }
+    Ok(c3(a.xs.len() < b.xs.len(), a.xs.len() > b.xs.len()))
+}
+
+// The hash of v (the type's Hash impl, else structurally: N_hash).
+pub fn hash(it: mut ieval.Interp, v: ival.Val, sp: ckast.Span) -> Result[Bits, ieval.Ctl] {
+    match impl_of(it, v, 2) {
+        Some(fi) => return Ok(u64(call(mut it, fi, [v], sp)?.i)),
+        None => {}
+    }
+    let k = v.k
+    if k == ival.K_INT { return Ok(mix(u64(v.i))) }
+    if k == ival.K_BOOL { return Ok(small(v.i)) }
+    if k == ival.K_STR { return Ok(str_hash(v.s)) }
+    if k == ival.K_MAP { return Ok(small(v.m.len())) }
+    if not (k == ival.K_LIST or k == ival.K_TUPLE or k == ival.K_STRUCT or k == ival.K_ENUM) { return Ok(small(0)) }
+    var h = small(if k == ival.K_LIST { 7 } else if k == ival.K_ENUM { v.j + 1 } else { 3 })
+    for x in v.xs { h = mix(add(mul(h, small(31)), hash(mut it, x, sp)?)) }
+    Ok(h)
+}
+
+// x.eq(y) (k = 0), x.cmp(y) (1, an Ordering), x.hash() (2): ckenv.RDerived.
+pub fn derived(it: mut ieval.Interp, k: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if k == 0 { return Ok(ival.vbool(eq(mut it, a[0], a[1], sp)?)) }
+    if k == 1 { return Ok(ival.venum(it.ix.ord, cmp(mut it, a[0], a[1], sp)? + 1, [])) }
+    Ok(ival.vint(hash(mut it, a[0], sp)?.int()))
+}
+
+// `==`, `!=`, `<`, `<=`, `>`, `>=` on values that are not numbers, in a
+// program with Eq or Ord impls.
+pub fn compare(it: mut ieval.Interp, op: Int, a: ival.Val, b: ival.Val, sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if op == 5 { return Ok(ival.vbool(eq(mut it, a, b, sp)?)) }
+    if op == 6 { return Ok(ival.vbool(not eq(mut it, a, b, sp)?)) }
+    let c = cmp(mut it, a, b, sp)?
+    Ok(ival.vbool(if op == 7 { c < 0 } else if op == 8 { c <= 0 } else if op == 9 { c > 0 } else { c >= 0 }))
+}
+
+// ---- map keys ----
+
+// Does v hold a value whose type has an Eq or Hash impl?
+pub fn has_impl(it: ref ieval.Interp, v: ival.Val) -> Bool {
+    if it.uimpl.is_empty() { return false }
+    let k = v.k
+    if (k == ival.K_STRUCT or k == ival.K_ENUM) and (impl_of(it, v, 0).is_some() or impl_of(it, v, 2).is_some()) { return true }
+    if k == ival.K_MAP {
+        for (key, x) in v.m {
+            if has_impl(it, ival.from_key(key)) or has_impl(it, x) { return true }
+        }
+        return false
+    }
+    if k == ival.K_LIST or k == ival.K_TUPLE or k == ival.K_STRUCT or k == ival.K_ENUM {
+        for x in v.xs {
+            if has_impl(it, x) { return true }
+        }
+    }
+    false
+}
+
+// The key under which m holds k, if it does, found as TN_MAP_FUNCS_U finds it.
+pub fn find(it: mut ieval.Interp, m: Map[ival.Key, ival.Val], k: ival.Val, sp: ckast.Span) -> Result[Option[ival.Key], ieval.Ctl] {
+    if not has_impl(it, k) {
+        let key = ival.to_key(k)
+        return Ok(if m.contains(key) { Some(key) } else { None })
+    }
+    let h = hash(mut it, k, sp)?.int()
+    for (key, _) in m {
+        match key {
+            KUser(h2, _, kk) if h2 == h => if eq(mut it, k, ival.from_key(kk), sp)? { return Ok(Some(key)) },
+            _ => {}
+        }
+    }
+    Ok(None)
+}
+
+// The key a new entry for k gets (after `find` found none).
+pub fn new_key(it: mut ieval.Interp, k: ival.Val, sp: ckast.Span) -> Result[ival.Key, ieval.Ctl] {
+    if not has_impl(it, k) { return Ok(ival.to_key(k)) }
+    let h = hash(mut it, k, sp)?.int()
+    it.ukeys += 1
+    Ok(KUser(h, it.ukeys, ival.to_key(k)))
+}
+
+// A value standing for k in map m (ival.K_UKEY: ival.to_key gives the key
+// m holds k under, or the key a new entry gets), unless no impl is involved.
+pub fn key_in(it: mut ieval.Interp, m: Map[ival.Key, ival.Val], k: ival.Val, sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if not has_impl(it, k) { return Ok(k) }
+    let key = match find(mut it, m, k, sp)? {
+        Some(key) => key,
+        None => new_key(mut it, k, sp)?,
+    }
+    var one: Map[ival.Key, ival.Val] = [:]
+    one[key] = ival.unit()
+    Ok(ival.Val { k: ival.K_UKEY, m: one, xs: [k], ..ival.unit() })
+}
+
+// The map keys along a place's path, resolved in the maps the path goes
+// through (key_in), as far as the path can be followed.
+pub fn resolve(it: mut ieval.Interp, root: ival.Val, steps: List[ieval.RStep], sp: ckast.Span) -> Result[List[ieval.RStep], ieval.Ctl] {
+    var out: List[ieval.RStep] = []
+    var v = root
+    var live = true
+    for s in steps {
+        match s {
+            RsField(f) => {
+                out.push(s)
+                if live { v = v.xs[f] }
+            }
+            RsIdx(k, kt) => {
+                if not live or v.k != ival.K_MAP {
+                    if live and v.k == ival.K_LIST and k.i >= 0 and k.i < v.xs.len() { v = v.xs[k.i] } else { live = false }
+                    out.push(s)
+                } else {
+                    let r = key_in(mut it, v.m, k, sp)?
+                    out.push(RsIdx(r, kt))
+                    match v.m.get(ival.to_key(r)) {
+                        Some(x) => v = x,
+                        None => live = false,
+                    }
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+// ---- sorting ----
+
+// L_msort (runtime/tenon.h): insertion sort up to 16 elements, else the
+// halves sorted and merged (skipped when already in order).
+fn msort(it: mut ieval.Interp, xs: mut List[ival.Val], lo: Int, n: Int, sp: ckast.Span) -> Result[Unit, ieval.Ctl] {
+    if n < 2 { return Ok(()) }
+    if n <= 16 {
+        for i in 1..n {
+            let x = xs[lo + i]
+            var j = i
+            while j > 0 {
+                if cmp(mut it, xs[lo + j - 1], x, sp)? <= 0 { break }
+                xs[lo + j] = xs[lo + j - 1]
+                j -= 1
+            }
+            xs[lo + j] = x
+        }
+        return Ok(())
+    }
+    let h = n / 2
+    msort(mut it, mut xs, lo, h, sp)?
+    msort(mut it, mut xs, lo + h, n - h, sp)?
+    if cmp(mut it, xs[lo + h - 1], xs[lo + h], sp)? <= 0 { return Ok(()) }
+    let tmp = xs.slice(lo, lo + h)
+    var i = 0
+    var j = h
+    var k = 0
+    while i < h and j < n {
+        if cmp(mut it, xs[lo + j], tmp[i], sp)? < 0 {
+            xs[lo + k] = xs[lo + j]
+            j += 1
+        } else {
+            xs[lo + k] = tmp[i]
+            i += 1
+        }
+        k += 1
+    }
+    while i < h {
+        xs[lo + k] = tmp[i]
+        i += 1
+        k += 1
+    }
+    Ok(())
+}
+
+// tn_msort_idx over the keys (negated for sort_by_desc).
+fn msort_idx(it: mut ieval.Interp, idx: mut List[Int], lo: Int, n: Int, keys: List[ival.Val], desc: Bool, sp: ckast.Span) -> Result[Unit, ieval.Ctl] {
+    if n < 2 { return Ok(()) }
+    let h = n / 2
+    msort_idx(mut it, mut idx, lo, h, keys, desc, sp)?
+    msort_idx(mut it, mut idx, lo + h, n - h, keys, desc, sp)?
+    let s = if desc { -1 } else { 1 }
+    if s * cmp(mut it, keys[idx[lo + h - 1]], keys[idx[lo + h]], sp)? <= 0 { return Ok(()) }
+    let tmp = idx.slice(lo, lo + h)
+    var i = 0
+    var j = h
+    var k = 0
+    while i < h and j < n {
+        if s * cmp(mut it, keys[idx[lo + j]], keys[tmp[i]], sp)? < 0 {
+            idx[lo + k] = idx[lo + j]
+            j += 1
+        } else {
+            idx[lo + k] = tmp[i]
+            i += 1
+        }
+        k += 1
+    }
+    while i < h {
+        idx[lo + k] = tmp[i]
+        i += 1
+        k += 1
+    }
+    Ok(())
+}
+
+// xs sorted (by: by the keys, desc: descending), as the C runtime sorts.
+pub fn sort(it: mut ieval.Interp, xs: List[ival.Val], keys: List[ival.Val], by: Bool, desc: Bool, sp: ckast.Span) -> Result[List[ival.Val], ieval.Ctl] {
+    var ys = xs
+    if not by {
+        msort(mut it, mut ys, 0, ys.len(), sp)?
+        return Ok(ys)
+    }
+    var idx: List[Int] = []
+    for i in 0..xs.len() { idx.push(i) }
+    msort_idx(mut it, mut idx, 0, idx.len(), keys, desc, sp)?
+    Ok(idx.map(fn(i) => xs[i]))
+}

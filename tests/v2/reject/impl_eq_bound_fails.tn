@@ -1,0 +1,14 @@
+// error: values of type Box[fn(Int) -> Int] cannot be compared
+// An impl applies where its bounds hold: Box[T] is Eq only for an Eq T.
+struct Box[T] { x: T }
+
+impl[T: Eq] Eq for Box[T] {
+    fn eq(self, other: Box[T]) -> Bool { self.x == other.x }
+}
+
+fn inc(n: Int) -> Int { n + 1 }
+
+fn main() {
+    let a = Box { x: inc }
+    let _ = a == a
+}

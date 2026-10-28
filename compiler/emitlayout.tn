@@ -139,7 +139,7 @@ pub fn assemble(m: mut emit.Em, runtime: Str) -> Str {
             Con(k, a) if k == "Map" => {
                 let kk = m.cty(a[0])
                 let vv = m.cty(a[1])
-                out += "TN_MAP_FUNCS(" + n + ", " + kk + ", " + vv + ")\n"
+                out += (if emittrait.user_keyed(m, a[0]) { "TN_MAP_FUNCS_U(" } else { "TN_MAP_FUNCS(" }) + n + ", " + kk + ", " + vv + ")\n"
                 if m.mt { out += "TN_MAP_COPY(" + n + ", " + kk + ", " + vv + ")\n" }
             }
             _ => {}
@@ -212,6 +212,7 @@ fn helpers_for(m: mut emit.Em, t: cktypes.Ty, protos: mut Str, b: mut Str) {
         return
     }
     protos += emittrait.show_proto(mut m, t)
+    protos += emittrait.cmp_protos(mut m, t)
     decoder_for(mut m, t, n, mut b)
     match m.enum_variants(t) {
         Some(vs) => {
@@ -276,9 +277,10 @@ fn struct_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, b: mut Str) {
     }
     b += "static {inl}TN_UNUSED {n} {n}_retain({n} x) \{ {rc}return x; }\n"
     b += "static {inl}TN_UNUSED void {n}_release({n} x) \{ {rl}(void)x; }\n"
-    b += "static TN_UNUSED bool {n}_eq({n} a, {n} b) \{ (void)a; (void)b; return {eq}; }\n"
-    b += "static TN_UNUSED int {n}_cmp({n} a, {n} b) \{ int c; (void)a; (void)b; (void)c; {cm}return 0; }\n"
-    b += "static TN_UNUSED uint64_t {n}_hash({n} x) \{ uint64_t h = 3; {hs}(void)x; return h; }\n"
+    let (pe, pc, ph) = (emittrait.cmp_prefix(mut m, t, 0), emittrait.cmp_prefix(mut m, t, 1), emittrait.cmp_prefix(mut m, t, 2))
+    b += "static TN_UNUSED bool {n}_eq({n} a, {n} b) \{ {pe}(void)a; (void)b; return {eq}; }\n"
+    b += "static TN_UNUSED int {n}_cmp({n} a, {n} b) \{ {pc}int c; (void)a; (void)b; (void)c; {cm}return 0; }\n"
+    b += "static TN_UNUSED uint64_t {n}_hash({n} x) \{ {ph}uint64_t h = 3; {hs}(void)x; return h; }\n"
     b += "static TN_UNUSED void {n}_show(tn_buf *b, {n} x, int mode) \{ (void)mode; (void)x; {sh}}\n"
     if m.mt {
         var cp = ""
@@ -369,9 +371,10 @@ fn enum_helpers(m: mut emit.Em, t: cktypes.Ty, n: Str, vs: List[(Str, List[cktyp
         b += "static {inl}TN_UNUSED {n} {n}_retain({n} x) \{ switch (x.tag) \{ {rc}} return x; }\n"
         b += "static {inl}TN_UNUSED void {n}_release({n} x) \{ switch (x.tag) \{ {rl}} }\n"
     }
-    b += "static TN_UNUSED bool {n}_eq({n} a, {n} b) \{ if (a{acc}tag != b{acc}tag) return false; switch (a{acc}tag) \{ {eq}} return true; }\n"
-    b += "static TN_UNUSED int {n}_cmp({n} a, {n} b) \{ int c = 0; if (a{acc}tag != b{acc}tag) return a{acc}tag < b{acc}tag ? -1 : 1; switch (a{acc}tag) \{ {cm}} return c; }\n"
-    b += "static TN_UNUSED uint64_t {n}_hash({n} x) \{ uint64_t h = (uint64_t)x{acc}tag + 1; switch (x{acc}tag) \{ {hs}} return h; }\n"
+    let (pe, pc, ph) = (emittrait.cmp_prefix(mut m, t, 0), emittrait.cmp_prefix(mut m, t, 1), emittrait.cmp_prefix(mut m, t, 2))
+    b += "static TN_UNUSED bool {n}_eq({n} a, {n} b) \{ {pe}if (a{acc}tag != b{acc}tag) return false; switch (a{acc}tag) \{ {eq}} return true; }\n"
+    b += "static TN_UNUSED int {n}_cmp({n} a, {n} b) \{ {pc}int c = 0; if (a{acc}tag != b{acc}tag) return a{acc}tag < b{acc}tag ? -1 : 1; switch (a{acc}tag) \{ {cm}} return c; }\n"
+    b += "static TN_UNUSED uint64_t {n}_hash({n} x) \{ {ph}uint64_t h = (uint64_t)x{acc}tag + 1; switch (x{acc}tag) \{ {hs}} return h; }\n"
     var sh = ""
     for i in 0..vs.len() {
         let fs = vs[i].1

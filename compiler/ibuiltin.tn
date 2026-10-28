@@ -9,6 +9,7 @@ import ckast
 import ival
 import ieval
 import icap
+import iuser
 import iwork
 
 // A builtin, found by its name in `table` once, when the program is lowered
@@ -192,7 +193,10 @@ fn core_op(it: mut ieval.Interp, op: CoreOp, a: List[ival.Val], sp: ckast.Span) 
         }
         BxListJoin => Ok(ival.vstr(str_list(a[0]).join(a[1].s))),
         BxMapLen => Ok(ival.vint(a[0].m.len())),
-        BxMapGet => Ok(ieval.opt(ix, a[0].m.get(ival.to_key(a[1])))),
+        BxMapGet => {
+            let k = iuser.key_in(mut it, a[0].m, a[1], sp)?
+            Ok(ieval.opt(ix, a[0].m.get(ival.to_key(k))))
+        }
         BxMapKeys => {
             var out: List[ival.Val] = []
             for (k, _) in a[0].m { out.push(ival.from_key(k)) }

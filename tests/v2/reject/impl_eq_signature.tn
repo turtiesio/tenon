@@ -1,0 +1,9 @@
+// error: method 'eq' of impl Eq for Point has the wrong signature: expected fn(self, Point) -> Bool, found fn(self, Int) -> Bool
+// An impl's method has the trait's signature, Self replaced by the type.
+struct Point { x: Int }
+
+impl Eq for Point {
+    fn eq(self, other: Int) -> Bool { self.x == other }
+}
+
+fn main() {}

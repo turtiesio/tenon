@@ -11,6 +11,7 @@ import ival
 import ibuiltin
 import icap
 import icodec
+import iuser
 import iwork
 
 pub const MAX_DEPTH: Int = 20000
@@ -25,7 +26,7 @@ pub const EXIT_OUTPUT: Int = 74
 pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int), CNoKey(ival.Val, Int, ckast.Span), CBlock }
 
 // Enum numbers the interpreter builds values of.
-pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
+pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int, pub ord: Int }
 
 // The interpreter's state. It owns the event-loop handles the program's
 // sockets live in (compiler/icap.tn), so it is unique.
@@ -40,6 +41,9 @@ pub unique struct Interp {
     pub wk: iwork.Sched,
     pub bis: List[ibuiltin.Bi], pub mbis: List[ibuiltin.MutOp], // the builtins numbered by icode.lower
     pub held: List[Int],                                        // the running frame's slots that may hold a socket (icode.FnRt.held)
+    // Eq, Ord and Hash impls (compiler/iuser.tn): (0, struct) or (1, enum) ->
+    // the functions of eq, cmp, hash (-1: derived); map keys made so far
+    pub uimpl: Map[(Int, Int), List[Int]], pub ukeys: Int,
 }
 
 pub fn trap[T](msg: Str, sp: ckast.Span) -> Result[T, Ctl] { Err(CTrap(msg, sp)) }
@@ -251,8 +255,31 @@ fn args_mut(it: mut Interp, fr: mut List[ival.Val], args: List[icode.Arg], av: m
             AVal(e) => av.push(ev(mut it, mut fr, e)?),
         }
     }
+    for i in 0..taken.len() { taken[i].steps = rsteps(mut it, fr, taken[i].root, taken[i].steps, taken[i].sp)? }
     for t in taken { av[t.at] = nk(mut it, nav(mut fr[t.root], t.steps, 0, false, MTake, t.sp, it.names, it.ix))? }
     Ok(())
+}
+
+// A `mut self` builtin in a program with Eq, Ord or Hash impls: sorts
+// compare as the C runtime's do, and a map's key is the one it holds
+// (compiler/iuser.tn).
+fn user_mut(it: mut Interp, fr: mut List[ival.Val], pl: icode.Place, steps: List[RStep], op: ibuiltin.MutOp, av0: List[ival.Val], keys: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, Ctl] {
+    var av = av0
+    let cur = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MGet, pl.sp, it.names, it.ix))?
+    if op == BmSort or op == BmSortBy or op == BmSortByDesc {
+        let sorted = iuser.sort(mut it, cur.xs, keys, op != BmSort, op == BmSortByDesc, sp)?
+        let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MSet(ival.vlist(sorted)), pl.sp, it.names, it.ix))?
+        return Ok(ival.unit())
+    }
+    if op == BmMapInsert or op == BmMapRemove { av[0] = iuser.key_in(mut it, cur.m, av[0], sp)? }
+    nk(mut it, nav(mut fr[pl.root], steps, 0, false, MExt(op, av, keys), sp, it.names, it.ix))
+}
+
+// With Eq or Hash impls, the keys of a path are those its maps hold them
+// under (iuser.resolve), found when the path is used.
+fn rsteps(it: mut Interp, fr: List[ival.Val], root: Int, steps: List[RStep], sp: ckast.Span) -> Result[List[RStep], Ctl] {
+    if it.uimpl.is_empty() { return Ok(steps) }
+    iuser.resolve(mut it, fr[root], steps, sp)
 }
 
 fn put_back(it: mut Interp, fr: mut List[ival.Val], taken: List[Taken], finals: List[ival.Val], sp: ckast.Span) -> Result[Unit, Ctl] {
@@ -311,8 +338,8 @@ pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, s
             let key = ival.to_key(k)
             if not v.m.contains(key) {
                 if not (create and i + 1 == steps.len()) {
-                    if names.shows() { return Err(CNoKey(k, kt, sp)) }
-                    return trap("key not found: " + ival.show_nested(k, names), sp)
+                    if names.shows() { return Err(CNoKey(ival.key_shown(k), kt, sp)) }
+                    return trap("key not found: " + ival.show_nested(ival.key_shown(k), names), sp)
                 }
                 v.m[key] = ival.unit()
             }
@@ -387,8 +414,9 @@ fn stmt(it: mut Interp, fr: mut List[ival.Val], s: icode.Stm) -> Result[ival.Val
                 }
                 return Ok(ival.unit())
             }
-            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            let steps0 = eval_steps(mut it, mut fr, pl.steps)?
             let v = ev(mut it, mut fr, e)?
+            let steps = rsteps(mut it, fr, pl.root, steps0, pl.sp)?
             if op < 0 {
                 let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, true, MSet(v), pl.sp, it.names, it.ix))?
             } else {
@@ -445,8 +473,9 @@ fn stmt(it: mut Interp, fr: mut List[ival.Val], s: icode.Stm) -> Result[ival.Val
             Ok(ival.unit())
         }
         IAssignDrop(pl, e) => {
-            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            let steps0 = eval_steps(mut it, mut fr, pl.steps)?
             let v = ev(mut it, mut fr, e)?
+            let steps = rsteps(mut it, fr, pl.root, steps0, pl.sp)?
             let old = if steps.is_empty() { fr[pl.root] } else { nk(mut it, nav(mut fr[pl.root], steps, 0, false, MGet, pl.sp, it.names, it.ix))? }
             if steps.is_empty() {
                 fr[pl.root] = v
@@ -513,6 +542,7 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
                 NLit(v) => v,
                 _ => ev(mut it, mut fr, b)?,
             }
+            if is_user_cmp(it, op, x) { return iuser.compare(mut it, op, x, y, sp) }
             binop(op, x, y, sp)
         }
         NField(b, i) => match b {
@@ -547,7 +577,8 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
         NIndex(b, i, sp, kt) => {
             let bv = ev(mut it, mut fr, b)?
             let iv = ev(mut it, mut fr, i)?
-            match index(bv, iv, sp, it.names) {
+            let ik = if bv.k == ival.K_MAP { iuser.key_in(mut it, bv.m, iv, sp)? } else { iv }
+            match index(bv, ik, sp, it.names) {
                 Err(CTrap(m, at)) if m.starts_with("key not found: ") and it.names.shows() => {
                     let shown = prerender(mut it, iv, kt)?
                     trap("key not found: " + ival.show_nested(shown, it.names), at)
@@ -643,8 +674,9 @@ fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival
         NMapLit(ps) => {
             var m: Map[ival.Key, ival.Val] = [:]
             for p in ps {
-                let k = ev(mut it, mut fr, p.0)?
+                let k0 = ev(mut it, mut fr, p.0)?
                 let v = ev(mut it, mut fr, p.1)?
+                let k = iuser.key_in(mut it, m, k0, ckast.Span { file: 0, line: 0, col: 0 })?
                 m[ival.to_key(k)] = v
             }
             Ok(ival.vmap(m))
@@ -697,7 +729,12 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
             if site { it.site = sp }
             var av: List[ival.Val] = []
             for a in args { av.push(ev(mut it, mut fr, a)?) }
-            Ok(icodec.decode(mut it, t, av[0].s))
+            icodec.decode(mut it, t, av[0].s)
+        }
+        NDerived(k, xs, sp) => {
+            var av: List[ival.Val] = []
+            for x in xs { av.push(ev(mut it, mut fr, x)?) }
+            iuser.derived(mut it, k, av, sp)
         }
         NCallMut(fi, args, sp, site) => {
             if site { it.site = sp }
@@ -720,10 +757,11 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
         }
         NMutSelf(fi, pl, args, sp, site) => {
             if site { it.site = sp }
-            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            let steps0 = eval_steps(mut it, mut fr, pl.steps)?
             var av: List[ival.Val] = [ival.unit()]
             var taken: List[Taken] = []
             args_mut(mut it, mut fr, args, mut av, mut taken)?
+            let steps = rsteps(mut it, fr, pl.root, steps0, pl.sp)?
             av[0] = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MTake, pl.sp, it.names, it.ix))?
             let r = call_fn(mut it, fi, mut av, sp)?
             let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MSet(av[0]), pl.sp, it.names, it.ix))?
@@ -732,9 +770,10 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
         }
         NExtMut(id, pl, args, sp, site) => {
             if site { it.site = sp }
-            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            let steps0 = eval_steps(mut it, mut fr, pl.steps)?
             var av: List[ival.Val] = []
             for a in args { av.push(ev(mut it, mut fr, a)?) }
+            let steps = rsteps(mut it, fr, pl.root, steps0, pl.sp)?
             // sort_by keys are computed first, element by element
             var keys: List[ival.Val] = []
             if id < 0 { panic("interp: missing builtin") }
@@ -745,6 +784,7 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
             } else if not steps.is_empty() {
                 let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MCheck, pl.sp, it.names, it.ix))?
             }
+            if not it.uimpl.is_empty() { return user_mut(mut it, mut fr, pl, steps, op, av, keys, sp) }
             nk(mut it, nav(mut fr[pl.root], steps, 0, false, MExt(op, av, keys), sp, it.names, it.ix))
         }
         NScope(ss, mine) => scope(mut it, mut fr, ss, mine),
@@ -795,8 +835,13 @@ fn index(b: ival.Val, i: ival.Val, sp: ckast.Span, names: ival.Names) -> Result[
     }
     match b.m.get(ival.to_key(i)) {
         Some(v) => Ok(v),
-        None => trap("key not found: " + ival.show_nested(i, names), sp),
+        None => trap("key not found: " + ival.show_nested(ival.key_shown(i), names), sp),
     }
+}
+
+// A comparison of values that are not numbers in a program with Eq or Ord impls (compiler/iuser.tn).
+fn is_user_cmp(it: ref Interp, op: Int, a: ival.Val) -> Bool {
+    op >= icode.OP_EQ and op <= icode.OP_GE and not it.uimpl.is_empty() and a.k != ival.K_INT and a.k != ival.K_FLOAT
 }
 
 pub fn binop(op: Int, a: ival.Val, b: ival.Val, sp: ckast.Span) -> Result[ival.Val, Ctl] {

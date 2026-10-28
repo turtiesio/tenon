@@ -1,0 +1,9 @@
+// error: the linear type Ticket cannot implement Eq: its methods would consume the values they compare
+// eq takes its operands by value, which would consume linear ones.
+linear struct Ticket { n: Int }
+
+impl Eq for Ticket {
+    fn eq(self, other: Ticket) -> Bool { false }
+}
+
+fn main() {}

@@ -893,16 +893,20 @@ cannot be used with 'dyn': method 'twin' mentions Self`.
 (lib/v2/prelude.tn) that every type satisfies structurally, exactly as `==`,
 ordering, hashing and `to_str()` always worked (§4). As bounds they say what
 a type parameter is used for: `fn largest[T: Ord](xs: List[T]) -> T`,
-`fn count[K: Hash + Eq](xs: List[K]) -> Int`. Eq: no functions,
+`fn count[K: Hash](xs: List[K]) -> Int`. Eq: no functions,
 capabilities or `dyn` values inside; Ord: Eq and no maps; Hash (usable as a
 map key): Eq and no Float; Show: no functions or capabilities (a fifth,
-Send, says what can go to another worker: §18). "Inside" counts every
+Send, says what can go to another worker: §18). Ord and Hash have Eq as a
+supertrait (`trait Ord: Eq`), so `T: Ord` gives `T: Eq`. "Inside" counts every
 field and payload, through other declared types (`struct Log { c: Console }`
-is not Show), except that a type whose Show impl applies is Show whatever it
-contains. A type that
+is not Show), except that a type whose impl of the trait applies satisfies it
+whatever it contains. A type that
 contains a function does not satisfy Eq: `type fn(Int) -> Int does not
-implement Eq (needed by bound T: Eq of same)`. Only Show can be implemented,
-to replace the derived text:
+implement Eq (needed by bound T: Eq of same)`. Their methods work on every
+type that satisfies them: `x.eq(y)` is `x == y`, `x.cmp(y)` returns an
+`Ordering` (`Less`, `Equal` or `Greater`, ordered as `<` orders),
+`x.hash()` the Int a map hashes `x` to. Show, Eq, Ord and Hash can be
+implemented; an impl of Show replaces the derived text:
 
 ```tenon
 struct Money { cents: Int }
@@ -921,9 +925,7 @@ The impl is used wherever a Money is formatted: interpolation, `to_str()`,
 inside lists, maps, tuples and other values, in generic code, `dyn` values,
 `unwrap` traps and `main`'s error; `encode` (§14) stays structural so that
 `decode` reads it back. Inside `to_str` format the fields, not `self` (that
-would call it again). `impl Eq`, `Ord` and `Hash` are refused in this
-version: equality, map keys and sorting stay structural, so the interpreter
-and the C backend cannot disagree about them. An impl of Show may bound its
+would call it again). Impls of Eq, Ord and Hash: below. An impl of Show may bound its
 type parameters only by derived traits (`impl[T: Show] Show for Box[T]`).
 An impl for one instantiation formats only that one: with `impl Show for
 Box[Int]`, a `Box[Str]` keeps the derived text, also in generic code. A
@@ -1025,9 +1027,104 @@ cycle. A trait with supertraits or type parameters cannot be used with
 `dyn` (a table holds the trait's own methods only).
 
 The rules are those of formal/TenonCore/Traits.lean (`TraitDecl.tparams`,
-`supers`, coherence over the trait's arguments, `Overlap`, the supertrait
-rule checked per impl, `ImplSupersOk`, and its consequence for bounds,
-`super_entails`).
+`supers`, the supertrait rule checked per impl, `ImplSupersOk`, and its
+consequence for bounds, `super_entails`); formal/TenonCore/TypeGapsLink.lean
+shows that impls of one trait at two arguments are coherent
+(`into_impls_coherent`).
+
+### Eq, Ord and Hash impls
+
+<!-- test: tests/v2/run/user_eq_hash.tn tests/v2/run/user_ord.tn tests/v2/run/user_unlawful.tn tests/v2/run/user_eq_trap.tn tests/v2/run/user_eq_codec.tn tests/v2/reject/impl_eq_instantiation.tn tests/v2/reject/impl_eq_repeated_param.tn tests/v2/reject/impl_eq_orphan.tn tests/v2/reject/impl_eq_duplicate.tn tests/v2/reject/impl_ord_needs_eq.tn tests/v2/reject/impl_hash_needs_eq.tn tests/v2/reject/impl_eq_user_bound.tn tests/v2/reject/impl_eq_linear.tn tests/v2/reject/impl_eq_bound_fails.tn tests/v2/reject/impl_eq_signature.tn tests/v2/reject/derived_cmp_map.tn tests/v2/reject/impl_send_still_derived.tn -->
+
+```tenon
+// a case-insensitive name: equal and hashed by its lowercase text
+struct Name { s: Str }
+
+impl Eq for Name {
+    fn eq(self, other: Name) -> Bool { self.s.lower() == other.s.lower() }
+}
+
+impl Hash for Name {
+    fn hash(self) -> Int { self.s.lower().hash() }
+}
+
+// newest first: major descending, then minor descending
+struct Version { major: Int, minor: Int }
+
+impl Ord for Version {
+    fn cmp(self, other: Version) -> Ordering { other.major.cmp(self.major).then(other.minor.cmp(self.minor)) }
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    var ages: Map[Name, Int] = [:]
+    ages[Name { s: "Alice" }] = 30
+    ages[Name { s: "ALICE" }] += 1
+    con.println("{ages.len()} {ages.get(Name { s: "alice" })}")   // 1 Some(31)
+    var vs = [Version { major: 1, minor: 2 }, Version { major: 2, minor: 0 }, Version { major: 1, minor: 9 }]
+    vs.sort()
+    con.println(vs.map(fn(v) => "{v.major}.{v.minor}").join(" "))   // 2.0 1.9 1.2
+}
+```
+
+**What they replace.** `impl Eq for T { fn eq(self, other: T) -> Bool }`,
+`impl Ord for T { fn cmp(self, other: T) -> Ordering }` and `impl Hash for
+T { fn hash(self) -> Int }` replace the derived equality, ordering and
+hashing of T everywhere, in both backends: `==` and `!=`; `<`, `<=`, `>`,
+`>=`; `x.eq(y)`, `x.cmp(y)`, `x.hash()`; lists, tuples, maps, Options and
+other values holding a T (whose derived equality, ordering and hashing
+compare and hash their parts in order, through T's impl); `contains`,
+`index_of`; `sort`, `sort_by` and `sort_by_desc` keys, `min_by`/`max_by`,
+`Heap`; map and set keys (lookup, `m[k]`, insertion, removal, map
+literals, `decode`). Formatting and `encode` stay structural (Show is a
+separate impl). `Ordering.then` chains comparisons by several keys and
+`Ordering.reverse` reverses one. Inside an impl compare the fields, not
+`self` (`self == other` in `eq` calls `eq` again).
+
+**Rules.** An impl of Eq, Ord or Hash is for a struct or enum of the impl's
+module (the orphan rule; Int, tuples and the other builtin types keep the
+derived ones) and covers every instantiation of a generic type: `impl[T:
+Eq] Eq for Box[T]`, not `impl Eq for Box[Int]` (`impl Eq for Box[Int] must
+cover every instantiation of Box, as impl[T] Eq for Box[T] does`), since
+both backends choose the impl by the value's type name. Its type parameters
+may be bounded only by the derived traits; an instantiation whose arguments
+miss a bound does not implement the trait (`values of type Box[fn(Int) ->
+Int] cannot be compared`). Ord and Hash need Eq (their supertrait), derived
+or implemented: a type with a function inside needs `impl Eq` for `impl
+Ord`. Linear and unique types cannot have these impls (`eq` would consume
+the values it compares). Send cannot be implemented.
+
+**Laws.** An impl must make Eq an equivalence (reflexive, symmetric,
+transitive), Ord a total order consistent with Eq (`a.cmp(a)` is Equal,
+`b.cmp(a)` is `a.cmp(b).reverse()`, `<=` transitive, and `a.cmp(b)` is
+Equal exactly when `a == b`) and Hash consistent with Eq (`a == b` implies
+`a.hash() == b.hash()`). The compiler cannot check them. With lawful impls
+a map finds a key by any equal key and keeps one entry per class of equal
+keys, and `sort` sorts (formal/TenonCore/TypeGaps.lean: `hmap_agrees`,
+`hbuild_unique`, `isort_sorted`; a sort with a total order has one result,
+`sort_unique`).
+
+**Impls that break the laws.** Results can be wrong (a map holding two
+"equal" keys, a list not in order) but stay defined, the same in the
+interpreter and in C, and memory and capabilities stay safe: an impl is an
+ordinary function, which obtains no authority it is not given and drops or
+duplicates no linear value (Lean: `user_impls_capability_safe`,
+`user_impls_obligations_conserved`); a map holds only keys and values that
+were inserted, at most one entry per insertion (`unlawful_eq_map_provenance`,
+`hbuild_prov`); a sort returns a permutation of its input, or stops with
+the impl's trap (`user_sort_perm`). Precisely: a map computes a key's hash
+once per operation and calls `eq(key, entry)` on the entries with the same
+hash, in insertion order; the first that returns true is the key's entry
+(an insertion replaces its value and keeps its key and place, or appends a
+new entry; there is no other comparison). `sort` and the `sort_by`
+functions are fixed merge sorts (stable: equal elements keep their order;
+up to 16 elements, insertion sort), so a comparator that is not an order
+gives the same permutation on both backends; `cmp` and `eq` run left to
+right through fields, payloads and elements and stop at the first
+difference. A trap or endless loop in an impl is the program's
+(tests/v2/run/user_eq_trap.tn). formal/TenonCore/TypeGapsLink.lean states
+the map rule as TypeGaps.lean's `hget`/`hset` with the hash as the bucket
+function.
 
 ## 18. Workers and channels
 

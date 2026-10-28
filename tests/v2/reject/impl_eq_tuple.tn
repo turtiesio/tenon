@@ -1,0 +1,7 @@
+// error: impl Hash for (Int, Int) is not allowed here: (Int, Int) has no module of its own
+// Eq, Ord and Hash impls are for the impl module's own structs and enums.
+impl Hash for (Int, Int) {
+    fn hash(self) -> Int { self.0 }
+}
+
+fn main() {}

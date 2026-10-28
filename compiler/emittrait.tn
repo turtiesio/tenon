@@ -171,6 +171,7 @@ pub fn show_trait(env: ckenv.Env) -> Int {
 // interpreter chooses the same, icode.Fmt), which its formatter calls (see
 // emitlayout.helpers_for).
 pub fn note_type(m: mut emit.Em, t: cktypes.Ty) {
+    note_cmp(mut m, t)
     if m.show_tr < 0 { return }
     match t {
         Con(n, _) if m.c.env.type_decl(n).is_some() and m.c.env.show_impl(t, [:]).is_some() => match m.c.env.method_for(m.show_tr, 0, t, []) {
@@ -199,4 +200,103 @@ pub fn show_prefix(m: mut emit.Em, t: cktypes.Ty) -> Str {
         Some(f) => "if (!(mode & TN_FULL)) \{ tn_Str s_ = " + f + "(x); tn_buf_str(b, s_); tn_Str_release(s_); return; } ",
         None => "",
     }
+}
+
+// ---- Eq, Ord and Hash impls ----
+
+// The prelude's Eq, Ord and Hash, each -1 unless the program implements it.
+pub fn cmp_traits(env: ckenv.Env) -> List[Int] {
+    ["Eq", "Ord", "Hash"].map(fn(n) => match env.prelude_trait(n) {
+        Some(tr) if env.impls.any(fn(im) => im.tr == tr) => tr,
+        _ => -1,
+    })
+}
+
+// When a declared type gets its C name: the instances of the methods of its
+// Eq, Ord and Hash impls (an impl covers every instantiation, ckenv.user_impl),
+// which its helpers N_eq, N_cmp and N_hash call (emitlayout.helpers_for), so
+// that `==`, ordering, sorting, maps and the helpers of the values holding it
+// use them.
+fn note_cmp(m: mut emit.Em, t: cktypes.Ty) {
+    for k in 0..3 {
+        let tr = m.cmp_trs[k]
+        if tr < 0 { continue }
+        match t {
+            Con(n, _) if m.c.env.type_decl(n).is_some() => match m.c.env.method_for(tr, 0, t, []) {
+                Some((fi, targs)) => {
+                    if k == 1 { let _ = m.cty(cktypes.con0("Ordering")) }
+                    let f = emitbody.fn_inst(mut m, fi, targs)
+                    m.cmp_ovs[(k, t)] = f
+                }
+                None => {}
+            },
+            _ => {}
+        }
+    }
+}
+
+// The prototypes of a type's Eq, Ord and Hash methods (the helpers come before the functions).
+pub fn cmp_protos(m: mut emit.Em, t: cktypes.Ty) -> Str {
+    let n = m.tnames[t]
+    var out = ""
+    match m.cmp_ovs.get((0, t)) {
+        Some(f) => out += "static tn_Bool " + f + "(" + n + " v_self, " + n + " v_other);\n",
+        None => {}
+    }
+    match m.cmp_ovs.get((1, t)) {
+        Some(f) => out += "static " + m.tnames[cktypes.con0("Ordering")] + " " + f + "(" + n + " v_self, " + n + " v_other);\n",
+        None => {}
+    }
+    match m.cmp_ovs.get((2, t)) {
+        Some(f) => out += "static tn_Int " + f + "(" + n + " v_self);\n",
+        None => {}
+    }
+    out
+}
+
+// The start of the body of a type's helper N_eq (k = 0), N_cmp (1) or
+// N_hash (2): with an impl, the impl's method decides (cmp's Ordering is
+// Less, Equal, Greater: -1, 0, 1; hash is the method's Int).
+pub fn cmp_prefix(m: mut emit.Em, t: cktypes.Ty, k: Int) -> Str {
+    match m.cmp_ovs.get((k, t)) {
+        Some(f) => {
+            if k == 0 { return "return " + f + "(a, b); " }
+            if k == 2 { return "return (uint64_t)" + f + "(x); " }
+            let acc = if m.is_boxed(cktypes.con0("Ordering")) { "->" } else { "." }
+            "return (int)(" + f + "(a, b))" + acc + "tag - 1; "
+        }
+        None => "",
+    }
+}
+
+// Does a map with keys of type t compare or hash them with an Eq or Hash
+// impl (anywhere inside)? Its functions are then TN_MAP_FUNCS_U (runtime/tenon.h).
+pub fn user_keyed(m: emit.Em, t: cktypes.Ty) -> Bool {
+    if m.cmp_trs[0] < 0 and m.cmp_trs[2] < 0 { return false }
+    keyed_walk(m, t, [])
+}
+
+fn keyed_walk(m: emit.Em, t: cktypes.Ty, seen: List[cktypes.Ty]) -> Bool {
+    if seen.contains(t) or ckenv.deeper(t, 48) { return false }
+    let env = m.c.env
+    if env.user_impl(t, "Eq").is_some() or env.user_impl(t, "Hash").is_some() { return true }
+    let s2 = seen + [t]
+    var parts: List[cktypes.Ty] = []
+    match t {
+        Tup(ts) => parts = ts,
+        Con(_, args) => {
+            match env.struct_fields(t) {
+                Some(fs) => parts = fs.map(fn(f) => f.1),
+                None => match env.enum_variants(t) {
+                    Some(vs) => {
+                        for v in vs { parts.extend(v.1) }
+                    }
+                    None => {}
+                },
+            }
+            parts.extend(args)
+        }
+        _ => {}
+    }
+    parts.any(fn(x) => keyed_walk(m, x, s2))
 }
