@@ -112,11 +112,19 @@ pub fn token_end(text: Str, at: Int) -> Int {
     b
 }
 
-// The first whole-word occurrence of `word` at or after offset `from`.
+// The first whole-word occurrence of `word` at or after offset `from`,
+// outside `//` comments (a field's name may also appear in the comment above it).
 pub fn find_word(text: Str, word: Str, from: Int) -> Option[Int] {
     var i = from.max(0)
     while true {
         let Some(j) = text.find_from(word, i) else { return None }
+        match text.find_from("//", i) {
+            Some(c) if c < j => {
+                i = text.find_from("\n", c).map_or(text.len(), fn(n) => n + 1)
+                continue
+            }
+            _ => {}
+        }
         let left = j == 0 or not is_ident_byte(text.byte(j - 1))
         let right = j + word.len() >= text.len() or not is_ident_byte(text.byte(j + word.len()))
         if left and right { return Some(j) }

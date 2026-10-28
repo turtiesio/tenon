@@ -170,6 +170,8 @@ trap: integer overflow
 The source path prefix depends on the invocation. The prelude formats
 `self.abs()` first, which overflows for this one valid input.
 
+Fixed in c954e51, test tests/run/fmt_fixed_extremes.tn.
+
 ## 5. Derived Show checks type arguments but misses declared fields
 
 ```tenon

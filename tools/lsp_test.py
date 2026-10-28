@@ -10,7 +10,7 @@ unsaved buffers), hover, go to definition (locals, functions, types, fields,
 variants, an imported module, the prelude) and completion (after `.` and at
 the start of a statement), and a file in a package (docs/packages.md):
 imports resolved through tenon.lock, a missing lock as the diagnostic; traits
-(tests/v2/lsp/traits.tn: hover and definition of traits and of trait methods
+(tests/lsp/fields.tn: declarations found by name skip comments; tests/v2/lsp/traits.tn: hover and definition of traits and of trait methods
 called on a type parameter, a dyn value and a concrete type, which goes to
 the impl; lib/v2/prelude.tn; completion). Also runs the JSON tests (selfhost/jsontest.tn)
 and the VS Code client (editors/vscode/extension.js: `node --check`, then
@@ -373,6 +373,28 @@ def completions(srv, main):
     edit(22, main.text)
 
 
+def fields(srv):
+    """Declarations found by name skip comments (conformance 2026-10-28 #6)."""
+    doc = Doc(os.path.join(LSP, "fields.tn"))
+    srv.notify("textDocument/didOpen", {"textDocument": {"uri": doc.uri, "languageId": "tenon", "version": 1, "text": doc.text}})
+    expect("diagnostics of fields.tn", srv.diagnostics(doc.uri), [])
+    for (ctx, word), want in [
+        (("{p.x}", "x"), location(doc.path, "    x: Int", "x")),
+        (("p.y)", "y"), location(doc.path, "    y: Int", "y")),
+        (("q + p", "q"), location(doc.path, "        q,", "q")),
+    ]:
+        expect("definition of %r in %r" % (word, ctx), definition(srv, doc, ctx, word), want)
+    for (ctx, word), want in [
+        (("    x: Int", "x"), "x: Int  // field of Point"),
+        (("    y: Int", "y"), "y: Int  // field of Point"),
+    ]:
+        got = hover(srv, doc, ctx, word)
+        if got is None or want not in got:
+            fail("hover of %r in %r:\n  got  %r\n  want %r" % (word, ctx, got, want))
+    srv.notify("textDocument/didClose", {"textDocument": {"uri": doc.uri}})
+    srv.diagnostics(doc.uri)
+
+
 def traits(srv):
     doc = Doc(os.path.join(ROOT, "tests", "v2", "lsp", "traits.tn"))
     srv.notify("textDocument/didOpen", {"textDocument": {"uri": doc.uri, "languageId": "tenon", "version": 1, "text": doc.text}})
@@ -480,6 +502,7 @@ def main():
     degraded(srv, main_doc)
     definitions(srv, main_doc)
     completions(srv, main_doc)
+    fields(srv)
     traits(srv)
     packages(srv, tmp)
     open_ms, hover_ms = latency(srv)

@@ -1,0 +1,21 @@
+// Fixture of tools/lsp_test.py (conformance 2026-10-28 #6): field names that
+// also appear in comments before their declarations; definition and hover
+// must find the declaration, not the comment.
+struct Point {
+    // x is the coordinate.
+    x: Int,
+    // y comes after x.
+    y: Int,
+}
+
+// The lambda's parameter: p and q in a comment first.
+fn apply(f: fn(Int) -> Int) -> Int { f(1) }
+
+fn main(sys: Sys) {
+    let p = Point { x: 1, y: 2 }
+    let n = apply(fn(
+        // q is the argument
+        q,
+    ) => q + p.y)
+    sys.console.println("{p.x} {n}")
+}
