@@ -69,7 +69,8 @@ whole program while it is being edited.
 | `ckast.tn` | ast.rs, check.rs `fix_paths`, `breaks` | checker syntax tree with file numbers and node ids |
 | `cktypes.tn` | types.rs | `Ty`, substitution, unification (no rollback, as in the bootstrap) |
 | `ckenv.tn` | check.rs `declare`, `resolve_type`, `lower_type`, ... | declarations, modules, privacy, `check_main` |
-| `ckinfer.tn` | check.rs, check_expr.rs | function bodies |
+| `ckinfer.tn` | check.rs, check_expr.rs | function bodies: names, inference, statements, places |
+| `ckcall.tn` | check_expr.rs, check.rs | calls, methods, struct literals, patterns (free functions on `ckinfer.Ck`) |
 | `ckexh.tn` | exhaust.rs | exhaustiveness and reachability |
 | `cklin.tn` | linear.rs | linear/unique analysis, codec restrictions |
 
@@ -152,7 +153,7 @@ cross-checked (the seed cannot parse them).
   records `ImplInfo.fns`: per trait method the function, the impl's or the
   default. Impl and default functions are not in `fn_ix`, so they never
   clash with a type's own methods (which win at a call).
-- **Bodies** (ckinfer): a method call on a type parameter looks in its
+- **Bodies** (ckinfer, ckcall): a method call on a type parameter looks in its
   bounds, on a `dyn` value in its trait (`RTrait(trait, method, receiver
   type, method type args)`: resolved per instance by the backends); on any
   other type, when the type has no method of the name, in the impls whose
