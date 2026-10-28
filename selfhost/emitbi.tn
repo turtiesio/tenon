@@ -1,4 +1,4 @@
-// module (imported by emitbody.tn)
+// module
 // Self-hosted C backend, part 5: the `extern fn`s of lib/prelude.tn, lowered
 // to runtime calls (runtime/tenon.h). A port of bootstrap/src/emit_builtins.rs.
 

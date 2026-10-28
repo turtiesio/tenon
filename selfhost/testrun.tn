@@ -1,4 +1,4 @@
-// module (imported by tenonc.tn)
+// module
 // `tenonc test DIR... [--bless]`: the test runner, a port of
 // bootstrap/src/testrun.rs. The contract a landing must pass:
 //

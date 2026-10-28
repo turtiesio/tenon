@@ -16,7 +16,7 @@ program, the declarations and the type, resolution and capture side tables).
 | Module | Ports | Contents |
 |---|---|---|
 | `tenonc.tn` | main.rs, emit_c.rs `build`/`compile` | subcommands, reading the runtime, running the C compiler |
-| `front.tn` | main.rs `front` | loading the prelude and modules, checking (shared with check.tn) |
+| `front.tn` | main.rs `front` | loading the prelude and modules, checking |
 | `emit.tn` | emit_c.rs, helpers of emit_body.rs | emitter state, C type names, boxing, scopes and temporaries, the driver |
 | `emitlayout.tn` | emit_c.rs | type definitions in dependency order, per-type helpers, decoders, `main`, assembly |
 | `emitbody.tn` | emit_body.rs | function instances, statements, loops, places, assignment, expressions, calls |
@@ -33,14 +33,20 @@ functions taking `m: mut emit.Em`. The modules import each other in a cycle
 The bootstrap embeds lib/prelude.tn, lib/std/*.tn and runtime/tenon.h
 (`include_str!`). tenonc reads them from the repository ROOT when it compiles
 a program: `--root DIR`, else `$TENON_ROOT`, else the current directory
-(`check` takes ROOT as its second argument, as check.tn does). The runtime is
+(`check` also takes ROOT as its second argument). The runtime is
 pasted into the C exactly as the bootstrap pastes it, so the output does not
 depend on where it was read from.
 
 `build` uses the `Proc` capability (lib/prelude.tn, docs/reference.md §11) to
 read `$CC` and `$TENON_KEEP_C` and to run `$CC OPT -w -std=gnu11 -pthread -o OUT
 OUT.c -lm`, as the bootstrap does, with the same kind of build cache
-(selfhost/SELFHOST.md); its own messages start with `tenonc:`.
+(selfhost/SELFHOST.md); its own messages start with `tenonc:`. Unlike the
+bootstrap, a program with more than 400 kB of function definitions (tenonc
+itself: 5 MB of C) is compiled as up to 8 translation units by parallel
+`$CC` runs and then linked (`emit.CParts`, tenonc.tn `compile`; the
+runtime's state is shared through `TN_STATE` in runtime/tenon.h): cc -O2 on
+tenonc.tn takes 2.6 s instead of 13 s. `emit` and the cache still see one
+C text.
 
 ## Fidelity rules that matter for identical C
 
@@ -76,13 +82,12 @@ OUT.c -lm`, as the bootstrap does, with the same kind of build cache
 
 - `tools/selfhost.sh` (in `./check`): for every corpus file the bootstrap
   accepts, `tenon emit` and `tenonc emit` print the same bytes and exit with
-  the same status (306 files).
-- `tools/fixpoint.sh` (in `./check`): stage1 (the bootstrap building
-  tenonc.tn) and stage2 (stage1 building tenonc.tn) emit identical C for
-  tenonc.tn, equal to `tenon emit selfhost/tenonc.tn`, and stage2 emits the
-  same C as stage1 for the whole accepted corpus.
-- `selfhost/checkfuzz.py`: mutants that both compilers accept are also
-  compared by their emitted C.
+  the same status (321 files). In the same pass, the fixpoint: stage0 (the
+  bootstrap building tenonc.tn, -O0) and stage1 (stage0 building tenonc.tn,
+  the compiler ./check uses) emit identical C for every file stage1
+  accepts, v2 files and tenonc.tn itself included (345 files).
+- `tools/checkfuzz.py` (evidence): mutants that both compilers accept are
+  also compared by their emitted C.
 
 ## Stage B
 

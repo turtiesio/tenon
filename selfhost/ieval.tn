@@ -1,4 +1,4 @@
-// module (imported by the self-hosted interpreter)
+// module
 // The evaluator: a port of bootstrap/src/interp.rs over the lowered code of
 // selfhost/icode.tn. Every rule that is visible to a program follows the
 // bootstrap: evaluation order, `mut` arguments taken out of their places and

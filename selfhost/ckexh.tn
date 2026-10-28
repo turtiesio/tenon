@@ -1,4 +1,4 @@
-// module (imported by the self-hosted checker)
+// module
 // Match exhaustiveness and reachability: a port of bootstrap/src/exhaust.rs
 // (usefulness algorithm, Maranget 2007).
 

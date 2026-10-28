@@ -1,4 +1,4 @@
-// module (imported by tenonlsp.tn)
+// module
 // JSON (RFC 8259), strict: exactly one value with optional whitespace around
 // it; no comments, trailing commas, single quotes, leading zeros, `+`, NaN or
 // bare control characters in strings; `\u` escapes must pair surrogates. The
@@ -335,5 +335,3 @@ pub fn Json.items(self) -> List[Json] {
         _ => [],
     }
 }
-
-pub fn Json.is_null(self) -> Bool { self == JNull }

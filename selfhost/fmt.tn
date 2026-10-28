@@ -1,4 +1,4 @@
-// module (imported by tenonfmt.tn)
+// module
 // The formatter: fmtlex.tn scans, fmtlayout.tn lays out, and the result is
 // checked before it is returned, so that formatting cannot change a program:
 // the formatted text must lex (lexer.tn, with statement separators) to the

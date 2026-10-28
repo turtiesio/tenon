@@ -54,6 +54,21 @@ typedef uint8_t tn_Clock;
  * input buffers are locked. Without TN_MT none of this costs anything.
  * Reference counts stay plain integers in both cases: values move between
  * workers only as deep copies (section "workers and channels"). */
+/* The runtime's state (the variables marked TN_STATE). A program is one C
+ * file, where the state is static; `tenonc build` compiles a large program
+ * as several translation units (selfhost/tenonc.tn): the state is then
+ * defined in the unit with TN_SPLIT 1 and extern in those with TN_SPLIT 2. */
+#if !defined(TN_SPLIT)
+#define TN_STATE static
+#define TN_INIT(...) = __VA_ARGS__
+#elif TN_SPLIT == 1
+#define TN_STATE
+#define TN_INIT(...) = __VA_ARGS__
+#else
+#define TN_STATE extern
+#define TN_INIT(...)
+#endif
+
 #define TN_SMALL_MAX 512
 typedef struct { void *p; void (*f)(void *); } tn_deferred;
 #ifdef TN_MT
@@ -69,7 +84,7 @@ struct tn_thread_s {
     int64_t defer_n, defer_cap;
     bool in_worker;
 };
-static _Thread_local struct tn_thread_s tn_th = {.cur_loc = "?"};
+TN_STATE _Thread_local struct tn_thread_s tn_th TN_INIT({.cur_loc = "?"});
 #define tn_cur_loc (tn_th.cur_loc)
 #define tn_freelist (tn_th.freelist)
 #define tn_free_bytes (tn_th.free_bytes)
@@ -78,24 +93,24 @@ static _Thread_local struct tn_thread_s tn_th = {.cur_loc = "?"};
 #define tn_defer_n (tn_th.defer_n)
 #define tn_defer_cap (tn_th.defer_cap)
 #define tn_in_worker (tn_th.in_worker)
-static pthread_mutex_t tn_out_mu = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t tn_in_mu = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t tn_trap_mu = PTHREAD_MUTEX_INITIALIZER;
+TN_STATE pthread_mutex_t tn_out_mu TN_INIT(PTHREAD_MUTEX_INITIALIZER);
+TN_STATE pthread_mutex_t tn_in_mu TN_INIT(PTHREAD_MUTEX_INITIALIZER);
+TN_STATE pthread_mutex_t tn_trap_mu TN_INIT(PTHREAD_MUTEX_INITIALIZER);
 #define TN_LOCK(m) pthread_mutex_lock(&(m))
 #define TN_UNLOCK(m) pthread_mutex_unlock(&(m))
 #else
-static const char *tn_cur_loc = "?";
-static void *tn_freelist[TN_SMALL_MAX / 16 + 1];
-static int tn_rel_depth;
-static tn_deferred *tn_defer_q;
-static int64_t tn_defer_n, tn_defer_cap;
-static bool tn_in_worker;
+TN_STATE const char *tn_cur_loc TN_INIT("?");
+TN_STATE void *tn_freelist[TN_SMALL_MAX / 16 + 1];
+TN_STATE int tn_rel_depth;
+TN_STATE tn_deferred *tn_defer_q;
+TN_STATE int64_t tn_defer_n, tn_defer_cap;
+TN_STATE bool tn_in_worker;
 #define TN_LOCK(m) ((void)0)
 #define TN_UNLOCK(m) ((void)0)
 #endif
 
-static char tn_out_buf[1 << 16];
-static size_t tn_out_len;
+TN_STATE char tn_out_buf[1 << 16];
+TN_STATE size_t tn_out_len;
 
 static void tn_write_fd(int fd, const char *p, size_t n, bool fatal) {
     while (n > 0) {
@@ -255,13 +270,13 @@ static void tn_on_segv(int sig) {
     _exit(TN_EXIT_STACK);
 }
 
-static int tn_argc;
-static char **tn_argv;
-static struct timespec tn_mono0;
+TN_STATE int tn_argc;
+TN_STATE char **tn_argv;
+TN_STATE struct timespec tn_mono0;
 
 /* The program runs on a thread with a 1 GB stack (reserved, committed only as
  * used), like the interpreter, so deep recursion behaves the same in both. */
-static void (*tn_main_fn)(void);
+TN_STATE void (*tn_main_fn)(void);
 static void *tn_main_thread(void *arg) {
     (void)arg;
     static char altstack[1 << 16]; /* the overflow handler runs here */
@@ -1635,9 +1650,9 @@ static TN_UNUSED bool tn_utf8_lossy(const char *p, int64_t n, tn_buf *out) {
 
 /* Input buffer; allocated with room for a tn_rc header so read_all can hand
  * the bytes over as a string without copying. */
-static char *tn_in_mem, *tn_in_buf;
-static int64_t tn_in_len, tn_in_pos, tn_in_cap;
-static bool tn_in_eof;
+TN_STATE char *tn_in_mem, *tn_in_buf;
+TN_STATE int64_t tn_in_len, tn_in_pos, tn_in_cap;
+TN_STATE bool tn_in_eof;
 
 static bool tn_in_fill(void) {
     if (tn_in_eof) return false;
@@ -2638,9 +2653,10 @@ TN_TRIVIAL(tn_Workers)
 TN_INCOMPARABLE(tn_Workers)
 static TN_UNUSED void tn_Workers_show(tn_buf *b, tn_Workers x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Workers>"); }
 
-static pthread_mutex_t tn_mt_mu = PTHREAD_MUTEX_INITIALIZER;
-static int64_t tn_mt_live = 1, tn_mt_blocked;
-static const char *tn_mt_main_loc = "?";
+TN_STATE pthread_mutex_t tn_mt_mu TN_INIT(PTHREAD_MUTEX_INITIALIZER);
+TN_STATE int64_t tn_mt_live TN_INIT(1);
+TN_STATE int64_t tn_mt_blocked;
+TN_STATE const char *tn_mt_main_loc TN_INIT("?");
 
 TN_NORETURN static void tn_mt_deadlock(void) {
     tn_trap("deadlock: every worker is waiting for a channel or a join", tn_mt_main_loc);

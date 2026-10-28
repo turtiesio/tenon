@@ -1,4 +1,4 @@
-// module (imported by the self-hosted interpreter)
+// module
 // Interpreter values: a port of bootstrap/src/value.rs (derived equality,
 // ordering and formatting) for `tenonc run` (selfhost/interp.tn).
 //

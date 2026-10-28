@@ -1,4 +1,4 @@
-// module (imported by front.tn, tenonc.tn and tenonlsp.tn)
+// module
 // Packages (docs/packages.md): the tenon.toml manifest, the tenon.lock
 // lockfile, dependency resolution and the git cache.
 //

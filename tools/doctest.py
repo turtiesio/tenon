@@ -22,6 +22,8 @@ import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
+import corpus
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "tenonc")  # ./check: $TENONC
 DOCS = ["docs/reference.md", "docs/quickstart.md"]
@@ -70,7 +72,7 @@ def main():
             if info == "tenon" and re.search(r"\bfn main\b", code):
                 jobs.append((doc, line, code))
     with tempfile.TemporaryDirectory() as tmp:
-        with ThreadPoolExecutor(max_workers=8) as ex:
+        with ThreadPoolExecutor(max_workers=corpus.JOBS) as ex:
             results = list(ex.map(lambda j: check(tmp, *j), jobs))
     failed = [r for r in results if r]
     for r in failed:

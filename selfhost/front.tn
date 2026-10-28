@@ -1,4 +1,4 @@
-// module (imported by check.tn and tenonc.tn)
+// module
 // Loading and checking a program: a port of bootstrap/src/main.rs `front`.
 // The prelude and the standard library are read from ROOT (the repository:
 // ROOT/lib/prelude.tn, ROOT/lib/std/NAME.tn) instead of being embedded.
@@ -69,8 +69,6 @@ pub fn load_in(fs: Fs, root: Str, path: Str, pk: Option[pkg.Ctx]) -> Result[Fron
 // could be checked even when `failure` (the diagnostic `load` reports) is
 // set; it is None only if the declarations themselves fail.
 pub struct Analysis { pub files: List[(Str, Str)], pub failure: Option[Failure], pub checked: Option[checker.Checked] }
-
-pub fn analyze(fs: Fs, root: Str, path: Str, src: Str) -> Analysis { analyze_in(fs, root, path, src, None) }
 
 pub fn analyze_in(fs: Fs, root: Str, path: Str, src: Str, pk: Option[pkg.Ctx]) -> Analysis {
     let (files, parsed, modules) = match gather(fs, root, path, Some(src), pk) {

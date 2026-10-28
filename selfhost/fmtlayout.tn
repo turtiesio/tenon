@@ -1,4 +1,4 @@
-// module (imported by fmt.tn)
+// module
 // The formatter's layout engine, on fmtlex.tn tokens. The rules are listed in
 // docs/reference.md ("Formatting"). Line breaks are the author's: the only
 // lines added are the ones that split `a; b` in a multi-line block, so the

@@ -108,7 +108,7 @@ fn fetch(sys: Sys, args: List[Str]) -> Int {
 }
 
 // The C program for FILE, or the exit status after reporting why there is none.
-fn emit_c(sys: Sys, file: Str, root: Str) -> Result[Str, Int] {
+fn emit_c(sys: Sys, file: Str, root: Str) -> Result[emit.CParts, Int] {
     let con = sys.console
     let fr = load(sys, root, file)?
     let runtime = match sys.fs.read(front.join(root, "runtime/tenon.h")) {
@@ -118,7 +118,7 @@ fn emit_c(sys: Sys, file: Str, root: Str) -> Result[Str, Int] {
             return Err(2)
         }
     }
-    match emit.emit(fr.checked, fr.files.map(fn(f) => f.0), runtime) {
+    match emit.emit_parts(fr.checked, fr.files.map(fn(f) => f.0), runtime) {
         Ok(c) => Ok(c),
         Err(msg) => {
             con.eprintln("tenonc: " + msg)
@@ -162,27 +162,91 @@ fn cache_entry(p: Proc, code: Str, cc: Str, opt: Str) -> Option[Str] {
     Some(path_join(dir, "t" + hash_hex(code + "|" + cc + "|" + opt) + "-{code.len()}"))
 }
 
-fn compile(sys: Sys, code: Str, cc: Str, out: Str, opt: Str) -> Result[Unit, Str] {
-    let cpath = out + ".c"
-    match sys.fs.write(cpath, code) {
-        Ok(_) => {}
-        Err(e) => return Err("cannot write {cpath}: {e}"),
+// A program with more than SPLIT_BYTES of function definitions is compiled
+// as several translation units (one per SPLIT_BYTES, at most MAX_UNITS) by
+// parallel runs of the C compiler, then linked. Every unit has the head and
+// the prototypes, with external linkage, and a share of the definitions;
+// unit 0 also has `main` and defines the runtime's state (TN_SPLIT,
+// runtime/tenon.h). The C text (`emit`, the cache, $TENON_KEEP_C) stays one
+// file. Measured on selfhost/tenonc.tn (5 MB of C): cc -O2 13 s, 8 units 2.6 s.
+const SPLIT_BYTES: Int = 400000
+const MAX_UNITS: Int = 8
+
+fn write(fs: Fs, path: Str, text: Str) -> Result[Unit, Str] {
+    match fs.write(path, text) {
+        Ok(_) => Ok(()),
+        Err(e) => Err("cannot write {path}: {e}"),
     }
-    match sys.proc.run(cc, [opt, "-w", "-std=gnu11", "-pthread", "-o", out, cpath, "-lm"]) {
-        Ok(0) => {}
-        Ok(_) => return Err("C compiler failed on {cpath}"),
-        Err(e) => return Err("cannot run {cc}: {e}"),
+}
+
+// bodies in n parts of about equal size, each cut where a definition starts
+// (a line beginning with `static`).
+fn split_defs(bodies: Str, n: Int) -> List[Str] {
+    var parts: List[Str] = []
+    var start = 0
+    for k in 1..n {
+        match bodies.find_from("\nstatic ", k * bodies.len() / n) {
+            Some(i) if i + 1 > start => {
+                parts.push(bodies.slice(start, i + 1))
+                start = i + 1
+            }
+            _ => {}
+        }
     }
-    if sys.proc.env("TENON_KEEP_C").is_none() { let _ = sys.fs.remove(cpath) }
-    Ok(())
+    parts.push(bodies.slice(start, bodies.len()))
+    parts
+}
+
+// Prototypes or definitions with external linkage (`static` dropped from
+// the lines that begin with it).
+fn no_static(s: Str) -> Str {
+    let t = s.replace("\nstatic ", "\n")
+    if t.starts_with("static ") { t.slice(7, t.len()) } else { t }
+}
+
+fn run_cc(p: Proc, cmd: Str, args: List[Str], what: Str) -> Result[Unit, Str] {
+    match p.run(cmd, args) {
+        Ok(0) => Ok(()),
+        Ok(_) => Err("C compiler failed on {what}"),
+        Err(e) => Err("cannot run {cmd}: {e}"),
+    }
+}
+
+fn compile(sys: Sys, p: emit.CParts, cc: Str, out: Str, opt: Str) -> Result[Unit, Str] {
+    let keep = sys.proc.env("TENON_KEEP_C").is_some()
+    let n = (p.bodies.len() / SPLIT_BYTES).min(MAX_UNITS)
+    if n < 2 or keep {
+        let cpath = out + ".c"
+        write(sys.fs, cpath, p.text())?
+        run_cc(sys.proc, cc, [opt, "-w", "-std=gnu11", "-pthread", "-o", out, cpath, "-lm"], cpath)?
+        if not keep { let _ = sys.fs.remove(cpath) }
+        return Ok(())
+    }
+    let protos = no_static(p.protos)
+    let defs = split_defs(p.bodies, n)
+    var units: List[Str] = []
+    for k in 0..defs.len() {
+        let unit = out + ".{k}.c"
+        let (mode, tail) = if k == 0 { (1, p.main_c) } else { (2, "") }
+        write(sys.fs, unit, "#define TN_SPLIT {mode}\n" + p.head + protos + p.helpers + no_static(defs[k]) + tail)?
+        units.push(unit)
+    }
+    // one shell starts the compilers in the background and waits for them all
+    let script = "cc=$1; opt=$2; shift 2; pids=; for f do \"$cc\" \"$opt\" -w -std=gnu11 -pthread -fno-common -c -o \"$f.o\" \"$f\" & pids=\"$pids $!\"; done; s=0; for p in $pids; do wait $p || s=1; done; exit $s"
+    let objs = units.map(fn(u) => u + ".o")
+    var r = run_cc(sys.proc, "sh", ["-c", script, "sh", cc, opt] + units, out + ".*.c")
+    if r.is_ok() { r = run_cc(sys.proc, cc, [opt, "-pthread", "-o", out] + objs + ["-lm"], out + ".*.o") }
+    for f in units + objs { let _ = sys.fs.remove(f) }
+    r
 }
 
 fn build(sys: Sys, file: Str, args: List[Str]) -> Int {
     let con = sys.console
-    let code = match emit_c(sys, file, root_of(sys.proc, args)) {
+    let parts = match emit_c(sys, file, root_of(sys.proc, args)) {
         Ok(c) => c,
         Err(status) => return status,
     }
+    let code = parts.text()
     var dflt = file
     while dflt.ends_with(".tn") { dflt = dflt.slice(0, dflt.len() - 3) }
     let out = flag(args, "-o").unwrap_or(dflt)
@@ -199,7 +263,7 @@ fn build(sys: Sys, file: Str, args: List[Str]) -> Int {
         }
         None => {}
     }
-    match compile(sys, code, cc, out, opt) {
+    match compile(sys, parts, cc, out, opt) {
         Ok(_) => {}
         Err(msg) => {
             con.eprintln("tenonc: " + msg)
@@ -264,7 +328,7 @@ fn main(sys: Sys) -> Int {
         "check" => check(sys, rest),
         "emit" => match emit_c(sys, args[1], root_of(sys.proc, rest)) {
             Ok(c) => {
-                con.print(c)
+                con.print(c.text())
                 0
             }
             Err(status) => status,

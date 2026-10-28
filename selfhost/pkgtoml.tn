@@ -1,4 +1,4 @@
-// module (imported by pkg.tn)
+// module
 // The TOML subset that tenon.toml and tenon.lock are written in (the exact
 // rules are in docs/packages.md "The TOML subset"). One construct per line:
 //

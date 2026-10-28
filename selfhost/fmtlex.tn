@@ -1,4 +1,4 @@
-// module (imported by fmt.tn)
+// module
 // The formatter's scanner. Unlike lexer.tn it keeps everything the formatter
 // must reproduce: every code token with its exact source text (a string token
 // is its whole literal, interpolations and specs included), `//` comments and

@@ -1,4 +1,4 @@
-// module (imported by the self-hosted checker)
+// module
 // The checker's syntax tree: the parser's tree plus file numbers and node ids
 // (the checker keeps types and resolutions in side tables keyed by id), and
 // the path rewriting of bootstrap/src/check.rs `fix_paths`.

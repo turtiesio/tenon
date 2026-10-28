@@ -5,3 +5,4 @@
 /bench/*/input.txt
 .check.log
 .claude/
+__pycache__/

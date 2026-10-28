@@ -1,4 +1,4 @@
-// module (imported by tokens.tn)
+// module
 // Self-hosted lexer: a second, independent implementation of bootstrap/src/lexer.rs.
 // `lexer FILE` must print exactly what `tenon tokens FILE` prints, for every
 // file in the corpus (checked by tools/selfhost.sh).

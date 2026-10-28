@@ -1,4 +1,4 @@
-// module (imported by tenonc.tn)
+// module
 // `tenonc run`: the reference interpreter in Tenon, a port of
 // bootstrap/src/interp.rs `run` (with ieval, ibuiltin, icap, icodec, icode
 // and ival). It runs the checked program and gives the exit status

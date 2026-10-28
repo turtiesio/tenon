@@ -1,4 +1,4 @@
-// module (imported by check.tn)
+// module
 // Self-hosted type checker: a second, independent implementation of
 // bootstrap/src/check.rs, bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs and bootstrap/src/linear.rs.
 // `check FILE` must report the same first diagnostic as `tenon check FILE`

@@ -1,4 +1,4 @@
-// module (imported by the self-hosted checker)
+// module
 // Declarations: the tables of structs, enums and functions, type resolution
 // across modules, and the declaration checks of bootstrap/src/check.rs `declare`,
 // `check_recursion`, `check_main` and bootstrap/src/linear.rs `check_decls`.
