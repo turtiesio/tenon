@@ -1,0 +1,45 @@
+// par_map: the same list as map, in order, for any number of workers, also
+// with closures, uneven work, empty lists, and from inside a worker (which
+// was given the Workers capability). Capabilities go to a worker only when
+// the program passes them: here Console and an attenuated Fs.
+fn collatz(n: Int) -> Int {
+    var x = n
+    var steps = 0
+    while x != 1 {
+        x = if x % 2 == 0 { x / 2 } else { 3 * x + 1 }
+        steps += 1
+    }
+    steps
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let w = sys.workers()
+    var xs: List[Int] = []
+    for i in 1..41 { xs.push(i) }
+    let serial = xs.map(collatz)
+    con.println("{serial}")
+    for n in [0, 1, 2, 3, 8, 100] { con.println("{n} workers: {w.par_map_n(n, xs, collatz) == serial}") }
+    con.println("{w.par_map(xs, collatz) == serial}")
+    let words = ["tenon", "mortise", "dovetail"]
+    let suffix = "!"
+    con.println("{w.par_map(words, fn(s) => s.upper() + suffix)}")
+    let empty: List[Int] = []
+    con.println("{w.par_map(empty, collatz)} {w.par_map([5], collatz)}")
+    // par_map inside a worker
+    let h = w.spawn(fn(ww: Workers) => ww.par_map_n(3, [10, 20, 30], fn(x) => x + 1), w)
+    con.println("{h.join()}")
+    // a worker that prints and reads a file with the capabilities it is given
+    let data = sys.fs.within("workers_data").read_only()
+    let r = w.spawn(fn(caps: (Console, Fs)) -> Int {
+        caps.0.println("worker: reading")
+        match caps.1.read("words.txt") {
+            Ok(text) => text.len(),
+            Err(e) => {
+                caps.0.println("worker: {e}")
+                -1
+            }
+        }
+    }, (con, data))
+    con.println("bytes: {r.join()}")
+}

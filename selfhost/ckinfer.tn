@@ -93,7 +93,15 @@ pub fn Ck.check_fn(mut self, f: ckast.FnDecl, idx: Int) -> Result[Unit, ckast.Di
             if pb.3.starts_with("dyn ") and kind != Plain {
                 return ckast.fail(pb.0, "a 'dyn' value cannot hold the " + ckenv.kind_word(kind) + " type " + t.show())
             }
-            return ckast.fail(pb.0, "type " + t.show() + " does not implement " + self.env.traits[pb.2].name + " (needed by " + pb.3 + ")")
+            let why = if self.env.is_builtin_trait(pb.2) and self.env.traits[pb.2].name == "Send" {
+                match self.env.unsendable_part(t) {
+                    Some(w) => ": " + w,
+                    None => "",
+                }
+            } else {
+                ""
+            }
+            return ckast.fail(pb.0, "type " + t.show() + " does not implement " + self.env.traits[pb.2].name + " (needed by " + pb.3 + ")" + why)
         }
     }
     self.flush()

@@ -20,6 +20,8 @@ pub fn builtin_arity(n: Str) -> Int {
         "List" => 1,
         "Map" => 2,
         "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" | "Poller" | "Proc" => 0,
+        "Workers" => 0, // v2: workers and channels (lib/v2/prelude.tn)
+        "Sender" | "Receiver" | "Worker" => 1,
         _ => -1,
     }
 }
@@ -27,9 +29,13 @@ pub fn is_builtin(n: Str) -> Bool { builtin_arity(n) >= 0 }
 pub fn is_capability(n: Str) -> Bool {
     match n {
         "Console" | "Fs" | "Clock" | "Net" | "Listener" | "Conn" | "Poller" | "Proc" => true,
+        "Workers" | "Sender" | "Receiver" | "Worker" => true,
         _ => false,
     }
 }
+// Handles shared between workers (v2): copying one shares the channel or the
+// worker, whatever its type argument is (a Sender[T] of unique T is plain).
+pub fn is_shared_handle(n: Str) -> Bool { n == "Sender" or n == "Receiver" or n == "Worker" }
 pub fn is_unique_builtin(n: Str) -> Bool { n == "Listener" or n == "Conn" or n == "Poller" }
 
 pub fn Ty.is(self, n: Str) -> Bool {

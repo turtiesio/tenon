@@ -1,0 +1,59 @@
+// Workers and the event loop: a Poller lives in one worker (it opens its
+// own sockets from the Net it is given: a Poller cannot be sent), and an
+// event loop polls a channel between waits (`wait(10)`, then `try_recv`).
+// Here a server worker answers on a socket and reports on a channel; main
+// is the client, with an event loop of its own.
+fn serve(caps: (Net, Sender[Int], Receiver[Unit], Sender[Str])) -> Int {
+    let (net, ports, stop, events) = caps
+    let p = net.poller()
+    let lid = p.listen(0).unwrap()
+    ports.send(p.port(lid))
+    var served = 0
+    while true {
+        for ev in p.wait(10) {
+            match ev {
+                Data(id, text) => {
+                    let _ = p.send(id, text.upper())
+                    served += 1
+                    events.send("answered {text.trim().len()} bytes")
+                }
+                _ => {}
+            }
+        }
+        match stop.try_recv() {
+            Some(_) => break,
+            None => {}
+        }
+    }
+    served
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let (ports, port_rx) = channel()
+    let (stop, stop_rx) = channel()
+    let (events, event_rx) = channel()
+    let h = sys.workers().spawn(serve, (sys.net, ports, stop_rx, events))
+    let port = port_rx.recv().unwrap()
+    let c = sys.net.poller()
+    let id = c.connect("127.0.0.1", port).unwrap()
+    let _ = c.send(id, "hello, workers\n")
+    var reply = ""
+    var log: List[Str] = []
+    while not reply.contains("\n") or log.is_empty() {
+        for ev in c.wait(10) {
+            match ev {
+                Data(_, text) => reply += text,
+                _ => {}
+            }
+        }
+        match event_rx.try_recv() {
+            Some(e) => log.push(e),
+            None => {}
+        }
+    }
+    con.println(reply.trim())
+    con.println("{log}")
+    stop.send(())
+    con.println("served: {h.join()}")
+}

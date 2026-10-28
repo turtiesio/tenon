@@ -1,0 +1,47 @@
+// Parallel benchmark (v2, tenonc only): the Mandelbrot set, row by row.
+// `mandel N` computes the rows with N workers (Workers.par_map_n); `mandel 0`
+// with the same function on one thread (List.map): the same algorithm, so
+// the times compare the scheduling only. tools/bench.py --parallel.
+const WIDTH: Int = 1600
+const HEIGHT: Int = 1200
+const MAX_ITER: Int = 1000
+
+// Row y: (iterations of all its pixels, pixels inside the set, a checksum).
+fn row(y: Int) -> (Int, Int, Int) {
+    let ci = y.to_float() / HEIGHT.to_float() * 2.4 - 1.2
+    var sum = 0
+    var inside = 0
+    var h = 0
+    for x in 0..WIDTH {
+        let cr = x.to_float() / WIDTH.to_float() * 3.2 - 2.2
+        var zr = 0.0
+        var zi = 0.0
+        var i = 0
+        while i < MAX_ITER and zr * zr + zi * zi <= 4.0 {
+            let t = zr * zr - zi * zi + cr
+            zi = 2.0 * zr * zi + ci
+            zr = t
+            i += 1
+        }
+        sum += i
+        if i == MAX_ITER { inside += 1 }
+        h = (h * 31 + i) % 1000000007
+    }
+    (sum, inside, h)
+}
+
+fn main(sys: Sys) {
+    let n = if sys.args.is_empty() { 0 } else { sys.args[0].to_int().unwrap_or(0) }
+    var ys: List[Int] = []
+    for y in 0..HEIGHT { ys.push(y) }
+    let rows = if n == 0 { ys.map(row) } else { sys.workers().par_map_n(n, ys, row) }
+    var sum = 0
+    var inside = 0
+    var h = 0
+    for r in rows {
+        sum += r.0
+        inside += r.1
+        h = (h * 7 + r.2) % 1000000007
+    }
+    sys.console.println("mandelbrot {WIDTH}x{HEIGHT}, {MAX_ITER} iterations: {sum} in total, {inside} inside, checksum {h}")
+}

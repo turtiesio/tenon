@@ -1,0 +1,14 @@
+// error: type Session does not implement Send (needed by bound T: Send of channel): Conn belongs to the worker that opened it (send a Net and open it there)
+// A value that contains a socket cannot be sent, also inside a struct.
+unique struct Session { name: Str, conn: Conn }
+
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.net.connect("127.0.0.1", 9)?
+    let (tx, rx) = channel()
+    tx.send(Session { name: "a", conn: c })
+    match rx.recv() {
+        Some(s) => sys.console.println(s.name),
+        None => {}
+    }
+    Ok(())
+}

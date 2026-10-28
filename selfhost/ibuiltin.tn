@@ -9,6 +9,7 @@ import ckast
 import ival
 import ieval
 import icap
+import iwork
 
 // Builtins taking their receiver by value; the number is the position.
 pub fn ext_names() -> List[Str] {
@@ -22,10 +23,14 @@ pub fn ext_names() -> List[Str] {
         "Map.get", "Map.keys", "Map.values", "Option.unwrap", "Option.expect", "Result.unwrap", "Result.expect",
         "Console.print", "Console.println", "Console.eprintln", "Console.read_line", "Console.read_all",
         "Console.read_all_bytes", "Console.write_bytes", "Console.flush", "Console.read_bytes",
-    ] + icap.cap_names()
+    ] + icap.cap_names() + iwork.work_names()
 }
 
 pub const FIRST_CAP: Int = 58
+// The first builtin with an effect (Console.print; then the capabilities,
+// then the workers and channels): a worker logs their results (iwork.tn).
+pub const FIRST_EFFECT: Int = 49
+pub const FIRST_WORK: Int = 95
 
 // `mut self` builtins.
 pub const M_PUSH: Int = 0
@@ -97,7 +102,13 @@ fn opt_int(ix: ieval.Ix, o: Option[Int]) -> ival.Val {
 
 // Call builtin `id` (function fi) with arguments a.
 pub fn call(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if it.wk.cur >= 0 and id >= FIRST_EFFECT { return iwork.logged(mut it, id, fi, a, sp) }
+    call_raw(mut it, id, fi, a, sp)
+}
+
+pub fn call_raw(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
     if id < 0 { panic("interp: missing builtin {it.fns[fi].name}") }
+    if id >= FIRST_WORK { return iwork.call(mut it, id - FIRST_WORK, a, sp) }
     if id >= FIRST_CAP { return icap.call(mut it, id - FIRST_CAP, a, sp) }
     if id >= 15 and id < 38 { return str_op(mut it, id, a, sp) }
     let ix = it.ix

@@ -1,0 +1,89 @@
+// Channels: a pipeline (fan-out to several workers, fan-in to main), close
+// semantics (receivers get what is left, then None), try_recv, values that
+// are changed after being sent (the receiver has a copy), unique values that
+// move through a channel, channels sent through channels, and closures sent
+// as jobs. Output never depends on scheduling: results are sorted or
+// counted, and main joins before printing what the workers did.
+unique struct Token { id: Int }
+
+fn squarer(jobs: Receiver[Int], out: Sender[(Int, Int)]) -> Int {
+    var n = 0
+    while let Some(x) = jobs.recv() {
+        out.send((x, x * x))
+        n += 1
+    }
+    n
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let w = sys.workers()
+    // fan-out / fan-in
+    let (jobs, todo) = channel()
+    let (out, results) = channel()
+    var hs: List[Worker[Int]] = []
+    for _ in 0..3 { hs.push(w.spawn(fn(_) => squarer(todo, out), ())) }
+    for i in 1..11 { jobs.send(i) }
+    jobs.close()
+    var got: List[(Int, Int)] = []
+    for _ in 0..10 { got.push(results.recv().unwrap()) }
+    got.sort()
+    con.println("{got}")
+    var done = 0
+    for h in hs { done += h.join() }
+    con.println("jobs done: {done}; more results: {results.try_recv()}")
+    // close: what is in the channel is still received, then None
+    let (tx, rx) = channel()
+    tx.send("a")
+    tx.send("b")
+    tx.close()
+    con.println("{rx.recv()} {rx.recv()} {rx.recv()} {rx.recv()} {rx.try_recv()}")
+    // the receiver has its own copy
+    let (ltx, lrx) = channel()
+    var xs = [1, 2, 3]
+    ltx.send(xs)
+    xs.push(4)
+    let ys = lrx.recv().unwrap()
+    con.println("{xs} {ys}")
+    // a unique value moves to another worker
+    let (ttx, trx) = channel()
+    let p = w.spawn(fn(r: Receiver[Token]) -> Int {
+        var sum = 0
+        while let Some(t) = r.recv() { sum += t.id }
+        sum
+    }, trx)
+    for i in 1..5 { ttx.send(Token { id: i }) }
+    ttx.close()
+    con.println("token ids: {p.join()}")
+    // a channel sent through a channel: the worker answers on it
+    let (reqs, req_rx) = channel()
+    let server = w.spawn(fn(r: Receiver[(Int, Sender[Str])]) -> Int {
+        var n = 0
+        while let Some((x, reply)) = r.recv() {
+            reply.send("<{x}>")
+            n += 1
+        }
+        n
+    }, req_rx)
+    for i in 0..3 {
+        let (rtx, rrx) = channel()
+        reqs.send((i, rtx))
+        con.println("reply {rrx.recv().unwrap()}")
+    }
+    reqs.close()
+    con.println("requests: {server.join()}")
+    // closures as jobs
+    let (ftx, frx) = channel()
+    let k = 10
+    ftx.send(fn(x: Int) => x + k)
+    ftx.send(fn(x: Int) => x * k)
+    ftx.close()
+    let runner = w.spawn(fn(r: Receiver[fn(Int) -> Int]) -> List[Int] {
+        var vals: List[Int] = []
+        while let Some(f) = r.recv() { vals.push(f(7)) }
+        vals
+    }, frx)
+    con.println("{runner.join()}")
+    // handles print as their type
+    con.println("{tx} {rx} {p} {w}")
+}

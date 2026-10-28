@@ -1,0 +1,112 @@
+# stats
+$ scan stats tree
+scan: skipped docs/binary.dat: Failed("docs/binary.dat: invalid UTF-8")
+     3      22      115  README.md
+     1       6       42  docs/deep/notes.txt
+     4      20      107  docs/guide.txt
+   300    1500     7998  src/gen.txt
+     3       7       33  src/main.tn
+     1       4       23  src/tail.txt
+   312    1559     8318  total (6 files)
+[exit 1]
+$ scan -j 1 stats tree
+scan: skipped docs/binary.dat: Failed("docs/binary.dat: invalid UTF-8")
+     3      22      115  README.md
+     1       6       42  docs/deep/notes.txt
+     4      20      107  docs/guide.txt
+   300    1500     7998  src/gen.txt
+     3       7       33  src/main.tn
+     1       4       23  src/tail.txt
+   312    1559     8318  total (6 files)
+[exit 1]
+$ scan -j 3 stats tree/docs
+scan: skipped binary.dat: Failed("binary.dat: invalid UTF-8")
+     1       6       42  deep/notes.txt
+     4      20      107  guide.txt
+     5      26      149  total (2 files)
+[exit 1]
+$ scan stats empty
+     0       0        0  total (0 files)
+[exit 0]
+# grep
+$ scan grep tenon tree
+scan: skipped docs/binary.dat: Failed("docs/binary.dat: invalid UTF-8")
+README.md:2: Tenon joins pieces of wood: a tenon fits a mortise.
+README.md:3: The mortise and tenon joint is old, strong and simple.
+docs/deep/notes.txt:1: dovetail, finger joint, mortise and tenon
+docs/guide.txt:1: Cut the mortise first, then the tenon.
+docs/guide.txt:2: A loose tenon is a separate piece.
+src/gen.txt:50: line 50: alpha beta, tenon
+src/gen.txt:100: line 100: alpha beta, tenon
+src/gen.txt:150: line 150: alpha beta, tenon
+src/gen.txt:200: line 200: alpha beta, tenon
+src/gen.txt:250: line 250: alpha beta, tenon
+src/gen.txt:300: line 300: alpha beta, tenon
+src/main.tn:2:     // TODO: tenon
+12 matching lines in 5 of 6 files
+[exit 1]
+$ scan -j 2 grep -i TENON tree/docs
+scan: skipped binary.dat: Failed("binary.dat: invalid UTF-8")
+deep/notes.txt:1: dovetail, finger joint, mortise and tenon
+guide.txt:1: Cut the mortise first, then the tenon.
+guide.txt:2: A loose tenon is a separate piece.
+3 matching lines in 2 of 2 files
+[exit 1]
+$ scan -j 4 grep line\ 15 tree
+scan: skipped docs/binary.dat: Failed("docs/binary.dat: invalid UTF-8")
+src/gen.txt:15: line 15: alpha beta gamma
+src/gen.txt:150: line 150: alpha beta, tenon
+src/gen.txt:151: line 151: alpha beta gamma
+src/gen.txt:152: line 152: alpha beta gamma
+src/gen.txt:153: line 153: alpha beta gamma
+src/gen.txt:154: line 154: alpha beta gamma
+src/gen.txt:155: line 155: alpha beta gamma
+src/gen.txt:156: line 156: alpha beta gamma
+src/gen.txt:157: line 157: alpha beta gamma
+src/gen.txt:158: line 158: alpha beta gamma
+src/gen.txt:159: line 159: alpha beta gamma
+11 matching lines in 1 of 6 files
+[exit 1]
+$ scan grep nothing-matches tree
+scan: skipped docs/binary.dat: Failed("docs/binary.dat: invalid UTF-8")
+0 matching lines in 0 of 6 files
+[exit 1]
+# top
+$ scan top 5 tree
+scan: skipped docs/binary.dat: Failed("docs/binary.dat: invalid UTF-8")
+   300 alpha
+   300 beta
+   300 line
+   294 gamma
+    15 tenon
+341 distinct words in 6 files
+[exit 1]
+$ scan -j 2 top 3 tree/docs
+scan: skipped binary.dat: Failed("binary.dat: invalid UTF-8")
+     3 tenon
+     3 the
+     2 a
+19 distinct words in 2 files
+[exit 1]
+# errors
+$ scan
+usage: scan [-j N] stats DIR | grep [-i] TEXT DIR | top K DIR
+[exit 2]
+$ scan stats
+usage: scan [-j N] stats DIR | grep [-i] TEXT DIR | top K DIR
+[exit 2]
+$ scan -j 0 stats tree
+usage: scan [-j N] stats DIR | grep [-i] TEXT DIR | top K DIR
+[exit 2]
+$ scan -j x stats tree
+usage: scan [-j N] stats DIR | grep [-i] TEXT DIR | top K DIR
+[exit 2]
+$ scan top 0 tree
+usage: scan [-j N] stats DIR | grep [-i] TEXT DIR | top K DIR
+[exit 2]
+$ scan grep -x a tree
+usage: scan [-j N] stats DIR | grep [-i] TEXT DIR | top K DIR
+[exit 2]
+$ scan stats missing
+scan: missing: not a directory
+[exit 2]

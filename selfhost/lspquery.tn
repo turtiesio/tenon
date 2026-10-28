@@ -785,7 +785,7 @@ pub fn complete_name(q: Query, at: Int) -> List[json.Json] {
             for v in 0..e.variants.len() { add(mut out, mut seen, e.variants[v].0, K_MEMBER, q.variant_text(i, v) + "  // " + plain(e.name)) }
         }
     }
-    for b in ["Int", "Float", "Bool", "Str", "Unit", "List", "Map", "Console", "Fs", "Clock", "Net", "Proc", "Listener", "Conn", "Poller"] {
+    for b in ["Int", "Float", "Bool", "Str", "Unit", "List", "Map", "Console", "Fs", "Clock", "Net", "Proc", "Listener", "Conn", "Poller", "Workers", "Sender", "Receiver", "Worker"] {
         add(mut out, mut seen, b, K_CLASS, "builtin type")
     }
     for m in env.imports[1] { add(mut out, mut seen, m, K_MODULE, "module") }

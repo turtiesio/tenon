@@ -1,0 +1,7 @@
+// error: Send is derived structurally for every type that supports it and cannot be implemented; only Show can be (to change how a type is formatted)
+// Send is derived from a type's contents and cannot be implemented.
+struct Wrapper { n: Int }
+
+impl Send for Wrapper {}
+
+fn main(sys: Sys) { sys.console.println("{Wrapper { n: 1 }.n}") }

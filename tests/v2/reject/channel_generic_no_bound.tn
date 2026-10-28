@@ -1,0 +1,12 @@
+// error: type T does not implement Send (needed by bound T: Send of channel)
+// A type parameter is sendable only if it says so (T: Send), like the
+// other derived traits.
+fn round_trip[T](x: T) -> Option[T] {
+    let (tx, rx) = channel()
+    tx.send(x)
+    rx.recv()
+}
+
+fn main(sys: Sys) {
+    sys.console.println("{round_trip(3)}")
+}

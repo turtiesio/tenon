@@ -44,12 +44,58 @@ typedef bool tn_Bool;
 typedef uint8_t tn_Unit;
 typedef uint8_t tn_Console;
 typedef uint8_t tn_Clock;
-
 /* ---------- output, traps, memory ---------- */
+
+/* Workers (v2: lib/v2/prelude.tn) are OS threads, each with its own heap.
+ * A program that starts workers is compiled with TN_MT defined (the compiler
+ * puts `#define TN_MT 1` before this file): the allocator's free lists, the
+ * release queue and the trap location become thread-local (and recursive
+ * enums use the free lists instead of per-type pools), and the output and
+ * input buffers are locked. Without TN_MT none of this costs anything.
+ * Reference counts stay plain integers in both cases: values move between
+ * workers only as deep copies (section "workers and channels"). */
+#define TN_SMALL_MAX 512
+typedef struct { void *p; void (*f)(void *); } tn_deferred;
+#ifdef TN_MT
+/* A thread's runtime state, in one thread-local struct: on macOS finding a
+ * thread-local variable is a call, and one struct needs it once per function
+ * (separate variables made bench/trees 25% slower, the struct 4%). */
+struct tn_thread_s {
+    const char *cur_loc;
+    void *freelist[TN_SMALL_MAX / 16 + 1];
+    int64_t free_bytes;
+    int rel_depth;
+    tn_deferred *defer_q;
+    int64_t defer_n, defer_cap;
+    bool in_worker;
+};
+static _Thread_local struct tn_thread_s tn_th = {.cur_loc = "?"};
+#define tn_cur_loc (tn_th.cur_loc)
+#define tn_freelist (tn_th.freelist)
+#define tn_free_bytes (tn_th.free_bytes)
+#define tn_rel_depth (tn_th.rel_depth)
+#define tn_defer_q (tn_th.defer_q)
+#define tn_defer_n (tn_th.defer_n)
+#define tn_defer_cap (tn_th.defer_cap)
+#define tn_in_worker (tn_th.in_worker)
+static pthread_mutex_t tn_out_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t tn_in_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t tn_trap_mu = PTHREAD_MUTEX_INITIALIZER;
+#define TN_LOCK(m) pthread_mutex_lock(&(m))
+#define TN_UNLOCK(m) pthread_mutex_unlock(&(m))
+#else
+static const char *tn_cur_loc = "?";
+static void *tn_freelist[TN_SMALL_MAX / 16 + 1];
+static int tn_rel_depth;
+static tn_deferred *tn_defer_q;
+static int64_t tn_defer_n, tn_defer_cap;
+static bool tn_in_worker;
+#define TN_LOCK(m) ((void)0)
+#define TN_UNLOCK(m) ((void)0)
+#endif
 
 static char tn_out_buf[1 << 16];
 static size_t tn_out_len;
-static const char *tn_cur_loc = "?";
 
 static void tn_write_fd(int fd, const char *p, size_t n, bool fatal) {
     while (n > 0) {
@@ -63,13 +109,18 @@ static void tn_write_fd(int fd, const char *p, size_t n, bool fatal) {
         n -= (size_t)w;
     }
 }
-static void tn_flush(void) {
+static void tn_flush_u(void) {
     tn_write_fd(1, tn_out_buf, tn_out_len, true);
     tn_out_len = 0;
 }
-static TN_UNUSED void tn_write(const char *p, size_t n) {
+static void tn_flush(void) {
+    TN_LOCK(tn_out_mu);
+    tn_flush_u();
+    TN_UNLOCK(tn_out_mu);
+}
+static void tn_write_u(const char *p, size_t n) {
     if (tn_out_len + n > sizeof tn_out_buf) {
-        tn_flush();
+        tn_flush_u();
         if (n > sizeof tn_out_buf) {
             tn_write_fd(1, p, n, true);
             return;
@@ -78,9 +129,23 @@ static TN_UNUSED void tn_write(const char *p, size_t n) {
     memcpy(tn_out_buf + tn_out_len, p, n);
     tn_out_len += n;
 }
+static TN_UNUSED void tn_write(const char *p, size_t n) {
+    TN_LOCK(tn_out_mu);
+    tn_write_u(p, n);
+    TN_UNLOCK(tn_out_mu);
+}
+/* println in a program with workers: the line and its "\n" in one piece, so
+ * lines printed by different workers never mix. */
+static TN_UNUSED void tn_writeln(const char *p, size_t n) {
+    TN_LOCK(tn_out_mu);
+    tn_write_u(p, n);
+    tn_write_u("\n", 1);
+    TN_UNLOCK(tn_out_mu);
+}
 static void tn_ewrite(const char *s) { tn_write_fd(2, s, strlen(s), false); }
 
 TN_NORETURN static void tn_trap(const char *msg, const char *loc) {
+    TN_LOCK(tn_trap_mu); /* one trap message; a second trapping worker waits for the exit */
     tn_flush();
     tn_ewrite("trap: ");
     tn_ewrite(msg);
@@ -107,15 +172,21 @@ TN_NORETURN static TN_UNUSED void tn_trap_bytes(const char *p, int64_t n, const 
     tn_trap(msg, loc);
 }
 TN_NORETURN static void tn_oom(void) {
+    TN_LOCK(tn_trap_mu);
     tn_flush();
     tn_ewrite("trap: out of memory\n");
     _exit(TN_EXIT_OOM);
 }
 /* Allocation: blocks of up to 512 bytes come from per-size free lists (16-byte
  * classes); every block carries a 16-byte header with its class. Larger blocks
- * use malloc. Sanitizer builds (TN_POOL_MAX=0) bypass the lists. */
-#define TN_SMALL_MAX 512
-static void *tn_freelist[TN_SMALL_MAX / 16 + 1];
+ * use malloc. Sanitizer builds (TN_POOL_MAX=0) bypass the lists. With workers
+ * the lists are per thread; a block freed by another worker than the one that
+ * allocated it joins the freeing worker's lists, which keep at most
+ * TN_FREE_MAX bytes (the rest goes back to malloc), so a worker that only
+ * receives does not hoard memory. */
+#ifdef TN_MT
+#define TN_FREE_MAX (64 << 20)
+#endif
 static inline void *tn_alloc(size_t n) {
     size_t c = (n + 15) >> 4;
     if (c == 0) c = 1;
@@ -124,6 +195,9 @@ static inline void *tn_alloc(size_t n) {
         void *h = tn_freelist[c];
         if (h) {
             tn_freelist[c] = *(void **)((char *)h + 16);
+#ifdef TN_MT
+            tn_free_bytes -= (int64_t)c * 16;
+#endif
             return (char *)h + 16;
         }
 #endif
@@ -142,7 +216,12 @@ static inline void tn_free(void *p) {
     if (!p) return;
     uint64_t *h = (uint64_t *)((char *)p - 16);
 #if !defined(TN_POOL_MAX) || TN_POOL_MAX > 0
+#ifdef TN_MT
+    if (h[0] && tn_free_bytes < TN_FREE_MAX) {
+        tn_free_bytes += (int64_t)h[0] * 16;
+#else
     if (h[0]) {
+#endif
         *(void **)p = tn_freelist[h[0]];
         tn_freelist[h[0]] = h;
         return;
@@ -217,7 +296,12 @@ static TN_UNUSED void tn_init(int argc, char **argv) {
 }
 TN_NORETURN static TN_UNUSED void tn_exit(int code) {
     tn_flush();
+#ifdef TN_MT
+    TN_LOCK(tn_trap_mu); /* workers still running end here too, without exit handlers under them */
+    _exit(code);
+#else
     exit(code);
+#endif
 }
 
 /* Capabilities and functions are not comparable (the checker rejects it);
@@ -240,10 +324,6 @@ TN_NORETURN static TN_UNUSED void tn_exit(int code) {
 #ifndef TN_POOL_MAX
 #define TN_POOL_MAX 65536
 #endif
-static int tn_rel_depth;
-typedef struct { void *p; void (*f)(void *); } tn_deferred;
-static tn_deferred *tn_defer_q;
-static int64_t tn_defer_n, tn_defer_cap;
 static TN_UNUSED void tn_defer(void *p, void (*f)(void *)) {
     if (tn_defer_n == tn_defer_cap) {
         tn_defer_cap = tn_defer_cap ? tn_defer_cap * 2 : 256;
@@ -741,7 +821,12 @@ static TN_UNUSED tn_Str tn_dec_msg(tn_dec *d, const char *type) {
 
 /* ---------- closures ---------- */
 
+#ifdef TN_MT
+/* copy: a deep copy of the closure's captures (or a dyn box), for sending */
+typedef struct tn_env { int64_t rc; void (*drop)(struct tn_env *); struct tn_env *(*copy)(struct tn_env *); } tn_env;
+#else
 typedef struct tn_env { int64_t rc; void (*drop)(struct tn_env *); } tn_env;
+#endif
 typedef struct { void *f; tn_env *env; } tn_fn;
 static inline tn_fn tn_fn_retain(tn_fn f) {
     if (f.env) f.env->rc++;
@@ -1578,7 +1663,7 @@ static bool tn_in_fill(void) {
     tn_in_len += r;
     return true;
 }
-static TN_UNUSED bool tn_read_line(tn_Str *out) {
+static bool tn_read_line_u(tn_Str *out) {
     tn_flush();
     int64_t scan = tn_in_pos;
     for (;;) {
@@ -1610,7 +1695,7 @@ static bool tn_utf8_valid(const char *p, int64_t n) {
         }
     return true;
 }
-static TN_UNUSED tn_Str tn_read_all(void) {
+static tn_Str tn_read_all_u(void) {
     tn_flush();
     while (tn_in_fill()) {}
     if (tn_in_mem && tn_in_pos == 0 && tn_utf8_valid(tn_in_buf, tn_in_len)) {
@@ -1627,7 +1712,7 @@ static TN_UNUSED tn_Str tn_read_all(void) {
     tn_in_pos = tn_in_len;
     return tn_buf_finish(&b);
 }
-static TN_UNUSED tn_List_Int tn_read_all_bytes(void) {
+static tn_List_Int tn_read_all_bytes_u(void) {
     tn_flush();
     while (tn_in_fill()) {}
     tn_List_Int l = tn_in_mem ? tn_bytes_list(tn_in_buf + tn_in_pos, tn_in_len - tn_in_pos) : NULL;
@@ -1635,7 +1720,7 @@ static TN_UNUSED tn_List_Int tn_read_all_bytes(void) {
     return l;
 }
 /* The next n bytes of stdin; fewer only at end of input. */
-static TN_UNUSED tn_List_Int tn_read_bytes(int64_t n) {
+static tn_List_Int tn_read_bytes_u(int64_t n) {
     tn_flush();
     if (n <= 0) return NULL;
     while (tn_in_len - tn_in_pos < n && tn_in_fill()) {}
@@ -1644,6 +1729,31 @@ static TN_UNUSED tn_List_Int tn_read_bytes(int64_t n) {
     tn_List_Int l = k > 0 ? tn_bytes_list(tn_in_buf + tn_in_pos, k) : NULL;
     tn_in_pos += k;
     return l;
+}
+/* Standard input is shared by the workers: one reader at a time. */
+static TN_UNUSED bool tn_read_line(tn_Str *out) {
+    TN_LOCK(tn_in_mu);
+    bool r = tn_read_line_u(out);
+    TN_UNLOCK(tn_in_mu);
+    return r;
+}
+static TN_UNUSED tn_Str tn_read_all(void) {
+    TN_LOCK(tn_in_mu);
+    tn_Str r = tn_read_all_u();
+    TN_UNLOCK(tn_in_mu);
+    return r;
+}
+static TN_UNUSED tn_List_Int tn_read_all_bytes(void) {
+    TN_LOCK(tn_in_mu);
+    tn_List_Int r = tn_read_all_bytes_u();
+    TN_UNLOCK(tn_in_mu);
+    return r;
+}
+static TN_UNUSED tn_List_Int tn_read_bytes(int64_t n) {
+    TN_LOCK(tn_in_mu);
+    tn_List_Int r = tn_read_bytes_u(n);
+    TN_UNLOCK(tn_in_mu);
+    return r;
 }
 static TN_UNUSED bool tn_str_from_utf8(tn_List_Int l, tn_Str *out) {
     int64_t bad;
@@ -1665,9 +1775,11 @@ static TN_UNUSED void tn_write_bytes(tn_List_Int l, const char *loc) {
     tn_Str_release(s);
 }
 static TN_UNUSED void tn_eprintln(tn_Str s) {
-    tn_flush();
+    TN_LOCK(tn_out_mu);
+    tn_flush_u();
     tn_write_fd(2, s.p, (size_t)s.len, false);
     tn_write_fd(2, "\n", 1, false);
+    TN_UNLOCK(tn_out_mu);
 }
 
 /* ---------- file system capability ---------- */
@@ -2507,5 +2619,289 @@ static TN_UNUSED int tn_proc_capture(tn_Str cmd, tn_List_Str args, tn_Str dir, t
     *res = l;
     return TN_IO_OK;
 }
+
+/* ---------- workers and channels (v2: lib/v2/prelude.tn) ----------
+ * A worker (Workers.spawn) is an OS thread with a heap of its own: in a
+ * program compiled with TN_MT every allocator list, pool and release queue
+ * is thread-local. Workers share nothing: a value given to spawn, returned
+ * by a worker or sent on a channel is deep-copied by the sender (T_copy,
+ * generated per type; it reads the original without touching its counts),
+ * and the receiver owns the copy. So reference counts stay plain integers.
+ * Only the handles below (Sender/Receiver = tn_Chan, Worker = tn_Worker) are
+ * shared, with atomic counts.
+ * One lock (tn_mt_mu) guards every channel and worker. It also counts the
+ * threads waiting on a channel or a join: when every live thread waits, none
+ * can ever wake, and the program traps with "deadlock" at the main thread's
+ * wait (the interpreter detects the same situation and reports the same). */
+typedef uint8_t tn_Workers;
+TN_TRIVIAL(tn_Workers)
+TN_INCOMPARABLE(tn_Workers)
+static TN_UNUSED void tn_Workers_show(tn_buf *b, tn_Workers x, int mode) { (void)x; (void)mode; tn_buf_cstr(b, "<Workers>"); }
+
+static pthread_mutex_t tn_mt_mu = PTHREAD_MUTEX_INITIALIZER;
+static int64_t tn_mt_live = 1, tn_mt_blocked;
+static const char *tn_mt_main_loc = "?";
+
+TN_NORETURN static void tn_mt_deadlock(void) {
+    tn_trap("deadlock: every worker is waiting for a channel or a join", tn_mt_main_loc);
+}
+/* Wait on cv (tn_mt_mu held). A thread woken by tn_mt_wake was already
+ * uncounted by its waker, through a wake token; one that wakes without a
+ * token (spuriously) uncounts itself. */
+static void tn_mt_wait(pthread_cond_t *cv, int64_t *waiting, int64_t *wakes, const char *loc) {
+    (*waiting)++;
+    tn_mt_blocked++;
+    if (!tn_in_worker) tn_mt_main_loc = loc;
+    if (tn_mt_blocked == tn_mt_live) tn_mt_deadlock();
+    pthread_cond_wait(cv, &tn_mt_mu);
+    if (*wakes > 0) {
+        (*wakes)--;
+    } else {
+        (*waiting)--;
+        tn_mt_blocked--;
+    }
+}
+static void tn_mt_wake(pthread_cond_t *cv, int64_t *waiting, int64_t *wakes, bool all) {
+    int64_t n = all ? *waiting : *waiting > 0;
+    if (n == 0) return;
+    *waiting -= n;
+    *wakes += n;
+    tn_mt_blocked -= n;
+    if (all) pthread_cond_broadcast(cv); else pthread_cond_signal(cv);
+}
+
+/* A channel: a ring buffer of elements of esz bytes (each one a value owned
+ * by the channel), closed only by Sender.close. */
+typedef struct tn_chan_s {
+    int64_t rc; /* atomic */
+    int64_t esz, head, len, cap, waiting, wakes;
+    bool closed;
+    void (*rel)(void *); /* releases one element in place; NULL for trivial types */
+    char *buf;
+    pthread_cond_t cv;
+} *tn_Chan;
+static TN_UNUSED tn_Chan tn_Chan_retain(tn_Chan c) {
+    __atomic_fetch_add(&c->rc, 1, __ATOMIC_RELAXED);
+    return c;
+}
+static TN_UNUSED void tn_Chan_release(tn_Chan c) {
+    if (__atomic_sub_fetch(&c->rc, 1, __ATOMIC_ACQ_REL) != 0) return;
+    for (int64_t i = 0; i < c->len && c->rel; i++) c->rel(c->buf + ((c->head + i) % c->cap) * c->esz);
+    free(c->buf);
+    pthread_cond_destroy(&c->cv);
+    free(c);
+}
+/* Sender[T] and Receiver[T] are the same channel pointer, for every T. */
+typedef tn_Chan tn_Sender, tn_Receiver;
+#define TN_CHAN_HANDLE(T, S)                                                                \
+    static inline TN_UNUSED T T##_retain(T c) { return tn_Chan_retain(c); }                \
+    static inline TN_UNUSED void T##_release(T c) { tn_Chan_release(c); }                  \
+    static TN_UNUSED void T##_show(tn_buf *b, T c, int mode) { (void)c; (void)mode; tn_buf_cstr(b, S); } \
+    TN_INCOMPARABLE(T)
+TN_CHAN_HANDLE(tn_Sender, "<Sender>")
+TN_CHAN_HANDLE(tn_Receiver, "<Receiver>")
+static TN_UNUSED tn_Chan tn_chan_new(int64_t esz, void (*rel)(void *)) {
+    tn_Chan c = calloc(1, sizeof *c);
+    if (!c) tn_oom();
+    c->rc = 1;
+    c->esz = esz > 0 ? esz : 1;
+    c->rel = rel;
+    pthread_cond_init(&c->cv, NULL);
+    return c;
+}
+/* Takes ownership of *x (esz bytes). */
+static TN_UNUSED void tn_chan_send(tn_Chan c, void *x, const char *loc) {
+    pthread_mutex_lock(&tn_mt_mu);
+    if (c->closed) {
+        pthread_mutex_unlock(&tn_mt_mu);
+        if (c->rel) c->rel(x);
+        tn_trap("send on a closed channel", loc);
+    }
+    if (c->len == c->cap) {
+        int64_t cap = c->cap ? c->cap * 2 : 16;
+        char *nb = malloc((size_t)(cap * c->esz));
+        if (!nb) tn_oom();
+        for (int64_t i = 0; i < c->len; i++) memcpy(nb + i * c->esz, c->buf + ((c->head + i) % c->cap) * c->esz, (size_t)c->esz);
+        free(c->buf);
+        c->buf = nb;
+        c->cap = cap;
+        c->head = 0;
+    }
+    memcpy(c->buf + ((c->head + c->len) % c->cap) * c->esz, x, (size_t)c->esz);
+    c->len++;
+    tn_mt_wake(&c->cv, &c->waiting, &c->wakes, false);
+    pthread_mutex_unlock(&tn_mt_mu);
+}
+/* The next element into *out (true), or false: closed and empty, or (when
+ * not waiting) empty. */
+static TN_UNUSED bool tn_chan_recv(tn_Chan c, void *out, bool wait, const char *loc) {
+    pthread_mutex_lock(&tn_mt_mu);
+    while (wait && c->len == 0 && !c->closed) tn_mt_wait(&c->cv, &c->waiting, &c->wakes, loc);
+    bool got = c->len > 0;
+    if (got) {
+        memcpy(out, c->buf + c->head * c->esz, (size_t)c->esz);
+        c->head = (c->head + 1) % c->cap;
+        c->len--;
+    }
+    pthread_mutex_unlock(&tn_mt_mu);
+    return got;
+}
+static TN_UNUSED void tn_chan_close(tn_Chan c) {
+    pthread_mutex_lock(&tn_mt_mu);
+    c->closed = true;
+    tn_mt_wake(&c->cv, &c->waiting, &c->wakes, true);
+    pthread_mutex_unlock(&tn_mt_mu);
+}
+
+/* A worker: run(t) computes res (rsz bytes) from f and arg (asz bytes),
+ * which the spawning thread copied for it. */
+typedef struct tn_task_s {
+    int64_t rc; /* atomic */
+    bool done;
+    int64_t waiting, wakes;
+    pthread_cond_t cv;
+    void (*run)(struct tn_task_s *);
+    void (*rel)(void *); /* releases res in place; NULL for trivial types */
+    tn_fn f;
+    void *arg, *res;
+} *tn_Worker;
+static TN_UNUSED tn_Worker tn_Worker_retain(tn_Worker t) {
+    __atomic_fetch_add(&t->rc, 1, __ATOMIC_RELAXED);
+    return t;
+}
+static TN_UNUSED void tn_Worker_release(tn_Worker t) {
+    if (__atomic_sub_fetch(&t->rc, 1, __ATOMIC_ACQ_REL) != 0) return;
+    if (t->done && t->rel) t->rel(t->res);
+    pthread_cond_destroy(&t->cv);
+    free(t->arg);
+    free(t->res);
+    free(t);
+}
+static TN_UNUSED void tn_Worker_show(tn_buf *b, tn_Worker t, int mode) { (void)t; (void)mode; tn_buf_cstr(b, "<Worker>"); }
+TN_INCOMPARABLE(tn_Worker)
+static TN_UNUSED tn_Worker tn_task_new(int64_t asz, int64_t rsz, void (*run)(tn_Worker), void (*rel)(void *)) {
+    tn_Worker t = calloc(1, sizeof *t);
+    if (!t) tn_oom();
+    t->rc = 1;
+    t->run = run;
+    t->rel = rel;
+    t->arg = calloc(1, (size_t)(asz > 0 ? asz : 1));
+    t->res = calloc(1, (size_t)(rsz > 0 ? rsz : 1));
+    if (!t->arg || !t->res) tn_oom();
+    pthread_cond_init(&t->cv, NULL);
+    return t;
+}
+#define TN_WORKER_STACK ((size_t)256 << 20)
+static void *tn_task_thread(void *p) {
+    tn_Worker t = p;
+    tn_in_worker = true;
+    /* the stack overflow handler runs on a stack of its own (unless a
+     * sanitizer has given the thread one already) */
+    stack_t old, ss = {.ss_sp = NULL, .ss_size = 1 << 16, .ss_flags = 0};
+    if (sigaltstack(NULL, &old) == 0 && (old.ss_flags & SS_DISABLE)) {
+        ss.ss_sp = malloc(ss.ss_size);
+        if (ss.ss_sp) sigaltstack(&ss, NULL);
+    }
+    t->run(t);
+    pthread_mutex_lock(&tn_mt_mu);
+    t->done = true;
+    tn_mt_wake(&t->cv, &t->waiting, &t->wakes, true);
+    tn_mt_live--;
+    if (tn_mt_blocked > 0 && tn_mt_blocked == tn_mt_live) tn_mt_deadlock();
+    pthread_mutex_unlock(&tn_mt_mu);
+    tn_Worker_release(t);
+    /* the worker's heap goes back to malloc */
+    for (int c = 1; c <= TN_SMALL_MAX / 16; c++) {
+        while (tn_freelist[c]) {
+            void *h = tn_freelist[c];
+            tn_freelist[c] = *(void **)((char *)h + 16);
+            free(h);
+        }
+    }
+    free(tn_defer_q);
+    if (ss.ss_sp) {
+        stack_t off = {.ss_sp = NULL, .ss_size = 0, .ss_flags = SS_DISABLE};
+        sigaltstack(&off, NULL);
+        free(ss.ss_sp);
+    }
+    return NULL;
+}
+static TN_UNUSED void tn_task_start(tn_Worker t, const char *loc) {
+    pthread_mutex_lock(&tn_mt_mu);
+    tn_mt_live++;
+    pthread_mutex_unlock(&tn_mt_mu);
+    tn_Worker_retain(t); /* the thread's reference */
+    pthread_attr_t at;
+    pthread_attr_init(&at);
+    pthread_attr_setstacksize(&at, TN_WORKER_STACK);
+    pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+    pthread_t th;
+    int e = pthread_create(&th, &at, tn_task_thread, t);
+    pthread_attr_destroy(&at);
+    if (e != 0) tn_trapf(loc, "cannot start a worker: %s", strerror(e));
+}
+/* Waits until the worker is done; its result is then at t->res. */
+static TN_UNUSED void tn_task_join(tn_Worker t, const char *loc) {
+    pthread_mutex_lock(&tn_mt_mu);
+    while (!t->done) tn_mt_wait(&t->cv, &t->waiting, &t->wakes, loc);
+    pthread_mutex_unlock(&tn_mt_mu);
+}
+static TN_UNUSED tn_Int tn_cores(void) {
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    return n > 0 ? n : 1;
+}
+
+#ifdef TN_MT
+/* Deep copies (the sender's side of every transfer). */
+#define TN_COPY_ID(T) static inline TN_UNUSED T T##_copy(T x) { return x; }
+TN_COPY_ID(tn_Int)
+TN_COPY_ID(tn_Float)
+TN_COPY_ID(tn_Bool)
+TN_COPY_ID(tn_Unit)
+TN_COPY_ID(tn_Console)
+TN_COPY_ID(tn_Clock)
+TN_COPY_ID(tn_Net)
+TN_COPY_ID(tn_Proc)
+TN_COPY_ID(tn_Workers)
+TN_COPY_ID(tn_Listener) /* never sent (not Send); here so every type has a copy */
+TN_COPY_ID(tn_Conn)
+TN_COPY_ID(tn_Poller)
+static TN_UNUSED tn_Str tn_Str_copy(tn_Str s) { return s.o ? tn_str_new(s.p, s.len) : s; }
+static TN_UNUSED tn_Fs tn_Fs_copy(tn_Fs f) { return tn_fs_make(tn_Str_copy(f->root), f->att, f->wr); }
+static TN_UNUSED tn_fn tn_fn_copy(tn_fn f) {
+    if (f.env) f.env = f.env->copy(f.env);
+    return f;
+}
+static TN_UNUSED tn_Sender tn_Sender_copy(tn_Sender c) { return tn_Chan_retain(c); }
+static TN_UNUSED tn_Receiver tn_Receiver_copy(tn_Receiver c) { return tn_Chan_retain(c); }
+static TN_UNUSED tn_Worker tn_Worker_copy(tn_Worker t) { return tn_Worker_retain(t); }
+#define TN_LIST_COPY(L, T)                                                                \
+    static TN_UNUSED L L##_copy(L l) {                                                     \
+        if (!l) return NULL;                                                               \
+        L c = L##_alloc(l->len);                                                           \
+        for (int64_t i = 0; i < l->len; i++) c->data[i] = T##_copy(l->data[i]);           \
+        c->len = l->len;                                                                   \
+        return c;                                                                          \
+    }
+#define TN_MAP_COPY(M, K, V)                                                               \
+    static TN_UNUSED M M##_copy(M m) {                                                     \
+        if (!m) return NULL;                                                               \
+        M c = M##_alloc(m->len);                                                           \
+        for (int64_t i = 0; i < m->n; i++)                                                 \
+            if (m->e[i].live) {                                                            \
+                struct M##_e x = m->e[i];                                                  \
+                x.k = K##_copy(x.k); x.v = V##_copy(x.v);                                  \
+                c->e[c->n++] = x;                                                          \
+            }                                                                              \
+        c->len = c->n;                                                                     \
+        if (c->idx) M##_reindex(c, c->icap);                                               \
+        return c;                                                                          \
+    }
+TN_LIST_COPY(tn_List_Str, tn_Str)
+TN_LIST_COPY(tn_List_Int, tn_Int)
+/* Nullary variants of boxed enums are static objects shared by every
+ * thread: their counts are never changed (TN_RC_STATIC and above). */
+#define TN_RC_STATIC (INT64_MAX / 4)
+#endif
 
 #endif

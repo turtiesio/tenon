@@ -11,6 +11,7 @@ import ival
 import ibuiltin
 import icap
 import icodec
+import iwork
 
 pub const MAX_DEPTH: Int = 20000
 pub const EXIT_TRAP: Int = 70
@@ -19,8 +20,9 @@ pub const EXIT_OUTPUT: Int = 74
 
 // How evaluation leaves an expression early.
 // CNoKey: a missing map key in a place (nav), turned into the trap by nk
-// with the key type's Show impl applied.
-pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int), CNoKey(ival.Val, ckast.Span) }
+// with the key type's Show impl applied. CBlock: a worker would wait; it is
+// suspended (selfhost/iwork.tn).
+pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int), CNoKey(ival.Val, ckast.Span), CBlock }
 
 // Enum numbers the interpreter builds values of.
 pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
@@ -34,6 +36,7 @@ pub unique struct Interp {
     pub con: Console, pub clock: Clock, pub net: Net, pub proc: Proc, pub fss: List[Fs],
     pub net_state: icap.NetState,
     pub bp: Poller, pub pp0: Poller, pub pp1: Poller, pub pp2: Poller, pub pp3: Poller,
+    pub wk: iwork.Sched,
 }
 
 pub fn trap[T](msg: Str, sp: ckast.Span) -> Result[T, Ctl] { Err(CTrap(msg, sp)) }

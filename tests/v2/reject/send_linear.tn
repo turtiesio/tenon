@@ -1,0 +1,17 @@
+// error: type Job does not implement Send (needed by bound T: Send of channel): the linear type Job could be dropped by a channel or a worker that is never joined
+// A linear value cannot go through a channel: a channel that is dropped
+// with values in it would lose the obligation.
+linear struct Job { id: Int }
+
+fn Job.finish(self) -> Int { self.id }
+
+fn finish(j: Job) -> Int { j.finish() }
+
+fn main(sys: Sys) {
+    let (tx, rx) = channel()
+    tx.send(Job { id: 1 })
+    match rx.recv() {
+        Some(j) => sys.console.println("{finish(j)}"),
+        None => {}
+    }
+}

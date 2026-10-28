@@ -1,0 +1,9 @@
+// error: values of type Sender[Int] cannot be compared
+// Channel handles are capabilities: they cannot be compared.
+fn main(sys: Sys) {
+    let (tx, _) = channel()
+    tx.send(1)
+    let (tx2, _) = channel()
+    tx2.send(2)
+    sys.console.println("{tx == tx2}")
+}

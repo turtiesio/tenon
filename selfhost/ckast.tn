@@ -422,7 +422,7 @@ pub fn convert(files: List[parser.Program], modules: List[Str]) -> Program {
 struct Fixer { types: List[Str], aliases: List[List[Str]] }
 
 pub fn fix_paths(prog: Program) -> Program {
-    var types = ["Int", "Float", "Bool", "Str", "Unit", "List", "Map", "Console", "Fs", "Clock", "Net", "Listener", "Conn", "Poller", "Proc"]
+    var types = ["Int", "Float", "Bool", "Str", "Unit", "List", "Map", "Console", "Fs", "Clock", "Net", "Listener", "Conn", "Poller", "Proc", "Workers", "Sender", "Receiver", "Worker"]
     for s in prog.structs { types.push(s.name) }
     for e in prog.enums { types.push(e.name) }
     var aliases: List[List[Str]] = []

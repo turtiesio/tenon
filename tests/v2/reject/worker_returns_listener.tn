@@ -1,0 +1,9 @@
+// error: type Listener does not implement Send (needed by bound R: Send of Workers.spawn): Listener belongs to the worker that opened it (send a Net and open it there)
+// A worker cannot return a socket handle either.
+fn open(net: Net) -> Listener { net.listen(0).unwrap() }
+
+fn main(sys: Sys) {
+    let h = sys.workers().spawn(open, sys.net)
+    let l = h.join()
+    sys.console.println("{l.port()}")
+}

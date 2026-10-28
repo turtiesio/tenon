@@ -10,6 +10,7 @@ import ival
 import ieval
 import ibuiltin
 import icap
+import iwork
 
 // Type names as users write them (without the module prefix).
 fn display(n: Str) -> Str {
@@ -71,7 +72,9 @@ pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
         fns: code.fns, lams: code.lams, vts: code.vts, names, ix, files: fr.files.map(fn(f) => f.0), site: span0(), depth: 0, checked: c,
         con: sys.console, clock: sys.clock, net: sys.net, proc: sys.proc, fss: [sys.fs], net_state: icap.new_net_state(),
         bp: sys.net.poller(), pp0: sys.net.poller(), pp1: sys.net.poller(), pp2: sys.net.poller(), pp3: sys.net.poller(),
+        wk: iwork.new_sched(),
     }
+    if ibuiltin.FIRST_CAP + icap.cap_names().len() != ibuiltin.FIRST_WORK { panic("interp: FIRST_WORK is out of date") }
     var argv: List[ival.Val] = []
     for a in args { argv.push(ival.vstr(a)) }
     let sysv = ival.vstruct(env.struct_idx("Sys").unwrap(), [

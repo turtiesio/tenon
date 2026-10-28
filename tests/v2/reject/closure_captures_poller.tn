@@ -1,0 +1,8 @@
+// error: closures cannot capture the unique value 'p'
+// A closure cannot capture a unique value, so a closure given to spawn can
+// only capture sendable values.
+fn main(sys: Sys) {
+    let p = sys.net.poller()
+    let h = sys.workers().spawn(fn(port: Int) => p.listen(port).is_ok(), 0)
+    sys.console.println("{h.join()}")
+}

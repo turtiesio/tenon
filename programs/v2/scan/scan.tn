@@ -1,0 +1,170 @@
+// scan: search and summarize a tree of text files with a pool of workers.
+//
+//   scan [-j N] stats DIR             lines, words and bytes per file, and in total
+//   scan [-j N] grep [-i] TEXT DIR    the lines containing TEXT (-i: ignoring ASCII case)
+//   scan [-j N] top K DIR             the K most frequent words (lowercased)
+//
+// The files under DIR (recursively; names starting with "." are skipped) are
+// read by N workers (default: one per core), each taking the next path from
+// a shared channel and sending back what it found; main sorts the results by
+// path, so the output never depends on which worker read which file. The
+// workers get a read-only Fs confined to DIR, and nothing else. A file that
+// cannot be read as UTF-8 text is reported (on stderr) and skipped.
+// Exit status: 0, 1 when some file was skipped, 2 for a usage error.
+
+struct Found { path: Str, lines: Int, words: Int, bytes: Int, counts: Map[Str, Int], hits: List[(Int, Str)], err: Str }
+
+enum Cmd { Stats, Grep(Str, Bool), Top(Int) }
+
+// Every file under dir, relative to the root of fs, in sorted order.
+fn walk(fs: Fs, dir: Str, out: mut List[Str]) -> Result[Unit, IoError] {
+    for name in fs.list(if dir == "" { "." } else { dir })? {
+        if name.starts_with(".") { continue }
+        let p = path_join(dir, name)
+        if fs.is_dir(p) { walk(fs, p, mut out)? } else { out.push(p) }
+    }
+    Ok(())
+}
+
+// What one file holds, for the command.
+fn examine(fs: Fs, path: Str, cmd: Cmd) -> Found {
+    var f = Found { path, lines: 0, words: 0, bytes: 0, counts: [:], hits: [], err: "" }
+    let text = match fs.read(path) {
+        Ok(t) => t,
+        Err(e) => {
+            f.err = "{e}"
+            return f
+        }
+    }
+    f.bytes = text.len()
+    let lines = text.lines()
+    f.lines = lines.len()
+    for i in 0..lines.len() {
+        let line = lines[i]
+        let ws = line.words()
+        f.words += ws.len()
+        match cmd {
+            Grep(pat, fold) => {
+                let hay = if fold { line.lower() } else { line }
+                if hay.contains(pat) { f.hits.push((i + 1, line)) }
+            }
+            Top(_) => {
+                for w in ws {
+                    let k = w.lower().trim_chars(".,;:!?\"'()[]")
+                    if not k.is_empty() { f.counts[k] = f.counts.get_or(k, 0) + 1 }
+                }
+            }
+            Stats => {}
+        }
+    }
+    f
+}
+
+// A worker: examine paths until the channel is closed.
+fn worker(job: (Fs, Cmd, Receiver[Str], Sender[Found])) -> Int {
+    let (fs, cmd, paths, found) = job
+    var n = 0
+    while let Some(p) = paths.recv() {
+        found.send(examine(fs, p, cmd))
+        n += 1
+    }
+    n
+}
+
+fn usage(con: Console) -> Int {
+    con.eprintln("usage: scan [-j N] stats DIR | grep [-i] TEXT DIR | top K DIR")
+    2
+}
+
+fn main(sys: Sys) -> Int {
+    let con = sys.console
+    var args = sys.args
+    var jobs = 0
+    if args.len() >= 2 and args[0] == "-j" {
+        match args[1].to_int() {
+            Some(n) if n >= 1 => jobs = n,
+            _ => return usage(con),
+        }
+        args = args.slice(2, args.len())
+    }
+    if args.is_empty() { return usage(con) }
+    let (cmd, dir) = match (args[0], args.len()) {
+        ("stats", 2) => (Stats, args[1]),
+        ("grep", 3) => (Grep(args[1], false), args[2]),
+        ("grep", 4) if args[1] == "-i" => (Grep(args[2].lower(), true), args[3]),
+        ("top", 3) => match args[1].to_int() {
+            Some(k) if k >= 1 => (Top(k), args[2]),
+            _ => return usage(con),
+        },
+        _ => return usage(con),
+    }
+    if not sys.fs.is_dir(dir) {
+        con.eprintln("scan: {dir}: not a directory")
+        return 2
+    }
+    let fs = sys.fs.within(dir).read_only()
+    var paths: List[Str] = []
+    match walk(fs, "", mut paths) {
+        Ok(_) => {}
+        Err(e) => {
+            con.eprintln("scan: {e}")
+            return 1
+        }
+    }
+    // the pool: every path into one channel, closed; the workers take turns
+    let w = sys.workers()
+    let n = if jobs > 0 { jobs } else { w.cores() }
+    let (todo, todo_rx) = channel()
+    let (found_tx, found) = channel()
+    for p in paths { todo.send(p) }
+    todo.close()
+    var pool: List[Worker[Int]] = []
+    for _ in 0..n.min(paths.len()).max(1) { pool.push(w.spawn(worker, (fs, cmd, todo_rx, found_tx))) }
+    var results: List[Found] = []
+    for _ in 0..paths.len() { results.push(found.recv().unwrap()) }
+    var examined = 0
+    for h in pool { examined += h.join() }
+    results.sort_by(fn(r) => r.path)
+    var status = 0
+    for r in results {
+        if r.err != "" {
+            con.eprintln("scan: skipped {r.path}: {r.err}")
+            status = 1
+        }
+    }
+    let ok = results.filter(fn(r) => r.err == "")
+    match cmd {
+        Stats => {
+            var tl = 0
+            var tw = 0
+            var tb = 0
+            for r in ok {
+                con.println("{r.lines:>6} {r.words:>7} {r.bytes:>8}  {r.path}")
+                tl += r.lines
+                tw += r.words
+                tb += r.bytes
+            }
+            con.println("{tl:>6} {tw:>7} {tb:>8}  total ({ok.len()} files)")
+        }
+        Grep(_, _) => {
+            var hits = 0
+            for r in ok {
+                for (ln, line) in r.hits { con.println("{r.path}:{ln}: {line}") }
+                hits += r.hits.len()
+            }
+            con.println("{hits} matching lines in {ok.filter(fn(r) => not r.hits.is_empty()).len()} of {ok.len()} files")
+        }
+        Top(k) => {
+            var all: Map[Str, Int] = [:]
+            for r in ok {
+                for (word, c) in r.counts { all[word] = all.get_or(word, 0) + c }
+            }
+            var es = all.entries()
+            es.sort_by(fn(e) => (-e.1, e.0))
+            for e in es.slice(0, k.min(es.len())) { con.println("{e.1:>6} {e.0}") }
+            con.println("{all.len()} distinct words in {ok.len()} files")
+        }
+    }
+    if examined != paths.len() { con.eprintln("scan: internal error: {examined} of {paths.len()} files examined") }
+    status
+}

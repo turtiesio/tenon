@@ -1,0 +1,13 @@
+// A trap in a worker ends the whole program (status 70), as a trap in main
+// does: traps are bugs and are not caught. The output before it is flushed.
+fn work(xs: List[Int]) -> Int {
+    var t = 0
+    for i in 0..5 { t += xs[i] }
+    t
+}
+
+fn main(sys: Sys) {
+    sys.console.println("start")
+    let h = sys.workers().spawn(work, [1, 2, 3])
+    sys.console.println("{h.join()}")
+}

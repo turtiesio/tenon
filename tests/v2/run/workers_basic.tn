@@ -1,0 +1,76 @@
+// Workers: spawn a function on another thread and join its result. The
+// argument and the result are copied between the workers' heaps, whatever
+// their type: strings, lists, maps, structs, recursive enums, Options,
+// closures and dyn values; a handle can be joined again, also by another
+// worker.
+struct Point { x: Int, y: Int }
+
+enum Tree { Leaf, Node(Tree, Int, Tree) }
+
+trait Area {
+    fn area(self) -> Int
+}
+
+struct Sq { side: Int }
+
+impl Area for Sq {
+    fn area(self) -> Int { self.side * self.side }
+}
+
+fn build(lo: Int, hi: Int) -> Tree {
+    if lo >= hi { return Leaf }
+    let mid = (lo + hi) / 2
+    Node(build(lo, mid), mid, build(mid + 1, hi))
+}
+
+fn total(t: Tree) -> Int {
+    match t {
+        Leaf => 0,
+        Node(l, v, r) => total(l) + v + total(r),
+    }
+}
+
+fn stats(xs: List[Int]) -> Map[Str, Int] {
+    var m: Map[Str, Int] = [:]
+    m["n"] = xs.len()
+    m["sum"] = xs.sum()
+    m["max"] = xs.max_by(fn(x) => x).unwrap_or(0)
+    m
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let w = sys.workers()
+    // a named function, a closure with captures, a tuple argument
+    let a = w.spawn(stats, [3, 1, 4, 1, 5, 9, 2, 6])
+    let base = 100
+    let words = ["alpha", "beta"]
+    let b = w.spawn(fn(n: Int) => words.map(fn(s) => s + "{n + base}"), 7)
+    let c = w.spawn(fn(p: (Str, Int)) => p.0.repeat(p.1), ("ab", 3))
+    con.println("{a.join()}")
+    con.println("{b.join()} {c.join()}")
+    // structs, a recursive enum, Option
+    let d = w.spawn(fn(p: Point) => Point { x: p.y, y: p.x }, Point { x: 1, y: 2 })
+    let e = w.spawn(fn(n: Int) => build(0, n), 1000)
+    let f = w.spawn(fn(s: Str) => s.find("="), "key=value")
+    con.println("{d.join()} {total(e.join())} {f.join()}")
+    // a closure and a dyn value as results
+    let g = w.spawn(fn(k: Int) => fn(x: Int) => x * k, 3)
+    let h = w.spawn(fn(s: Int) => dyn Area(Sq { side: s }), 4)
+    let times3 = g.join()
+    con.println("{times3(14)} {h.join().area()}")
+    // join twice, and from another worker
+    con.println("{a.join()["sum"]} {a.join()["max"]}")
+    let j = w.spawn(fn(x: Worker[Map[Str, Int]]) => x.join()["n"] * 10, a)
+    con.println("{j.join()}")
+    // a closure can be sent to a worker and called there
+    let sq = fn(x: Int) => x * x + base
+    let k = w.spawn(fn(fs: (fn(Int) -> Int, Int)) -> Int {
+        let (g2, x) = fs
+        g2(x)
+    }, (sq, 5))
+    con.println("{k.join()}")
+    // the result of a Unit function
+    let u = w.spawn(fn(_) => (), ())
+    con.println("{u.join()}")
+}
