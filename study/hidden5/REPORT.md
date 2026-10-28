@@ -14,7 +14,7 @@ runs**. All ten tasks have 25 cases, within the requested 15–25 range.
 - `09-polls`: 25 cases, 25 passed; silent control fails 25/25.
 - `10-robots`: 25 cases, 25 passed; silent control fails 25/25.
 
-From `/Users/hwang/.t3/projects/tenon`, validate everything against the private
+From the repository root, validate everything against the private
 references with this exact command:
 
 ```sh
