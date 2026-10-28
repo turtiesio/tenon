@@ -68,7 +68,8 @@ whole program while it is being edited.
 | `checker.tn` | check.rs `check` | the phases in the bootstrap's order; returns `Checked` |
 | `ckast.tn` | ast.rs, check.rs `fix_paths`, `breaks` | checker syntax tree with file numbers and node ids |
 | `cktypes.tn` | types.rs | `Ty`, substitution, unification (no rollback, as in the bootstrap) |
-| `ckenv.tn` | check.rs `declare`, `resolve_type`, `lower_type`, ... | declarations, modules, privacy, `check_main` |
+| `ckenv.tn` | check.rs `resolve_type`, `lower_type`, ... | the declaration tables, modules, privacy, `check_main` |
+| `ckdecl.tn` | check.rs `declare`, `check_recursion`, linear.rs `check_decls` | the declaration phase (free functions on `ckenv.Env`) |
 | `ckinfer.tn` | check.rs, check_expr.rs | function bodies: names, inference, statements, places |
 | `ckcall.tn` | check_expr.rs, check.rs | calls, methods, struct literals, patterns (free functions on `ckinfer.Ck`) |
 | `ckexh.tn` | exhaust.rs | exhaustiveness and reachability |
@@ -144,7 +145,7 @@ cross-checked (the seed cannot parse them).
   body into a function generic in `Self` bounded by its trait
   (`ODefault(t, m)`), appended after the file's functions. lib/v2/prelude.tn
   (Eq, Ord, Hash, Show) is appended to the prelude's text by front.gather.
-- **Declarations** (ckenv): traits are a namespace of their own
+- **Declarations** (ckenv, ckdecl): traits are a namespace of their own
   (`trait_ix`, internal names like types'), registered before the types (a
   field may be `dyn T`), their methods' signatures lowered after them;
   `declare_impls` checks each impl (the trait's methods and signatures,

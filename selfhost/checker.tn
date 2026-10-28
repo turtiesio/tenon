@@ -6,12 +6,15 @@
 //
 //   ckast    syntax tree with ids, conversion from the parser, fix_paths
 //   cktypes  types, substitution, unification
-//   ckenv    declarations and type resolution across modules
-//   ckinfer  function bodies: inference, methods, places, patterns
+//   ckenv    the declaration tables and type resolution across modules
+//   ckdecl   the declaration phase that fills them
+//   ckinfer  function bodies: inference, statements, places
+//   ckcall   calls, methods, struct literals, patterns
 //   ckexh    match exhaustiveness and reachability
 //   cklin    linear and unique types, codec restrictions
 
 import ckast
+import ckdecl
 import ckenv
 import ckinfer
 import cklin
@@ -30,7 +33,7 @@ pub struct Checked {
 
 // Check a whole program (prelude, main file and modules, already merged).
 pub fn check(prog: ckast.Program) -> Result[Checked, ckast.Diag] {
-    let env = ckenv.declare(prog)?
+    let env = ckdecl.declare(prog)?
     var ck = ckinfer.new_ck(env)
     for i in 0..prog.fns.len() { ck.check_fn(prog.fns[i], i)? }
     var main = -1
@@ -49,7 +52,7 @@ pub fn check(prog: ckast.Program) -> Result[Checked, ckast.Diag] {
 // tables cover every function (the failing one up to its error). No tables if
 // the declarations fail.
 pub fn check_lenient(prog: ckast.Program) -> (Option[ckast.Diag], Option[Checked]) {
-    let env = match ckenv.declare(prog) {
+    let env = match ckdecl.declare(prog) {
         Ok(e) => e,
         Err(d) => return (Some(d), None),
     }
