@@ -253,3 +253,51 @@ is built once, in Tenon, not mirrored in two front ends.
 - **Evidence.** A new blind usability wave on fresh tasks shows no regression
   against wave 6 on lines and time. Benchmarks stay within 1.5x of C. `check --fast`
   stays at or under 60 s and landing at or under 5 min.
+
+## 6. Third milestone: definition of done
+
+Scope chosen by the user after milestone 2's plan (decisions in docs/log.md):
+ready for real users, deeper correctness by construction, and scale. AI models
+count as real users. No Windows or WebAssembly target in this milestone.
+
+- **Ready for real users.**
+  - Standard library breadth: HTTP client and server, JSON, time and dates,
+    hashing and cryptographic primitives, subprocesses on top of `Proc`, with
+    explicit authority for everything that touches the outside world.
+  - Packages: per-package module namespaces; a cryptographic content hash in the
+    lockfile.
+  - Debugging: source-level stack traces on traps, `tenon run --trace`, and a
+    profiler that attributes time to Tenon functions.
+  - Usability by real users: a study wave in which model authors (Claude, Codex
+    and others; at least two families) build three larger outside-style programs
+    (a web service, a CLI tool, a data pipeline) from specifications and maintain
+    them through two rounds of changed requirements; time, defects and change
+    effort reported per language as in §2.6.
+- **Correctness by construction, deeper.**
+  - Contracts: `requires` / `ensures` / invariants, proved at compile time where a
+    simple decision procedure can, checked at run time otherwise, never silently
+    dropped.
+  - Effects beyond capabilities: a function's effects (I/O, nondeterminism,
+    traps) visible in its signature or inferred and checkable at boundaries.
+  - Property-based testing in the standard library, used by the corpus.
+  - Evidence: bugs prevented, measured on the corpus and the red team's findings.
+- **Scale.**
+  - Distributed execution: workers on other machines with the same isolation
+    and `Send` rules as local workers, and failures surfaced, never hidden.
+  - Macros or compile-time code generation, hygienic, with the generated code
+    visible to the formatter, the language server and the checker.
+  - Each added only with measurements showing it pays for itself (§4).
+- **Gaps carried over:** user Eq/Ord/Hash impls, trait type parameters and
+  supertraits, channels the event loop can wait on, all diagnostics in the
+  language server, and the small language gaps the studies found.
+- **No staleness.** The repository stays clean as it grows, by mechanism:
+  - `./check` fails on: a doc claim without a test or command behind it, a path in
+    the docs that does not exist, a file over ~1000 lines or a function over ~80
+    lines without a stated reason, unformatted code, and a STATUS.md older than
+    the last evidence run.
+  - The evidence loop reports dead code (unused functions, modules, tools) and
+    duplicated code, as tasks.
+  - A weekly hygiene review, alongside the weekly red team, audits for drift
+    (KISS, DRY, single responsibility, docs versus behaviour) and lands fixes.
+  - Dogfooding: the repository's own tools move from Python and shell to Tenon
+    where Tenon can do the job, so the language is used for its own maintenance.
