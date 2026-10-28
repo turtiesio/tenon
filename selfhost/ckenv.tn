@@ -725,47 +725,8 @@ fn Env.declare_fns(mut self, prog: ckast.Program) -> Result[Unit, ckast.Diag] {
     for f in prog.fns {
         self.cur = f.sp.file
         self.self_ty = None
-        var tparams: List[Str] = []
-        var owner: Option[cktypes.Ty] = None
         let derived = f.origin != OFn // impl methods and defaults: the type parameters are given
-        if derived {
-            tparams = f.tparams
-            let o = f.owner.unwrap()
-            let ot = self.lower_type(o, tparams)?
-            owner = Some(ot)
-            match f.origin {
-                OImpl(_) => self.self_ty = Some(ot),
-                _ => {}
-            }
-        }
-        match f.owner {
-            Some(_) if derived => {}
-            Some(o) => {
-                match o.k {
-                    TNamed(_, args) => {
-                        for a in args {
-                            match a.k {
-                                TNamed(an, aa) => if aa.is_empty() and is_tparam_name(an) { tparams.push(an) },
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                let ot = self.lower_type(o, tparams)?
-                match ot {
-                    Con(on, _) => match self.type_decl(on) {
-                        Some((file, _)) if file != f.sp.file => {
-                            return ckast.fail(o.sp, "methods of '{on}' can only be defined in the module that defines it")
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-                owner = Some(ot)
-            }
-            None => {}
-        }
+        let (tparams0, owner) = self.fn_owner(f, derived)?
         let full = match f.origin {
             ODefault(ti, _) => prog.traits[ti].name + "." + f.name,
             _ => match owner {
@@ -785,31 +746,7 @@ fn Env.declare_fns(mut self, prog: ckast.Program) -> Result[Unit, ckast.Diag] {
             return ckast.fail(f.sp, "function names start with a lowercase letter: '{f.name}'")
         }
         if f.body.is_none() and f.sp.file != 0 { return ckast.fail(f.sp, "'extern' is reserved for the prelude") }
-        for ti in 0..f.tparams.len() {
-            let t = f.tparams[ti]
-            if derived and t == "Self" and ti == 0 { continue }
-            if not is_tparam_name(t) {
-                return ckast.fail(f.sp, "type parameter '{t}' must be one capital letter, optionally followed by digits")
-            }
-            if derived {
-                if f.tparams.slice(0, ti).contains(t) { return ckast.fail(f.sp, "type parameter '{t}' shadows another type") }
-                continue
-            }
-            if tparams.contains(t) { return ckast.fail(f.sp, "type parameter '{t}' shadows another type") }
-            tparams.push(t)
-        }
-        var bounds: List[List[Int]] = tparams.map(fn(_) => [])
-        for b in f.bounds {
-            var pi = -1
-            for i in 0..tparams.len() {
-                if tparams[i] == b.param { pi = i }
-            }
-            if pi < 0 { return ckast.fail(b.sp, "'{b.param}' is not a type parameter of '{f.name}'") }
-            for tn in b.traits {
-                let tr = self.resolve_trait(tn.0, tn.1)?
-                if not bounds[pi].contains(tr) { bounds[pi].push(tr) }
-            }
-        }
+        let (tparams, bounds) = self.fn_tparams(f, derived, tparams0)?
         var params: List[(Str, cktypes.Ty)] = []
         if f.self_kind != NoSelf {
             match owner {
@@ -834,6 +771,84 @@ fn Env.declare_fns(mut self, prog: ckast.Program) -> Result[Unit, ckast.Diag] {
     }
     self.self_ty = None
     Ok(())
+}
+
+// The type parameters a method gets from its owner type (`fn Pair[A, B].swap`),
+// and the owner type itself (None for a plain function).
+fn Env.fn_owner(mut self, f: ckast.FnDecl, derived: Bool) -> Result[(List[Str], Option[cktypes.Ty]), ckast.Diag] {
+    var tparams: List[Str] = []
+    var owner: Option[cktypes.Ty] = None
+    if derived {
+        tparams = f.tparams
+        let o = f.owner.unwrap()
+        let ot = self.lower_type(o, tparams)?
+        owner = Some(ot)
+        match f.origin {
+            OImpl(_) => self.self_ty = Some(ot),
+            _ => {}
+        }
+    }
+    match f.owner {
+        Some(_) if derived => {}
+        Some(o) => {
+            match o.k {
+                TNamed(_, args) => {
+                    for a in args {
+                        match a.k {
+                            TNamed(an, aa) => if aa.is_empty() and is_tparam_name(an) { tparams.push(an) },
+                            _ => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+            let ot = self.lower_type(o, tparams)?
+            match ot {
+                Con(on, _) => match self.type_decl(on) {
+                    Some((file, _)) if file != f.sp.file => {
+                        return ckast.fail(o.sp, "methods of '{on}' can only be defined in the module that defines it")
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+            owner = Some(ot)
+        }
+        None => {}
+    }
+    Ok((tparams, owner))
+}
+
+// The function's own type parameters after `tparams0` (checked), and the traits
+// each one is bounded by.
+fn Env.fn_tparams(mut self, f: ckast.FnDecl, derived: Bool, tparams0: List[Str]) -> Result[(List[Str], List[List[Int]]), ckast.Diag] {
+    var tparams = tparams0
+    for ti in 0..f.tparams.len() {
+        let t = f.tparams[ti]
+        if derived and t == "Self" and ti == 0 { continue }
+        if not is_tparam_name(t) {
+            return ckast.fail(f.sp, "type parameter '{t}' must be one capital letter, optionally followed by digits")
+        }
+        if derived {
+            if f.tparams.slice(0, ti).contains(t) { return ckast.fail(f.sp, "type parameter '{t}' shadows another type") }
+            continue
+        }
+        if tparams.contains(t) { return ckast.fail(f.sp, "type parameter '{t}' shadows another type") }
+        tparams.push(t)
+    }
+    var bounds: List[List[Int]] = tparams.map(fn(_) => [])
+    for b in f.bounds {
+        var pi = -1
+        for i in 0..tparams.len() {
+            if tparams[i] == b.param { pi = i }
+        }
+        if pi < 0 { return ckast.fail(b.sp, "'{b.param}' is not a type parameter of '{f.name}'") }
+        for tn in b.traits {
+            let tr = self.resolve_trait(tn.0, tn.1)?
+            if not bounds[pi].contains(tr) { bounds[pi].push(tr) }
+        }
+    }
+    Ok((tparams, bounds))
 }
 
 fn mentions_self(t: ckast.TExpr) -> Bool {
@@ -971,39 +986,7 @@ fn Env.declare_impls(mut self, prog: ckast.Program) -> Result[Unit, ckast.Diag] 
                 if not bounds[pi].contains(btr) { bounds[pi].push(btr) }
             }
         }
-        // methods: each one in the trait, with the trait's signature
-        var fns: List[Int] = tinfo.methods.map(fn(m) => m.default)
-        var given: List[Bool] = tinfo.methods.map(fn(_) => false)
-        for fi in im.methods {
-            let f = self.fns[fi]
-            let mname = prog.fns[fi].name
-            var mi = -1
-            for k in 0..tinfo.methods.len() {
-                if tinfo.methods[k].name == mname { mi = k }
-            }
-            if mi < 0 { return ckast.fail(f.sp, "method '{mname}' is not in trait {tname}") }
-            if given[mi] { return ckast.fail(f.sp, "method '{mname}' is defined twice in impl {tname} for {tshow}") }
-            given[mi] = true
-            fns[mi] = fi
-            let tm = tinfo.methods[mi]
-            let own = f.tparams.slice(im.tparams.len(), f.tparams.len())
-            let want_ps = tm.params.map(fn(p) => p.1.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x))))
-            let want_ret = tm.ret.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x)))
-            let have_ps = f.params.slice(if f.self_kind == NoSelf { 0 } else { 1 }, f.params.len()).map(fn(p) => p.1)
-            let ok = f.self_kind == tm.self_kind and own.len() == tm.tparams.len() and have_ps == want_ps and f.muts == tm.muts and f.ret == want_ret
-            if not ok {
-                let want = sig_text(tm.self_kind, want_ps, tm.muts, want_ret)
-                let have = sig_text(f.self_kind, have_ps, f.muts, f.ret)
-                let gen = if own.len() != tm.tparams.len() { " (type parameters: expected {tm.tparams.len()}, found {own.len()})" } else { "" }
-                return ckast.fail(f.sp, "method '{mname}' of impl {tname} for {tshow} has the wrong signature: expected " + want + ", found " + have + gen)
-            }
-            if not prog.fns[fi].bounds.slice(im.bounds.len(), prog.fns[fi].bounds.len()).is_empty() {
-                return ckast.fail(f.sp, "the type parameters of a trait method cannot have bounds")
-            }
-        }
-        for k in 0..tinfo.methods.len() {
-            if fns[k] < 0 { return ckast.fail(im.sp, "impl {tname} for {tshow} is missing method '{tinfo.methods[k].name}'") }
-        }
+        let fns = self.impl_fns(prog, im, tr, target)?
         // coherence: at most one impl per trait and type
         for jj in 0..self.impls.len() {
             let other = self.impls[jj]
@@ -1015,6 +998,47 @@ fn Env.declare_impls(mut self, prog: ckast.Program) -> Result[Unit, ckast.Diag] 
         self.impls.push(ImplInfo { tr, tparams: im.tparams, bounds, target, file: im.sp.file, fns, sp: im.sp })
     }
     Ok(())
+}
+
+// The function of each method of trait `tr` in impl `im` for `target` (the
+// trait's default where the impl gives none), each with the trait's signature.
+fn Env.impl_fns(self, prog: ckast.Program, im: ckast.ImplDecl, tr: Int, target: cktypes.Ty) -> Result[List[Int], ckast.Diag] {
+    let tinfo = self.traits[tr]
+    let tname = tinfo.name
+    let tshow = target.show()
+    var fns: List[Int] = tinfo.methods.map(fn(m) => m.default)
+    var given: List[Bool] = tinfo.methods.map(fn(_) => false)
+    for fi in im.methods {
+        let f = self.fns[fi]
+        let mname = prog.fns[fi].name
+        var mi = -1
+        for k in 0..tinfo.methods.len() {
+            if tinfo.methods[k].name == mname { mi = k }
+        }
+        if mi < 0 { return ckast.fail(f.sp, "method '{mname}' is not in trait {tname}") }
+        if given[mi] { return ckast.fail(f.sp, "method '{mname}' is defined twice in impl {tname} for {tshow}") }
+        given[mi] = true
+        fns[mi] = fi
+        let tm = tinfo.methods[mi]
+        let own = f.tparams.slice(im.tparams.len(), f.tparams.len())
+        let want_ps = tm.params.map(fn(p) => p.1.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x))))
+        let want_ret = tm.ret.subst(["Self"] + tm.tparams, [target] + own.map(fn(x) => Par(x)))
+        let have_ps = f.params.slice(if f.self_kind == NoSelf { 0 } else { 1 }, f.params.len()).map(fn(p) => p.1)
+        let ok = f.self_kind == tm.self_kind and own.len() == tm.tparams.len() and have_ps == want_ps and f.muts == tm.muts and f.ret == want_ret
+        if not ok {
+            let want = sig_text(tm.self_kind, want_ps, tm.muts, want_ret)
+            let have = sig_text(f.self_kind, have_ps, f.muts, f.ret)
+            let gen = if own.len() != tm.tparams.len() { " (type parameters: expected {tm.tparams.len()}, found {own.len()})" } else { "" }
+            return ckast.fail(f.sp, "method '{mname}' of impl {tname} for {tshow} has the wrong signature: expected " + want + ", found " + have + gen)
+        }
+        if not prog.fns[fi].bounds.slice(im.bounds.len(), prog.fns[fi].bounds.len()).is_empty() {
+            return ckast.fail(f.sp, "the type parameters of a trait method cannot have bounds")
+        }
+    }
+    for k in 0..tinfo.methods.len() {
+        if fns[k] < 0 { return ckast.fail(im.sp, "impl {tname} for {tshow} is missing method '{tinfo.methods[k].name}'") }
+    }
+    Ok(fns)
 }
 
 // Can one type be an instance of both impl targets (their parameters renamed apart)?

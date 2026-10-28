@@ -366,35 +366,15 @@ fn Cx.place(mut self, e: ckast.Expr) -> Place {
 // from user code into a prelude function records where it was made.
 fn Cx.into_prelude(self, fi: Int, sp: ckast.Span) -> Bool { self.c.env.fns[fi].sp.file == 0 and sp.file != 0 }
 
+// An expression-dispatch match (one arm per expression kind; the long ones
+// are methods below).
 fn Cx.expr(mut self, e: ckast.Expr) -> Node {
     match e.k {
         XInt(i) => NLit(ival.vint(i)),
         XFloat(f) => NLit(ival.vfloat(f)),
         XBool(b) => NLit(ival.vbool(b)),
         XUnit => NLit(ival.unit()),
-        XStr(xs, lits) => {
-            var segs: List[Seg] = []
-            var k = 0
-            var all_lit = true
-            var text = ""
-            for l in lits {
-                match l {
-                    Some(s) => {
-                        segs.push(GLit(s))
-                        text += s
-                    }
-                    None => {
-                        all_lit = false
-                        match xs[k].k {
-                            XFmt(inner, f) => segs.push(GFmt(self.expr(inner), f)),
-                            _ => segs.push(GShow(self.expr(xs[k]))),
-                        }
-                        k += 1
-                    }
-                }
-            }
-            if all_lit { NLit(ival.vstr(text)) } else { NStr(segs) }
-        }
+        XStr(xs, lits) => self.str_node(e, xs, lits),
         XName(_) | XPath(_, _) => self.name(e),
         XField(b, _) => {
             let i = match self.c.res.get(e.id) {
@@ -424,22 +404,7 @@ fn Cx.expr(mut self, e: ckast.Expr) -> Node {
                 None => NIf(cond, then, None),
             }
         }
-        XMatch(s, arms) => {
-            let scrut = self.expr(s)
-            var out: List[IArm] = []
-            for a in arms {
-                let saved = self.scope
-                let pat = self.pat(a.pat)
-                let guard = match a.guard {
-                    Some(g) => Some(self.expr(g)),
-                    None => None,
-                }
-                let body = self.expr(a.body)
-                self.scope = saved
-                out.push(IArm { pat, guard, body })
-            }
-            NMatch(scrut, out)
-        }
+        XMatch(s, arms) => self.match_node(e, s, arms),
         XBlock(b) => NBlock(self.block(b)),
         XList(xs) => NList(self.exprs(xs)),
         XTuple(xs) => NTuple(self.exprs(xs)),
@@ -451,46 +416,9 @@ fn Cx.expr(mut self, e: ckast.Expr) -> Node {
             }
             NMapLit(out)
         }
-        XNew(_, fields, base) => {
-            let si = match self.c.res.get(e.id) {
-                Some(RStruct(i)) => i,
-                _ => panic("interp: unresolved struct literal"),
-            }
-            let decl = self.c.env.structs[si]
-            var given: List[(Int, Node)] = []
-            for f in fields {
-                var i = 0
-                while decl.fields[i].0 != f.0 { i += 1 }
-                given.push((i, self.expr(f.1)))
-            }
-            match base {
-                Some(b) => NNew(si, decl.fields.len(), given, Some(self.expr(b))),
-                None => NNew(si, decl.fields.len(), given, None),
-            }
-        }
+        XNew(_, fields, base) => self.struct_node(e, fields, base),
         XTry(x) => NTry(self.expr(x)),
-        XLambda(params, _, body) => {
-            let caps = self.c.captures.get(e.id).unwrap_or([])
-            var cap_slots: List[Int] = []
-            for c in caps { cap_slots.push(self.slot(c.0)) }
-            let li = self.lams.len()
-            self.lams.push(LamRt { nslots: 0, body: NLit(ival.unit()) })
-            let saved_scope = self.scope
-            let saved_n = self.n
-            self.scope = [:]
-            self.n = 0
-            for c in caps { let _ = self.bind(c.0) }
-            for p in params {
-                // parameters always get their own slot (they follow the captures)
-                self.scope[p.0] = self.n
-                self.n += 1
-            }
-            let b = self.expr(body)
-            self.lams[li] = LamRt { nslots: self.n, body: b }
-            self.scope = saved_scope
-            self.n = saved_n
-            NLambda(li, cap_slots)
-        }
+        XLambda(params, _, body) => self.lambda_node(e, params, body),
         XMutArg(_) => panic("interp: mut arguments are handled at calls"),
         XFmt(_, _) => panic("interp: format specs are handled in strings"),
         XDyn(_, x) => {
@@ -502,6 +430,88 @@ fn Cx.expr(mut self, e: ckast.Expr) -> Node {
             NDyn(v, self.vtable(tr, xt))
         }
     }
+}
+
+fn Cx.str_node(mut self, e: ckast.Expr, xs: List[ckast.Expr], lits: List[Option[Str]]) -> Node {
+    var segs: List[Seg] = []
+    var k = 0
+    var all_lit = true
+    var text = ""
+    for l in lits {
+        match l {
+            Some(s) => {
+                segs.push(GLit(s))
+                text += s
+            }
+            None => {
+                all_lit = false
+                match xs[k].k {
+                    XFmt(inner, f) => segs.push(GFmt(self.expr(inner), f)),
+                    _ => segs.push(GShow(self.expr(xs[k]))),
+                }
+                k += 1
+            }
+        }
+    }
+    if all_lit { NLit(ival.vstr(text)) } else { NStr(segs) }
+}
+
+fn Cx.match_node(mut self, e: ckast.Expr, s: ckast.Expr, arms: List[ckast.Arm]) -> Node {
+    let scrut = self.expr(s)
+    var out: List[IArm] = []
+    for a in arms {
+        let saved = self.scope
+        let pat = self.pat(a.pat)
+        let guard = match a.guard {
+            Some(g) => Some(self.expr(g)),
+            None => None,
+        }
+        let body = self.expr(a.body)
+        self.scope = saved
+        out.push(IArm { pat, guard, body })
+    }
+    NMatch(scrut, out)
+}
+
+fn Cx.struct_node(mut self, e: ckast.Expr, fields: List[(Str, ckast.Expr)], base: Option[ckast.Expr]) -> Node {
+    let si = match self.c.res.get(e.id) {
+        Some(RStruct(i)) => i,
+        _ => panic("interp: unresolved struct literal"),
+    }
+    let decl = self.c.env.structs[si]
+    var given: List[(Int, Node)] = []
+    for f in fields {
+        var i = 0
+        while decl.fields[i].0 != f.0 { i += 1 }
+        given.push((i, self.expr(f.1)))
+    }
+    match base {
+        Some(b) => NNew(si, decl.fields.len(), given, Some(self.expr(b))),
+        None => NNew(si, decl.fields.len(), given, None),
+    }
+}
+
+fn Cx.lambda_node(mut self, e: ckast.Expr, params: List[(Str, Option[ckast.TExpr])], body: ckast.Expr) -> Node {
+    let caps = self.c.captures.get(e.id).unwrap_or([])
+    var cap_slots: List[Int] = []
+    for c in caps { cap_slots.push(self.slot(c.0)) }
+    let li = self.lams.len()
+    self.lams.push(LamRt { nslots: 0, body: NLit(ival.unit()) })
+    let saved_scope = self.scope
+    let saved_n = self.n
+    self.scope = [:]
+    self.n = 0
+    for c in caps { let _ = self.bind(c.0) }
+    for p in params {
+        // parameters always get their own slot (they follow the captures)
+        self.scope[p.0] = self.n
+        self.n += 1
+    }
+    let b = self.expr(body)
+    self.lams[li] = LamRt { nslots: self.n, body: b }
+    self.scope = saved_scope
+    self.n = saved_n
+    NLambda(li, cap_slots)
 }
 
 fn Cx.name(mut self, e: ckast.Expr) -> Node {
