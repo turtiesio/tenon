@@ -54,6 +54,25 @@ fn main(sys: Sys) -> Int {
 }
 ```
 
+## Running it
+
+Save the program as `stock.tn`, then:
+
+```sh
+printf 'add apple 3\nlist\n' | tenon run stock.tn    # interpret it: prints "1. apple 3"
+tenon build stock.tn -o stock                        # compile it to a native executable
+printf 'add apple 3\nlist\n' | ./stock               # the same output, faster
+tenon check stock.tn                                 # type-check only
+tenon fmt stock.tn                                   # rewrite it in the canonical layout
+```
+
+A test is a program in a `run/` directory with the expected output next to
+it: `t/run/stock.tn` starting with `// stdin: add a 1\nlist`, then
+`tenon test t --bless` writes `t/run/stock.out` and `tenon test t` compares
+both backends with it. `tenon` comes from `tools/install.sh` (or
+`target/tenon` in the repository, built by `./check`); every command is in
+[docs/tools.md](tools.md).
+
 ## Translation table
 
 | Python / TypeScript | Tenon |

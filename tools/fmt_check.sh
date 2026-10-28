@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The formatter (`tenon fmt`: selfhost/fmtcmd.tn and fmt.tn, rules in
-# docs/reference.md "Formatting") on the whole corpus, through $TENON
+# docs/tools.md "Formatting") on the whole corpus, through $TENON
 # (default target/tenon):
 #   1. every .tn file not listed in tools/fmt_skip.txt is in canonical layout
 #      (`tenon fmt --check`);

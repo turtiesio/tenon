@@ -1,4 +1,4 @@
-// Reference claims added after study wave 6 (docs/reference.md §6, §7, §8, §10, §11).
+// Reference claims added after study wave 6 (docs/reference.md §6, §7, §8, §10; docs/library.md).
 enum Mode { S, X }
 enum Shape { Circle(Int), Empty }
 struct Lock { mode: Mode }
@@ -27,9 +27,9 @@ fn main(sys: Sys) {
     count += 1
     label += "y"
     c.println("{count} {label}")
-    // §11: is_space is ' ', '\t', '\n', '\r' (32, 9, 10, 13); not \v (11) or \f (12)
+    // library.md: is_space is ' ', '\t', '\n', '\r' (32, 9, 10, 13); not \v (11) or \f (12)
     c.println("{[32, 9, 10, 13, 11, 12].map(fn(b) => b.is_space())}")
-    // §11: trim also removes \f (12), but not \v (11); words() splits on ' ', '\t', '\r', '\n' only
+    // library.md: trim also removes \f (12), but not \v (11); words() splits on ' ', '\t', '\r', '\n' only
     let ff = 12.char()
     let vt = 11.char()
     c.println("{(ff + "a" + ff).trim().len()} {(vt + "a" + vt).trim().len()} {("a" + ff + "b").words().len()}")

@@ -1,12 +1,16 @@
 # Tenon language reference
 
-This is the single source document for the language. Together with the one-page
-docs/quickstart.md (a translation table from Python and TypeScript) it is the
-only documentation given to authors in the usability study, so it must be
-enough to write real programs. Builtin APIs are listed in the prelude (`lib/prelude.tn` in the repository; `docs/prelude.tn` in a study kit),
-which is ordinary Tenon source and the single source of the builtin API.
+This is the single source document for the language. With the one-page
+[docs/quickstart.md](quickstart.md) (a translation table from Python and
+TypeScript), [docs/library.md](library.md) (the builtin API and the standard
+library) and [docs/tools.md](tools.md) (the `tenon` command) it is the only
+documentation given to authors in the usability study, so it must be enough
+to write real programs. Every signature of the builtin API is in the prelude
+(`lib/prelude.tn` in the repository; `docs/prelude.tn` in a study kit), which
+is ordinary Tenon source.
 
-Every claim here is checked by a test in `tests/` (run `./check`).
+Every claim here is checked by a test in `tests/` (run `./check`; the
+doc programs themselves: `python3 tools/doctest.py`).
 
 ## 1. A first program
 
@@ -26,11 +30,8 @@ fn main(sys: Sys) -> Result[Unit, Str] {
 
 Run it with the reference interpreter (`tenon run prog.tn`) or compile it to a
 native executable through C (`tenon build prog.tn -o prog`). Both must behave
-identically; the test suite checks this for every test program.
-`tenon build` caches executables by their generated C, so rebuilding an
-unchanged program is instant (cache in `$TENON_CACHE`, default
-`$TMPDIR/tenon-cache`; `TENON_CACHE=off` disables it). Every command, flag,
-environment variable and exit status of `tenon` is in
+identically; the test suite checks this for every test program. Every
+command, flag, environment variable and exit status of `tenon` is in
 [docs/tools.md](tools.md).
 
 ## 2. Lexical structure
@@ -63,7 +64,7 @@ environment variable and exit status of `tenon` is in
 | `Int` | 64-bit signed integer. Overflow **traps**. `/` and `%` truncate toward zero (`-7 / 2 == -3`, `-7 % 2 == -1`); dividing by zero traps. |
 | `Float` | 64-bit IEEE float. |
 | `Bool` | `true` / `false`. |
-| `Str` | Immutable UTF-8 text. Offsets and `len()` are in bytes; `char_count()` counts code points (§11). |
+| `Str` | Immutable UTF-8 text. Offsets and `len()` are in bytes; `char_count()` counts code points ([docs/library.md](library.md)). |
 | `Unit` | No information; written `()`. |
 | `List[T]` | Growable sequence with value semantics. |
 | `Map[K, V]` | Hash map; iteration follows insertion order. |
@@ -452,7 +453,7 @@ Exit codes used by the runtime:
 | 72 | stack overflow | no |
 | 74 | standard output could not be written | no |
 
-`sys.proc.exit(status)` (§11) may end a program with any status 0-255,
+`sys.proc.exit(status)` ([docs/library.md](library.md), `Proc`) may end a program with any status 0-255,
 including these four (an interpreter passes on the status of the program it runs).
 
 ## 10. Capabilities (authority)
@@ -489,7 +490,7 @@ path too.
   your own file under that name. `Fs.append` is durable (fsync).
 - `Fs.read(path)` returns the file as text; a file that is not valid UTF-8 is
   `Err(Failed("path: invalid UTF-8"))`. For binary files use the byte
-  variants `read_bytes`, `write_bytes`, `append_bytes` (§11, "Bytes"), which
+  variants `read_bytes`, `write_bytes`, `append_bytes` ([docs/library.md](library.md), "Bytes"), which
   follow the same path, jail and read-only rules as `read`, `write`, `append`.
 - `Fs.read`, `Fs.read_bytes` (and `Fs.truncate`) on a directory give
   `Err(Failed("path: Is a directory"))` (the operating system's text).
@@ -526,198 +527,12 @@ are lexical: they never touch the disk, and `..` is not resolved.
 
 ## 11. Builtin API
 
-See the prelude (`lib/prelude.tn`, or `docs/prelude.tn` in a study kit) for the full list with signatures.
-Highlights:
-
-- `Str`: `len byte slice find split lines words trim trim_start trim_end
-  starts_with ends_with contains to_int to_float upper lower replace chars
-  find_from is_digits strip_prefix strip_suffix (Option) trim_chars (remove
-  given ASCII bytes from both ends, e.g. `s.trim_chars(" \t")`)
-  trim_start_chars trim_end_chars (from one end only:
-  `"0250".trim_end_chars("0") == "025"`, `"0250".trim_chars("0") == "25"`)
-  repeat pad_left pad_right is_empty rfind split_once rsplit_once to_int_radix
-  bytes char_count all_bytes`; `Int.char()` makes a one-character string from
-  a code point (`'A'.char() == "A"`, `233.char() == "é"`); `Str.from_utf8(bytes)`
-  and `Str.from_utf8_lossy(bytes)` make text from bytes (see "Bytes" below).
-  - Bytes and characters: `s.len()` is the length in **bytes** (UTF-8), and
-    `byte`, `slice`, `find` and the other offsets are byte offsets.
-    `s.char_count()` is the number of code points (`"Zürich".len() == 7`,
-    `"Zürich".char_count() == 6`). `s.chars()` returns the code points, each as
-    a one-character string (`"Zü".chars() == ["Z", "ü"]`; a combining accent
-    is a code point of its own).
-  - `s.pad_left(width, fill)` / `s.pad_right(width, fill)` add `fill` until
-    the string is `width` **code points** long (like Python's `rjust`/`ljust`),
-    so `"Zürich".pad_right(8, ".") == "Zürich.."`; a longer string is returned
-    unchanged. `fill` must be exactly one character (one code point),
-    otherwise the call traps (`pad_left: fill must be exactly one character`).
-    Characters that a terminal shows double-width (`"東京"`) still count as one.
-  - `s.rfind(sub)` is the byte offset of the last match. `s.split_once(sep)` /
-    `s.rsplit_once(sep)` split around the first / last `sep`:
-    `"k=v=w".split_once("=") == Some(("k", "v=w"))`, `None` if `sep` is absent.
-    The pieces share the original's bytes, like `slice`.
-  - `s.split(sep)` keeps empty pieces: `"a,,b,".split(",")` is
-    `["a", "", "b", ""]` and `"".split(",")` is `[""]`.
-  - `s.lines()` gives the lines `Console.read_line` would read from `s`: it
-    splits on `"\n"`, drops a final empty piece (the text after a last
-    `"\n"`), then removes one trailing `"\r"` from every line, also from the
-    last. So `"".lines() == []`, `"\n".lines() == [""]`,
-    `"a\n\nb\n".lines() == ["a", "", "b"]`, `"a\r\nb\r".lines() == ["a", "b"]`,
-    `"a\r\r\n".lines() == ["a\r"]`, `"\r".lines() == [""]`. (Before study
-    wave 6 it kept the `"\r"`.) `s.words()` splits on runs of spaces, tabs,
-    `"\r"` and `"\n"` (not `\v` or `\f`).
-  - `trim_chars`, `trim_start_chars` and `trim_end_chars` remove bytes that
-    occur in `chars`; only ASCII bytes count, so a non-ASCII character is
-    never removed (`"xéx".trim_chars("x") == "é"`).
-  - `s.to_int()` accepts an optional `+`/`-` and decimal digits only (no spaces,
-    no `_`), and gives `None` on overflow. `s.to_int_radix(base)` (base 2-36,
-    otherwise a trap) accepts an optional `-` (no `+`) and one or more digits
-    `0-9a-z`, letters in either case, each below `base`; no prefix such as `0x`,
-    no spaces or `_`; `None` if invalid or out of range (`INT_MIN` parses):
-    `"ff".to_int_radix(16) == Some(255)`. `s.to_float()` also accepts `1.5`,
-    `.5`, `5.`, `1e-3`, `inf` and `nan`.
-  - `trim`, `trim_start` and `trim_end` remove the bytes `' '`, `'\t'`,
-    `'\n'`, `'\r'` and form feed (12), not vertical tab (11);
-    `upper`/`lower` change ASCII letters only.
-  - `s.all_bytes(pred)` is true when `pred` holds for every byte (and for
-    `""`), for validation with the `Int` classes below:
-    `name.all_bytes(fn(b) => b.is_lower() or b.is_digit() or b == '_')`.
-- `List[T]`: `len push pop insert remove clear slice sort sort_by reverse get
-  sort_by_desc sort_with swap first last index_of contains extend sorted reversed map filter retain any all count
-  is_empty binary_search max_by min_by group_by`, `+` concatenates; `List[Str].join`, `List[Int].sum`.
-  - `xs.retain(keep)` keeps, in place and in order, the elements for which
-    `keep` is true (`filter` in place; needs a mutable place, also a deep one:
-    `self.res[r].queue.retain(fn(w) => w != name)`).
-  - `xs.max_by(key)` / `xs.min_by(key)` give the element with the largest /
-    smallest key as an `Option` (`None` for an empty list); of several equal
-    keys, the first one in the list. Keys compare with the derived ordering, so
-    tuples break ties: `ps.max_by(fn(p) => (p.score, p.name))`.
-  - `xs.group_by(key)` gives a `Map[K, List[T]]` of every element by key: keys
-    in the order of their first occurrence, each group in list order
-    (`["ab", "c", "de"].group_by(fn(s) => s.len()) == [2: ["ab", "de"], 1: ["c"]]`).
-    Equal keys need not be adjacent (unlike Python's `itertools.groupby`).
-  - `xs.binary_search(x)` (`Result[Int, Int]`) needs `xs` sorted ascending by
-    the derived ordering (as `sort()` leaves it; otherwise the result is
-    unspecified). `Ok(i)`: `i` is the first index with `xs[i] == x`; `Err(i)`:
-    `x` is absent and `xs.insert(i, x)` keeps the list sorted. O(log n):
-    `[1, 3, 5].binary_search(3) == Ok(1)`, `[1, 3, 5].binary_search(4) == Err(2)`.
-- `Map[K, V]`: `m[k]` (traps if missing), `get` (Option), `get_or`,
-  `update(k, default, f)` (store `f` of the current or default value), `insert`,
-  `or_insert`, `remove`, `contains`, `keys`, `values`, `entries`, `len`,
-  `is_empty`. Removing a key keeps the order of the others; inserting a key
-  again puts it last.
-  - `m.or_insert(k, v)` inserts `v` only if `k` is absent, so grouping is
-    `m.or_insert(k, []); m[k].push(x)` (the push changes the entry in place).
-- `Heap[T]`: a priority queue: `Heap.new()`, `push`, `pop` (smallest first, as
-  `Option`), `peek`, `len`, `is_empty`. For largest first push negated keys.
-- `Set[T]`: `Set.new()`, `Set.of(list)`, `insert` (false if already present),
-  `remove` (false if absent), `contains`, `len`, `is_empty`, `items` (insertion order).
-- `xs.enumerate()` gives `[(0, a), (1, b), ...]` (`for (i, x) in xs.enumerate()`).
-- `List.filled(n, x)` makes a list of n copies of x; `xs.sort_with(fn(a, b) => ...)`
-  sorts stably by a comparison (negative: a first).
-- `Option[T]`: `unwrap expect unwrap_or is_some is_none map map_or and_then filter is_some_and ok_or`.
-- `Result[T, E]`: `unwrap expect unwrap_or is_ok is_err ok err map map_err
-  map_or and_then is_ok_and is_err_and` (as for `Option`; `err` gives the error
-  as an `Option`; `and_then` keeps the error type).
-- `Int`: `abs min max to_float to_str char pow`; `checked_add checked_sub
-  checked_mul checked_div checked_pow` give `None` instead of trapping (also for a
-  division by zero or a negative exponent); `x.pow(e)` traps on overflow and on
-  `e < 0` (`0.pow(0) == 1`); `x.to_str_radix(base)` writes `x` in base 2-36
-  (lowercase digits, `-` for negatives; another base traps):
-  `255.to_str_radix(16) == "ff"`; `rem_euclid` and
-  `div_euclid` (the remainder is never negative); `fmt_fixed(scale)` writes a
-  fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents); constants
-  `INT_MAX`, `INT_MIN`; and for code points
-  `is_digit is_alpha is_alnum is_space is_upper is_lower` (ASCII only:
-  `'é'.is_alpha()` is false; `is_space` is exactly `' '`, `'\t'`, `'\n'` and
-  `'\r'` (32, 9, 10, 13), not vertical tab or form feed (11, 12); `s.byte(i).is_digit()`, `'7' - '0'`), and `char`
-  (the code point as a one-character `Str`); `Float`: `to_int floor ceil round
-  sqrt abs min max`, and `to_fixed(decimals)` (exactly that many digits; rounds the
-  binary value half to even, like printf). There are no bitwise operators: use
-  `/`, `%` and `pow` (`x / 2.pow(k)` shifts right by `k` for `x >= 0`).
-- `Console`: `print println eprintln read_line read_all flush read_all_bytes
-  read_bytes write_bytes`. `read_line` returns `None` at end of input; it removes the
-  line's `"\n"` and then one trailing `"\r"` from every line, including a
-  last line that has no `"\n"` (`"a\r\r\nb\r"` reads as `"a\r"`, `"b"`);
-  `read_all` keeps every `"\r"`.
-  Standard output is buffered: it is flushed before any blocking read and at
-  exit; a program that answers requests line by line while another process
-  waits calls `flush()` after each answer.
-- `Fs`: `read write append exists is_dir remove rename list mkdir mkdir_one
-  within read_only read_bytes write_bytes append_bytes truncate` (details in §10).
-  `mkdir` creates missing parents, `mkdir_one` exactly one directory; `rename`
-  is atomic and replaces the target; `remove` deletes a file or an empty
-  directory.
-- Bytes are a `List[Int]` whose elements are 0..255.
-  - `fs.read_bytes(path)` (`Result[List[Int], IoError]`) reads any file;
-    `fs.write_bytes(path, data)` replaces a file atomically like `write`,
-    `fs.append_bytes(path, data)` appends like `append`.
-    `con.read_all_bytes()` returns the rest of standard input unchanged
-    (after any lines `read_line` took); `con.read_bytes(n)` returns the next
-    `n` bytes, waiting for them, and fewer only at the end of input (`[]`
-    there, and for `n <= 0`), so a header line read with `read_line` can
-    announce a body of exactly `n` bytes; `con.write_bytes(data)` writes to
-    standard output. Writing an element outside 0..255 traps, before any file
-    is touched.
-  - `s.bytes()` is the UTF-8 encoding of `s`. `Str.from_utf8(bytes)` is
-    `None` if the bytes are not valid UTF-8 (overlong forms, surrogates, code
-    points above U+10FFFF and truncated sequences are invalid) or an element
-    is outside 0..255. `Str.from_utf8_lossy(bytes)` replaces each maximal
-    invalid sequence with U+FFFD (the rule below) and traps on an element
-    outside 0..255.
-  - In a C build a byte list costs 8 bytes per byte; `read_bytes` of a 10 MB
-    file takes about 5 ms (one allocation, sized from the file).
-
-  ```tenon
-  let data = sys.fs.read_bytes("blob.bin")?                // e.g. [0, 255, 104, 105]
-  let hex = data.map(fn(b) => b.to_str_radix(16).pad_left(2, "0")).join(" ")
-  let text = Str.from_utf8(data).unwrap_or("<binary>")
-  sys.fs.write_bytes("copy.bin", data)?
-  ```
-- Invalid UTF-8 on input. A `Str` is always valid UTF-8, so every API that
-  turns outside bytes into text decides what to do with invalid bytes:
-  - `Fs.read`: `Err(Failed("path: invalid UTF-8"))`; nothing is replaced.
-  - Replaced with U+FFFD (bytes EF BF BD, one per maximal invalid sequence, as
-    `Str.from_utf8_lossy` does): `Console.read_line`, `Console.read_all`,
-    `sys.args`, the names from `Fs.list`, `Conn.read_line`, `Conn.read`, and
-    `Data` from `Poller.wait` (a multi-byte character split between two reads
-    becomes U+FFFD; §15).
-  - `decode` (§14) rejects a string literal whose escapes do not make valid
-    UTF-8.
-  - The byte APIs above never change a byte.
-- Line endings: `s.lines()`, `Console.read_line` and `Conn.read_line` all
-  remove the `"\n"` and then one trailing `"\r"` from every line, also from a
-  last line without `"\n"`, so CRLF and LF input read the same
-  (`"a\r\nb".lines() == ["a", "b"]`); `s.words()` treats `"\r"` as a
-  separator; `read_all`, `Fs.read` and `s.split("\n")` keep every `"\r"`.
-- Paths: `path_join(a, b)`, `path_parent(p)`, `path_base(p)` (§10).
-- `Clock`: `now_ms mono_ns sleep_ms`.
-- `Proc`: `run run_with exit env`. `p.run(cmd, args)` (`Result[Int, IoError]`) runs the
-  program `cmd` (looked up in `PATH` unless it contains a `/`) with the
-  arguments `args`, no shell involved, sharing standard input, output and
-  error; standard output is flushed first. It waits and gives the exit
-  status: `Ok(3)` for a command that exits with 3. `Err(NotFound(cmd))` if
-  there is no such program, `Err(Denied(cmd))` if it is not executable,
-  `Err(Failed("cmd: reason"))` otherwise (`"sh: terminated by signal 9"`, or
-  `"argument contains a NUL byte"`). `p.env(name)` (`Option[Str]`) reads an
-  environment variable (`None` if unset, or if `name` is empty or contains
-  `=` or a NUL byte; invalid UTF-8 becomes U+FFFD). A `Proc` is the whole
-  authority of the user (a command can do anything), so hand it only to
-  the code that must run commands: `fn build(p: Proc, out: Str)` says so in
-  its signature.
-  `p.run_with(cmd, args, dir, input, timeout_ms)` (`Result[ProcOut, IoError]`)
-  runs `cmd` the same way but in directory `dir` (`""`: the current one;
-  `Err(NotFound(dir))` if it is not a directory), with the bytes `input`
-  (`List[Int]`, each 0..255, else a trap) as its standard input, and captures
-  its standard output and error: `ProcOut { status, signal, timed_out, out,
-  err }` with `out` and `err` as bytes (`Str.from_utf8_lossy(o.out)` for
-  text). A command still running after `timeout_ms > 0` milliseconds is
-  killed (SIGKILL) and `timed_out` is `true`; `0` waits for ever. `status` is
-  the exit status, or `-1` when the command was ended by a signal (`signal`
-  is then its number, else 0). `p.exit(status)` ends the program at once with
-  `status` after flushing standard output: any value 0-255, including the
-  runtime's reserved codes (70, 71, 72, 74), so a program that runs other
-  programs (an interpreter, a test runner) can pass their status on; a value
-  outside 0-255 traps. Both need the `Proc` authority, like `run`.
+The methods of the builtin types (`Str`, `List`, `Map`, `Set`, `Heap`,
+`Option`, `Result`, `Int`, `Float`), the operations of the capabilities
+(`Console`, `Fs`, `Clock`, `Proc`), bytes, text encoding and line endings
+are described in [docs/library.md](library.md), with the standard library
+modules (`journal`, `regex`). Every signature is in the prelude
+(`lib/prelude.tn` in the repository, `docs/prelude.tn` in a study kit).
 
 ## 12. Obligations: linear and unique types
 
@@ -771,22 +586,11 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 - `import name` looks for `name.tn` next to the importing file first, then in the
   standard library (`journal`, `regex`). A local file therefore hides a std
   module of the same name, except that a file never imports itself.
-- Packages ([docs/packages.md](packages.md)). Inside a
-  package, meaning a `tenon.toml` in the file's directory or above it, `import name`
-  looks in three places in turn. First `name.tn` next to the importing file. Then
-  the entry module `src/name.tn` of a dependency `name` declared in the manifest of
-  the importing file's package. Last, the standard library. A dependency is
-  declared as `name = { path = "../dir" }` or as
-  `name = { git = "URL", tag = "v1.2.0" }`, and its name may not be a std
-  module's.
-  `tenon fetch` resolves the dependencies, transitively, into `tenon.lock`
-  (sources, commits, content hashes). `run`, `build`, `emit`, `check`, `test`
-  and the language server then
-  build offline from the lock and the cache (`$TENON_HOME`, default
-  `~/.tenon`). They fail with a request to run `tenon fetch` if the lock is
-  missing or out of date, and fail if a cached package's hash differs from
-  the lock. Path dependencies are live and git dependencies are pinned.
-  Module names are global: two different files may not both be module `name`.
+- Inside a package (a `tenon.toml` in the file's directory or above it),
+  `import name` looks first for `name.tn` next to the importing file, then
+  for the entry module of a dependency `name` in the package's manifest,
+  then in the standard library. Manifests, `tenon fetch`, the lock file and
+  the offline cache: [docs/packages.md](packages.md).
 - A module is a file; `import name` makes its public items available as
   `name.item` (functions, types, `name.Type.function`) and the variants of its
   public enums by their plain names.
@@ -836,51 +640,9 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   (`fn Str.trim`), or one that another module of the program also defines, is
   an error (`function 'Str.shout' is already defined`).
 - Standard library modules: `journal` (append-only, checksummed, crash-safe
-  record log) and `regex` (below). Their source is `lib/std/journal.tn` and
-  `lib/std/regex.tn` in the repository, `docs/std-journal.tn` and
-  `docs/std-regex.tn` in a study kit; either way `import journal` and
+  record log) and `regex` (regular expressions), described in
+  [docs/library.md](library.md) ("Standard library"). `import journal` and
   `import regex` find them.
-- `journal` has its own on-disk format: each record is one line
-  `BODY #CHECKSUM`, and `load` archives and drops any line that does not
-  check (also one that gained a `"\r"` at its end). It cannot read or write
-  a file format that a task fixes (one command per line, say): for that use
-  `Fs.append` (durable), `Fs.write` (atomic) and `Fs.truncate` directly.
-
-### `regex`
-
-Regular expressions, written in Tenon (`lib/std/regex.tn`, or `docs/std-regex.tn`
-in a study kit; its header comment is the full specification). Matching is by backtracking, character by character over
-UTF-8; offsets are byte offsets.
-
-```tenon
-import regex
-
-let date = regex.compile(r"(\d{4})-(\d{2})-(\d{2})").unwrap()     // Result[Regex, Str]
-match date.full("2024-03-15") {                                   // Option[List[Str]]
-    Some(g) => con.println("{g[1]} {g[2]} {g[3]}"),                 // g[0] is the whole match
-    None => con.println("not a date"),
-}
-```
-
-- `regex.compile(pattern) -> Result[Regex, Str]`; the error text is
-  `"<problem> at byte <offset>"` (offset into the pattern).
-- `re.full(s) -> Option[List[Str]]`: the whole string must match; the list holds
-  the whole match, then one entry per capture group (`""` if it did not take part).
-  `re.is_full(s) -> Bool`.
-- `re.find(s) -> Option[(Int, List[Str])]`: the leftmost match, its start byte
-  offset and its groups. `re.find_all(s) -> List[Str]`: non-overlapping matches
-  (an empty match advances by one character).
-  `re.replace_all(s, with) -> Str`: `with` is literal text.
-- Syntax: literals, `.` (not `"\n"`), `[abc]` `[a-z0-9_]` `[^...]`, `\d \w \s \D \W \S`
-  (ASCII), `\b \B`, escaped punctuation (`\.` `\\` `\[`), `^ $` (start / end of the
-  string), `( )` and `(?: )`, `|`, greedy `* + ? {m} {m,} {m,n}` and lazy `*? +? ?? {m,n}?`.
-  Write patterns as raw strings (`r"\d{2}:\d{2}"`, §2), so that backslashes and
-  braces are taken as they are. In a normal string each regex backslash must be
-  doubled and `{` written `\{` (`"\\d\{2}"`): `"\d{2}"` is an error and
-  `"\\d{2}"` interpolates `{2}`.
-  Not supported: backreferences, lookaround, named groups, flags.
-- A pattern that would take more than about a million backtracking steps (for
-  example `(a+)+b` on a long run of `a`) stops the program with `panic`, naming the pattern.
 
 ## 14. Data codec
 
@@ -936,54 +698,12 @@ reported in increasing id order. A struct holding a `Poller` must be declared
 
 ## 16. Formatting
 
-`tenon fmt FILE...` rewrites files in the one canonical layout (atomically);
-`tenon fmt --check FILE...` lists the files that are not in it and exits 1;
-`tenon fmt -` formats standard input to standard output (docs/tools.md). A
-file that does not parse is refused and left unchanged (exit status 2). The
-rules:
-
-- Line breaks are the author's: long lines are not reflowed, and lines are
-  never joined. The only line added splits `a; b` in a block written on
-  several lines (a block written on one line, `{ t += x; i += 1 }`, stays).
-- Indentation is 4 spaces per line that opened a bracket still open (several
-  brackets opened on one line count once). A line starting with `)`, `]` or
-  `}` is indented as the line that opened it.
-- In a block, a line that continues the previous one (it starts with `.`,
-  `and`, `or` or a binary operator, or the previous line ends with `=`,
-  `=>`, `->`, an operator...) is indented 4 more than the first line of its
-  statement. A line starting with `else` lines up with its `if`. A block
-  after a head that spans lines (`if a` / `and b {`) is indented from the
-  head's first line.
-- One space around binary operators, `=`, `->`, `=>` and `|`, after `,`,
-  `;` and `:`, and inside braces written on one line (`Point { x: 1 }`; but
-  `{}`). No space before `(` and `[` in calls, indexing and generics
-  (`f(x)`, `xs[i]`, `List[Int]`), after a unary `-`, around `.` and `..`
-  (`0..n`, `..base`), or before `?`, `,`, `:` and closing brackets.
-- A list whose closing bracket starts a line (arguments, parameters,
-  elements, struct fields, enum variants, match arms) ends with a comma,
-  except after a block arm's `}` or a struct literal's `..base`. A list
-  closed on the same line has no trailing comma. A `;` at the end of a line
-  is removed where the newline ends the statement anyway.
-- Comments are kept. A comment on its own line takes the indentation of the
-  next line (one level deeper before a closing bracket); end-of-line comments
-  on consecutive lines are aligned one space after the longest line of code.
-- At most one blank line in a row, and none at the start or end of the file,
-  after an opening bracket or before a closing one.
-- String and character literals are copied byte for byte, interpolations
-  and format specs included.
-
-The formatter checks its own output before writing it: the formatted text
-must lex to the same tokens as the original (up to a `,` or `;` before a
-closing bracket) and must parse. `tools/fmt_check.sh` (run by `./check`)
-also checks that every file in the repository except those listed in
-`tools/fmt_skip.txt` is formatted, that formatting is idempotent, and that
-`tenon ast` of each file it changes is unchanged except positions.
+Every program has one canonical layout, which `tenon fmt` produces; its
+rules are in [docs/tools.md](tools.md) ("Formatting").
 
 ## 17. Traits
 
-A trait names a set of methods; an `impl` gives them for one type. Traits
-are implemented by `tenon`, the self-hosted compiler;
-the frozen seed (`tenon-seed`, which only builds the compiler) does not know them.
+A trait names a set of methods; an `impl` gives them for one type.
 
 ```tenon
 trait Shape {
@@ -1121,8 +841,7 @@ core. Workers share nothing: each has a heap of its own, and they
 communicate through typed channels. What goes from one worker to another is
 copied into the receiver's heap (a unique value is moved), so no two threads
 ever touch the same value and there are no data races, by construction.
-Workers are implemented by `tenon`, the self-hosted compiler
-(lib/v2/prelude.tn); the frozen seed (`tenon-seed`) does not know them.
+The API is in the prelude (`lib/v2/prelude.tn`).
 
 ```tenon
 fn count_words(lines: List[Str]) -> Int {
@@ -1254,15 +973,10 @@ fn main(sys: Sys) {
 (tests/v2/run/workers_event_loop.tn is a server worker with a client event
 loop in `main`.)
 
-**In the interpreter** (`tenon run`) workers run on one thread under a
-deterministic scheduler, with the same results as `tenon build` for every
-program whose output does not depend on scheduling (selfhost/iwork.tn): a
-worker runs when `main` waits (`recv`, `join`, `try_recv`), until it finishes
-or waits itself; a waiting worker is resumed by running it again from the
-start, with every effect it already had (output, files, channels) replayed
-from a log instead of repeated. So resuming a worker costs the work it did
-before, and a worker blocked in a socket read or `Poller.wait` without a
-timeout holds up the others. Use `tenon build` for speed.
+**In the interpreter** (`tenon run`) workers take turns on one thread, with
+the same results as `tenon build` for every program whose output does not
+depend on scheduling, but slower (docs/tools.md, `tenon run`). Use
+`tenon build` for speed.
 
 **Costs** (C backend, Apple M4 Max; selfhost/iwork.tn and runtime/tenon.h for
 the implementation):

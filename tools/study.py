@@ -62,6 +62,9 @@ exit $code
 '''
 
 
+STUDY_DOCS = ["quickstart.md", "reference.md", "library.md", "tools.md"]
+
+
 def kit(lang, author):
     d = os.path.join(STUDY_ROOT, f"{lang}-{author}")
     if os.path.exists(d):
@@ -81,9 +84,9 @@ def kit(lang, author):
             # the self-hosted tenon with its lib/ and runtime/ (STUDY_ROOT/lib/tenon), as installed
             subprocess.run([os.path.join(ROOT, "tools", "install.sh"), STUDY_ROOT], check=True, stdout=subprocess.DEVNULL)
         os.makedirs(os.path.join(d, "docs"))
-        shutil.copy(os.path.join(ROOT, "docs", "reference.md"), os.path.join(d, "docs", "reference.md"))
-        shutil.copy(os.path.join(ROOT, "docs", "quickstart.md"), os.path.join(d, "docs", "quickstart.md"))
-        shutil.copy(os.path.join(ROOT, "docs", "tools.md"), os.path.join(d, "docs", "tools.md"))
+        # the user docs a study author needs (not packages.md, not docs/dev/)
+        for doc in STUDY_DOCS:
+            shutil.copy(os.path.join(ROOT, "docs", doc), os.path.join(d, "docs", doc))
         shutil.copy(os.path.join(ROOT, "lib", "prelude.tn"), os.path.join(d, "docs", "prelude.tn"))
         for m in glob.glob(os.path.join(ROOT, "lib", "std", "*.tn")):
             shutil.copy(m, os.path.join(d, "docs", "std-" + os.path.basename(m)))
