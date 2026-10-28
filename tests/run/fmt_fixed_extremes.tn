@@ -1,0 +1,7 @@
+// Int.fmt_fixed at the ends of Int (conformance 2026-10-28 #4): every Int formats, INT_MIN included.
+fn main(sys: Sys) {
+    let c = sys.console
+    for x in [INT_MIN, INT_MIN + 1, -100, -5, -1, 0, 1, 5, 100, INT_MAX] {
+        c.println("{x}: {x.fmt_fixed(2)} {x.fmt_fixed(0)} {x.fmt_fixed(1)} {x.fmt_fixed(19)} {x.fmt_fixed(21)}")
+    }
+}

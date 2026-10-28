@@ -86,7 +86,8 @@ fn Int.to_str_radix(self, base: Int) -> Str {
 // Fixed-point text: 1234.fmt_fixed(2) == "12.34", (-5).fmt_fixed(2) == "-0.05".
 fn Int.fmt_fixed(self, scale: Int) -> Str {
     if scale <= 0 { return self.to_str() }
-    let digits = self.abs().to_str().pad_left(scale + 1, "0")
+    let s = self.to_str()
+    let digits = (if self < 0 { s.slice(1, s.len()) } else { s }).pad_left(scale + 1, "0") // not abs(): INT_MIN
     let cut = digits.len() - scale
     (if self < 0 { "-" } else { "" }) + digits.slice(0, cut) + "." + digits.slice(cut, digits.len())
 }

@@ -143,6 +143,8 @@ subtraction underflows here, and computes negative remainders using
 same documented arithmetic contract failing on valid inputs, grouped as
 one finding.
 
+Fixed in 480f480, test tests/run/trap_euclid_extremes.tn.
+
 ## 4. fmt_fixed traps on INT_MIN instead of formatting it
 
 ```tenon

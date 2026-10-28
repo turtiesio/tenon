@@ -108,7 +108,7 @@ single source of the builtin API. Every claim here is checked by a test in
   `255.to_str_radix(16) == "ff"`; `rem_euclid` and
   `div_euclid` (the remainder is never negative; no intermediate overflow: only
   `INT_MIN.div_euclid(-1)`, whose quotient does not fit, traps); `fmt_fixed(scale)` writes a
-  fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents); constants
+  fixed-point integer (`1234.fmt_fixed(2) == "12.34"`, for money in cents; any `Int`, `INT_MIN` included); constants
   `INT_MAX`, `INT_MIN`; and for code points
   `is_digit is_alpha is_alnum is_space is_upper is_lower` (ASCII only:
   `'é'.is_alpha()` is false; `is_space` is exactly `' '`, `'\t'`, `'\n'` and
