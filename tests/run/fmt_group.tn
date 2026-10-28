@@ -1,0 +1,29 @@
+// Thousands separators in format specs: `,` after the width, before the
+// precision ([[fill]align][0][width][,][.precision][radix]), as in Python;
+// Int and Float only, not with a radix.
+fn show(sys: Sys, s: Str) { sys.console.println("[" + s + "]") }
+
+fn main(sys: Sys) {
+    let n = 1234567
+    show(sys, "{n:,}|{-n:,}|{0:,}|{7:,}|{999:,}|{1000:,}|{-1000:,}|{100000:,}")
+    show(sys, "{INT_MAX:,}|{INT_MIN:,}")
+    // with width, alignment and fill
+    show(sys, "{n:12,}|{n:>12,}|{n:<12,}|{n:^13,}|{n:*>12,}|{-n:_<12,}|{n:3,}")
+    // zero padding: the zeros are digits and are grouped too; the text never
+    // starts with ',', so it can be one longer than the width (as in Python)
+    show(sys, "{1234:012,}|{1234:011,}|{1234:013,}|{-1234:012,}|{-1234:08,}")
+    show(sys, "{999:05,}|{123:06,}|{5:04,}|{0:07,}|{INT_MIN:030,}")
+    // Float: the digits before the point (or exponent) are grouped
+    let f = 1234567.891
+    show(sys, "{f:,.2}|{-f:,.2}|{f:,.0}|{f:,}|{0.5:,}|{999.5:,.1}|{1000.0:,}")
+    show(sys, "{f:16,.2}|{f:<16,.1}|{-f:016,.2}|{-1234.5:012,.2}|{1e20:,}|{1e15:,}")
+    let inf = 1.0 / 0.0
+    show(sys, "{inf:,}|{-inf:8,}|{(inf - inf):,.2}|{1.5e-7:,}")
+    // widths count code points, so a multi-byte fill works
+    show(sys, "{n:é>12,}|{-12345:·^11,}")
+    // nested
+    show(sys, "{"{n:,}":>12}|{"total {-n:,}"}")
+    // the examples in docs/reference.md §8
+    show(sys, "{1234567:,}|{-1234:>8,}|{INT_MIN:,}|{1234567.891:,.2}|{1234.5:,}")
+    show(sys, "{1234:011,}|{1234:012,}|{-1234.5:012,.2}|{1e20:,}|{"{1234:012,}".len()}")
+}

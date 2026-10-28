@@ -1,0 +1,3 @@
+fn f(n: Int) -> Str {
+    "ok {n:,} then {n:08,X}"
+}

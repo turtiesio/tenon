@@ -1,0 +1,19 @@
+// One-sided trims: trim_start_chars / trim_end_chars remove the bytes of
+// `chars` from one end; trim_chars from both. Only ASCII bytes count, so text
+// with non-ASCII characters is safe (a non-ASCII character is never removed).
+fn main(sys: Sys) {
+    let c = sys.console
+    let s = "0250"
+    c.println("[{s.trim_start_chars("0")}] [{s.trim_end_chars("0")}] [{s.trim_chars("0")}]")
+    c.println("[{"2.500".trim_end_chars("0").trim_end_chars(".")}] [{"3.000".trim_end_chars("0").trim_end_chars(".")}]")
+    c.println("[{"  \tx y\t ".trim_start_chars(" \t")}] [{"  \tx y\t ".trim_end_chars(" \t")}]")
+    // nothing to remove, everything removed, empty input, empty set
+    c.println("[{"abc".trim_start_chars("x")}] [{"aaa".trim_start_chars("a")}] [{"aaa".trim_end_chars("a")}]")
+    c.println("[{"".trim_start_chars("a")}] [{"".trim_end_chars("a")}] [{"abc".trim_chars("")}]")
+    // non-ASCII text: removed only around it
+    c.println("[{"xéx".trim_chars("x")}] [{"éx".trim_end_chars("x")}] [{"xé".trim_start_chars("x")}]")
+    c.println("[{"--Zürich--".trim_chars("-")}] [{"é".trim_chars("é")}] [{"aéa".trim_chars("aé")}]")
+    // the results are views, like slice
+    let t = "##a##".trim_start_chars("#")
+    c.println("[{t}] {t.len()} [{t.trim_end_chars("#")}]")
+}

@@ -234,13 +234,13 @@ impl<'a> Interp<'a> {
             }
             "Str.words" => list(s(0).split([' ', '\t', '\n', '\r']).filter(|w| !w.is_empty()).map(strv).collect()),
             "Str.lines" => {
-                let mut parts: Vec<V> = s(0).split('\n').map(strv).collect();
-                if let Some(V::Str(l)) = parts.last() {
-                    if l.is_empty() {
-                        parts.pop();
-                    }
+                // as Console.read_line: split on "\n", drop a final empty piece,
+                // then remove one trailing "\r" from every line
+                let mut parts: Vec<&str> = s(0).split('\n').collect();
+                if parts.last() == Some(&"") {
+                    parts.pop();
                 }
-                list(parts)
+                list(parts.into_iter().map(|l| strv(l.strip_suffix('\r').unwrap_or(l))).collect())
             }
             "Str.trim" => strv(s(0).trim_matches(|c: char| c.is_ascii_whitespace())),
             "Str.trim_start" => strv(s(0).trim_start_matches(|c: char| c.is_ascii_whitespace())),
@@ -622,7 +622,7 @@ impl<'a> Interp<'a> {
                 });
             }
         };
-        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.write_bytes" | "Fs.append_bytes" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" | "Fs.rename");
+        let writes = matches!(name, "Fs.write" | "Fs.append" | "Fs.write_bytes" | "Fs.append_bytes" | "Fs.remove" | "Fs.mkdir" | "Fs.mkdir_one" | "Fs.rename" | "Fs.truncate");
         if writes && !writable {
             return Ok(self.io_err("Denied", format!("read-only Fs: {}", p)));
         }
@@ -656,6 +656,22 @@ impl<'a> Interp<'a> {
                 let r = (|| {
                     let mut f = std::fs::OpenOptions::new().append(true).create(true).open(&full)?;
                     f.write_all(&data)?;
+                    f.sync_all()
+                })();
+                self.io_result(&p, r, |_| V::Unit)
+            }
+            "Fs.truncate" => {
+                let V::Int(len) = a[2] else { unreachable!() };
+                let r = (|| {
+                    let f = std::fs::OpenOptions::new().write(true).open(&full)?;
+                    let size = f.metadata()?.len();
+                    if len < 0 {
+                        return Err(std::io::Error::other(format!("truncate length {} is negative", len)));
+                    }
+                    if len as u64 > size {
+                        return Err(std::io::Error::other(format!("truncate length {} is larger than the file ({} bytes)", len, size)));
+                    }
+                    f.set_len(len as u64)?;
                     f.sync_all()
                 })();
                 self.io_result(&p, r, |_| V::Unit)

@@ -1,0 +1,5 @@
+// error: malformed format spec '.2,': unexpected ','
+// the separator comes before the precision: {f:,.2}
+fn main(sys: Sys) {
+    sys.console.println("{1000.5:.2,}")
+}

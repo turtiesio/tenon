@@ -1,0 +1,5 @@
+// format specs with a ',' separator: the spec starts at the first `:` outside ( ) [ ] { } and nested
+// strings, so commas in the expression (arguments, list and map literals) stay in the expression
+let a = "{n:,}{n:>12,}{n:012,}{f:,.2}{f:16,.2}{n:*^9,}{n:,,}{n:,x}"
+let b = "{f(a, b):,}{[1, 2].len():5,}{m[","]:,}{[1: 2, 3: 4].len():,}{",":,}{',':,}"
+let c = "{"{n:,}":>12}{x:,:}{x:,,.}{x:,>5}"

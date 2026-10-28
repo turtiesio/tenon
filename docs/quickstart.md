@@ -67,10 +67,13 @@ fn main(sys: Sys) -> Int {
 | `for line in sys.stdin:` | `while let Some(line) = con.read_line() { ... }` (no `"\n"`, and one `"\r"` removed) |
 | `f"{a} and {b!r}"` / `` `${a}` `` | `"{a} and {b}"`; a literal brace is `\{` |
 | `f"{x:>5}"`, `f"{n:08x}"`, `f"{f:.2f}"` | `"{x:>5}"`, `"{n:08x}"`, `"{f:.2}"` (no `f`); `<` `^` fill `{x:*^9}`, `{n:05}`, `{n:X}` `{n:b}` `{n:o}`, widths in code points |
+| `f"{n:,}"`, `f"{f:12,.2f}"` | `"{n:,}"`, `"{f:12,.2}"` (Int and Float; not with `x` `b` `o`) |
 | `int(s)` | `s.to_int()` gives `Option[Int]`: `let Some(n) = s.to_int() else { ... }` |
 | `int(s, 16)`, `hex(n)` | `s.to_int_radix(16)`, `n.to_str_radix(16)`; literals `0xFF 0b1010 1_000` |
 | `s.split()` / `s.split(",")` | `s.words()` / `s.split(",")` |
 | `s.strip()`, `s.startswith(p)` | `s.trim()`, `s.starts_with(p)`; also `strip_prefix` gives `Option` |
+| `s.strip("0")`, `s.rstrip("0")`, `s.lstrip("0")` | `s.trim_chars("0")`, `s.trim_end_chars("0")`, `s.trim_start_chars("0")` |
+| `text.splitlines()` | `text.lines()` (no `"\n"`, and one `"\r"` removed, like `read_line`) |
 | `a, _, b = s.partition("=")` | `let Some((a, b)) = s.split_once("=") else { ... }` |
 | `ord(c)`, `s[i]` as a byte | `'a'` is an `Int` code point; `s.byte(i)`; `s.chars()` |
 | `chr(c)`, `c.isdigit()` | `c.char()` (a one-character `Str`); `c.is_digit()` `is_alpha` `is_alnum` `is_upper` `is_lower` `is_space` (ASCII, on code points) |
@@ -78,8 +81,10 @@ fn main(sys: Sys) -> Int {
 | `len(s)`, `s.rjust(8, ".")` | `s.len()` is **bytes**; `s.char_count()` code points; `s.pad_left(8, ".")` / `pad_right` pad to code points |
 | `bisect.bisect_left(xs, x)` | `xs.binary_search(x)` gives `Ok(i)` (found) or `Err(i)` (insertion point) |
 | `[f(x) for x in xs if p(x)]` | `xs.filter(fn(x) => p(x)).map(fn(x) => f(x))` |
+| `xs[:] = [x for x in xs if p(x)]` | `xs.retain(fn(x) => p(x))` (in place, on a `var`) |
 | `for i, x in enumerate(xs)` | `for (i, x) in xs.enumerate()` |
 | `for i in range(n)` | `for i in 0..n` |
+| `for i in reversed(range(n))` | `for i in rev_range(0, n)` (`n - 1` down to `0`) |
 | `sorted(xs, key=k, reverse=True)` | `xs.sort_by_desc(fn(x) => k(x))` on a `var` list (stable) |
 | `max(xs, key=k)` / `min(xs, key=k)` | `xs.max_by(fn(x) => k(x))` / `xs.min_by(...)` give `Option[T]` (`None` if empty; first of equal keys) |
 | `defaultdict(list)` grouping, `itertools.groupby` | `xs.group_by(fn(x) => k(x))` gives `Map[K, List[T]]`: all equal keys (not only adjacent), keys in first-occurrence order |

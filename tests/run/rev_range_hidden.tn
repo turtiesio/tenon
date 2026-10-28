@@ -1,0 +1,7 @@
+// A file's own `rev_range` hides the prelude's (§13), also in a `for` loop:
+// the C backend only counts down for the prelude's function.
+fn rev_range(a: Int, b: Int) -> List[Int] { [b, a] }
+
+fn main(sys: Sys) {
+    for i in rev_range(1, 5) { sys.console.println("{i}") }
+}

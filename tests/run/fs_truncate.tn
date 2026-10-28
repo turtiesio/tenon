@@ -1,0 +1,40 @@
+// Fs.truncate(path, len) cuts an existing file to its first len bytes (durably);
+// it never extends a file and follows the jail / read-only / NUL / symlink rules
+// of the other Fs writes.
+fn main(sys: Sys) -> Result[Unit, IoError] {
+    let c = sys.console
+    let _ = sys.fs.mkdir("fs_truncate_tmp")
+    let d = sys.fs.within("fs_truncate_tmp")
+    d.write("log", "one\ntwo\nthr")?
+    // drop a torn last line: cut after the last "\n"
+    let text = d.read("log")?
+    let keep = text.rfind("\n").unwrap() + 1
+    c.println("{d.truncate("log", keep)} {encode(d.read("log")?)}")
+    // the same length is fine (no change), so is 0
+    c.println("{d.truncate("log", keep)} {encode(d.read("log")?)}")
+    d.append("log", "four\n")?
+    c.println("{encode(d.read("log")?)}")
+    // never extends: larger than the file, or negative, is an error and changes nothing
+    c.println("{d.truncate("log", 100)}")
+    c.println("{d.truncate("log", -1)}")
+    c.println("{encode(d.read("log")?)}")
+    // bytes, not characters
+    d.write("u", "é!")?
+    c.println("{d.truncate("u", 1)} {d.read("u")} {d.read_bytes("u")?}")
+    // a missing file is not created; a directory is an error
+    c.println("{d.truncate("missing", 0)} {d.exists("missing")}")
+    d.mkdir("sub")?
+    c.println("{d.truncate("sub", 0)}")
+    // authority: read-only, outside the jail, NUL, through a symlink
+    c.println("{d.read_only().truncate("log", 0)}")
+    c.println("{d.truncate("../fs_truncate.tn", 0)} {d.truncate("/etc/hosts", 0)}")
+    c.println("{d.truncate("log\0x", 0)}")
+    let jail = sys.fs.within("fs_jail")
+    c.println("{jail.truncate("up/fs_truncate.tn", 0)} {jail.read("in.txt").is_ok()}")
+    c.println("{d.truncate("log", 0)} {encode(d.read("log")?)}")
+    d.remove("sub")?
+    d.remove("u")?
+    d.remove("log")?
+    sys.fs.remove("fs_truncate_tmp")?
+    Ok(())
+}

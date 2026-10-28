@@ -1,0 +1,4 @@
+// error: ',' grouping in format spec ':,' needs an Int or Float, found Bool
+fn main(sys: Sys) {
+    sys.console.println("{true:,}")
+}

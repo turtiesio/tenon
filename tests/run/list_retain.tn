@@ -1,0 +1,35 @@
+// List.retain(keep): keeps, in place and in order, the elements for which keep is true.
+struct Lock { name: Str, holders: List[Str] }
+
+fn main(sys: Sys) {
+    let c = sys.console
+    var xs = [5, 1, 4, 2, 3, 6]
+    xs.retain(fn(x) => x % 2 == 0)
+    c.println("{xs}")
+    // copy-on-write: a copy taken before is unchanged
+    var ys = [1, 2, 3]
+    let before = ys
+    ys.retain(fn(y) => y != 2)
+    c.println("{ys} {before}")
+    // keep everything, nothing, and an empty list
+    var all = ["a", "b"]
+    all.retain(fn(_) => true)
+    var none = ["a", "b"]
+    none.retain(fn(_) => false)
+    var empty: List[Int] = []
+    empty.retain(fn(_) => true)
+    c.println("{all} {none} {empty} {none.len()}")
+    // a closure that captures a value; duplicates and order are kept
+    var zs = [3, 1, 2, 1, 3]
+    let limit = 2
+    zs.retain(fn(z) => z <= limit)
+    c.println("{zs}")
+    // on a deep place, as `self.res[r].queue.retain(...)`
+    var locks: Map[Str, Lock] = ["r": Lock { name: "r", holders: ["ann", "bob", "cy", "bob"] }]
+    let gone = "bob"
+    locks["r"].holders.retain(fn(h) => h != gone)
+    c.println("{locks["r"].holders}")
+    var grid = [[1, 2, 3], [4, 5, 6]]
+    grid[1].retain(fn(v) => v > 4)
+    c.println("{grid}")
+}
