@@ -18,7 +18,9 @@ pub const EXIT_STACK: Int = 72
 pub const EXIT_OUTPUT: Int = 74
 
 // How evaluation leaves an expression early.
-pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int) }
+// CNoKey: a missing map key in a place (nav), turned into the trap by nk
+// with the key type's Show impl applied.
+pub enum Ctl { CRet(ival.Val), CBreak, CContinue, CTrap(Str, ckast.Span), CExit(Int), CNoKey(ival.Val, ckast.Span) }
 
 // Enum numbers the interpreter builds values of.
 pub struct Ix { pub opt: Int, pub res: Int, pub io: Int, pub ev: Int }
@@ -157,12 +159,12 @@ fn args_mut(it: mut Interp, fr: mut List[ival.Val], args: List[icode.Arg], av: m
             AVal(e) => av.push(ev(mut it, mut fr, e)?),
         }
     }
-    for t in taken { av[t.at] = nav(mut fr[t.root], t.steps, 0, false, MTake, t.sp, it.names, it.ix)? }
+    for t in taken { av[t.at] = nk(mut it, nav(mut fr[t.root], t.steps, 0, false, MTake, t.sp, it.names, it.ix))? }
     Ok(())
 }
 
 fn put_back(it: mut Interp, fr: mut List[ival.Val], taken: List[Taken], finals: List[ival.Val], sp: ckast.Span) -> Result[Unit, Ctl] {
-    for t in taken { let _ = nav(mut fr[t.root], t.steps, 0, false, MSet(finals[t.at]), sp, it.names, it.ix)? }
+    for t in taken { let _ = nk(mut it, nav(mut fr[t.root], t.steps, 0, false, MSet(finals[t.at]), sp, it.names, it.ix))? }
     Ok(())
 }
 
@@ -191,6 +193,17 @@ fn eval_steps(it: mut Interp, fr: mut List[ival.Val], steps: List[icode.PStep]) 
     Ok(out)
 }
 
+// A missing key from nav, shown with the key type's Show impl (as C does).
+fn nk[T](it: mut Interp, r: Result[T, Ctl]) -> Result[T, Ctl] {
+    match r {
+        Err(CNoKey(k, at)) => {
+            let shown = prerender(mut it, k)?
+            trap("key not found: " + ival.show_nested(shown, it.names), at)
+        }
+        _ => r,
+    }
+}
+
 // Follow `steps` from v (bootstrap/src/interp.rs `navigate`); `create`: a
 // missing map key at the end of the path is inserted (assignment `m[k] = v`).
 pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, sp: ckast.Span, names: ival.Names, ix: Ix) -> Result[ival.Val, Ctl] {
@@ -205,7 +218,10 @@ pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, s
             }
             let key = ival.to_key(k)
             if not v.m.contains(key) {
-                if not (create and i + 1 == steps.len()) { return trap("key not found: " + ival.show_nested(k, names), sp) }
+                if not (create and i + 1 == steps.len()) {
+                    if not names.ovs.is_empty() { return Err(CNoKey(k, sp)) }
+                    return trap("key not found: " + ival.show_nested(k, names), sp)
+                }
                 v.m[key] = ival.unit()
             }
             nav(mut v.m[key], steps, i + 1, create, op, sp, names, ix)
@@ -281,9 +297,9 @@ fn stmt(it: mut Interp, fr: mut List[ival.Val], s: icode.Stm) -> Result[ival.Val
             let steps = eval_steps(mut it, mut fr, pl.steps)?
             let v = ev(mut it, mut fr, e)?
             if op < 0 {
-                let _ = nav(mut fr[pl.root], steps, 0, true, MSet(v), pl.sp, it.names, it.ix)?
+                let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, true, MSet(v), pl.sp, it.names, it.ix))?
             } else {
-                let _ = nav(mut fr[pl.root], steps, 0, false, MBin(op, v, ssp), pl.sp, it.names, it.ix)?
+                let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MBin(op, v, ssp), pl.sp, it.names, it.ix))?
             }
             Ok(ival.unit())
         }
@@ -591,9 +607,9 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
             var av: List[ival.Val] = [ival.unit()]
             var taken: List[Taken] = []
             args_mut(mut it, mut fr, args, mut av, mut taken)?
-            av[0] = nav(mut fr[pl.root], steps, 0, false, MTake, pl.sp, it.names, it.ix)?
+            av[0] = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MTake, pl.sp, it.names, it.ix))?
             let r = call_fn(mut it, fi, mut av, sp)?
-            let _ = nav(mut fr[pl.root], steps, 0, false, MSet(av[0]), pl.sp, it.names, it.ix)?
+            let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MSet(av[0]), pl.sp, it.names, it.ix))?
             put_back(mut it, mut fr, taken, av, sp)?
             Ok(r)
         }
@@ -605,12 +621,12 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
             // sort_by keys are computed first, element by element
             var keys: List[ival.Val] = []
             if id == ibuiltin.M_SORT_BY or id == ibuiltin.M_SORT_BY_DESC {
-                let cur = nav(mut fr[pl.root], steps, 0, false, MGet, pl.sp, it.names, it.ix)?
+                let cur = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MGet, pl.sp, it.names, it.ix))?
                 for x in cur.xs { keys.push(apply(mut it, av[0], [x], sp)?) }
             } else if not steps.is_empty() {
-                let _ = nav(mut fr[pl.root], steps, 0, false, MCheck, pl.sp, it.names, it.ix)?
+                let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MCheck, pl.sp, it.names, it.ix))?
             }
-            nav(mut fr[pl.root], steps, 0, false, MExt(id, av, keys), sp, it.names, it.ix)
+            nk(mut it, nav(mut fr[pl.root], steps, 0, false, MExt(id, av, keys), sp, it.names, it.ix))
         }
         _ => panic("interp: unexpected node"),
     }

@@ -1,0 +1,4 @@
+[#1: 11]
+exit: 70
+stderr: trap: key not found: #7
+stderr:   at trait_show_key_place.tn:14:6

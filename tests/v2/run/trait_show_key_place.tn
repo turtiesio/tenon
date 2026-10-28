@@ -1,0 +1,16 @@
+// A missing map key reached through a place (`m[k] += 1`) is shown with the
+// key type's Show impl in the trap, as `m[k]` read as a value is: the same
+// text on both backends.
+struct Id { n: Int }
+
+impl Show for Id {
+    fn to_str(self) -> Str { "#{self.n}" }
+}
+
+fn main(sys: Sys) {
+    var m: Map[Id, Int] = [Id { n: 1 }: 10]
+    m[Id { n: 1 }] += 1
+    sys.console.println("{m}")
+    m[Id { n: 7 }] += 1
+    sys.console.println("unreachable")
+}

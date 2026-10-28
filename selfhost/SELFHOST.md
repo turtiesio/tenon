@@ -78,9 +78,10 @@ Known differences from `tenon run` (none is exercised by the corpus):
   U+FFFD.
 - At most 4 `Poller`s per program.
 - A map used as a key of another map loses its insertion order.
-- (v2) A missing map key reached through a place (`m[k] += 1`) is shown
-  without the key type's Show impl; `m[k]` as a value uses it, as C does
-  everywhere.
+
+(v2) A missing map key reached through a place (`m[k] += 1`) is shown with
+the key type's Show impl, as `m[k]` read as a value and C everywhere
+(ieval.nk; tests/v2/run/trait_show_key_place.tn).
 
 Verification:
 
