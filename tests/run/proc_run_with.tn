@@ -1,0 +1,32 @@
+// Proc.run_with: a directory, bytes on standard input, captured output and
+// error, a timeout; Proc.exit passes on any status, also a reserved one.
+fn show(r: Result[ProcOut, IoError]) -> Str {
+    match r {
+        Ok(o) => "status {o.status} signal {o.signal} timed_out {o.timed_out} out {encode(Str.from_utf8_lossy(o.out))} err {encode(Str.from_utf8_lossy(o.err))}",
+        Err(e) => "error {e}",
+    }
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let p = sys.proc
+    con.println("before")
+    con.println(show(p.run_with("sh", ["-c", "echo out; echo err >&2; exit 3"], "", [], 0)))
+    con.println(show(p.run_with("cat", [], "", "a\nb".bytes() + [255, 0], 10000)))
+    con.println(show(p.run_with("pwd", [], "/", [], 0)))
+    con.println(show(p.run_with("sh", ["-c", "exec sleep 5"], "", [], 100)))
+    con.println(show(p.run_with("sh", ["-c", "kill -9 $$"], "", [], 0)))
+    con.println(show(p.run_with("tenon-no-such-command", [], "", [], 0)))
+    con.println(show(p.run_with("pwd", [], "/tenon-no-such-directory", [], 0)))
+    con.println(show(p.run_with("/etc/hosts", [], "", [], 0)))
+    con.println(show(p.run_with("sh", ["-c", "echo a\0b"], "", [], 0)))
+    // much more than a pipe holds, in both directions
+    let big = "x".repeat(300000).bytes()
+    match p.run_with("cat", [], "", big, 0) {
+        Ok(o) => con.println("cat echoed {o.out.len()} bytes"),
+        Err(e) => con.println("error {e}"),
+    }
+    con.println("after")
+    p.exit(72)
+    con.println("not reached")
+}

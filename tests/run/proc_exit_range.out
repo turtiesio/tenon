@@ -1,0 +1,4 @@
+before
+exit: 70
+stderr: trap: exit status 256 is out of range
+stderr:   at proc_exit_range.tn:4:13

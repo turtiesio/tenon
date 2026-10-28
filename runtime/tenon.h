@@ -2361,5 +2361,140 @@ static TN_UNUSED bool tn_proc_env(tn_Str name, tn_Str *out) {
     *out = tn_buf_finish(&b);
     return true;
 }
+/* Proc.exit: any status 0..255 (also the reserved ones); output is flushed first. */
+static TN_UNUSED void tn_proc_exit(tn_Int status, const char *loc) {
+    if (status < 0 || status > 255) tn_trapf(loc, "exit status %lld is out of range", (long long)status);
+    tn_exit((int)status);
+}
+static int64_t tn_ms_now(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (int64_t)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+/* Proc.run_capture (Proc.run_with in the prelude): run cmd in dir with the
+ * given standard input, capturing standard output and error; kill it
+ * (SIGKILL) after timeout_ms > 0. The result is packed as
+ * [status, signal, timed_out, len(out), out..., err...]; status is -1 when the
+ * command was ended by a signal. */
+static TN_UNUSED int tn_proc_capture(tn_Str cmd, tn_List_Str args, tn_Str dir, tn_Str input, tn_Int timeout_ms, tn_List_Int *res, tn_Str *msg) {
+    int64_t n = tn_List_Str_len(args);
+    bool nul = memchr(cmd.p, 0, (size_t)cmd.len) != NULL || memchr(dir.p, 0, (size_t)dir.len) != NULL;
+    for (int64_t i = 0; i < n; i++) nul = nul || memchr(args->data[i].p, 0, (size_t)args->data[i].len) != NULL;
+    if (nul) { *msg = tn_io_msg(TN_IO_FAILED, cmd, "argument contains a NUL byte"); return TN_IO_FAILED; }
+    char *cdir = dir.len > 0 ? tn_proc_cstr(dir) : NULL;
+    struct stat ds;
+    if (cdir && (stat(cdir, &ds) != 0 || !S_ISDIR(ds.st_mode))) {
+        tn_free(cdir);
+        *msg = tn_io_msg(TN_IO_NOTFOUND, dir, "");
+        return TN_IO_NOTFOUND;
+    }
+    tn_flush();
+    char **argv = tn_alloc(sizeof(char *) * (size_t)(n + 2));
+    argv[0] = tn_proc_cstr(cmd);
+    for (int64_t i = 0; i < n; i++) argv[i + 1] = tn_proc_cstr(args->data[i]);
+    argv[n + 1] = NULL;
+    int pin[2], pout[2], perr[2], pex[2];
+    if (pipe(pin) != 0 || pipe(pout) != 0 || pipe(perr) != 0 || pipe(pex) != 0) {
+        int e = errno;
+        *msg = tn_io_msg(TN_IO_FAILED, cmd, strerror(e));
+        return TN_IO_FAILED;
+    }
+    fcntl(pex[1], F_SETFD, FD_CLOEXEC);
+    pid_t pid = fork();
+    if (pid == 0) {
+        dup2(pin[0], 0);
+        dup2(pout[1], 1);
+        dup2(perr[1], 2);
+        close(pin[0]); close(pin[1]); close(pout[0]); close(pout[1]); close(perr[0]); close(perr[1]); close(pex[0]);
+        int e = 0;
+        if (cdir && chdir(cdir) != 0) e = errno;
+        if (e == 0) { execvp(argv[0], argv); e = errno; }
+        ssize_t w = write(pex[1], &e, sizeof e);
+        (void)w;
+        _exit(127);
+    }
+    int fe = pid < 0 ? errno : 0;
+    close(pin[0]); close(pout[1]); close(perr[1]); close(pex[1]);
+    for (int64_t i = 0; i <= n; i++) tn_free(argv[i]);
+    tn_free(argv);
+    tn_free(cdir);
+    int e = fe;
+    if (pid > 0) {
+        ssize_t r;
+        while ((r = read(pex[0], &e, sizeof e)) < 0 && errno == EINTR) {}
+        if (r != (ssize_t)sizeof e) e = 0;
+    }
+    close(pex[0]);
+    if (e != 0) {
+        close(pin[1]); close(pout[0]); close(perr[0]);
+        if (pid > 0) while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+        int k = tn_io_kind(e);
+        *msg = tn_io_msg(k, cmd, strerror(e));
+        return k;
+    }
+    fcntl(pin[1], F_SETFL, fcntl(pin[1], F_GETFL) | O_NONBLOCK);
+    tn_buf ob = tn_buf_new(), eb = tn_buf_new();
+    int64_t sent = 0, deadline = timeout_ms > 0 ? tn_ms_now() + timeout_ms : 0;
+    int fin = pin[1], fout = pout[0], ferr = perr[0];
+    if (input.len == 0) { close(fin); fin = -1; }
+    bool timed_out = false;
+    while (fout >= 0 || ferr >= 0) {
+        struct pollfd ps[3];
+        int np = 0, wi = -1, oi = -1, ei = -1;
+        if (fin >= 0) { wi = np; ps[np].fd = fin; ps[np].events = POLLOUT; ps[np++].revents = 0; }
+        if (fout >= 0) { oi = np; ps[np].fd = fout; ps[np].events = POLLIN; ps[np++].revents = 0; }
+        if (ferr >= 0) { ei = np; ps[np].fd = ferr; ps[np].events = POLLIN; ps[np++].revents = 0; }
+        int wait = -1;
+        if (deadline) {
+            int64_t left = deadline - tn_ms_now();
+            if (left <= 0) { timed_out = true; break; }
+            wait = left > 1000000 ? 1000000 : (int)left;
+        }
+        int k = poll(ps, (nfds_t)np, wait);
+        if (k < 0 && errno == EINTR) continue;
+        if (k < 0) break;
+        if (wi >= 0 && ps[wi].revents) {
+            ssize_t w = write(fin, input.p + sent, (size_t)(input.len - sent));
+            if (w > 0) sent += w;
+            if ((w < 0 && errno != EAGAIN && errno != EINTR) || sent == input.len) { close(fin); fin = -1; }
+        }
+        char chunk[1 << 16];
+        if (oi >= 0 && ps[oi].revents) {
+            ssize_t r = read(fout, chunk, sizeof chunk);
+            if (r > 0) tn_buf_add(&ob, chunk, r);
+            else if (r == 0 || errno != EINTR) { close(fout); fout = -1; }
+        }
+        if (ei >= 0 && ps[ei].revents) {
+            ssize_t r = read(ferr, chunk, sizeof chunk);
+            if (r > 0) tn_buf_add(&eb, chunk, r);
+            else if (r == 0 || errno != EINTR) { close(ferr); ferr = -1; }
+        }
+    }
+    int st = 0;
+    for (;;) {
+        if (timed_out) { kill(pid, SIGKILL); while (waitpid(pid, &st, 0) < 0 && errno == EINTR) {} break; }
+        pid_t w = waitpid(pid, &st, deadline ? WNOHANG : 0);
+        if (w == pid) break;
+        if (w < 0 && errno != EINTR) break;
+        if (deadline && tn_ms_now() >= deadline) { timed_out = true; continue; }
+        if (deadline) { struct timespec t = {0, 2000000}; nanosleep(&t, NULL); }
+    }
+    if (fin >= 0) close(fin);
+    if (fout >= 0) close(fout);
+    if (ferr >= 0) close(ferr);
+    int64_t no = ob.len, ne = eb.len;
+    tn_List_Int l = tn_List_Int_alloc(4 + no + ne);
+    l->data[0] = WIFEXITED(st) ? WEXITSTATUS(st) : -1;
+    l->data[1] = WIFSIGNALED(st) ? WTERMSIG(st) : 0;
+    l->data[2] = timed_out ? 1 : 0;
+    l->data[3] = no;
+    l->len = 4;
+    tn_bytes_put(l, ob.p + sizeof(tn_rc), no);
+    tn_bytes_put(l, eb.p + sizeof(tn_rc), ne);
+    tn_free(ob.p);
+    tn_free(eb.p);
+    *res = l;
+    return TN_IO_OK;
+}
 
 #endif

@@ -319,6 +319,19 @@ impl<'a> Emitter<'a> {
                 let ok = self.tmp_val(&Ty::bool(), &format!("tn_proc_env({}, &{})", a[1], s)).code;
                 self.some_none(t, &ok, &s)
             }
+            "Proc.run_capture" => {
+                let input = self.tmp_owned(&Ty::str(), &format!("tn_bytes_of({}, {})", a[4], loc)).code;
+                let on = self.cty(&t.args()[0]);
+                let (r, m) = (self.fresh("r"), self.fresh("m"));
+                self.line(&format!("{} {} = {{0}}; tn_Str {} = {{0}};", on, r, m));
+                let call = format!("tn_proc_capture({}, {}, {}, {}, {}, &{}, &{})", a[1], a[2], a[3], input, a[5], r, m);
+                let k = self.tmp_val(&Ty::int(), &call).code;
+                self.io_result(t, &k, &r, &m)
+            }
+            "Proc.exit" => {
+                self.line(&format!("tn_proc_exit({}, {});", a[1], loc));
+                bor("0")
+            }
             "Clock.now_ms" => self.tmp_val(t, "tn_now_ms()"),
             "Clock.mono_ns" => self.tmp_val(t, "tn_mono_ns()"),
             "Clock.sleep_ms" => {

@@ -138,6 +138,90 @@ impl<'a> Interp<'a> {
             },
         }
     }
+    // Proc.run_capture: run in `dir` with `input` on stdin, capturing stdout and
+    // stderr; killed after timeout_ms > 0. Packed as runtime/tenon.h tn_proc_capture.
+    fn proc_capture(&mut self, cmd: &str, args: &V, dir: &str, input: Vec<u8>, timeout_ms: i64) -> V {
+        use std::io::{Read, Write};
+        let V::List(xs) = args else { unreachable!() };
+        let args: Vec<String> = xs.iter().map(|x| match x {
+            V::Str(s) => s.to_string(),
+            _ => unreachable!(),
+        }).collect();
+        if cmd.contains('\0') || dir.contains('\0') || args.iter().any(|a| a.contains('\0')) {
+            return self.io_err("Failed", format!("{}: argument contains a NUL byte", cmd));
+        }
+        if !dir.is_empty() && !std::path::Path::new(dir).is_dir() {
+            return self.io_err("NotFound", dir.to_string());
+        }
+        let _ = self.out.flush();
+        let mut c = std::process::Command::new(cmd);
+        c.args(&args).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+        if !dir.is_empty() {
+            c.current_dir(dir);
+        }
+        let mut child = match c.spawn() {
+            Ok(ch) => ch,
+            Err(e) => {
+                return match e.kind() {
+                    std::io::ErrorKind::NotFound => self.io_err("NotFound", cmd.to_string()),
+                    std::io::ErrorKind::PermissionDenied => self.io_err("Denied", cmd.to_string()),
+                    _ => self.io_err("Failed", format!("{}: {}", cmd, os_msg(&e))),
+                }
+            }
+        };
+        let mut si = child.stdin.take().unwrap();
+        let w = std::thread::spawn(move || {
+            let _ = si.write_all(&input);
+        });
+        // Readers append to shared buffers, so a timed-out command whose
+        // children keep the pipes open is not waited for.
+        let reader = |mut r: Box<dyn Read + Send>| {
+            let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let b2 = buf.clone();
+            let h = std::thread::spawn(move || {
+                let mut chunk = [0u8; 65536];
+                while let Ok(k) = r.read(&mut chunk) {
+                    if k == 0 {
+                        break;
+                    }
+                    b2.lock().unwrap().extend_from_slice(&chunk[..k]);
+                }
+            });
+            (buf, h)
+        };
+        let (ob, oh) = reader(Box::new(child.stdout.take().unwrap()));
+        let (eb, eh) = reader(Box::new(child.stderr.take().unwrap()));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms.max(0) as u64);
+        let mut timed_out = false;
+        let st = loop {
+            match child.try_wait() {
+                Ok(Some(st)) => break Some(st),
+                Ok(None) => {}
+                Err(_) => break None,
+            }
+            if timeout_ms > 0 && std::time::Instant::now() > deadline {
+                let _ = child.kill();
+                timed_out = true;
+                break child.wait().ok();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        };
+        if !timed_out {
+            let _ = w.join();
+            let _ = oh.join();
+            let _ = eh.join();
+        }
+        let out = ob.lock().unwrap().clone();
+        let err = eb.lock().unwrap().clone();
+        use std::os::unix::process::ExitStatusExt;
+        let (code, sig) = match st {
+            Some(st) => (st.code().map(|c| c as i64).unwrap_or(-1), st.signal().unwrap_or(0) as i64),
+            None => (-1, 0),
+        };
+        let mut packed = vec![V::Int(code), V::Int(sig), V::Int(timed_out as i64), V::Int(out.len() as i64)];
+        packed.extend(out.iter().chain(err.iter()).map(|&b| V::Int(b as i64)));
+        self.ok(V::List(Rc::new(packed)))
+    }
     fn io_err(&self, kind: &str, msg: String) -> V {
         let e = self.variant("IoError", kind, vec![V::Str(msg.into())]);
         self.variant("Result", "Err", vec![e])
@@ -391,6 +475,20 @@ impl<'a> Interp<'a> {
             n if n.starts_with("Poller.") || n == "Net.poller" => return Ok(self.poller_op(n, &args)),
             n if n.starts_with("Net.") || n.starts_with("Listener.") || n.starts_with("Conn.") => return Ok(self.net_op(n, &args)),
             "Proc.run" => return Ok(self.proc_run(s(1), &a[2])),
+            "Proc.run_capture" => {
+                let input = list_bytes(&a[4], sp)?;
+                return Ok(self.proc_capture(s(1), &a[2], s(3), input, int(5)));
+            }
+            "Proc.exit" => {
+                let code = int(1);
+                if !(0..=255).contains(&code) {
+                    return trap(format!("exit status {} is out of range", code), sp);
+                }
+                if self.out.flush().is_err() {
+                    return Err(Ctrl::Exit(crate::interp::EXIT_OUTPUT));
+                }
+                return Err(Ctrl::Exit(code as i32));
+            }
             "Proc.env" => {
                 let n = s(1);
                 let v = if n.is_empty() || n.contains('=') || n.contains('\0') { None } else { std::env::var_os(n) };

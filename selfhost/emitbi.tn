@@ -328,6 +328,20 @@ pub fn extern_call(m: mut emit.Em, name: Str, args: List[emit.CV], ptys: List[ck
             let ok = m.tmp_val(bool_t(), "tn_proc_env(" + a[1] + ", &" + s + ")").code
             some_none(mut m, t, ok, s)
         }
+        "Proc.run_capture" => {
+            let input = m.tmp_owned(cktypes.t_str(), "tn_bytes_of(" + a[4] + ", " + loc + ")").code
+            let on = m.cty(t.args()[0])
+            let r = m.fresh("r")
+            let ms = m.fresh("m")
+            m.line(on + " " + r + " = \{0}; tn_Str " + ms + " = \{0};")
+            let call = "tn_proc_capture(" + a[1] + ", " + a[2] + ", " + a[3] + ", " + input + ", " + a[5] + ", &" + r + ", &" + ms + ")"
+            let k = m.tmp_val(int_t(), call).code
+            io_result(mut m, t, k, r, ms)
+        }
+        "Proc.exit" => {
+            m.line("tn_proc_exit(" + a[1] + ", " + loc + ");")
+            emit.bor("0")
+        }
         "Clock.now_ms" => m.tmp_val(t, "tn_now_ms()"),
         "Clock.mono_ns" => m.tmp_val(t, "tn_mono_ns()"),
         "Clock.sleep_ms" => {
