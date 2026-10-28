@@ -50,6 +50,10 @@ expect 0 "" "$C" build -O0 "$tmp/p.tn" --root "$REPO" -o "$tmp/p1"
 expect 0 'args ["z"]' "$tmp/p1" z
 expect 0 "" "$C" build -o "$tmp/p2" "$tmp/p.tn"
 expect 0 'args []' "$tmp/p2"
+# standard output that cannot be written (closed: write fails with EBADF) exits 74
+# on both backends (docs/tools.md; runtime/tenon.h tn_write_fd)
+expect 74 "" bash -c 'exec "$0" >&-' "$tmp/p2"
+expect 74 "" bash -c 'exec "$0" run "$1" >&-' "$C" "$tmp/p.tn"
 expect 0 "main" "$C" tokens "$tmp/p.tn" --root "$REPO"
 printf 'fn main(sys:Sys){sys.console.println("x")}\n' > "$tmp/u.tn"
 expect 1 "$tmp/u.tn" "$C" fmt "$tmp/u.tn" --check
