@@ -1,4 +1,4 @@
-// module (imported by the language server, selfhost/tenonlsp.tn)
+// module
 // Hover, go-to-definition and completion over one analysis of a buffer
 // (front.Analysis; the buffer is file 1, the main file), using the checker's
 // side tables: `types` (node id -> type) and `res` (node id -> what a name,

@@ -1,4 +1,4 @@
-// module (imported by emit.tn)
+// module
 // Self-hosted C backend, part 6: traits. Calls of trait methods on type
 // parameters are resolved per instance (monomorphization: the call is the
 // impl's method for the instance's type, no indirection); `dyn Trait` values

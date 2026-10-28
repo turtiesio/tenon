@@ -12,7 +12,7 @@
    Oniguruma-only constructs with no equivalent are rejected (FORBIDDEN).
 4. A small TextMate interpreter (match, begin/end, include, captures; earliest
    match wins, ties go to the end pattern and then to pattern order, as in
-   vscode-textmate) tokenizes every .tn file in the repository line by line.
+   vscode-textmate) tokenizes every .tn file of the corpus (tools/corpus.py) line by line.
    Tenon strings, raw strings and interpolations cannot span lines, so the
    grammar closes them at the end of a line as a fallback. A scope still open
    at the end of a line is a leak; a scope closed only by that fallback means
@@ -20,7 +20,7 @@
    real lexer (`tenonc tokens`, $TENON) rejects the file on that line.
    A few pinned lines (SAMPLES) also check the scopes given to tricky tokens.
 
-Usage: tools/vscode_grammar_check.py [FILE.tn...]   (default: the whole repo)
+Usage: tools/vscode_grammar_check.py [FILE.tn...]   (default: the corpus)
 Exit status 1 on any finding.
 """
 import json
@@ -28,6 +28,8 @@ import os
 import re
 import subprocess
 import sys
+
+import corpus as corpus_
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXT = os.path.join(ROOT, "editors", "vscode")
@@ -232,17 +234,7 @@ def lexer_keywords():
 
 
 def corpus():
-    try:
-        out = subprocess.run(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "*.tn"],
-            cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-        return sorted(set(os.path.join(ROOT, p) for p in out if os.path.exists(os.path.join(ROOT, p))))
-    except (OSError, subprocess.CalledProcessError):
-        found = []
-        for d, dirs, files in os.walk(ROOT):
-            dirs[:] = [x for x in dirs if x not in (".git", "target", ".claude")]
-            found += [os.path.join(d, f) for f in files if f.endswith(".tn")]
-        return sorted(found)
+    return [os.path.join(ROOT, f) for f in corpus_.files()]
 
 
 def lexer_error_line(path):

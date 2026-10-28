@@ -1,4 +1,4 @@
-// module (imported by the self-hosted checker)
+// module
 // Function bodies: name resolution, type inference, methods, places and
 // patterns. A port of bootstrap/src/check.rs (functions, statements, places, patterns)
 // and bootstrap/src/check_expr.rs, decision for decision and message for message.

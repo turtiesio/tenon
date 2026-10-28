@@ -1,4 +1,4 @@
-// module (imported by the self-hosted interpreter)
+// module
 // The strict decoder of the derived codec: a port of bootstrap/src/codec.rs.
 // A value is accepted only in its canonical form (what `encode` prints), and
 // a failure reports the same byte offset as the bootstrap and the C backend.

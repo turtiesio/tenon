@@ -85,9 +85,10 @@ the key type's Show impl, as `m[k]` read as a value and C everywhere
 
 Verification:
 
-- `./check` runs the whole suite with tenonc (`tenonc test tests`: every run
-  test on the interpreter and the C backend, compared with the .out files)
-  and once more with `tenon test tests`; both must pass.
+- `./check` runs the whole suite with tenonc (`tenonc test tests tests/v2`:
+  every run test on the interpreter and the C backend, compared with the
+  .out files). The bootstrap's own `tenon test tests` runs in
+  tools/evidence.sh, as the differential reference for its interpreter.
 - `tools/programs.sh` (in ./check, with tenonc) runs the 9 program scenarios
   (chat uses the event loop, kvhttp blocking sockets) on `tenonc run` and
   `tenonc build`.
@@ -100,7 +101,7 @@ Verification:
 
 Speed (tenonc built -O2 by ./check; bootstrap = `tenon run`): fib(38) 18.8 s
 vs 17.0 s, bench/trees 33.7 s vs 43.3 s, tests/run/std_regex.tn 2.4 s vs
-2.3 s. ./check stays near 30 s (21 s before stage B, with fewer steps).
+2.3 s. ./check's own timing table gives its current cost per step.
 
 ## The test runner
 
@@ -135,13 +136,14 @@ bootstrap's. tools/cache_test.sh (in ./check).
 
 ## Gates
 
-`./check` builds tenonc with the bootstrap (stage1) and runs the whole test
-suite, the program scenarios, the doc programs and the grammar check with it
-(`TENON=$TENONC`); `tenon test tests` runs as the differential reference;
-tools/selfhost.sh and tools/fixpoint.sh compare the two compilers as before
-(selfhost.sh now uses `tenonc tokens`/`ast`; `tenonc check` is now silent on
-success and prints the rendered diagnostic like `tenon check`; selfhost/check.tn
-keeps the one-line `ok` form).
+`./check` has the bootstrap build tenonc with -O0 (stage0, target/tenonc0),
+stage0 build tenonc at -O2 in parallel translation units (stage1,
+target/tenonc), and runs the whole test suite, the program scenarios, the
+doc programs and the grammar check with stage1. tools/selfhost.sh compares
+stage1 with the bootstrap (`tokens`, `ast`, `check`, `emit`) and stage0 with
+stage1 (the fixpoint) in one pass over the corpus. The bootstrap's own
+`tenon test tests` runs in tools/evidence.sh as the differential reference.
+./check prints the time of each step at the end.
 
 ## Workers and channels in the interpreter (v2)
 

@@ -13,8 +13,10 @@ target/tenonc build prog.tn -o prog  # native executable via C
 ```
 
 `target/tenonc` is the self-hosted compiler (selfhost/tenonc.tn), built by
-./check with the bootstrap (`target/release/tenon build selfhost/tenonc.tn -o
-target/tenonc`). It has every subcommand of the bootstrap's `tenon` (run,
+./check in two stages: the bootstrap builds it with -O0
+(`target/release/tenon build selfhost/tenonc.tn -o target/tenonc0 -O0`), and
+that builds the final one (`target/tenonc0 build selfhost/tenonc.tn -o
+target/tenonc`, with TENON_ROOT=.). It has every subcommand of the bootstrap's `tenon` (run,
 build, emit, check, test, tokens, ast; selfhost/SELFHOST.md). The Rust
 bootstrap is a frozen seed: changing it needs an approvals entry and its line
 count may only shrink (governance/README.md). New language features exist

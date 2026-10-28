@@ -1,4 +1,4 @@
-// module (imported by the language server, selfhost/tenonlsp.tn)
+// module
 // Positions in source text. The checker reports 1-based lines and 1-based
 // byte columns; the Language Server Protocol counts lines from 0 and
 // characters in UTF-16 code units. Also file URIs and identifier scanning.

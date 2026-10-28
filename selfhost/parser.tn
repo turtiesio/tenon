@@ -1,4 +1,4 @@
-// module (imported by astdump.tn and the self-hosted checker)
+// module
 // Self-hosted parser: a second, independent implementation of bootstrap/src/parser.rs.
 // `astdump FILE` must print exactly what `tenon ast FILE` prints.
 

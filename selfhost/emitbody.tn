@@ -1,4 +1,4 @@
-// module (imported by emit.tn)
+// module
 // Self-hosted C backend, part 3: function instances, statements, loops,
 // places and assignment, expressions, calls. A port of bootstrap/src/emit_body.rs;
 // see emit.tn for the ownership protocol.

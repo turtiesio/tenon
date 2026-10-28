@@ -1,4 +1,4 @@
-// module (imported by the language server, selfhost/tenonlsp.tn)
+// module
 // Finding things in the checker's tree (selfhost/ckast.tn) by source
 // position: every node of a file, the extent of blocks (the tree keeps only
 // start positions, so a block ends at the `}` matching its `{`), and the

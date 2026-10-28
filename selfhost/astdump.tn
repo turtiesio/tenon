@@ -1,4 +1,4 @@
-// module (imported by tenonc.tn)
+// module
 // The self-hosted parser's AST dump: `tenonc ast FILE` (compare: tenon ast FILE).
 import parser
 

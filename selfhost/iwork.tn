@@ -1,4 +1,4 @@
-// module (imported by the self-hosted interpreter)
+// module
 // Workers and channels (lib/v2/prelude.tn) in the interpreter.
 //
 // The interpreter is itself a Tenon program built by the bootstrap, which

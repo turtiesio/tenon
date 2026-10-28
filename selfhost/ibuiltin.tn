@@ -1,4 +1,4 @@
-// module (imported by the self-hosted interpreter)
+// module
 // Builtins: the prelude's `extern fn`s on numbers, strings, lists, maps,
 // Option/Result and the console (bootstrap/src/builtins.rs `call_extern`,
 // `extern_mut`). The host's own builtins do the work (they are the C

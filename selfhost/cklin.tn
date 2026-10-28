@@ -1,4 +1,4 @@
-// module (imported by the self-hosted checker)
+// module
 // Linear and unique types, run after type checking: a port of bootstrap/src/linear.rs
 // (flow-sensitive consumption analysis) including the codec restrictions.
 

@@ -1,15 +1,16 @@
 # Self-hosted checker: notes
 
-`selfhost/check.tn FILE [ROOT]` is a second, independent implementation of
-the bootstrap's front end after parsing: module loading (bootstrap/src/main.rs
-`front`), bootstrap/src/check.rs, bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs, bootstrap/src/linear.rs and
-the Subst/unify code of bootstrap/src/types.rs. It prints `ok` or the first diagnostic
-as `PATH:LINE:COL: error: MESSAGE`; `tenonc check FILE [ROOT]`
-(selfhost/tenonc.tn) is the same. `tools/selfhost.sh` compares it with
+`tenonc check FILE` (selfhost/tenonc.tn) runs a second, independent
+implementation of the bootstrap's front end after parsing: module loading
+(bootstrap/src/main.rs `front`), bootstrap/src/check.rs,
+bootstrap/src/check_expr.rs, bootstrap/src/exhaust.rs,
+bootstrap/src/linear.rs and the Subst/unify code of bootstrap/src/types.rs.
+It is silent on success and prints the first diagnostic as
+`PATH:LINE:COL: error: MESSAGE`. `tools/selfhost.sh` compares it with
 `tenon check` on every `.tn` file in the corpus. `checker.check` returns the
 side tables the C backend uses (`Checked`; see EMITTER_NOTES.md).
 `checker.check_lenient` (used by the language server, selfhost/tenonlsp.tn,
-through `front.analyze`) reports the same first diagnostic but goes on
+through `front.analyze_in`) reports the same first diagnostic but goes on
 checking the other functions after one fails, so the side tables cover the
 whole program while it is being edited.
 
@@ -17,7 +18,6 @@ whole program while it is being edited.
 
 | Module | Ports | Contents |
 |---|---|---|
-| `check.tn` | main.rs | driver: prints `ok` or the diagnostic |
 | `front.tn` | main.rs `front` | reads the prelude and modules through `Fs`, parses, checks |
 | `checker.tn` | check.rs `check` | the phases in the bootstrap's order; returns `Checked` |
 | `ckast.tn` | ast.rs, check.rs `fix_paths`, `breaks` | checker syntax tree with file numbers and node ids |
@@ -86,7 +86,7 @@ expressions, declarations, variants, parameters and imports.
   the extra cases in `tests/selfhost/` (one diagnostic per file, plus accepted
   programs with tricky constructs; `ckmod*.tn`, `ckbad*.tn`, `ckcycle.tn` and
   `ckmissingdep.tn` are modules imported by the `mod_*` cases).
-- `selfhost/checkfuzz.py COUNT SEED [-v]`: differential mutation testing.
+- `tools/checkfuzz.py COUNT SEED [-v]` (in tools/evidence.sh): differential mutation testing.
   Corpus programs (mostly ones the bootstrap accepts) get token-level
   mutations; both checkers must print the same first line (and accepted
   mutants must emit the same C). Disagreements are

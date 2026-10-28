@@ -25,8 +25,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 T, tmp, every = os.path.abspath(sys.argv[1]), sys.argv[2], "--all" in sys.argv
 F = os.path.join(tmp, "tenonfmt")
-files = sorted(os.path.join(d, f)[2:] for top in ["bootstrap", "lib", "tests", "programs", "selfhost", "bench", "study"]
-               for d, _, fs in os.walk("./" + top) for f in fs if f.endswith(".tn"))
+sys.path.insert(0, "tools")
+import corpus
+files = corpus.files()
 skip_globs = [l.split("#")[0].strip() for l in open("tools/fmt_skip.txt")]
 skip_globs = [g for g in skip_globs if g]
 skipped = [f for f in files if any(fnmatch.fnmatch(f, g) for g in skip_globs)]
@@ -89,7 +90,7 @@ def same(f):
         out.append(f"{f}: formatting changed the tokens")
     return out
 
-with ThreadPoolExecutor(8) as ex:
+with ThreadPoolExecutor(corpus.JOBS) as ex:
     for p in ex.map(same, [f for f in files if f in refused or f in changed or every]):
         problems += p
 

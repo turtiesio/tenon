@@ -1,4 +1,4 @@
-// module (imported by the self-hosted interpreter)
+// module
 // Capability builtins (bootstrap/src/builtins.rs `fs_op`, `net_op`,
 // `poller_op`, `proc_run`, ...), done with the interpreter's own capabilities:
 //

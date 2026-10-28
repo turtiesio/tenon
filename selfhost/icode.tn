@@ -1,4 +1,4 @@
-// module (imported by the self-hosted interpreter)
+// module
 // The interpreter's code: the checked program (checker.Checked) lowered to a
 // tree with every resolution done once. Names become frame slots (a function
 // frame holds its parameters, then one slot per name bound in its body; a
