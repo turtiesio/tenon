@@ -52,10 +52,14 @@ pub struct Sched { pub tasks: List[Task], pub chans: List[Chan], pub cur: Int, p
 
 pub fn new_sched() -> Sched { Sched { tasks: [], chans: [], cur: -1, last: -1, cores: 0 } }
 
-pub fn work_names() -> List[Str] {
+pub enum WorkOp { BwWorkers, BwSpawn, BwCores, BwJoin, BwChannel, BwSend, BwClose, BwRecv, BwTryRecv }
+
+// The builtins of workers and channels, by name (ibuiltin.table).
+pub fn table() -> List[(Str, ibuiltin.Bi)] {
     [
-        "Sys.workers", "Workers.spawn", "Workers.cores", "Worker.join", "channel", "Sender.send", "Sender.close",
-        "Receiver.recv", "Receiver.try_recv",
+        ("Sys.workers", BWork(BwWorkers)), ("Workers.spawn", BWork(BwSpawn)), ("Workers.cores", BWork(BwCores)),
+        ("Worker.join", BWork(BwJoin)), ("channel", BWork(BwChannel)), ("Sender.send", BWork(BwSend)),
+        ("Sender.close", BWork(BwClose)), ("Receiver.recv", BWork(BwRecv)), ("Receiver.try_recv", BWork(BwTryRecv)),
     ]
 }
 
@@ -63,47 +67,47 @@ const DEADLOCK: Str = "deadlock: every worker is waiting for a channel or a join
 
 // A builtin with an effect called by a worker: logged, and replayed when the
 // worker is resumed.
-pub fn logged(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+pub fn logged(it: mut ieval.Interp, b: ibuiltin.Bi, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
     let w = it.wk.cur
     let p = it.wk.tasks[w].pos
     if p < it.wk.tasks[w].log.len() {
         it.wk.tasks[w].pos = p + 1
         return Ok(it.wk.tasks[w].log[p])
     }
-    let r = ibuiltin.call_raw(mut it, id, fi, a, sp)?
+    let r = ibuiltin.call_raw(mut it, b, a, sp)?
     it.wk.tasks[w].log.push(r)
     it.wk.tasks[w].pos = p + 1
     Ok(r)
 }
 
-pub fn call(it: mut ieval.Interp, id: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
-    match id {
-        0 => Ok(ival.vcap(ival.CAP_WORKERS, 0)),
-        1 => {
+pub fn call(it: mut ieval.Interp, op: WorkOp, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    match op {
+        BwWorkers => Ok(ival.vcap(ival.CAP_WORKERS, 0)),
+        BwSpawn => {
             it.wk.tasks.push(Task {
                 f: a[1], arg: a[2], state: S_NEW, on_chan: -1, on_task: -1, res: ival.unit(), log: [], pos: 0, yield_at: -1,
             })
             Ok(ival.vcap(ival.CAP_WORKER, it.wk.tasks.len() - 1))
         }
-        2 => Ok(ival.vint(cores(mut it))),
-        3 => join(mut it, a[0].j, sp),
-        4 => {
+        BwCores => Ok(ival.vint(cores(mut it))),
+        BwJoin => join(mut it, a[0].j, sp),
+        BwChannel => {
             it.wk.chans.push(Chan { q: [], head: 0, closed: false })
             let c = it.wk.chans.len() - 1
             Ok(ival.vtuple([ival.vcap(ival.CAP_SENDER, c), ival.vcap(ival.CAP_RECEIVER, c)]))
         }
-        5 => {
+        BwSend => {
             let c = a[0].j
             if it.wk.chans[c].closed { return ieval.trap("send on a closed channel", sp) }
             it.wk.chans[c].q.push(a[1])
             Ok(ival.unit())
         }
-        6 => {
+        BwClose => {
             it.wk.chans[a[0].j].closed = true
             Ok(ival.unit())
         }
-        7 => recv(mut it, a[0].j, sp),
-        _ => try_recv(mut it, a[0].j, sp),
+        BwRecv => recv(mut it, a[0].j, sp),
+        BwTryRecv => try_recv(mut it, a[0].j, sp),
     }
 }
 

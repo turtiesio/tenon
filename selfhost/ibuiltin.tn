@@ -11,50 +11,75 @@ import ieval
 import icap
 import iwork
 
-// Builtins taking their receiver by value; the number is the position.
-pub fn ext_names() -> List[Str] {
-    [
-        "panic", "assert", "encode", "Int.checked_add", "Int.checked_sub", "Int.checked_mul", "Int.checked_div",
-        "Int.to_float", "Int.char", "Float.to_int", "Float.sqrt", "Float.floor", "Float.ceil", "Float.round",
-        "Float.to_fixed", "Str.len", "Str.byte", "Str.slice", "Str.find", "Str.find_from", "Str.split", "Str.trim",
-        "Str.trim_start", "Str.trim_end", "Str.starts_with", "Str.ends_with", "Str.to_int", "Str.to_float",
-        "Str.upper", "Str.lower", "Str.replace", "Str.chars", "Str.char_count", "Str.bytes", "Str.from_utf8",
-        "Str.from_utf8_lossy", "Str.lines", "Str.words", "List.len", "List.slice", "List.join", "Map.len",
-        "Map.get", "Map.keys", "Map.values", "Option.unwrap", "Option.expect", "Result.unwrap", "Result.expect",
-        "Console.print", "Console.println", "Console.eprintln", "Console.read_line", "Console.read_all",
-        "Console.read_all_bytes", "Console.write_bytes", "Console.flush", "Console.read_bytes",
-    ] + icap.cap_names() + iwork.work_names()
+// A builtin, found by its name in `table` once, when the program is lowered
+// (icode numbers the table's names; the interpreter keeps the variants), so
+// adding one moves no other. A worker logs the results of the effects (the
+// console, the capabilities, the workers and channels; iwork.tn).
+pub enum Bi { BCore(CoreOp), BStr(StrOp), BCon(ConOp), BFs(icap.FsOp), BNet(icap.NetOp), BPoll(icap.PollOp), BSys(icap.SysOp), BWork(iwork.WorkOp) }
+
+pub enum CoreOp {
+    BxPanic, BxAssert, BxEncode, BxAddChk, BxSubChk, BxMulChk, BxDivChk, BxToFloat, BxChar, BxToInt, BxSqrt, BxFloor, BxCeil,
+    BxRound, BxToFixed, BxListLen, BxListSlice, BxListJoin, BxMapLen, BxMapGet, BxMapKeys, BxMapValues, BxOptUnwrap,
+    BxOptExpect, BxResUnwrap, BxResExpect,
 }
 
-pub const FIRST_CAP: Int = 58
-// The first builtin with an effect (Console.print; then the capabilities,
-// then the workers and channels): a worker logs their results (iwork.tn).
-pub const FIRST_EFFECT: Int = 49
-pub const FIRST_WORK: Int = 95
+pub enum StrOp {
+    BsLen, BsByte, BsSlice, BsFind, BsFindFrom, BsSplit, BsTrim, BsTrimStart, BsTrimEnd, BsStartsWith, BsEndsWith, BsToInt,
+    BsToFloat, BsUpper, BsLower, BsReplace, BsChars, BsCharCount, BsBytes, BsFromUtf8, BsFromUtf8Lossy, BsLines, BsWords,
+}
+
+pub enum ConOp { BcPrint, BcPrintln, BcEprintln, BcReadLine, BcReadAll, BcReadAllBytes, BcWriteBytes, BcFlush, BcReadBytes }
+
+// The builtins taking their receiver by value, by name.
+pub fn table() -> List[(Str, Bi)] {
+    [
+        ("panic", BCore(BxPanic)), ("assert", BCore(BxAssert)), ("encode", BCore(BxEncode)),
+        ("Int.checked_add", BCore(BxAddChk)), ("Int.checked_sub", BCore(BxSubChk)), ("Int.checked_mul", BCore(BxMulChk)),
+        ("Int.checked_div", BCore(BxDivChk)), ("Int.to_float", BCore(BxToFloat)), ("Int.char", BCore(BxChar)),
+        ("Float.to_int", BCore(BxToInt)), ("Float.sqrt", BCore(BxSqrt)), ("Float.floor", BCore(BxFloor)),
+        ("Float.ceil", BCore(BxCeil)), ("Float.round", BCore(BxRound)), ("Float.to_fixed", BCore(BxToFixed)),
+        ("List.len", BCore(BxListLen)), ("List.slice", BCore(BxListSlice)), ("List.join", BCore(BxListJoin)),
+        ("Map.len", BCore(BxMapLen)), ("Map.get", BCore(BxMapGet)), ("Map.keys", BCore(BxMapKeys)),
+        ("Map.values", BCore(BxMapValues)), ("Option.unwrap", BCore(BxOptUnwrap)), ("Option.expect", BCore(BxOptExpect)),
+        ("Result.unwrap", BCore(BxResUnwrap)), ("Result.expect", BCore(BxResExpect)),
+        ("Str.len", BStr(BsLen)), ("Str.byte", BStr(BsByte)), ("Str.slice", BStr(BsSlice)), ("Str.find", BStr(BsFind)),
+        ("Str.find_from", BStr(BsFindFrom)), ("Str.split", BStr(BsSplit)), ("Str.trim", BStr(BsTrim)),
+        ("Str.trim_start", BStr(BsTrimStart)), ("Str.trim_end", BStr(BsTrimEnd)), ("Str.starts_with", BStr(BsStartsWith)),
+        ("Str.ends_with", BStr(BsEndsWith)), ("Str.to_int", BStr(BsToInt)), ("Str.to_float", BStr(BsToFloat)),
+        ("Str.upper", BStr(BsUpper)), ("Str.lower", BStr(BsLower)), ("Str.replace", BStr(BsReplace)),
+        ("Str.chars", BStr(BsChars)), ("Str.char_count", BStr(BsCharCount)), ("Str.bytes", BStr(BsBytes)),
+        ("Str.from_utf8", BStr(BsFromUtf8)), ("Str.from_utf8_lossy", BStr(BsFromUtf8Lossy)), ("Str.lines", BStr(BsLines)),
+        ("Str.words", BStr(BsWords)),
+        ("Console.print", BCon(BcPrint)), ("Console.println", BCon(BcPrintln)), ("Console.eprintln", BCon(BcEprintln)),
+        ("Console.read_line", BCon(BcReadLine)), ("Console.read_all", BCon(BcReadAll)),
+        ("Console.read_all_bytes", BCon(BcReadAllBytes)), ("Console.write_bytes", BCon(BcWriteBytes)),
+        ("Console.flush", BCon(BcFlush)), ("Console.read_bytes", BCon(BcReadBytes)),
+    ] + icap.table() + iwork.table()
+}
+
+fn Bi.effect(self) -> Bool {
+    match self {
+        BCore(_) => false,
+        BStr(_) => false,
+        _ => true,
+    }
+}
 
 // `mut self` builtins.
-pub const M_PUSH: Int = 0
-pub const M_POP: Int = 1
-pub const M_INSERT: Int = 2
-pub const M_REMOVE: Int = 3
-pub const M_CLEAR: Int = 4
-pub const M_REVERSE: Int = 5
-pub const M_SORT: Int = 6
-pub const M_SORT_BY: Int = 7
-pub const M_SORT_BY_DESC: Int = 8
-pub const M_MAP_INSERT: Int = 9
-pub const M_MAP_REMOVE: Int = 10
+pub enum MutOp { BmPush, BmPop, BmInsert, BmRemove, BmClear, BmReverse, BmSort, BmSortBy, BmSortByDesc, BmMapInsert, BmMapRemove }
 
-pub fn mut_names() -> List[Str] {
+pub fn mut_table() -> List[(Str, MutOp)] {
     [
-        "List.push", "List.pop", "List.insert", "List.remove", "List.clear", "List.reverse", "List.sort",
-        "List.sort_by", "List.sort_by_desc", "Map.insert", "Map.remove",
+        ("List.push", BmPush), ("List.pop", BmPop), ("List.insert", BmInsert), ("List.remove", BmRemove),
+        ("List.clear", BmClear), ("List.reverse", BmReverse), ("List.sort", BmSort), ("List.sort_by", BmSortBy),
+        ("List.sort_by_desc", BmSortByDesc), ("Map.insert", BmMapInsert), ("Map.remove", BmMapRemove),
     ]
 }
 
-pub fn numbering(names: List[Str]) -> Map[Str, Int] {
+// The number of each name (its position in the table), for icode.lower.
+pub fn numbering[T](table: List[(Str, T)]) -> Map[Str, Int] {
     var m: Map[Str, Int] = [:]
-    for i in 0..names.len() { m[names[i]] = i }
+    for i in 0..table.len() { m[table[i].0] = i }
     m
 }
 
@@ -100,163 +125,185 @@ fn opt_int(ix: ieval.Ix, o: Option[Int]) -> ival.Val {
     }
 }
 
-// Call builtin `id` (function fi) with arguments a.
+// Call builtin number `id` of `table` (function fi) with arguments a.
 pub fn call(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
-    if it.wk.cur >= 0 and id >= FIRST_EFFECT { return iwork.logged(mut it, id, fi, a, sp) }
-    call_raw(mut it, id, fi, a, sp)
+    if id < 0 { panic("interp: missing builtin {it.fns[fi].name}") }
+    let b = it.bis[id]
+    if it.wk.cur >= 0 and b.effect() { return iwork.logged(mut it, b, a, sp) }
+    call_raw(mut it, b, a, sp)
 }
 
-pub fn call_raw(it: mut ieval.Interp, id: Int, fi: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
-    if id < 0 { panic("interp: missing builtin {it.fns[fi].name}") }
-    if id >= FIRST_WORK { return iwork.call(mut it, id - FIRST_WORK, a, sp) }
-    if id >= FIRST_CAP { return icap.call(mut it, id - FIRST_CAP, a, sp) }
-    if id >= 15 and id < 38 { return str_op(mut it, id, a, sp) }
+pub fn call_raw(it: mut ieval.Interp, b: Bi, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    match b {
+        BCore(op) => core_op(mut it, op, a, sp),
+        BStr(op) => str_op(mut it, op, a, sp),
+        BCon(op) => con_op(mut it, op, a, sp),
+        BFs(op) => icap.fs_op(mut it, op, a, sp),
+        BNet(op) => {
+            it.con.flush() // a program about to block has shown all of its output
+            Ok(icap.net_op(mut it, op, a))
+        }
+        BPoll(op) => {
+            it.con.flush()
+            icap.poller_op(mut it, op, a, sp)
+        }
+        BSys(op) => icap.sys_op(mut it, op, a, sp),
+        BWork(op) => iwork.call(mut it, op, a, sp),
+    }
+}
+
+// An expression-dispatch `match` (tenon.md: one arm per builtin).
+fn core_op(it: mut ieval.Interp, op: CoreOp, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
     let ix = it.ix
-    match id {
-        0 => ieval.trap(a[0].s, sp),
-        1 => if a[0].i == 0 { ieval.trap("assertion failed", sp) } else { Ok(ival.unit()) },
-        2 => {
+    match op {
+        BxPanic => ieval.trap(a[0].s, sp),
+        BxAssert => if a[0].i == 0 { ieval.trap("assertion failed", sp) } else { Ok(ival.unit()) },
+        BxEncode => {
             var s = ""
             ival.show(mut s, a[0], false, it.names, true)
             Ok(ival.vstr(s))
         }
-        3 => Ok(opt_int(ix, a[0].i.checked_add(a[1].i))),
-        4 => Ok(opt_int(ix, a[0].i.checked_sub(a[1].i))),
-        5 => Ok(opt_int(ix, a[0].i.checked_mul(a[1].i))),
-        6 => Ok(opt_int(ix, a[0].i.checked_div(a[1].i))),
-        7 => Ok(ival.vfloat(a[0].i.to_float())),
-        8 => {
+        BxAddChk => Ok(opt_int(ix, a[0].i.checked_add(a[1].i))),
+        BxSubChk => Ok(opt_int(ix, a[0].i.checked_sub(a[1].i))),
+        BxMulChk => Ok(opt_int(ix, a[0].i.checked_mul(a[1].i))),
+        BxDivChk => Ok(opt_int(ix, a[0].i.checked_div(a[1].i))),
+        BxToFloat => Ok(ival.vfloat(a[0].i.to_float())),
+        BxChar => {
             let c = a[0].i
             if c < 0 or c > 1114111 or (c >= 55296 and c <= 57343) { return ieval.trap("invalid character code {c}", sp) }
             Ok(ival.vstr(c.char()))
         }
-        9 => {
+        BxToInt => {
             let x = a[0].f
             if not (x >= -9223372036854775808.0 and x < 9223372036854775808.0) {
                 return ieval.trap("float to int conversion out of range", sp)
             }
             Ok(ival.vint(x.to_int()))
         }
-        10 => Ok(ival.vfloat(a[0].f.sqrt())),
-        11 => Ok(ival.vfloat(a[0].f.floor())),
-        12 => Ok(ival.vfloat(a[0].f.ceil())),
-        13 => Ok(ival.vfloat(a[0].f.round())),
-        14 => Ok(ival.vstr(a[0].f.to_fixed(a[1].i))),
-        38 => Ok(ival.vint(a[0].xs.len())),
-        39 => {
+        BxSqrt => Ok(ival.vfloat(a[0].f.sqrt())),
+        BxFloor => Ok(ival.vfloat(a[0].f.floor())),
+        BxCeil => Ok(ival.vfloat(a[0].f.ceil())),
+        BxRound => Ok(ival.vfloat(a[0].f.round())),
+        BxToFixed => Ok(ival.vstr(a[0].f.to_fixed(a[1].i))),
+        BxListLen => Ok(ival.vint(a[0].xs.len())),
+        BxListSlice => {
             let n = a[0].xs.len()
             let x = a[1].i
             let y = a[2].i
             if x < 0 or y < x or y > n { return ieval.trap("slice [{x}, {y}) out of bounds for length {n}", sp) }
             Ok(ival.vlist(a[0].xs.slice(x, y)))
         }
-        40 => Ok(ival.vstr(str_list(a[0]).join(a[1].s))),
-        41 => Ok(ival.vint(a[0].m.len())),
-        42 => Ok(ieval.opt(ix, a[0].m.get(ival.to_key(a[1])))),
-        43 => {
+        BxListJoin => Ok(ival.vstr(str_list(a[0]).join(a[1].s))),
+        BxMapLen => Ok(ival.vint(a[0].m.len())),
+        BxMapGet => Ok(ieval.opt(ix, a[0].m.get(ival.to_key(a[1])))),
+        BxMapKeys => {
             var out: List[ival.Val] = []
             for (k, _) in a[0].m { out.push(ival.from_key(k)) }
             Ok(ival.vlist(out))
         }
-        44 => {
+        BxMapValues => {
             var out: List[ival.Val] = []
             for (_, v) in a[0].m { out.push(v) }
             Ok(ival.vlist(out))
         }
-        45 | 46 => {
+        BxOptUnwrap => if a[0].j == 0 { Ok(a[0].xs[0]) } else { ieval.trap("unwrap on None", sp) },
+        BxOptExpect => if a[0].j == 0 { Ok(a[0].xs[0]) } else { ieval.trap(a[1].s, sp) },
+        BxResUnwrap => {
             if a[0].j == 0 { return Ok(a[0].xs[0]) }
-            if id == 46 { ieval.trap(a[1].s, sp) } else { ieval.trap("unwrap on None", sp) }
-        }
-        47 | 48 => {
-            if a[0].j == 0 { return Ok(a[0].xs[0]) }
-            if id == 48 {
-                let p = ieval.prerender(mut it, a[0].xs[0])?
-                return ieval.trap(a[1].s + ": " + ival.show_nested(p, it.names), sp)
-            }
             let p = ieval.prerender(mut it, a[0])?
             ieval.trap("unwrap on " + ival.show_nested(p, it.names), sp)
         }
-        49 => {
+        BxResExpect => {
+            if a[0].j == 0 { return Ok(a[0].xs[0]) }
+            let p = ieval.prerender(mut it, a[0].xs[0])?
+            ieval.trap(a[1].s + ": " + ival.show_nested(p, it.names), sp)
+        }
+    }
+}
+
+fn con_op(it: mut ieval.Interp, op: ConOp, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    let ix = it.ix
+    match op {
+        BcPrint => {
             it.con.print(a[1].s)
             Ok(ival.unit())
         }
-        50 => {
+        BcPrintln => {
             it.con.println(a[1].s)
             Ok(ival.unit())
         }
-        51 => {
+        BcEprintln => {
             it.con.eprintln(a[1].s)
             Ok(ival.unit())
         }
-        52 => {
+        BcReadLine => {
             match it.con.read_line() {
                 Some(l) => Ok(ieval.some(ix, ival.vstr(l))),
                 None => Ok(ieval.none(ix)),
             }
         }
-        53 => Ok(ival.vstr(it.con.read_all())),
-        54 => Ok(ival.bytes_val(it.con.read_all_bytes())),
-        55 => {
+        BcReadAll => Ok(ival.vstr(it.con.read_all())),
+        BcReadAllBytes => Ok(ival.bytes_val(it.con.read_all_bytes())),
+        BcWriteBytes => {
             let b = list_bytes(a[1], sp)?
             it.con.write_bytes(b)
             Ok(ival.unit())
         }
-        56 => {
+        BcFlush => {
             it.con.flush()
             Ok(ival.unit())
         }
-        57 => Ok(ival.bytes_val(it.con.read_bytes(a[1].i))),
-        _ => panic("interp: missing builtin {it.fns[fi].name}"),
+        BcReadBytes => Ok(ival.bytes_val(it.con.read_bytes(a[1].i))),
     }
 }
 
-fn str_op(it: mut ieval.Interp, id: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+fn str_op(it: mut ieval.Interp, op: StrOp, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
     let s = a[0].s
     let ix = it.ix
-    match id {
-        15 => Ok(ival.vint(s.len())),
-        16 => {
+    match op {
+        BsLen => Ok(ival.vint(s.len())),
+        BsByte => {
             let i = a[1].i
             if i < 0 or i >= s.len() { return trap_oob(i, s.len(), sp) }
             Ok(ival.vint(s.byte(i)))
         }
-        17 => {
+        BsSlice => {
             let x = a[1].i
             let y = a[2].i
             if x < 0 or y < x or y > s.len() { return ieval.trap("slice [{x}, {y}) out of bounds for length {s.len()}", sp) }
             if not boundary(s, x) or not boundary(s, y) { return ieval.trap("slice [{x}, {y}) is not on a character boundary", sp) }
             Ok(ival.vstr(s.slice(x, y)))
         }
-        18 => Ok(opt_int(ix, s.find(a[1].s))),
-        19 => {
+        BsFind => Ok(opt_int(ix, s.find(a[1].s))),
+        BsFindFrom => {
             let from = a[2].i
             if from < 0 or from > s.len() { return trap_oob(from, s.len(), sp) }
             Ok(opt_int(ix, s.find_from(a[1].s, from)))
         }
-        20 => {
+        BsSplit => {
             if a[1].s.is_empty() { return ieval.trap("split with an empty separator", sp) }
             Ok(strs(s.split(a[1].s)))
         }
-        21 => Ok(ival.vstr(s.trim())),
-        22 => Ok(ival.vstr(s.trim_start())),
-        23 => Ok(ival.vstr(s.trim_end())),
-        24 => Ok(ival.vbool(s.starts_with(a[1].s))),
-        25 => Ok(ival.vbool(s.ends_with(a[1].s))),
-        26 => Ok(opt_int(ix, s.to_int())),
-        27 => match s.to_float() {
+        BsTrim => Ok(ival.vstr(s.trim())),
+        BsTrimStart => Ok(ival.vstr(s.trim_start())),
+        BsTrimEnd => Ok(ival.vstr(s.trim_end())),
+        BsStartsWith => Ok(ival.vbool(s.starts_with(a[1].s))),
+        BsEndsWith => Ok(ival.vbool(s.ends_with(a[1].s))),
+        BsToInt => Ok(opt_int(ix, s.to_int())),
+        BsToFloat => match s.to_float() {
             Some(f) => Ok(ieval.some(ix, ival.vfloat(f))),
             None => Ok(ieval.none(ix)),
         },
-        28 => Ok(ival.vstr(s.upper())),
-        29 => Ok(ival.vstr(s.lower())),
-        30 => {
+        BsUpper => Ok(ival.vstr(s.upper())),
+        BsLower => Ok(ival.vstr(s.lower())),
+        BsReplace => {
             if a[1].s.is_empty() { return ieval.trap("replace with an empty pattern", sp) }
             Ok(ival.vstr(s.replace(a[1].s, a[2].s)))
         }
-        31 => Ok(strs(s.chars())),
-        32 => Ok(ival.vint(s.char_count())),
-        33 => Ok(ival.bytes_val(s.bytes())),
-        34 => {
+        BsChars => Ok(strs(s.chars())),
+        BsCharCount => Ok(ival.vint(s.char_count())),
+        BsBytes => Ok(ival.bytes_val(s.bytes())),
+        BsFromUtf8 => {
             for x in a[0].xs {
                 if x.i < 0 or x.i > 255 { return Ok(ieval.none(ix)) }
             }
@@ -265,9 +312,9 @@ fn str_op(it: mut ieval.Interp, id: Int, a: List[ival.Val], sp: ckast.Span) -> R
                 None => Ok(ieval.none(ix)),
             }
         }
-        35 => Ok(ival.vstr(Str.from_utf8_lossy(list_bytes(a[0], sp)?))),
-        36 => Ok(strs(s.lines())),
-        _ => Ok(strs(s.words())),
+        BsFromUtf8Lossy => Ok(ival.vstr(Str.from_utf8_lossy(list_bytes(a[0], sp)?))),
+        BsLines => Ok(strs(s.lines())),
+        BsWords => Ok(strs(s.words())),
     }
 }
 
@@ -316,53 +363,39 @@ fn sorted_order(keys: List[ival.Val], desc: Bool, bad: mut Bool) -> List[Int] {
 }
 
 // A `mut self` builtin applied to the value at its place.
-pub fn mut_op(v: mut ival.Val, id: Int, a: List[ival.Val], keys: List[ival.Val], sp: ckast.Span, ix: ieval.Ix) -> Result[ival.Val, ieval.Ctl] {
-    if id == M_PUSH {
-        v.xs.push(a[0])
-        return Ok(ival.unit())
-    }
-    if id == M_MAP_INSERT {
-        v.m[ival.to_key(a[0])] = a[1]
-        return Ok(ival.unit())
-    }
-    if id == M_POP {
-        return match v.xs.pop() {
+pub fn mut_op(v: mut ival.Val, op: MutOp, a: List[ival.Val], keys: List[ival.Val], sp: ckast.Span, ix: ieval.Ix) -> Result[ival.Val, ieval.Ctl] {
+    match op {
+        BmPush => v.xs.push(a[0]),
+        BmMapInsert => { v.m[ival.to_key(a[0])] = a[1] }
+        BmPop => return match v.xs.pop() {
             Some(x) => Ok(ieval.some(ix, x)),
             None => Ok(ieval.none(ix)),
+        },
+        BmInsert => {
+            let i = a[0].i
+            if i < 0 or i > v.xs.len() { return trap_oob(i, v.xs.len(), sp) }
+            v.xs.insert(i, a[1])
         }
-    }
-    if id == M_INSERT {
-        let i = a[0].i
-        if i < 0 or i > v.xs.len() { return trap_oob(i, v.xs.len(), sp) }
-        v.xs.insert(i, a[1])
-        return Ok(ival.unit())
-    }
-    if id == M_REMOVE {
-        let i = a[0].i
-        if i < 0 or i >= v.xs.len() { return trap_oob(i, v.xs.len(), sp) }
-        return Ok(v.xs.remove(i))
-    }
-    if id == M_CLEAR {
-        v.xs.clear()
-        return Ok(ival.unit())
-    }
-    if id == M_REVERSE {
-        v.xs.reverse()
-        return Ok(ival.unit())
-    }
-    if id == M_MAP_REMOVE {
-        return match v.m.remove(ival.to_key(a[0])) {
+        BmRemove => {
+            let i = a[0].i
+            if i < 0 or i >= v.xs.len() { return trap_oob(i, v.xs.len(), sp) }
+            return Ok(v.xs.remove(i))
+        }
+        BmClear => v.xs.clear(),
+        BmReverse => v.xs.reverse(),
+        BmMapRemove => return match v.m.remove(ival.to_key(a[0])) {
             Some(x) => Ok(ieval.some(ix, x)),
             None => Ok(ieval.none(ix)),
+        },
+        BmSort | BmSortBy | BmSortByDesc => {
+            var bad = false
+            let ks = if op == BmSort { v.xs } else { keys }
+            let order = sorted_order(ks, op == BmSortByDesc, mut bad)
+            if bad { return ieval.trap("maps are not ordered", sp) }
+            var out: List[ival.Val] = []
+            for i in order { out.push(v.xs[i]) }
+            v.xs = out
         }
     }
-    // sorts
-    var bad = false
-    let ks = if id == M_SORT { v.xs } else { keys }
-    let order = sorted_order(ks, id == M_SORT_BY_DESC, mut bad)
-    if bad { return ieval.trap("maps are not ordered", sp) }
-    var out: List[ival.Val] = []
-    for i in order { out.push(v.xs[i]) }
-    v.xs = out
     Ok(ival.unit())
 }
