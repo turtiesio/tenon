@@ -82,6 +82,14 @@ More shapes, all accepted and all losing the claim (`01b`–`01d`):
 `unique` values are unaffected (they may be dropped). `?` is the idiomatic way to write error
 handling in Tenon, so this is easy to hit by accident, e.g. `store.commit(claim, parse(line)?)`.
 
+Fixed in 06027af, tests tests/v2/reject/linear_inflight_*.tn (receiver, argument, `return`, `break`,
+`continue`, tuple, match scrutinee, struct literal, a new value, a variant) and
+tests/v2/run/linear_inflight_ok.tn. Rule (reference §12): a part of a call, method call, tuple or struct
+literal that moves a linear value cannot sit next to a part that may leave early (`?`, `return`, or a
+`break`/`continue` of a loop around it), whatever their order; compute that part with `let` first. The
+interpolation shape is not a loss: `c.id_of()` is the type's own method and finishes the claim before
+the `?` runs (it stays accepted, in tests/v2/run/linear_inflight_ok.tn).
+
 ## 2. A `ref` parameter is erased when the function is used as a value (High)
 
 **Property:** reference §12: "A parameter declared `x: ref T` only *inspects* its argument: the

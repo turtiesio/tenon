@@ -24,6 +24,10 @@ pub struct Walk {
     // Does generic function `fi` accept a linear argument for parameter P?
     // Keyed "fi:P"; a recursive query assumes success.
     safe: Map[Str, Bool],
+    // The unique temporaries that are only inspected (expression ids): the
+    // value ends after its use, which the interpreter, dropping sockets
+    // explicitly, needs to know (icode NTemp).
+    temps: Map[Int, Bool],
 }
 
 fn word(k: ckast.Kind) -> Str { ckenv.kind_word(k) }
@@ -41,16 +45,17 @@ fn worker_extern(n: Str) -> Bool {
         n == "Receiver.try_recv"
 }
 
-pub fn check_all(env: ckenv.Env, fns: List[ckast.FnDecl], types: Map[Int, cktypes.Ty], res: Map[Int, ckenv.Res], caps: Map[Int, List[(Str, cktypes.Ty)]]) -> Result[Unit, ckast.Diag] {
-    var w = Walk { env, fns, types, res, caps, assume: [], vars: [], loops: [], diverged: false, safe: [:] }
+// On success, the inspected temporaries (Walk.temps).
+pub fn check_all(env: ckenv.Env, fns: List[ckast.FnDecl], types: Map[Int, cktypes.Ty], res: Map[Int, ckenv.Res], caps: Map[Int, List[(Str, cktypes.Ty)]]) -> Result[Map[Int, Bool], ckast.Diag] {
+    var w = Walk { env, fns, types, res, caps, assume: [], vars: [], loops: [], diverged: false, safe: [:], temps: [:] }
     for fi in 0..fns.len() { w.walk_fn(fi, [])? }
-    Ok(())
+    Ok(w.temps)
 }
 
 fn Walk.fresh(self, assume: List[Str]) -> Walk {
     Walk {
         env: self.env, fns: self.fns, types: self.types, res: self.res, caps: self.caps, assume,
-        vars: [], loops: [], diverged: false, safe: self.safe,
+        vars: [], loops: [], diverged: false, safe: self.safe, temps: self.temps,
     }
 }
 
@@ -63,6 +68,7 @@ fn Walk.walk_fn(mut self, fi: Int, assume: List[Str]) -> Result[Unit, ckast.Diag
     var w = self.fresh(assume)
     let r = w.walk_body(fi, f, body)
     self.safe = w.safe
+    self.temps = w.temps
     r
 }
 
@@ -480,6 +486,7 @@ fn Walk.expr(mut self, e: ckast.Expr, consume: Bool) -> Result[Unit, ckast.Diag]
     if not consume and self.kind(e.id) == Linear and not is_place(e) {
         return ckast.fail(e.sp, "this linear value is created here and never consumed; bind it with 'let' and consume it")
     }
+    if not consume and self.kind(e.id) == Unique and not is_place(e) { self.temps[e.id] = true }
     match self.types.get(e.id) {
         Some(t) => {
             match t {
@@ -699,6 +706,7 @@ fn Walk.lambda(mut self, e: ckast.Expr, params: List[(Str, Option[ckast.TExpr])]
     }
     let r = inner.lambda_body(body)
     self.safe = inner.safe
+    self.temps = inner.temps
     r
 }
 

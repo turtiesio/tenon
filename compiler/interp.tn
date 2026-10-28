@@ -84,7 +84,7 @@ pub fn run(sys: Sys, fr: front.Front, args: List[Str]) -> Int {
         fns: code.fns, lams: code.lams, vts: code.vts, fmts: code.fmts, vt_tys: code.vt_tys, fty: -1, names, ix, files: fr.files.map(fn(f) => f.0), site: span0(), depth: 0, checked: c,
         con: sys.console, clock: sys.clock, net: sys.net, proc: sys.proc, fss: [sys.fs], net_state: icap.new_net_state(),
         bp: sys.net.poller(), pp0: sys.net.poller(), pp1: sys.net.poller(), pp2: sys.net.poller(), pp3: sys.net.poller(),
-        wk: iwork.new_sched(), bis: bis.map(fn(b) => b.1), mbis: mbis.map(fn(b) => b.1),
+        wk: iwork.new_sched(), bis: bis.map(fn(b) => b.1), mbis: mbis.map(fn(b) => b.1), held: [],
     }
     var argv: List[ival.Val] = []
     for a in args { argv.push(ival.vstr(a)) }

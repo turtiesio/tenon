@@ -29,6 +29,7 @@ pub struct Checked {
     pub res: Map[Int, ckenv.Res],
     pub captures: Map[Int, List[(Str, cktypes.Ty)]],
     pub main: Int,
+    pub temps: Map[Int, Bool], // the unique temporaries only inspected (cklin.Walk.temps), for the interpreter
 }
 
 // Check a whole program (prelude, main file and modules, already merged).
@@ -43,8 +44,8 @@ pub fn check(prog: ckast.Program) -> Result[Checked, ckast.Diag] {
     if main < 0 { return ckast.fail(ckast.Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'") }
     ck.env.check_main(main)?
     const_cycles(prog, ck.res)?
-    cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures)?
-    Ok(Checked { prog, env: ck.env, types: ck.types, res: ck.res, captures: ck.captures, main })
+    let temps = cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures)?
+    Ok(Checked { prog, env: ck.env, types: ck.types, res: ck.res, captures: ck.captures, main, temps })
 }
 
 // `check` for tools (the language server): the same first diagnostic, but a
@@ -71,6 +72,7 @@ pub fn check_lenient(prog: ckast.Program) -> (Option[ckast.Diag], Option[Checked
     for i in 0..prog.fns.len() {
         if main < 0 and prog.fns[i].name == "main" and prog.fns[i].owner.is_none() { main = i }
     }
+    var temps: Map[Int, Bool] = [:]
     if first.is_none() {
         let rest = if main < 0 {
             ckast.fail(ckast.Span { file: 1, line: 1, col: 1 }, "program has no 'fn main'")
@@ -80,11 +82,11 @@ pub fn check_lenient(prog: ckast.Program) -> (Option[ckast.Diag], Option[Checked
                 .and_then(fn(_) => cklin.check_all(ck.env, prog.fns, ck.types, ck.res, ck.captures))
         }
         match rest {
-            Ok(_) => {}
+            Ok(m) => temps = m,
             Err(d) => first = Some(d),
         }
     }
-    (first, Some(Checked { prog, env: ck.env, types: ck.types, res: ck.res, captures: ck.captures, main }))
+    (first, Some(Checked { prog, env: ck.env, types: ck.types, res: ck.res, captures: ck.captures, main, temps }))
 }
 
 // The constants referenced anywhere in an expression, in traversal order.

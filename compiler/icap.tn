@@ -10,8 +10,10 @@
 //   ids and events are then exactly the host's).
 // - `Listener` and `Conn` (blocking) are sockets of one more host poller: a
 //   blocking call waits on it, keeping new connections and data per socket.
-//   Unlike the bootstrap, a dropped Listener or Conn is not closed until the
-//   program ends (an interpreted value has no destructor).
+//   A dropped Listener or Conn is closed (close_sock) where the C backend
+//   releases it: an interpreted value has no destructor, so the evaluator
+//   drops values explicitly (ieval.release, at the nodes icode emits where a
+//   type may hold a socket).
 // - `Proc` and `Clock` are the host's.
 import ckast
 import ival
@@ -50,10 +52,30 @@ pub fn table() -> List[(Str, ibuiltin.Bi)] {
 }
 
 // Blocking sockets: accepted connections not yet taken, per listener; bytes
-// received and not yet read, and end of stream, per connection.
-pub struct NetState { pub accq: Map[Int, List[Int]], pub buf: Map[Int, List[Int]], pub eof: Map[Int, Bool], pub npollers: Int }
+// received and not yet read, and end of stream, per connection; the sockets
+// the program holds (open: while it is empty, dropping a value has nothing to do).
+pub struct NetState {
+    pub accq: Map[Int, List[Int]], pub buf: Map[Int, List[Int]], pub eof: Map[Int, Bool], pub npollers: Int,
+    pub open: Map[Int, Bool],
+}
 
-pub fn new_net_state() -> NetState { NetState { accq: [:], buf: [:], eof: [:], npollers: 0 } }
+pub fn new_net_state() -> NetState { NetState { accq: [:], buf: [:], eof: [:], npollers: 0, open: [:] } }
+
+// Close a dropped Listener or Conn (a listener with the connections it has
+// accepted that the program never took); closing twice does nothing.
+pub fn close_sock(it: mut ieval.Interp, id: Int) {
+    if not it.net_state.open.contains(id) { return }
+    let _ = it.net_state.open.remove(id)
+    it.bp.close(id)
+    for c in it.net_state.accq.get(id).unwrap_or([]) {
+        it.bp.close(c)
+        let _ = it.net_state.buf.remove(c)
+        let _ = it.net_state.eof.remove(c)
+    }
+    let _ = it.net_state.accq.remove(id)
+    let _ = it.net_state.buf.remove(id)
+    let _ = it.net_state.eof.remove(id)
+}
 
 fn ioerr(ix: ieval.Ix, e: IoError) -> ival.Val {
     match e {
@@ -181,10 +203,13 @@ fn pump(it: mut ieval.Interp) {
 fn buffered(it: mut ieval.Interp, c: Int) -> List[Int] { it.net_state.buf.get(c).unwrap_or([]) }
 fn at_eof(it: mut ieval.Interp, c: Int) -> Bool { it.net_state.eof.get(c).unwrap_or(false) }
 
-fn conn_val(ix: ieval.Ix, r: Result[Int, IoError]) -> ival.Val {
+fn conn_val(it: mut ieval.Interp, r: Result[Int, IoError]) -> ival.Val {
     match r {
-        Ok(c) => ieval.ok(ix, ival.vcap(ival.CAP_CONN, c)),
-        Err(e) => ieval.err(ix, ioerr(ix, e)),
+        Ok(c) => {
+            it.net_state.open[c] = true
+            ieval.ok(it.ix, ival.vcap(ival.CAP_CONN, c))
+        }
+        Err(e) => ieval.err(it.ix, ioerr(it.ix, e)),
     }
 }
 
@@ -192,10 +217,16 @@ pub fn net_op(it: mut ieval.Interp, op: NetOp, a: List[ival.Val]) -> ival.Val {
     let ix = it.ix
     match op {
         BnListen => match it.bp.listen(a[1].i) {
-            Ok(l) => ieval.ok(ix, ival.vcap(ival.CAP_LISTENER, l)),
+            Ok(l) => {
+                it.net_state.open[l] = true
+                ieval.ok(ix, ival.vcap(ival.CAP_LISTENER, l))
+            }
             Err(e) => ieval.err(ix, ioerr(ix, e)),
         },
-        BnConnect => conn_val(ix, it.bp.connect(a[1].s, a[2].i)),
+        BnConnect => {
+            let r = it.bp.connect(a[1].s, a[2].i)
+            conn_val(mut it, r)
+        }
         BnPort => ival.vint(it.bp.port(a[0].j)),
         BnAccept => {
             let l = a[0].j
@@ -203,7 +234,7 @@ pub fn net_op(it: mut ieval.Interp, op: NetOp, a: List[ival.Val]) -> ival.Val {
             var q = it.net_state.accq[l]
             let c = q.remove(0)
             it.net_state.accq[l] = q
-            conn_val(ix, Ok(c))
+            conn_val(mut it, Ok(c))
         }
         BnReadLine => {
             let c = a[0].j

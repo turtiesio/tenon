@@ -692,7 +692,10 @@ let d = sys.net.connect("localhost", 8080)?
 ```
 
 `Listener` and `Conn` are unique handles: they cannot be copied, and dropping
-one closes it. Operations block; before blocking (`accept`, `connect`, reads,
+one closes it: it is closed when the last variable, temporary or value holding
+it ends (in `tenon run` as in a native build). A temporary is dropped after its
+statement, a variable when its block ends; a value passed by value to a
+function stays open until the variable it came from goes out of scope. Operations block; before blocking (`accept`, `connect`, reads,
 `sleep_ms`, reading the console) the program's standard output is flushed.
 
 ### Many connections: the event loop

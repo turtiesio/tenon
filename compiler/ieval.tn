@@ -39,6 +39,7 @@ pub unique struct Interp {
     pub bp: Poller, pub pp0: Poller, pub pp1: Poller, pub pp2: Poller, pub pp3: Poller,
     pub wk: iwork.Sched,
     pub bis: List[ibuiltin.Bi], pub mbis: List[ibuiltin.MutOp], // the builtins numbered by icode.lower
+    pub held: List[Int],                                        // the running frame's slots that may hold a socket (icode.FnRt.held)
 }
 
 pub fn trap[T](msg: Str, sp: ckast.Span) -> Result[T, Ctl] { Err(CTrap(msg, sp)) }
@@ -76,14 +77,65 @@ pub fn call_fn(it: mut Interp, fi: Int, fr: mut List[ival.Val], sp: ckast.Span) 
     let ns = it.fns[fi].nslots
     while fr.len() < ns { fr.push(ival.unit()) }
     let body = it.fns[fi].body
+    let held = it.held
+    it.held = it.fns[fi].held
     it.depth += 1
     let r = block(mut it, mut fr, body)
     it.depth -= 1
+    it.held = held
     match r {
         Ok(v) => Ok(v),
         Err(CRet(v)) => Ok(v),
         Err(c) => Err(c),
     }
+}
+
+// ---- dropping sockets (compiler/icap.tn) ----
+
+// The Listener and Conn ids inside v. Lists, maps, closures and `dyn` values
+// cannot hold them (the checker), so only structs, enums and tuples are entered.
+fn sock_ids(v: ival.Val, out: mut List[Int]) {
+    if v.k == ival.K_CAP {
+        if v.i == ival.CAP_LISTENER or v.i == ival.CAP_CONN { out.push(v.j) }
+    } else if v.k == ival.K_STRUCT or v.k == ival.K_ENUM or v.k == ival.K_TUPLE {
+        for x in v.xs { sock_ids(x, mut out) }
+    }
+}
+
+// The values `gone` end: close every socket in them that nothing else holds.
+// As in the C backend, which counts references, a socket lives while a
+// variable, a temporary or a value holds it: here, a slot of the running frame
+// (it.held: a value moved from a variable is still held by it until its scope
+// ends, as in C), `kept` (the value being produced), or a caller's frame,
+// which reaches this one only through parameters (which are in it.held).
+pub fn release(it: mut Interp, fr: List[ival.Val], gone: List[ival.Val], kept: List[ival.Val]) {
+    if it.net_state.open.is_empty() { return }
+    var ids: List[Int] = []
+    for v in gone { sock_ids(v, mut ids) }
+    if ids.is_empty() { return }
+    var keep: List[Int] = []
+    for v in kept { sock_ids(v, mut keep) }
+    for s in it.held { sock_ids(fr[s], mut keep) }
+    for id in ids {
+        if not keep.contains(id) { icap.close_sock(mut it, id) }
+    }
+}
+
+// A block whose own slots end with it (icode.NScope). Not when a worker is
+// suspended (CBlock: it runs again from the start) or the program stops.
+fn scope(it: mut Interp, fr: mut List[ival.Val], ss: List[icode.Stm], mine: List[Int]) -> Result[ival.Val, Ctl] {
+    let r = block(mut it, mut fr, ss)
+    if it.net_state.open.is_empty() { return r }
+    let result = match r {
+        Ok(v) => [v],
+        Err(CRet(v)) => [v],
+        Err(CBreak) | Err(CContinue) => [],
+        _ => return r,
+    }
+    let gone = mine.map(fn(s) => fr[s])
+    for s in mine { fr[s] = ival.unit() }
+    release(mut it, fr, gone, result)
+    r
 }
 
 // Call a function value.
@@ -98,9 +150,12 @@ pub fn apply(it: mut Interp, f: ival.Val, args: List[ival.Val], sp: ckast.Span) 
     let ns = it.lams[f.j].nslots
     while fr.len() < ns { fr.push(ival.unit()) }
     let body = it.lams[f.j].body
+    let held = it.held
+    it.held = it.lams[f.j].held
     it.depth += 1
     let r = ev(mut it, mut fr, body)
     it.depth -= 1
+    it.held = held
     match r {
         Ok(v) => Ok(v),
         Err(CRet(v)) => Ok(v),
@@ -382,6 +437,24 @@ fn stmt(it: mut Interp, fr: mut List[ival.Val], s: icode.Stm) -> Result[ival.Val
         },
         IBreak => Err(CBreak),
         IContinue => Err(CContinue),
+        IDrop(p, e) => {
+            let v = ev(mut it, mut fr, e)?
+            let _ = bind(mut fr, p, v)
+            release(mut it, fr, [v], [])
+            Ok(ival.unit())
+        }
+        IAssignDrop(pl, e) => {
+            let steps = eval_steps(mut it, mut fr, pl.steps)?
+            let v = ev(mut it, mut fr, e)?
+            let old = if steps.is_empty() { fr[pl.root] } else { nk(mut it, nav(mut fr[pl.root], steps, 0, false, MGet, pl.sp, it.names, it.ix))? }
+            if steps.is_empty() {
+                fr[pl.root] = v
+            } else {
+                let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, true, MSet(v), pl.sp, it.names, it.ix))?
+            }
+            release(mut it, fr, [old], [])
+            Ok(ival.unit())
+        }
     }
 }
 
@@ -559,8 +632,12 @@ fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival
                 }
                 None => fs = List.filled(n, ival.unit()),
             }
+            // `..base`: the base's fields that are replaced are dropped
+            let replaced = if it.net_state.open.is_empty() or base.is_none() { [] } else { vals.map(fn(g) => fs[g.0]) }
             for g in vals { fs[g.0] = g.1 }
-            Ok(ival.vstruct(si, fs))
+            let r = ival.vstruct(si, fs)
+            if not replaced.is_empty() { release(mut it, fr, replaced, [r]) }
+            Ok(r)
         }
         NMapLit(ps) => {
             var m: Map[ival.Key, ival.Val] = [:]
@@ -667,6 +744,29 @@ fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[iva
                 let _ = nk(mut it, nav(mut fr[pl.root], steps, 0, false, MCheck, pl.sp, it.names, it.ix))?
             }
             nk(mut it, nav(mut fr[pl.root], steps, 0, false, MExt(op, av, keys), sp, it.names, it.ix))
+        }
+        NScope(ss, mine) => scope(mut it, mut fr, ss, mine),
+        NTemp(s, x) => {
+            let v = ev(mut it, mut fr, x)?
+            fr[s] = v
+            Ok(v)
+        }
+        NOwnMatch(s, arms) => {
+            let v = ev(mut it, mut fr, s)?
+            for a in arms {
+                if bind(mut fr, a.pat, v) {
+                    let go = match a.guard {
+                        Some(g) => ev(mut it, mut fr, g)?.i == 1,
+                        None => true,
+                    }
+                    if go {
+                        // the arm's slots hold what its pattern binds; the rest of the value ends here
+                        release(mut it, fr, [v], [])
+                        return ev(mut it, mut fr, a.body)
+                    }
+                }
+            }
+            trap("interp: no match arm", ckast.Span { file: 0, line: 0, col: 0 })
         }
         _ => panic("interp: unexpected node"),
     }

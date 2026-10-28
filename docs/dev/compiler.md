@@ -376,6 +376,24 @@ it, else the types of the parts); a `dyn` value's type is its vtable's
 one generic copy past type depth 48, in which formatting a type parameter
 applies no impl (tests/v2/run/trait_show_specialized*.tn).
 
+Dropped sockets: an interpreted value has no destructor, so a `Listener` or
+`Conn` is closed explicitly where the C backend's reference counts reach
+zero (authority finding 3, 2026-10-28; tests/run/net_drop_closes.tn). The
+C backend's owners are variables (released when their scope ends, also
+after the value moved out of them, since a callee borrows its arguments),
+temporaries (released after their statement) and the values holding them.
+icode emits, only where a static type may hold a socket (`Cx.may_hold`:
+linear and unique types and type parameters): `NScope` (a block or arm
+whose slots end with it), `NTemp` (a temporary in a slot of its own until
+its statement ends: arguments, and the unique temporaries the checker found
+only inspected, `checker.Checked.temps`), `NOwnMatch`, `IDrop` (a discarded
+value, `let _ =`) and `IAssignDrop` (the overwritten value). When one of
+them ends a value, ieval.release closes each socket in it that no slot of the
+running frame (`FnRt.held`, parameters included, through which the callers'
+values reach it) and no value being produced still holds. While no socket
+is open (`icap.NetState.open`) it does nothing. A worker suspended to be
+replayed (CBlock) drops nothing.
+
 A missing map key reached through a place (`m[k] += 1`) is shown with
 the key type's Show impl, as `m[k]` read as a value and C everywhere
 (ieval.nk; tests/v2/run/trait_show_key_place.tn).
@@ -384,11 +402,9 @@ the key type's Show impl, as `m[k]` read as a value and C everywhere
 
 From `tenon-seed run` (none is exercised by the corpus):
 
-- A dropped `Listener` or `Conn` is closed when the program ends, not when the
-  value is dropped (an interpreted value has no destructor). Blocking sockets
-  are emulated on a host `Poller`; text read from a `Conn` is converted to
-  UTF-8 per received chunk, so a character split across TCP segments becomes
-  U+FFFD.
+- Blocking sockets are emulated on a host `Poller`; text read from a `Conn`
+  is converted to UTF-8 per received chunk, so a character split across TCP
+  segments becomes U+FFFD.
 - At most 4 `Poller`s per program.
 - A map used as a key of another map loses its insertion order.
 

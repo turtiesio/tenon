@@ -1,0 +1,12 @@
+dropped when its function returns: refused
+dropped at the end of its block: refused
+a temporary, dropped after its statement: refused
+overwritten: refused; its replacement: accepting
+bound in a match arm in a loop: ["refused", "refused", "refused"]
+returned to the caller: accepting
+inside a struct: accepting
+the struct dropped: refused
+moved into a call: accepting; its variable's scope ended: refused
+a temporary argument, after its statement: refused
+peer reads Ok(Some("x")), then Ok(None)
+exit: 0

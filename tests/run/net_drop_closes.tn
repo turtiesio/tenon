@@ -1,0 +1,81 @@
+// Dropping a Listener or Conn closes it, at the same points in `tenon run` as in a native build
+// (authority finding 3, 2026-10-28: the interpreter never closed them). A closed listener refuses
+// connections; a peer of a closed connection reads the end of the stream.
+unique struct Server { l: Listener, name: Str }
+
+fn state(net: Net, port: Int) -> Str {
+    match net.connect("127.0.0.1", port) {
+        Ok(_) => "accepting",
+        Err(_) => "refused",
+    }
+}
+
+fn open_and_drop(net: Net) -> Int {
+    let l = net.listen(0).unwrap()
+    l.port()
+}
+
+fn open_and_keep(net: Net) -> Listener { net.listen(0).unwrap() }
+
+fn wrap(net: Net) -> Server { Server { l: net.listen(0).unwrap(), name: "s" } }
+
+fn port_of(s: ref Server) -> Int { s.l.port() }
+
+fn take(l: Listener) -> Int { l.port() }
+
+fn moved_then_scope_ends(net: Net) -> Int {
+    let l = net.listen(0).unwrap()
+    let p = take(l)
+    p
+}
+
+fn send_and_drop(net: Net, port: Int) {
+    let c = net.connect("127.0.0.1", port).unwrap()
+    let _ = c.write("x\n")
+}
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let net = sys.net
+    con.println("dropped when its function returns: {state(net, open_and_drop(net))}")
+    let p = {
+        let l = net.listen(0).unwrap()
+        l.port()
+    }
+    con.println("dropped at the end of its block: {state(net, p)}")
+    let t = net.listen(0).unwrap().port()
+    con.println("a temporary, dropped after its statement: {state(net, t)}")
+    var l = net.listen(0).unwrap()
+    let old = l.port()
+    l = net.listen(0).unwrap()
+    con.println("overwritten: {state(net, old)}; its replacement: {state(net, l.port())}")
+    var ports: List[Int] = []
+    for _ in 0..3 {
+        match net.listen(0) {
+            Ok(x) => ports.push(x.port()),
+            Err(_) => {}
+        }
+    }
+    con.println("bound in a match arm in a loop: {ports.map(fn(q) => state(net, q))}")
+    let kept = open_and_keep(net)
+    con.println("returned to the caller: {state(net, kept.port())}")
+    let q = {
+        let s = wrap(net)
+        let n = port_of(s)
+        con.println("inside a struct: {state(net, n)}")
+        n
+    }
+    con.println("the struct dropped: {state(net, q)}")
+    // a value moved into a call is released by the variable it was moved from, when its scope ends
+    let m = net.listen(0).unwrap()
+    let pm = m.port()
+    let _ = take(m)
+    con.println("moved into a call: {state(net, pm)}; its variable's scope ended: {state(net, moved_then_scope_ends(net))}")
+    let pt = take(net.listen(0).unwrap())
+    con.println("a temporary argument, after its statement: {state(net, pt)}")
+    // the peer of a dropped connection reads what was sent, then the end of the stream
+    let srv = net.listen(0).unwrap()
+    send_and_drop(net, srv.port())
+    let c = srv.accept().unwrap()
+    con.println("peer reads {c.read_line()}, then {c.read_line()}")
+}
