@@ -1,0 +1,9 @@
+// error: variant 'Admin' of privlevel.Level is private to its module
+// Authority finding 5 (2026-10-28): the variants of a private enum could be matched from outside.
+import privlevel
+fn main(sys: Sys) {
+    match privlevel.guest() {
+        Admin => sys.console.println("admin"),
+        _ => sys.console.println("other"),
+    }
+}

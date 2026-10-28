@@ -1,0 +1,13 @@
+// module (imported by enum_private_decode.tn, enum_private_match.tn, struct_private_decode.tn)
+// A private enum and a private struct: only this module can make their values.
+enum Level { Guest, Admin }
+struct Token { pub level: Int }
+pub fn guest() -> Level { Guest }
+pub fn is_admin(l: Level) -> Bool {
+    match l {
+        Admin => true,
+        Guest => false,
+    }
+}
+pub fn token() -> Token { Token { level: 0 } }
+pub fn level_of(t: Token) -> Int { t.level }

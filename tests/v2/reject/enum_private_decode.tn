@@ -1,0 +1,7 @@
+// error: cannot decode privlevel.Level: privlevel.Level is private to its module
+// Authority finding 5 (2026-10-28): decode with an inferred type forged the private enum's Admin.
+import privlevel
+fn main(sys: Sys) {
+    let forged = decode("Admin").unwrap()
+    sys.console.println("{privlevel.is_admin(forged)}")
+}

@@ -46,6 +46,10 @@ pub fn pattern(ck: mut ckinfer.Ck, p: ckast.Pat, t: cktypes.Ty, mutable: Bool) -
                 if vi < 0 and en.variants[i].0 == v { vi = i }
             }
             if vi < 0 { return ckast.fail(p.sp, "'" + tn + "' has no variant '" + v + "'") }
+            // Privacy is unforgeability (reference §13): a private enum's variants are its module's.
+            if not en.public and en.file != 0 and en.file != p.sp.file {
+                return ckast.fail(p.sp, "variant '" + v + "' of " + ck.show(st) + " is private to its module")
+            }
             let fts = en.variants[vi].1.map(fn(x) => x.subst(en.tparams, targs))
             if fts.len() != args.len() {
                 return ckast.fail(p.sp, "variant '" + v + "' has {fts.len()} field(s), pattern has {args.len()}")

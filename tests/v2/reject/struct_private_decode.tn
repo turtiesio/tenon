@@ -1,0 +1,8 @@
+// error: cannot decode privlevel.Token: privlevel.Token is private to its module
+// Authority finding 5 (2026-10-28): a private struct, even one whose fields are all pub, is made only
+// by its module; decode with an inferred type would forge it.
+import privlevel
+fn main(sys: Sys) {
+    let forged = decode("Token \{ level: 9 }").unwrap()
+    sys.console.println("{privlevel.level_of(forged)}")
+}

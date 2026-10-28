@@ -19,7 +19,7 @@ FILES = {
     "01": ["01a-linear-lost-method-arg.tn", "01b-linear-lost-call-return-break.tn", "01c-linear-lost-tuple-match-interp.tn", "01d-linear-lost-continue-struct-literal.tn"],
     "02": ["v2/02-ref-param-erased-by-fn-value.tn"],
     "03": ["v2/03a-const-linear-copied.tn", "v2/03b-const-unique-copied.tn"],
-    "04": ["04-private-enum-forged.tn"],
+    "04": ["v2/04-private-enum-forged.tn"],
     "05": ["05a-unique-moved-listener-stays-open.tn", "v2/05b-unique-moved-to-worker-still-readable.tn"],
     "06": ["v2/06-run-with-timeout-leaves-descendants.tn"],
     "07": ["07a-run-keeps-dropped-listener-open.tn", "07c-run-conn-drop-never-signals-peer.tn"],

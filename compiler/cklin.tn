@@ -638,6 +638,10 @@ fn Walk.lambda_body(mut self, body: ckast.Expr) -> Result[Unit, ckast.Diag] {
     self.end_scope(0, body.sp)
 }
 
+// A type declared without `pub` in a module other than `file` (the prelude's are all visible):
+// only its module may make values of it, so code elsewhere cannot decode (forge) or encode it.
+fn private_to(public: Bool, decl_file: Int, file: Int) -> Bool { not public and decl_file != 0 and decl_file != file }
+
 // Can values of type t be encoded/decoded by code in `file`? On success,
 // returns the types visited so far (shared across the whole walk).
 fn codec_ok(env: ckenv.Env, t: cktypes.Ty, file: Int, seen0: List[cktypes.Ty]) -> Result[List[cktypes.Ty], Str] {
@@ -660,7 +664,12 @@ fn codec_ok(env: ckenv.Env, t: cktypes.Ty, file: Int, seen0: List[cktypes.Ty]) -
                 Some(si) => {
                     let s = env.structs[si]
                     if s.file != file and s.pub_fields.any(fn(p) => not p) { return Err(n + " has private fields") }
+                    if private_to(s.public, s.file, file) { return Err(n + " is private to its module") }
                 }
+                None => {}
+            }
+            match env.enum_idx(n) {
+                Some(ei) => if private_to(env.enums[ei].public, env.enums[ei].file, file) { return Err(n + " is private to its module") },
                 None => {}
             }
             match env.struct_fields(t) {

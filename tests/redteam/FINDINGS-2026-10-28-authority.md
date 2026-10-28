@@ -108,6 +108,13 @@ only be called, not used as a value"). **Actual:** accepted; `run` and native pr
 to write a `ref` in a function type, so the loss cannot be spelled out in a signature. This
 turns any inspector into a silent drop of an obligation.
 
+Fixed in ed34e7d, tests tests/v2/reject/ref_fn_value.tn, tests/v2/reject/ref_method_value.tn,
+tests/v2/reject/trait_impl_ref_dropped.tn, tests/v2/reject/trait_impl_ref_added.tn,
+tests/v2/run/trait_ref_param.tn. Rule (reference §12): `ref` is not part of a function type, so a
+function with a `ref` parameter can only be called, like one with `mut` parameters. The same erasure
+existed through traits (an impl taking `ref` where the trait method takes the value, called through a
+bound); trait methods now carry their `ref` parameters and impls must match them.
+
 ## 3. `tenon run` never closes dropped sockets (Medium)
 
 **Property:** reference §15: "`Listener` and `Conn` are unique handles: ... dropping one closes

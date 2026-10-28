@@ -607,7 +607,12 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 - Items are private unless declared `pub`; struct fields are private unless
   marked `pub`. Outside its module, a struct with private fields cannot be
   built, and its private fields cannot be read. Derived formatting shows a
-  foreign type's private fields as `..`.
+  foreign type's private fields as `..`. A private type (a `struct` or
+  `enum` without `pub`) can still reach other modules as the result of a
+  public function, but there it can only be passed on: the variants of a
+  private enum cannot be named outside its module, in expressions or in
+  patterns (`variant 'Admin' of level.Level is private to its module`), and
+  a private type of another module cannot be encoded or decoded (§14).
 - A top-level item (function, constant, struct, enum) defined in a file
   hides the prelude item of the same name in that file, so a new prelude
   name never breaks a program. Other files still see the prelude's item
@@ -661,7 +666,9 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 exactly the canonical text and fails with `Err("cannot decode T at byte N")`
 otherwise. Annotate the expected type where it is not inferred:
 `let r: Result[Event, Str] = decode(line)`. Functions, capabilities,
-linear/unique types and types with fields you cannot see cannot be encoded.
+linear/unique types, types with fields you cannot see and private types of
+other modules (§13) cannot be encoded or decoded, so `decode` cannot forge a
+value only its module may make.
 
 ## 15. Networking
 
