@@ -232,41 +232,44 @@ fn source_files(fs: Fs, dir: Str, rel: Str, out: List[Str]) -> Result[List[Str],
     Ok(acc)
 }
 
-// The content hash of a package (docs/packages.md "Content hash"): four
-// polynomial hashes modulo primes below 2^31 over, for each source file in
-// sorted order, "PATH\nLENGTH\n" and its bytes; 32 hex digits. It detects
-// corruption and edits, it is not a cryptographic hash.
-pub fn content_hash(fs: Fs, dir: Str) -> Result[Str, Str] {
-    var files = source_files(fs, dir, "", [])?
-    files.sort()
-    var a = 1
-    var b = 2
-    var c = 3
-    var d = 4
-    for f in files {
-        let text = fs.read(at(dir, f)).map_err(fn(e) => "cannot read {at(dir, f)}: {e}")?
-        let s = f + "\n{text.len()}\n" + text
-        for i in 0..s.len() {
-            let x = s.byte(i) + 1
-            a = (a * 31 + x) % 2147483629
-            b = (b * 37 + x) % 2147483587
-            c = (c * 131 + x) % 2147483563
-            d = (d * 257 + x) % 2147483399
-        }
-    }
-    Ok("{a:08x}{b:08x}{c:08x}{d:08x}")
-}
-
-fn hash_name(s: Str) -> Str {
-    var a = 5
-    var b = 7
+// The one hash of the tool: polynomial hashes of `s` modulo primes below 2^31
+// (Int arithmetic must not overflow), one lane per seed (2 or 4 seeds), as
+// 8 hex digits per lane. It detects corruption and edits and spreads cache
+// names; it is not a cryptographic hash. The values are recorded in users'
+// tenon.lock files and cache names: do not change them.
+pub fn hash(seeds: List[Int], s: Str) -> Str {
+    let wide = seeds.len() > 2
+    var a = seeds[0]
+    var b = seeds[1]
+    var c = if wide { seeds[2] } else { 0 }
+    var d = if wide { seeds[3] } else { 0 }
     for i in 0..s.len() {
         let x = s.byte(i) + 1
         a = (a * 31 + x) % 2147483629
         b = (b * 37 + x) % 2147483587
+        if wide {
+            c = (c * 131 + x) % 2147483563
+            d = (d * 257 + x) % 2147483399
+        }
     }
-    "{a:08x}{b:08x}"
+    if wide { "{a:08x}{b:08x}{c:08x}{d:08x}" } else { "{a:08x}{b:08x}" }
 }
+
+// The content hash of a package (docs/packages.md "Content hash"): `hash`
+// with four lanes over, for each source file in sorted order, "PATH\nLENGTH\n"
+// and its bytes; 32 hex digits.
+pub fn content_hash(fs: Fs, dir: Str) -> Result[Str, Str] {
+    var files = source_files(fs, dir, "", [])?
+    files.sort()
+    var all: List[Str] = []
+    for f in files {
+        let text = fs.read(at(dir, f)).map_err(fn(e) => "cannot read {at(dir, f)}: {e}")?
+        all.push(f + "\n{text.len()}\n" + text)
+    }
+    Ok(hash([1, 2, 3, 4], all.join("")))
+}
+
+fn hash_name(s: Str) -> Str { hash([5, 7], s) }
 
 // The cache directory of a git package at a commit.
 pub fn cache_dir(home: Str, git: Str, commit: Str) -> Str { path_join(home, "cache/git/" + hash_name(git + "@" + commit)) }
