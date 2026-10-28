@@ -1,0 +1,14 @@
+mkdir a
+MKDIR a/
+MKDIR /a//b
+LS  /
+PWD x
+CD
+WRITE f
+WRITE f 
+MKDIR ...
+CD ...
+CD ..
+PWD
+MV ... ..
+LS

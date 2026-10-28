@@ -1,0 +1,6 @@
+MKDIR a
+CD missing/..
+MKDIR missing/../x
+WRITE missing/../x y
+LS a/missing/../..
+LS

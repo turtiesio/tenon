@@ -1,0 +1,8 @@
+WRITE f x
+CAT f/.
+CD f/..
+MKDIR f/x
+WRITE f/x y
+RM f/.
+MV f/.. x
+LS

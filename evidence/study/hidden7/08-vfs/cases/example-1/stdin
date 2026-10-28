@@ -1,0 +1,19 @@
+PWD
+MKDIR docs
+MKDIR docs/notes
+WRITE docs/todo.txt buy  milk
+CAT docs/todo.txt
+LS
+LS docs
+CD docs/notes
+PWD
+WRITE ../a.md # Title
+LS ..
+DU /
+CD ../..
+LS docs/todo.txt
+MKDIR /docs
+MKDIR x/y
+CAT docs
+CAT nope
+LS /docs/todo.txt/x

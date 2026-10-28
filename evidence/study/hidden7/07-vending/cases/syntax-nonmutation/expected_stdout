@@ -1,0 +1,8 @@
+CREDIT 20
+OK
+ERR bad command
+A1 x 5 1
+ERR bad command
+ERR bad command
+5x0 10x0 20x0 50x0 100x0 200x0
+REFUND 20 20x1

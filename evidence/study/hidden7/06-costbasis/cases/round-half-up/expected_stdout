@@ -1,0 +1,4 @@
+2: SPLIT X 2 held=2
+3: SELL X 1 proceeds=0.00 cost=0.01 gain=-0.01
+4: SELL X 1 proceeds=0.00 cost=0.00 gain=0.00
+TOTAL gain=-0.01

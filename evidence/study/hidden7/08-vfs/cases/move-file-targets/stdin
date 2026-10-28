@@ -1,0 +1,11 @@
+MKDIR a
+WRITE f xx
+WRITE g y
+MV f g
+MV f a
+LS
+LS a/f
+MV a/f a
+MV a/f a/h
+CAT a/h
+DU /

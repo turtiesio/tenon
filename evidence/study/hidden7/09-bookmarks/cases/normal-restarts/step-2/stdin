@@ -1,0 +1,4 @@
+GET a
+DEL b
+UNTAG a z
+ADD c C

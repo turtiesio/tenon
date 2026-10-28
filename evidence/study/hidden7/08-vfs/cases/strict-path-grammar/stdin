@@ -1,0 +1,9 @@
+CD //
+LS a/
+MKDIR a//b
+CAT /a/
+DU a:b
+RM a\b
+MKDIR a!
+MV a b/
+CD aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

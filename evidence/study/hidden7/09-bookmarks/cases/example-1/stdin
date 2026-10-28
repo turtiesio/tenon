@@ -1,0 +1,16 @@
+ADD tenon https://example.org/tenon
+ADD py https://python.org
+TAG py lang
+TAG tenon lang
+TAG tenon new
+TAG tenon new
+UNTAG py zz
+GET tenon
+FIND lang
+FIND zz
+ADD py https://x
+DEL nope
+COMPACT
+DEL py
+GET py
+add x y

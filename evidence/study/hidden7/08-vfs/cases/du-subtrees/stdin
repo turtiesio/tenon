@@ -1,0 +1,11 @@
+MKDIR a
+MKDIR a/b
+MKDIR a/b/c
+WRITE a/x 123
+WRITE a/b/y 12
+WRITE z 1
+DU /
+DU a
+DU a/b
+DU a/b/c
+DU z

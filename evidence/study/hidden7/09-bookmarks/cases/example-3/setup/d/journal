@@ -1,0 +1,5 @@
+2 ADD b http://b
+3 TAG a x
+4 TAG b y
+5 DEL a
+6 ADD c ht

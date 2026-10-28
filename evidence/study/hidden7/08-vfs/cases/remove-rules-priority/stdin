@@ -1,0 +1,13 @@
+MKDIR a
+MKDIR a/b
+WRITE a/f x
+RM a
+CD a/b
+RM .
+RM ..
+RM /
+RM ../f
+CD /
+RM a/b
+RM a
+LS

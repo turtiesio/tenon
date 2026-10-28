@@ -1,0 +1,5 @@
+M 1 1 100.00 2
+M 2 3 7.00 1
+M 3 5 0.50 2
+L 2 2028-02-28 100.00 early
+matched=3 bank_only=0 ledger_only=1 diff=-100.00

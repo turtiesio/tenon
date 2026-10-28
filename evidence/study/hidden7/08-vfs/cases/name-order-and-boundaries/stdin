@@ -1,0 +1,8 @@
+MKDIR z
+MKDIR A
+WRITE _ x
+WRITE .hidden x
+MKDIR ...
+MKDIR aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+LS
+MKDIR bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb

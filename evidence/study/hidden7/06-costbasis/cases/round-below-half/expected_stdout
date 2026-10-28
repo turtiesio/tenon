@@ -1,0 +1,4 @@
+2: SPLIT X 3 held=3
+3: SELL X 1 proceeds=0.00 cost=0.00 gain=0.00
+HOLD X 2 cost=0.01 lots=1
+TOTAL gain=0.00

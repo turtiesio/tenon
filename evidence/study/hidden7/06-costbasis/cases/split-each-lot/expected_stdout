@@ -1,0 +1,5 @@
+3: SPLIT X 10 held=20
+4: SPLIT X 2 held=40
+5: SELL X 21 proceeds=2.10 cost=1.10 gain=1.00
+HOLD X 19 cost=1.90 lots=1
+TOTAL gain=1.00

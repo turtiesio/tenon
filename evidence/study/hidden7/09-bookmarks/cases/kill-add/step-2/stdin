@@ -1,0 +1,4 @@
+GET a
+GET b
+ADD b v
+COMPACT

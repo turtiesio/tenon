@@ -1,0 +1,5 @@
+2: SPLIT X 3 held=3
+3: SELL X 1 proceeds=0.50 cost=0.33 gain=0.17
+4: SELL X 1 proceeds=0.50 cost=0.34 gain=0.16
+5: SELL X 1 proceeds=0.40 cost=0.33 gain=0.07
+TOTAL gain=0.40

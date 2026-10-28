@@ -1,0 +1,19 @@
+/
+OK
+OK
+OK
+buy  milk
+docs/
+notes/ todo.txt
+OK
+/docs/notes
+OK
+a.md notes/ todo.txt
+16 2 2
+OK
+todo.txt
+ERR exists
+ERR not found
+ERR is a directory
+ERR not found
+ERR not a directory

@@ -1,0 +1,8 @@
+MKDIR a
+WRITE f x
+MV missing f/x
+MV / missing/x
+MV f missing/x
+MV f f/x
+MV missing /
+LS

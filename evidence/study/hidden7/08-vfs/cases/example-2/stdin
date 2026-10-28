@@ -1,0 +1,27 @@
+MKDIR a
+MKDIR a/b
+WRITE a/b/f.txt hello
+CD a/b
+RM /a/b
+RM /a
+RM f.txt
+CD /
+RM a
+MV a/b c
+LS
+MV a c
+LS c
+MV /c /c/a
+MV / x
+CD c/a
+MV /c /z
+PWD
+WRITE g.txt hi
+MV g.txt ../f.txt
+MV g.txt ..
+LS /z
+DU /z
+DU
+RM ..
+CD ../../..
+PWD

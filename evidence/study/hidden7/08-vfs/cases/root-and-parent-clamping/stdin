@@ -1,0 +1,10 @@
+PWD
+LS
+DU
+CD ..
+CD /./../../.
+PWD
+RM /
+MKDIR .
+WRITE / x
+CAT /

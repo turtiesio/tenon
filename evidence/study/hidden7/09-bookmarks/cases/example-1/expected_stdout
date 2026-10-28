@@ -1,0 +1,16 @@
+OK
+OK
+OK
+OK
+OK
+UNCHANGED
+UNCHANGED
+tenon https://example.org/tenon lang,new
+py tenon
+-
+ERR exists
+ERR no such bookmark
+OK 5
+OK
+ERR no such bookmark
+ERR bad command

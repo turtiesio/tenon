@@ -1,0 +1,16 @@
+ADD z z
+ADD a a
+ADD - -
+TAG z z
+TAG z 0
+TAG z a
+TAG a a
+TAG - a
+GET z
+FIND a
+UNTAG z a
+DEL a
+ADD a new
+GET a
+FIND a
+COMPACT

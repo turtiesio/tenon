@@ -1,0 +1,10 @@
+LOAD a1 x 5 1
+LOAD A0 x 5 1
+LOAD A10 x 5 1
+LOAD G1 x 5 1
+LOAD AA x 5 1
+LOAD 1A x 5 1
+LOAD A1 X 5 1
+LOAD A1 a1 5 1
+LOAD A1 a-b 5 1
+LOAD A1 aaaaaaaaaaaaa 5 1

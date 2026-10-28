@@ -1,0 +1,5 @@
+ADD b B
+ADD a A
+TAG a z
+TAG a a
+COMPACT

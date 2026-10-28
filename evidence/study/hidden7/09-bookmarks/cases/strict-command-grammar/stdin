@@ -1,0 +1,18 @@
+
+add a u
+ ADD a u
+ADD  a u
+ADD a u 
+ADD A u
+ADD a_ u
+ADD aaaaaaaaaaaaaaaaaaaaa u
+ADD a uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu
+ADD a u	x
+TAG a X
+TAG a a-b
+TAG a zzzzzzzzzzzzz
+GET
+GET a x
+COMPACT 
+FIND  x
+DEL a

@@ -1,0 +1,4 @@
+M 1 1 0.10 0
+B 2 2026-01-01 -0.01 x
+L 2 2026-01-01 0.01 x
+matched=1 bank_only=1 ledger_only=1 diff=-0.02

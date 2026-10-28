@@ -1,0 +1,3 @@
+3: SELL A 1 proceeds=1.01 cost=1.00 gain=0.01
+HOLD A 1 cost=1.00 lots=1
+TOTAL gain=0.01

@@ -1,0 +1,13 @@
+
+ PWD
+PWD 
+pwd
+CD
+CAT
+RM a x
+MV a
+MV a b c
+LS  /
+WRITE  f x
+WRITE f
+WRITE f x	x

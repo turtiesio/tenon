@@ -1,0 +1,5 @@
+ADD a http://a
+COMPACT
+ADD b http://b
+TAG a x
+TAG b x

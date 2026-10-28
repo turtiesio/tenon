@@ -1,0 +1,8 @@
+4: ERR insufficient AB held=4
+5: ERR not held CD
+6: ERR bad line
+7: ERR bad line
+8: ERR bad line
+9: SELL AB 4 proceeds=8.00 cost=10.00 gain=-2.00
+HOLD Q 2 cost=0.00 lots=1
+TOTAL gain=-2.00

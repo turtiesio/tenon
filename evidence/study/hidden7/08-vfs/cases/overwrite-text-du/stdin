@@ -1,0 +1,8 @@
+WRITE f abc
+DU f
+WRITE f z
+CAT f
+DU
+LS f
+MKDIR f
+CD f

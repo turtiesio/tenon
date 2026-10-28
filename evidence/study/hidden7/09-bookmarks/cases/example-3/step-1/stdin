@@ -1,0 +1,5 @@
+FIND x
+FIND y
+GET z
+ADD c http://c
+COMPACT

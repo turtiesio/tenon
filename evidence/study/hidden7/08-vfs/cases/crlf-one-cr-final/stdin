@@ -1,0 +1,4 @@
+MKDIR a
+WRITE a/f x
+CAT a/f
+CAT a/f

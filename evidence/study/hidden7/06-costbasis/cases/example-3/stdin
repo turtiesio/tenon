@@ -1,0 +1,10 @@
+# opening positions
+BUY AB 4 2.50
+
+SELL AB 5 3.00
+SPLIT CD 2
+sell AB 1 3.00
+BUY AB 1 3.0
+BUY  AB 1 3.00
+SELL AB 4 2.00
+BUY Q 2 0.00

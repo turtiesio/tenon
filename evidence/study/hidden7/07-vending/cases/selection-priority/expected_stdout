@@ -1,0 +1,8 @@
+CREDIT 5
+ERR no such slot
+OK
+ERR sold out
+OK
+ERR need 5
+REFUND 5 5x1
+A1 x 10 1

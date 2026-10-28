@@ -1,0 +1,9 @@
+MKDIR a
+WRITE a/f abc
+MV a a/f
+RM a
+WRITE a x
+CD a/f
+PWD
+CAT a/f
+DU

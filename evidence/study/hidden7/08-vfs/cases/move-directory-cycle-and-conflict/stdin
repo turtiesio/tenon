@@ -1,0 +1,8 @@
+MKDIR a
+MKDIR a/b
+MKDIR a/b/a
+MV a a/b
+MV a a/b/new
+MV a a
+MV a .
+LS

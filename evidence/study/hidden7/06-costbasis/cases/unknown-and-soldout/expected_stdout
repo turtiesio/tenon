@@ -1,0 +1,6 @@
+1: ERR insufficient A held=0
+2: ERR not held A
+4: SELL A 1 proceeds=1.00 cost=1.00 gain=0.00
+5: ERR not held A
+6: ERR insufficient A held=0
+TOTAL gain=0.00

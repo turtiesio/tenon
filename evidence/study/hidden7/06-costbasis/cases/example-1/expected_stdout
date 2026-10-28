@@ -1,0 +1,4 @@
+3: SELL ACME 12 proceeds=180.00 cost=153.00 gain=27.00
+5: SELL ACME 3 proceeds=39.00 cost=42.00 gain=-3.00
+HOLD ZED 3 cost=3.00 lots=1
+TOTAL gain=24.00

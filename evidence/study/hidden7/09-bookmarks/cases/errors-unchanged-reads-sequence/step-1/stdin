@@ -1,0 +1,13 @@
+ADD a u
+TAG a x
+TAG a x
+UNTAG a z
+ADD a v
+DEL b
+TAG b x
+UNTAG b x
+GET b
+TAG b X
+GET a
+FIND x
+COMPACT

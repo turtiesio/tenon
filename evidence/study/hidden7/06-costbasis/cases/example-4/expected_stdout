@@ -1,0 +1,6 @@
+4: SPLIT B 2 held=14
+5: SELL B 7 proceeds=42.00 cost=35.50 gain=6.50
+6: SELL A 1 proceeds=5.01 cost=5.00 gain=0.01
+HOLD A 1 cost=5.00 lots=1
+HOLD B 7 cost=38.50 lots=1
+TOTAL gain=6.51

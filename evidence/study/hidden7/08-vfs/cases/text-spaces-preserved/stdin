@@ -1,0 +1,6 @@
+WRITE f  hi  
+CAT f
+DU f
+WRITE g  
+CAT g
+DU

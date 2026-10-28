@@ -1,0 +1,11 @@
+MKDIR a
+MKDIR a/b
+CD a/b
+MV . /c
+PWD
+MV /a /c
+PWD
+MV /c /renamed
+PWD
+LS
+DU /

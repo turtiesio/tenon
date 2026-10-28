@@ -1,0 +1,4 @@
+GET a
+FIND x
+ADD a v
+COMPACT

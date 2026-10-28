@@ -1,0 +1,8 @@
+MKDIR a
+MKDIR a/b
+CD a/b
+WRITE .././f hello
+CAT /a/./b/../f
+LS /a/b/..
+CD ../../../../a
+PWD

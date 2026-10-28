@@ -1,0 +1,4 @@
+ADD a u
+TAG a x
+COMPACT
+ADD b unsent

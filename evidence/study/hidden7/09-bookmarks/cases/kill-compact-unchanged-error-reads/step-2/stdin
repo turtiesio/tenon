@@ -1,0 +1,6 @@
+TAG a x
+UNTAG a z
+GET a
+FIND x
+GET b
+ADD b unsent
