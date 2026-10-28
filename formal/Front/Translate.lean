@@ -7,6 +7,7 @@ which makes the run "out of the subset" if it is reached.
 -/
 import Front.Parse
 import TenonCore.Prims
+import TenonCore.TraitsCheck
 import Std.Data.HashMap
 
 namespace Front
@@ -91,6 +92,50 @@ def binop : String → Option String
 
 def unitE : Expr := .lit .unit
 
+/-- `panic(msg)` never returns: a `match` with no arm on its result has any type
+(even a linear one, as in `Option[Claim].unwrap()`); it traps before the arms. -/
+def panicE (args : List Expr) : Expr := .mtch (.prim "panic" args) []
+
+/-- A type the source does not give (a closure parameter without annotation):
+the checker infers it (TenonCore/Check.lean, `Ty.hole`). -/
+def holeTy : Ty := .adt "?" []
+
+def patBound : Pat → List String
+  | .bind x => [x]
+  | .tup ps | .con _ ps => ps.attach.flatMap fun ⟨p, _⟩ => patBound p
+  | .alt (p :: _) => patBound p
+  | _ => []
+
+mutual
+/-- The variables an expression reads that it does not bind, in order of first use. -/
+partial def fvE (bd : List String) : Expr → List String
+  | .place x ps => (if bd.contains x then [] else [x]) ++ fvSteps bd ps
+  | .proj e ps => fvE bd e ++ fvSteps bd ps
+  | .seq _ es | .con _ _ es | .prim _ es => es.flatMap (fvE bd)
+  | .lam ps b => fvE (bd ++ ps) b
+  | .clos caps ps b => caps.filter (!bd.contains ·) ++ fvE (bd ++ ps ++ caps) b
+  | .call f as => fvE bd f ++ as.flatMap (fvE bd)
+  | .mcall _ r as => fvE bd r ++ as.flatMap (fvE bd)
+  | .letE x _ e b => fvE bd e ++ fvE (bd ++ [x]) b
+  | .assign x ps e => (if bd.contains x then [] else [x]) ++ fvSteps bd ps ++ fvE bd e
+  | .seqE a b => fvE bd a ++ fvE bd b
+  | .ite c a b => fvE bd c ++ fvE bd a ++ fvE bd b
+  | .mtch e arms => fvE bd e ++ arms.flatMap fun (p, g, b) =>
+    let bd' := bd ++ patBound p
+    (g.map (fvE bd')).getD [] ++ fvE bd' b
+  | .while c b => fvE bd c ++ fvE bd b
+  | .ret e | .try e | .ann _ e => fvE bd e
+  | _ => []
+partial def fvSteps (bd : List String) : List PStep → List String
+  | [] => []
+  | .idx e :: ps => fvE bd e ++ fvSteps bd ps
+  | _ :: ps => fvSteps bd ps
+end
+
+partial def dedup : List String → List String
+  | [] => []
+  | x :: xs => x :: dedup (xs.filter (· != x))
+
 partial def tPat : SPat → Pat
   | .wild => .wild
   | .bind x => .bind x
@@ -101,6 +146,13 @@ partial def tPat : SPat → Pat
   | .tup ps => .tup (ps.map tPat)
   | .variant _ v ps => .con v (ps.map tPat)
   | .alt ps => .alt (ps.map tPat)
+
+partial def renamePat (m : List (String × String)) : SPat → SPat
+  | .bind x => .bind ((m.lookup x).getD x)
+  | .tup ps => .tup (ps.map (renamePat m))
+  | .variant q v ps => .variant q v (ps.map (renamePat m))
+  | .alt ps => .alt (ps.map (renamePat m))
+  | p => p
 
 partial def patNames : SPat → List String
   | .bind x => [x]
@@ -132,6 +184,27 @@ def Ctx.qvariant (c : Ctx) (t v : String) : Option (String × Nat) :=
   | some d => if d.isStruct then none else ((d.variants.map (·.1)).idxOf? v).map (k, ·)
   | none => none
 
+def isTrueLit : SExpr → Bool
+  | .bool true => true
+  | _ => false
+
+mutual
+/-- A statement that may `break` out of the loop it is in (not counting inner loops). -/
+partial def stmtBreaks : SStmt → Bool
+  | .brk => true
+  | .expr e | .letS _ _ _ e none => exprBreaks e
+  | .letS _ _ _ e (some b) => exprBreaks e || b.any stmtBreaks
+  | .assign _ _ v => exprBreaks v
+  | .ret (some v) => exprBreaks v
+  | _ => false
+partial def exprBreaks : SExpr → Bool
+  | .ite _ t e => t.any stmtBreaks || (e.map exprBreaks).getD false
+  | .mtch _ arms => arms.any fun a => match a with
+    | .arm _ _ b | .fallback b => exprBreaks b
+  | .block b => b.any stmtBreaks
+  | _ => false
+end
+
 mutual
 partial def tE (c : Ctx) (ls : List String) : SExpr → TM Expr
   | .int i => pure (.lit (.int i))
@@ -143,7 +216,7 @@ partial def tE (c : Ctx) (ls : List String) : SExpr → TM Expr
       | .lit l => pure (Expr.lit (.str l))
       | .expr e => do
         if c.shows then showE (← tE c ls e) else return .prim "%show" [← tE c ls e]
-      | .fmt e spec => do return .prim "%fmt" [← tE c ls e, .lit (.str spec)]
+      | .fmt e spec => do return .prim ("%fmt:" ++ spec) [← tE c ls e]
     match parts with
     | [Expr.lit (.str l)] => pure (.lit (.str l))
     | [] => pure (.lit (.str ""))
@@ -177,7 +250,7 @@ partial def tE (c : Ctx) (ls : List String) : SExpr → TM Expr
       | none => match c.variant n with
         | some (k, tag) => return .con k tag as
         | none => match c.scope.externs.get? n with
-          | some p => return .prim p as
+          | some p => return if p == "panic" then panicE as else .prim p as
           | none => return .unsup s!"function {n}"
     | .path t m => match c.qvariant t m with
       | some (k, tag) => return .con k tag as
@@ -220,9 +293,14 @@ partial def tE (c : Ctx) (ls : List String) : SExpr → TM Expr
   | .new n fs base => tNew c ls n fs base
   | .try e => do return .try (← tE c ls e)
   | .mutarg e => tE c ls e
-  | .lambda ps _ body => do
+  | .lambda ps r body => do
     let names := ps.map (·.1)
-    return .lam names (← tE c (ls ++ names) body)
+    let b ← tE c (ls ++ names) body
+    let caps := dedup ((fvE names b).filter ls.contains)
+    let clo : Expr := .clos caps names b
+    if ps.all (·.2.isNone) && r.isNone then return clo
+    let ts := ps.map fun (_, t) => (t.map c.ty).getD holeTy
+    return .ann (.fn ts ((r.map c.ty).getD holeTy)) clo
   | .dyn _ e => do
     -- a `dyn` value is the value: methods dispatch on its head at run time
     modify fun (n, _) => (n, true)
@@ -256,6 +334,9 @@ partial def tNew (c : Ctx) (ls : List String) (n : String) (fs : List (String ×
   match c.adts.get? k with
   | none => return .unsup s!"struct {n}"
   | some d =>
+    if let some (f, _) := fs.find? (!d.fields.contains ·.1) then return .unsup s!"field {f} of {n}"
+    if base.isNone && fs.map (·.1) == d.fields then
+      return .con k 0 (← fs.mapM fun (_, e) => tE c ls e)
     -- the fields in source order, then the base, each bound once
     let mut binds : List (String × Expr) := []
     let mut names : List (String × String) := []
@@ -285,13 +366,28 @@ partial def tBlock (c : Ctx) (ls : List String) : List SStmt → TM Expr
 
 partial def tStmt (c : Ctx) (ls : List String) (s : SStmt) (rest : List SStmt) : TM Expr := do
   match s with
-  | .letS (.bind x) mutable _ v none => return .letE x mutable (← tE c ls v) (← tBlock c (ls ++ [x]) rest)
-  | .letS p _ _ v els => do
-    let body ← tBlock c (ls ++ patNames p) rest
+  | .letS (.bind x) mutable ty v none => do
+    let v' ← tE c ls v
+    let v' := match ty with
+      | some t => Expr.ann (c.ty t) v'
+      | none => v'
+    return .letE x mutable v' (← tBlock c (ls ++ [x]) rest)
+  | .letS p mutable ty v els => do
+    -- `var (a, b) = e`: the pattern binds hidden names, moved into `var`s of the names
+    let names := patNames p
+    let hidden := names.map ("%var_" ++ ·)
+    let p := if mutable then renamePat (names.zip hidden) p else p
+    let body ← tBlock c (ls ++ names) rest
+    let body := if mutable then (names.zip hidden).foldr (fun (x, h) b => .letE x true (.place h []) b) body
+      else body
     let arms := match els with
       | none => pure [(tPat p, none, body)]
       | some b => do return [(tPat p, none, body), (Pat.wild, none, ← tBlock c ls b)]
-    return .mtch (← tE c ls v) (← arms)
+    let v' ← tE c ls v
+    let v' := match ty with
+      | some t => Expr.ann (c.ty t) v'
+      | none => v'
+    return .mtch v' (← arms)
   | .expr e => return .seqE (← tE c ls e) (← tBlock c ls rest)
   | .assign op t v => do
     match ← tPlace c ls t with
@@ -306,7 +402,12 @@ partial def tStmt (c : Ctx) (ls : List String) (s : SStmt) (rest : List SStmt) :
         | some _, none => pure (.unsup "assignment operator")
       return .seqE a (← tBlock c ls rest)
     | none => return .unsup "assignment to this target"
-  | .whileS cond b => return .seqE (.while (← tE c ls cond) (← tBlock c ls b)) (← tBlock c ls rest)
+  | .whileS cond b =>
+    let w := Expr.while (← tE c ls cond) (← tBlock c ls b)
+    if rest.isEmpty && isTrueLit cond && !b.any stmtBreaks then
+      -- never ends normally: the end of the block is unreachable (it has any type)
+      return .seqE w (panicE [.lit (.str "unreachable")])
+    return .seqE w (← tBlock c ls rest)
   | .forRange p a b body => do
     let lo ← fresh "lo"
     let hi ← fresh "hi"
@@ -335,9 +436,10 @@ partial def tStmt (c : Ctx) (ls : List String) (s : SStmt) (rest : List SStmt) :
     let v' ← match v with
       | some x => tE c ls x
       | none => pure unitE
+    if rest.isEmpty then return .ret v'
     return .seqE (.ret v') (← tBlock c ls rest)
-  | .brk => return .seqE .brk (← tBlock c ls rest)
-  | .cont => return .seqE .cont (← tBlock c ls rest)
+  | .brk => if rest.isEmpty then return .brk else return .seqE .brk (← tBlock c ls rest)
+  | .cont => if rest.isEmpty then return .cont else return .seqE .cont (← tBlock c ls rest)
 end
 
 /-! ## Programs -/
@@ -347,8 +449,27 @@ def kindOf : String → Kind
   | "unique" => .unique
   | _ => .copy
 
+/-- The signature of a builtin from its `extern fn` declaration: the number of
+type parameters, the parameter types (`self` first), the result. -/
+structure ExtSig where
+  tparams : Nat
+  ptys : List Ty
+  ret : Ty
+  deriving Inhabited
+
 structure Program where
   prog : Prog
+  /-- The declared types (`prog.adts` is their lookup), for the checker's `AdtsOk`. -/
+  adtList : List (String × AdtDecl) := []
+  /-- The signatures of the prelude's `extern fn`s, keyed as the builtins. -/
+  sigs : List (String × ExtSig) := []
+  /-- The program file's own functions and impl methods (the checker checks them all, as `tenon check` does). -/
+  roots : List String := []
+  /-- The impls with their modules (`prelude`, `main`), and the modules of the traits and type heads,
+  for the coherence and orphan checks (TenonCore/TraitsCheck.lean). -/
+  impls : List Traits.ModImpl := []
+  traitMods : List (String × String) := []
+  typeMods : List (String × String) := []
   main : Option String
   mainArity : Nat
   /-- Constructs the program uses that the core does not model (top level). -/
@@ -360,10 +481,16 @@ structure Program where
 def coreExterns : List (String × FnDecl) :=
   let unwrap (ok bad : String) (badPs : List Pat) (msg : Expr) : Expr :=
     .mtch (.place "self" []) [(.con ok [.bind "%x"], none, .place "%x" []), (.con bad badPs, none, msg)]
-  [("Option.unwrap", { params := [("self", .val)], body := unwrap "Some" "None" [] (.prim "panic" [.lit (.str "unwrap on None")]) }),
-   ("Option.expect", { params := [("self", .val), ("msg", .val)], body := unwrap "Some" "None" [] (.prim "panic" [.place "msg" []]) }),
-   ("Result.unwrap", { params := [("self", .val)], body := unwrap "Ok" "Err" [.wild] (.prim "panic" [.lit (.str "unwrap on Err")]) }),
-   ("Result.expect", { params := [("self", .val), ("msg", .val)], body := unwrap "Ok" "Err" [.wild] (.prim "panic" [.place "msg" []]) })]
+  let opt : Ty := .adt "Option" [.var 0]
+  let res : Ty := .adt "Result" [.var 0, .var 1]
+  let mk (tp : Nat) (ptys : List Ty) (ps : List (String × Mode)) (body : Expr) : FnDecl :=
+    { tparams := tp, ptys := ptys, ret := .var 0, params := ps, body := body }
+  [("Option.unwrap", mk 1 [opt] [("self", .val)] (unwrap "Some" "None" [] (panicE [.lit (.str "unwrap on None")]))),
+   ("Option.expect", mk 1 [opt, .str] [("self", .val), ("msg", .val)]
+      (unwrap "Some" "None" [] (panicE [.place "msg" []]))),
+   ("Result.unwrap", mk 2 [res] [("self", .val)] (unwrap "Ok" "Err" [.wild] (panicE [.lit (.str "unwrap on Err")]))),
+   ("Result.expect", mk 2 [res, .str] [("self", .val), ("msg", .val)]
+      (unwrap "Ok" "Err" [.wild] (panicE [.place "msg" []])))]
 
 def declare (sc : Scope) (pfx : String) (items : List SItem) (hide : Scope) : Scope := Id.run do
   let mut sc := sc
@@ -406,7 +533,7 @@ def adtDecls (sc : Scope) (items : List SItem) (adts : Std.HashMap String AdtDec
   return adts
 
 /-- A function or method body (`f`'s parameters; `c` has its type parameters). -/
-def declOf (c : Ctx) (f : SFn) (b : List SStmt) (owner : Option String) : TM FnDecl := do
+def declOf (c : Ctx) (f : SFn) (b : List SStmt) (owner : Option String) (selfTy : Option Ty := none) : TM FnDecl := do
   let selfP := match f.selfKind with
     | "self" => [("self", Mode.val)]
     | "mut-self" => [("self", Mode.mut)]
@@ -419,8 +546,15 @@ def declOf (c : Ctx) (f : SFn) (b : List SStmt) (owner : Option String) : TM FnD
     body := body
     owner := owner
     tparams := c.tparams.length
-    ptys := f.params.map (fun p => c.ty p.ty)
+    ptys := (if selfP.isEmpty then [] else [selfTy.getD holeTy]) ++ f.params.map (fun p => c.ty p.ty)
     ret := (f.ret.map c.ty).getD .unit }
+
+/-- The type parameters of a method's owner (`List[T].len`: `T`; `List[Str].join`: none). -/
+def ownerParams (c : Ctx) : Option STy → List String
+  | some (.named _ as) => as.filterMap fun t => match t with
+    | .named n [] => if c.isType n then none else some n
+    | _ => none
+  | _ => []
 
 def fnDecls (c0 : Ctx) (pfx : String) (items : List SItem) : TM (List (String × FnDecl) × List String) := do
   let mut out : List (String × FnDecl) := []
@@ -431,9 +565,7 @@ def fnDecls (c0 : Ctx) (pfx : String) (items : List SItem) : TM (List (String ×
       match f.body with
       | none => pure ()
       | some b =>
-        let ownerTps := match f.owner with
-          | some (.named _ as) => as.filterMap fun t => match t with | .named n [] => some n | _ => none
-          | _ => []
+        let ownerTps := ownerParams c0 f.owner
         let c := { c0 with tparams := ownerTps ++ f.tparams }
         let (key, owner) := match f.owner with
           | some (.named n _) =>
@@ -441,7 +573,7 @@ def fnDecls (c0 : Ctx) (pfx : String) (items : List SItem) : TM (List (String ×
             (k ++ "." ++ f.name, if builtinTypes.contains n then none else some k)
           | some _ => ("%bad." ++ f.name, none)
           | none => (pfx ++ f.name, none)
-        out := out ++ [(key, ← declOf c f b owner)]
+        out := out ++ [(key, ← declOf c f b owner (f.owner.map c.ty))]
     | .bad line msg => bad := bad ++ [s!"{msg}: {line.take 60}"]
     | .imp n => bad := bad ++ [s!"import {n}"]
     | _ => pure ()
@@ -499,7 +631,7 @@ def implDecls (c0 : Ctx) (items : List SItem) (traits : Std.HashMap String (List
         for m in ms ++ defaults do
           let some b := m.body | continue
           let cm := { c with tparams := names ++ m.tparams }
-          let d ← declOf cm m b owner
+          let d ← declOf cm m b owner (some (cm.ty target))
           if tr == "Show" && m.name == "to_str" then
             let fk := s!"%show#{k}#{acc.shows.length}"
             acc := { acc with fns := acc.fns ++ [(fk, d)],
@@ -557,9 +689,9 @@ element by element, then the interpreter's merge sort). -/
 def sortByDecl (desc : Bool) : FnDecl :=
   let p (x : String) : Expr := .place x []
   let i1 : Expr := .prim "%add" [p "%i", .lit (.int 1)]
-  { params := [("self", .mut), ("key", .val)],
+  { tparams := 2, ptys := [.list (.var 0), .fn [.var 0] (.var 1)], params := [("self", .mut), ("key", .val)],
     body :=
-      .letE "%ks" true (.seq .list [])
+      .letE "%ks" true (.ann (.list (.var 1)) (.seq .list []))
         (.letE "%i" true (.lit (.int 0))
           (.seqE (.while (.prim "%lt" [p "%i", .prim "List.len" [p "self"]])
               (.seqE (.mcall "push" (p "%ks") [.call (p "key") [.place "self" [.idx (p "%i")]]])
@@ -574,11 +706,38 @@ def externNames (items : List SItem) (sc : Scope) : List String :=
       | none => some f.name
     | _ => none
 
+/-- The prelude's `extern fn` signatures (TenonCore/Check.lean's builtin signatures). -/
+def externSigs (items : List SItem) (sc : Scope) (adts : Std.HashMap String AdtDecl) : List (String × ExtSig) :=
+  items.filterMap fun it => match it with
+    | .fn f => if !f.isExtern then none else
+      let ownerTps := ownerParams { scope := sc, adts } f.owner
+      let c : Ctx := { scope := sc, adts, tparams := ownerTps ++ f.tparams }
+      let key := match f.owner with
+        | some (.named n _) => some (c.tyKey n ++ "." ++ f.name)
+        | some _ => none
+        | none => some f.name
+      let selfT := if f.selfKind.isEmpty then [] else (f.owner.map c.ty).toList
+      key.map fun k => (k, { tparams := ownerTps.length + f.tparams.length,
+                             ptys := selfT ++ f.params.map (c.ty ·.ty), ret := (f.ret.map c.ty).getD .unit })
+    | _ => none
+
+/-- `Float` values are `.adt "Float" 0 none [bits]` (PrimFloat.lean); their declaration. -/
+def floatDecl : AdtDecl :=
+  { name := "Float", isStruct := true, kind := .copy, fields := ["%bits"], variants := [("Float", [.int])] }
+
+/-- The impls of a file as the trait model's declarations (Traits.lean). -/
+def implModel (sc : Scope) (adts : Std.HashMap String AdtDecl) (m : String) (items : List SItem) : List Traits.ModImpl :=
+  items.filterMap fun it => match it with
+    | .impl tps tr target _ =>
+      let c : Ctx := { scope := sc, adts, tparams := tps.map (·.1) }
+      some { mod := m, im := { trait := tr, tparams := tps.length, self := c.ty target, methods := [] } }
+    | _ => none
+
 def translate (prelude prog : List SItem) (input : List UInt8) : Program :=
   let psc := declare {} "p:" prelude {}
   let msc := declare psc "m:" prog psc
   let adts := adtDecls psc prelude {}
-  let adts := adtDecls msc prog adts
+  let adts := (adtDecls msc prog adts).insert "Float" floatDecl
   let isShow (it : SItem) := match it with | .impl _ "Show" _ _ => true | _ => false
   let shows := prelude.any isShow || prog.any isShow
   let ((pfns, _), n) := (fnDecls { scope := psc, adts, shows } "p:" prelude).run (0, false)
@@ -591,6 +750,7 @@ def translate (prelude prog : List SItem) (input : List UInt8) : Program :=
   let ptraits := traitsOf prelude {}
   let mtraits := traitsOf prog ptraits
   let (im, n) := (implDecls { scope := psc, adts, shows } prelude ptraits (ownTypes prelude) taken {}).run n
+  let nPre := im.fns.length
   let (im, (_, hasDyn)) := (implDecls { scope := msc, adts, shows } prog mtraits (ownTypes prog) taken im).run n
   let fns := im.fns.foldl (fun m (k, d) => m.insert k d) base
   let fns := if !shows then fns else
@@ -601,6 +761,14 @@ def translate (prelude prog : List SItem) (input : List UInt8) : Program :=
     | .fn f => if f.name == "main" && f.owner.isNone && f.body.isSome then some f else none
     | _ => none
   { prog := { fns := fns.get?, adts := adts.get?, prim := Prims.table adts.get? externs input im.shows hasDyn },
+    adtList := adts.toList,
+    sigs := externSigs prelude psc adts,
+    roots := mfns.map (·.1) ++ (im.fns.drop nPre).map (·.1),
+    impls := implModel psc adts "prelude" prelude ++ implModel msc adts "main" prog,
+    traitMods := (traitsOf prelude {}).toList.map (fun (t, _) => (t, "prelude")) ++
+      (prog.filterMap fun it => match it with | .trait n _ => some (n, "main") | _ => none),
+    typeMods := (builtinTypes ++ ["Tuple", "Fn"]).map (·, "prelude") ++ (ownTypes prelude).map (psc.types.getD · "" , "prelude") ++
+      (ownTypes prog).map (msc.types.getD · "", "main"),
     main := main.map fun _ => "m:main",
     mainArity := (main.map (·.params.length)).getD 0,
     unsupported := bad ++ im.bad,

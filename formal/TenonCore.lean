@@ -15,10 +15,14 @@ import TenonCore.TypeSafeHelpers
 import TenonCore.TypeSafe
 import TenonCore.TypeSafeEval
 import TenonCore.TypeSafeRest
+import TenonCore.CheckBase
+import TenonCore.Check
+import TenonCore.CheckSound
 import TenonCore.Subst
 import TenonCore.SubstTyping
 import TenonCore.Theorems
 import TenonCore.TypeExamples
 import TenonCore.Traits
+import TenonCore.TraitsCheck
 import TenonCore.TypeGaps
 import TenonCore.TypeGapsStable

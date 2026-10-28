@@ -81,31 +81,31 @@ theorem HasTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ : 
   | _, _, _, _, _, .proj he hc hp, _, hr =>
     .proj (HasTy.subst hsc hps he hr) (Ty.copyable_subst hc) (PathTy.subst hsc hps hp hr)
   | _, _, _, _, _, .tup hl, _, hr => .tup (ListTy.subst hsc hps hl hr)
-  | _, _, _, _, _, @HasTy.list _ _ _ _ es t _ hl hc, _, hr => by
+  | _, _, _, _, _, @HasTyX.list _ _ _ _ _ es t _ hl hc, _, hr => by
     have h := ListTy.subst hsc hps hl hr
     rw [substL_map_const] at h
     exact .list h (Ty.copyable_subst hc)
-  | _, _, _, _, _, @HasTy.con _ _ _ _ s tag es d name ts args _ hd hvar ha hl, _, hr => by
+  | _, _, _, _, _, @HasTyX.con _ _ _ _ _ s tag es d name ts args _ hd hvar ha hl, _, hr => by
     have h := ListTy.subst hsc hps hl hr
     rw [substL_comp σ ts (scoped_adt hsc hd (List.mem_of_getElem? hvar) ha)] at h
     exact .con hd hvar (by rw [substL_length]; exact ha) h
-  | _, _, _, _, _, @HasTy.lam _ _ _ _ ps body ts r Γb hl hb hfin, _, hr => by
+  | _, _, _, _, _, @HasTyX.lam _ _ _ _ _ ps body ts r Γb hl hb hfin, _, hr => by
     have h := HasTy.subst hsc hps hb (SigRel.fnSig none (ps.map (·, Mode.val)) r)
     rw [paramsCtx_subst] at h
     exact .lam (by rw [substL_length]; exact hl) h (FinFn.subst hfin)
-  | _, _, _, _, _, @HasTy.fnref _ _ _ _ f d σ' hf hall hσ', _, hr => by
+  | _, _, _, _, _, @HasTyX.fnref _ _ _ _ _ f d σ' hf hall hσ' _, _, hr => by
     have hc := fn_ty_subst (σ := σ) (scoped_fn hsc hf hσ')
     show HasTy P prim _ _ _ (.fn (substL σ (substL σ' d.ptys)) ((d.ret.subst σ').subst σ)) _
     rw [hc.1, hc.2]
-    exact .fnref hf hall (by rw [substL_length]; exact hσ')
+    exact .fnref hf hall (by rw [substL_length]; exact hσ') trivial
   | _, _, _, _, _, .callv hf hargs, _, hr => .callv (HasTy.subst hsc hps hf hr) (ArgsTy.subst hsc hps hargs hr)
-  | _, _, _, _, _, @HasTy.call _ _ _ _ f d σ' args _ hf hσ' hargs, _, hr => by
+  | _, _, _, _, _, @HasTyX.call _ _ _ _ _ f d σ' args _ hf hσ' _ hargs, _, hr => by
     have hc := fn_ty_subst (σ := σ) (scoped_fn hsc hf hσ')
     have h := ArgsTy.subst hsc hps hargs hr
     rw [hc.1] at h; rw [hc.2]
-    exact .call hf (by rw [substL_length]; exact hσ') h
-  | _, _, _, _, _, @HasTy.mcallP _ _ _ Δ1 _ m x ps en t0 d σ' p0 m0 prest pt0 ptrest args Γ1 Γr Γ2 hf ha hp hav1 hvar hd
-      hσ' hpar hpty hsub hval hnval htail hargs, _, hr => by
+    exact .call hf (by rw [substL_length]; exact hσ') trivial h
+  | _, _, _, _, _, @HasTyX.mcallP _ _ _ _ Δ1 _ m x ps en t0 d σ' p0 m0 prest pt0 ptrest args Γ1 Γr Γ2 hf ha hp hav1 hvar hd
+      hσ' _ hpar hpty hsub hval hnval htail hargs, _, hr => by
     obtain ⟨Δ1', htail', hr1⟩ := TailSig.subst htail hr
     have hsf := scoped_fn hsc hd hσ'
     rw [hpty] at hsf
@@ -116,7 +116,7 @@ theorem HasTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ : 
     have h := ArgsTy.subst hsc hps hargs hr1
     rw [substL_comp σ ptrest hrest] at h
     refine .mcallP (Ctx.find_subst' hf) ha (PathTy.subst hsc hps hp hr) hav1.subst hvar' (by rw [hhead]; exact hd)
-      (by rw [substL_length]; exact hσ') hpar hpty (by rw [← Ty.subst_comp σ pt0 hpt0, hsub]) ?_ ?_ htail' h
+      (by rw [substL_length]; exact hσ') trivial hpar hpty (by rw [← Ty.subst_comp σ pt0 hpt0, hsub]) ?_ ?_ htail' h
     · intro hm
       rcases hval hm with ⟨h1, h2⟩ | ⟨h1, h2⟩
       · exact Or.inl ⟨h1, by rw [h2, Ctx.setAvail_subst]⟩
@@ -124,7 +124,7 @@ theorem HasTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ : 
     · intro hm
       obtain ⟨h1, h2, h3⟩ := hnval hm
       exact ⟨by rw [h1], Ty.copyable_subst h2, h3.subst⟩
-  | _, _, _, _, _, @HasTy.mcallV _ _ _ Δ1 _ m recv t0 d σ' p0 prest pt0 ptrest args Γ1 Γ2 hnp hrv hvar hd hσ' hpar
+  | _, _, _, _, _, @HasTyX.mcallV _ _ _ _ Δ1 _ m recv t0 d σ' p0 prest pt0 ptrest args Γ1 Γ2 hnp hrv hvar hd hσ' _ hpar
       hpty hsub htail hargs, _, hr => by
     obtain ⟨Δ1', htail', hr1⟩ := TailSig.subst htail hr
     have hsf := scoped_fn hsc hd hσ'
@@ -136,20 +136,22 @@ theorem HasTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ : 
     have h := ArgsTy.subst hsc hps hargs hr1
     rw [substL_comp σ ptrest hrest] at h
     exact .mcallV hnp (HasTy.subst hsc hps hrv hr) hvar' (by rw [hhead]; exact hd) (by rw [substL_length]; exact hσ')
-      hpar hpty (by rw [← Ty.subst_comp σ pt0 hpt0, hsub]) htail' h
-  | _, _, _, _, _, @HasTy.mprimP _ _ _ _ m x ps en t0 ts t args Γ1 Γ2 hf ha hp hav1 hvar hd hpr hops hav hc, _, hr => by
+      trivial hpar hpty (by rw [← Ty.subst_comp σ pt0 hpt0, hsub]) htail' h
+  | _, _, _, _, _, @HasTyX.mprimP _ _ _ _ _ m x ps en t0 ts t args Γ1 Γ2 hf ha hp hav1 hvar hd hpr hops hav hc, _, hr => by
     obtain ⟨hhead, hvar'⟩ := Ty.head_subst (σ := σ) hvar
     exact .mprimP (Ctx.find_subst' hf) ha (PathTy.subst hsc hps hp hr) hav1.subst hvar' (by rw [hhead]; exact hd)
-      (by rw [hhead]; exact hps _ _ _ hpr) (OpndsTy.subst hsc hps hops hr) hav.subst (Ty.copyable_subst hc)
-  | _, _, _, _, _, @HasTy.mprimV _ _ _ _ m recv t0 ts t args Γ1 Γ2 hnp hrv hc0 hvar hd hpr hops hc, _, hr => by
+      (by rw [hhead]; exact Or.inl (hps _ _ _ (hpr.resolve_right (by simp [Ext.strict]))))
+      (OpndsTy.subst hsc hps hops hr) hav.subst (Ty.copyable_subst hc)
+  | _, _, _, _, _, @HasTyX.mprimV _ _ _ _ _ m recv t0 ts t args Γ1 Γ2 hnp hrv hc0 hvar hd hpr hops hc, _, hr => by
     obtain ⟨hhead, hvar'⟩ := Ty.head_subst (σ := σ) hvar
     exact .mprimV hnp (HasTy.subst hsc hps hrv hr) (Ty.copyable_subst hc0) hvar' (by rw [hhead]; exact hd)
-      (by rw [hhead]; exact hps _ _ _ hpr) (OpndsTy.subst hsc hps hops hr) (Ty.copyable_subst hc)
+      (by rw [hhead]; exact Or.inl (hps _ _ _ (hpr.resolve_right (by simp [Ext.strict]))))
+      (OpndsTy.subst hsc hps hops hr) (Ty.copyable_subst hc)
   | _, _, _, _, _, .prim hp hops hc, _, hr =>
     .prim (hps _ _ _ hp) (OpndsTy.subst hsc hps hops hr) (Ty.copyable_subst hc)
   | _, _, _, _, _, .letE he hb ha, _, hr =>
     .letE (HasTy.subst hsc hps he hr) (HasTy.subst hsc hps hb hr) (fun h => Ty.nonlinear_subst (ha h))
-  | _, _, _, _, _, @HasTy.assign _ _ _ _ x e en Γ1 hf hm he hl, _, hr => by
+  | _, _, _, _, _, @HasTyX.assign _ _ _ _ _ x e en Γ1 hf hm he hl, _, hr => by
     rw [Ctx.setAvail_subst]
     refine .assign (Ctx.find_subst' hf) hm (HasTy.subst hsc hps he hr) ?_
     intro en1 h1 ha1
@@ -169,16 +171,19 @@ theorem HasTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ : 
     have h := HasTy.subst hsc hps he hr
     rw [← hr.1] at h
     exact .ret (by rw [hr.2.1]; exact hex) h (RetOk.subst hrr hr)
-  | _, _, _, _, _, @HasTy.brk _ _ _ _ Γl _ _ hl hlo, _, hr =>
+  | _, _, _, _, _, @HasTyX.brk _ _ _ _ _ Γl _ _ hl hlo, _, hr =>
     .brk (Γl := Γl.subst σ) (by rw [hr.2.2.1, hl]; rfl) (LoopOk.subst hlo)
-  | _, _, _, _, _, @HasTy.cont _ _ _ _ Γl _ _ hl hlo, _, hr =>
+  | _, _, _, _, _, @HasTyX.cont _ _ _ _ _ Γl _ _ hl hlo, _, hr =>
     .cont (Γl := Γl.subst σ) (by rw [hr.2.2.1, hl]; rfl) (LoopOk.subst hlo)
-  | _, _, _, _, _, @HasTy.tryOpt _ _ _ _ e t t' Γ1 hex he hret hrr, _, hr =>
+  | _, _, _, _, _, @HasTyX.tryOpt _ _ _ _ _ e t t' Γ1 hex he hret hrr, _, hr =>
     .tryOpt (t' := t'.subst σ) (by rw [hr.2.1]; exact hex) (HasTy.subst hsc hps he hr) (by rw [hr.1, hret]; rfl)
       (RetOk.subst hrr hr)
-  | _, _, _, _, _, @HasTy.tryRes _ _ _ _ e t t' er Γ1 hex he hret hrr, _, hr =>
+  | _, _, _, _, _, @HasTyX.tryRes _ _ _ _ _ e t t' er Γ1 hex he hret hrr, _, hr =>
     .tryRes (t' := t'.subst σ) (by rw [hr.2.1]; exact hex) (HasTy.subst hsc hps he hr) (by rw [hr.1, hret]; rfl)
       (RetOk.subst hrr hr)
+  | _, _, _, _, _, .clos hfull .., _, _ => absurd hfull (by simp [Ext.strict])
+  | _, _, _, _, _, .ann hfull _, _, _ => absurd hfull (by simp [Ext.strict])
+  | _, _, _, _, _, .callPrim hfull .., _, _ => absurd hfull (by simp [Ext.strict])
 
 theorem ListTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ : Sig} {Γ : Ctx} {es : List Expr}
     {ts : List Ty} {Γ' : Ctx}, ListTy P prim Δ Γ es ts Γ' → ∀ {Δ' : Sig}, SigRel P σ Δ Δ' →
@@ -212,7 +217,7 @@ theorem PathTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ :
     {ps : List PStep} {t : Ty} {Γ' : Ctx}, PathTy P prim Δ Γ T ps t Γ' → ∀ {Δ' : Sig}, SigRel P σ Δ Δ' →
     PathTy P prim Δ' (Γ.subst σ) (T.subst σ) ps (t.subst σ) (Γ'.subst σ)
   | _, _, _, _, _, _, .nil, _, _ => .nil
-  | _, _, _, _, _, _, @PathTy.fld _ _ _ _ s args f ps d i ft t Γ' hd hs hi hft ha hp, _, hr => by
+  | _, _, _, _, _, _, @PathTyX.fld _ _ _ _ _ s args f ps d i ft t Γ' hd hs hi hft ha hp, _, hr => by
     have h := PathTy.subst hsc hps hp hr
     rw [Ty.subst_comp σ ft (scoped_field hsc hd hft ha)] at h
     exact .fld hd hs hi hft (by rw [substL_length]; exact ha) h
@@ -225,7 +230,7 @@ theorem ArmsTy.subst (hsc : ProgScoped P) (hps : PrimStable prim σ) : ∀ {Δ :
     {arms : List (Pat × Option Expr × Expr)} {t : Ty} {Γ' : Ctx}, ArmsTy P prim Δ Γ t0 arms t Γ' →
     ∀ {Δ' : Sig}, SigRel P σ Δ Δ' → ArmsTy P prim Δ' (Γ.subst σ) (t0.subst σ) arms (t.subst σ) (Γ'.subst σ)
   | _, _, _, _, _, _, .nil, _, _ => .nil
-  | _, _, _, _, _, _, @ArmsTy.cons _ _ _ _ _ p g body arms _ bs _ Γb hpat hg hgt hbody hlb hnb hrest, _, hr => by
+  | _, _, _, _, _, _, @ArmsTyX.cons _ _ _ _ _ _ p g body arms _ bs _ Γb hpat hg hgt hbody hlb hnb hrest, _, hr => by
     refine .cons (bs := bindsSubst σ bs) (Γb := Γb.subst σ) (PatTy.subst hsc hpat)
       (fun h => Ty.copyable_subst (hg h)) ?_ ?_ (by rw [Ctx.subst_length, hlb, bindsSubst_length])
       (Ctx.noLinear_subst hnb) (ArmsTy.subst hsc hps hrest hr)
@@ -248,7 +253,7 @@ theorem generic_check_once (P : Prog) (prim : PrimSig) (hA : AdtsOk P) (hS : Std
       ∃ Γ', HasTy P prim (fnSig P d.owner d.params d.ret) (paramsCtx d.params d.ptys) d.body d.ret Γ' ∧
         FinFn P d.owner d.params Γ') :
     ProgOk P prim := by
-  refine ⟨hA, hS, fun f d hd => ⟨(h f d hd).1, fun σ _ => ?_⟩⟩
+  refine ⟨hA, hS, fun f d hd σ _ _ => ⟨(h f d hd).1, ?_⟩⟩
   obtain ⟨-, Γ', hb, hfin⟩ := h f d hd
   refine ⟨Γ'.subst σ, ?_, FinFn.subst hfin⟩
   have := HasTy.subst hsc (hpr σ) hb (SigRel.fnSig (σ := σ) d.owner d.params d.ret)

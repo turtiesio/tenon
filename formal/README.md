@@ -13,16 +13,21 @@ project (`lakefile.toml`, toolchain pinned in `lean-toolchain`:
 | Capability safety | `TenonCore/Capability.lean` (+ `Lemmas.lean`) | **proved** |
 | Linear and unique soundness (conservation of obligations) | `TenonCore/LinearSafe.lean` (+ `Linear.lean`, `LinearLemmas.lean`) | **proved** |
 | Worker isolation (heaps, channels, the `Send` rule) | `TenonCore/Workers.lean` | **proved** |
-| Typing judgement (types, kinds, obligation tracking, early exits) | `TenonCore/Typing.lean` | defined |
-| Type soundness | `TenonCore/TypeSafe*.lean` (+ `TypingLemmas.lean`, `TypingPaths.lean`) | **proved** |
+| Typing judgement (types, kinds, obligation tracking, early exits; stage 2 and the loosened stage 3, `Ext`) | `TenonCore/Typing.lean` | defined |
+| Type soundness (both judgements, one proof) | `TenonCore/TypeSafe*.lean` (+ `TypingLemmas.lean`, `TypingPaths.lean`) | **proved** |
+| The checker: a decision procedure for the stage-3 judgement, executable | `TenonCore/Check.lean` (+ `CheckBase.lean`) | done |
+| The checker is sound (`check_sound`, `checked_program_never_stuck`) | `TenonCore/CheckSound.lean` | **proved** |
+| Coherence decided: the overlap check and the orphan rule | `TenonCore/TraitsCheck.lean` | **proved** |
 | Parametricity (substitution lemma, checking a generic function once) | `TenonCore/Subst.lean`, `TenonCore/SubstTyping.lean` | **proved** |
 | The hypotheses are satisfiable (a typed linear program) | `TenonCore/TypeExamples.lean` | **proved** |
 | Traits and coherence (impls, generic impls with bounds, supertraits, `dyn`) | `TenonCore/Traits.lean` | **proved** |
 | Milestone-3 item 3 specification (user `Eq`/`Ord`/`Hash`, sorting, maps) | `TenonCore/TypeGaps.lean` | **proved** (+ `TypeGapsStable.lean`) |
 | The guarded theorem statements | `TenonCore/Theorems.lean` | guarded (ops/governance/guarded.txt) |
 | Translator from `tenon ast` dumps to the core | `Front/Parse.lean`, `Front/Translate.lean` | done |
-| Runner (`lake exe tenon-core`) | `Main.lean` | done |
-| Differential test against `tenon run` | `../ops/gates/formal_diff.py` | 295 of 295 programs in the subset agree |
+| The checker's driver: builtin signatures, the instances a program uses | `Front/Checker.lean` | done |
+| Runner (`lake exe tenon-core run`, `... check`) | `Main.lean` | done |
+| Differential test against `tenon run` | `../ops/gates/formal_diff.py` | 325 of 325 programs in the subset agree |
+| The Lean checker against `tenon check` | `../ops/gates/formal_diff.py` | 432 of 598 verdicts agree; every disagreement classified (below) |
 
 Every proof checks with no `sorry` and depends only on Lean's standard axioms
 (`propext`, `Classical.choice`, `Quot.sound`); `../ops/gates/formal_check.sh`
@@ -40,12 +45,13 @@ python3 ops/gates/formal_diff.py --list  # the differential test (needs target/t
 lake build Todo                          # unfinished statements (may use sorry; empty now)
 ```
 
-Run one program on the core by hand:
+Run one program on the core, or ask the Lean checker, by hand:
 
 ```sh
 target/tenon ast lib/prelude.tn > /tmp/p1.ast; target/tenon ast lib/v2/prelude.tn > /tmp/p2.ast
 target/tenon ast tests/run/enums.tn > /tmp/e.ast
 formal/.lake/build/bin/tenon-core run /tmp/p1.ast /tmp/p2.ast -- /tmp/e.ast
+formal/.lake/build/bin/tenon-core check /tmp/p1.ast /tmp/p2.ast -- /tmp/e.ast   # accepted / rejected / unsupported
 ```
 
 ## The model
@@ -69,12 +75,14 @@ methods (`FnDecl`), and builtins (`Prog.prim`). The evaluator is
 - **Expressions** (`Expr`): literals; reading a *place* `x.f[i].0` (`place`);
   projecting a computed value (`proj`); tuples, lists; building a declared
   value (`con`); closures (`lam`, capturing the variables without obligations
-  by value); `fnref`; calls of function values (`call`); method calls
+  by value; `clos`, capturing the listed variables, which the translator
+  computes, each a value without obligations); `fnref`; calls of function values (`call`); method calls
   dispatched on the receiver's type head (`mcall`: a Tenon method, else a
   builtin); builtins (`prim`, whose place operands are inspected, not
   consumed); `let`/`var` (`letE`); assignment to a place (`assign`);
   sequencing; `if`; `match` with nested patterns, alternatives and guards;
   `while`; `return`, `break`, `continue`; `?` on `Option`/`Result` (`try`);
+  a type annotation, a hint for the checker with no run-time effect (`ann`);
   and `unsup` (a construct the core does not model).
 - **Results** (`Out`): a value, an early exit (`Ctl`: `ret`, `brk`, `cont`)
   or an error (`Err`): a trap (with the effects so far), *stuck* (a type error
@@ -154,11 +162,36 @@ type and frame (its length and what its parameters must be at the end,
   the value's head; a by-value `self` of the method's own linear type is
   discharged at the end (`SelfFin`). Builtins (`prim`) have abstract
   signatures; `PrimsOk` states what they must satisfy.
-- **Closures** see only their parameters (the values they capture at run
-  time are not used by the judgement), and their parameters are consumed.
+- **Closures** (`lam`) see only their parameters (the values they capture at
+  run time are not used by the judgement), and their parameters are consumed.
 - **Programs** (`ProgOk`): well-formed declarations (`AdtsOk`), the prelude's
   `Option`/`Result` (`StdOk`), and every function's body typed at every
   instance of its type parameters with its parameters finished at the end.
+
+**Stage 3 (`Ext`).** The judgement is `HasTyX X P prim`, with `X : Ext`
+saying what it allows beyond the rules above; `HasTy` (and `ValTy`, `EnvOk`,
+`ProgOk`, `PrimsOk`, which the guarded statements use) is `Ext.strict`,
+exactly the stage-2 judgement; `Ext.stage3 I` is the loosened one, which
+`tenon check`'s programs need and the checker decides:
+
+- **Closures capturing variables** (`HasTyX.clos`): the body is typed with
+  the parameters, then the captured variables (`capCtx`: immutable copies of
+  copyable values, the reference's "by value at creation"); the frame's end
+  (`closSig`) finishes the parameters and drops the copies. A closure value
+  (`ValTyX.closC`) carries its captured values typed.
+- **Instances** (`I`): a call, a function value and a method call must use an
+  instance in `I`, and `ProgOkX` asks only those instances to be well typed:
+  the program is checked at the instances it uses, monomorphized as the C
+  backend compiles it (reference §17). Bounded type parameters need nothing
+  more: at an instance a bound's method resolves on the concrete type's head
+  (`Traits.bounded_call_resolves` is why that is the impl's method).
+- **Annotations** (`ann`) type as their expression; **direct calls of
+  builtins** (`callPrim`, `Str.from_utf8(b)`) take their arguments as
+  operands; a method call on a value whose head has no method of that name
+  selects the builtin for every head (`PrimAt`: `x.to_str()`).
+
+The one proof (`tySafe`, TypeSafe*.lean) is generic in `X`; `type_soundness`
+is its `Ext.strict` instance and `type_soundness_full` its stage-3 instance.
 
 ## Theorems
 
@@ -187,6 +220,11 @@ removing one needs an owner approval, `../ops/governance/README.md`).
 | `sort_unique`, `sort_sorted_perm` | with a user `Ord` that is a total order, every correct sort gives the same list (the two backends cannot disagree); a lawful `Ord` sorts; any comparator gives a permutation | `TypeGaps.lean` |
 | `stable_sort_unique`, `sort_stable_equiv` | with a user `Ord` that is only a total preorder (distinct values may compare equal): two stable sorts give the same list; the model sort is stable; any two sorted permutations agree up to `equal` position by position | `TypeGapsStable.lean` |
 | `maps_agree` | with lawful user `Eq`/`Ord`/`Hash` (and `Ord` consistent with `Eq`, `Hash` with `Eq`), the ordered map and the hashed map agree with the insertion-order map on every lookup | `TypeGaps.lean` |
+| `type_soundness_full` | `type_soundness` for the stage-3 judgement (`Ext.stage3 I`: closures capturing variables, annotations, builtins called directly, functions at the instances `I`) | `TypeSafe*.lean` (the same proof, generic in `Ext`) |
+| `check_sound` | a program the Lean checker accepts (`Check.checkAll`, with `keys` listing its declared types) is well typed: `ProgOkX` at the instances it found, with the builtins' signatures `E.prim`, and the call of its `main` is typed in the initial context | `CheckSound.lean` (induction on the checker's fuel over its 7 functions; each success of the checker gives the rule whose side conditions it checked) |
+| `checked_program_never_stuck` | the theorem instance for a corpus program: if the checker accepts it and its builtins respect their signatures (`PrimsOkX`), its run from `main`, with any arguments and any fuel, is never stuck and never leaves the core | `Theorems.lean` (`check_sound` + `type_soundness_full`) |
+| `overlap_check_sound` | the decidable overlap check (`coherentB`: two impls of a trait clash at some position of their type patterns) gives `Coherent` | `TraitsCheck.lean` (`clash_sound`) |
+| `orphan_rule_coherent` | with every impl in the module of its trait or of its type's head (the orphan rule), each module's impls checked against those of the modules it sees, the whole program's impls are coherent | `TraitsCheck.lean` (`orphan_coherent`) |
 | `unlawful_eq_map_provenance`, `user_impls_capability_safe` | an arbitrary (inconsistent) user `Eq` breaks only functional results: the map holds only inserted keys and values; whatever user impls do, they get no authority (`capability_safety` for the elaborated program; `obligations_conserved` likewise, `TypeGaps.user_impls_obligations_conserved`) | `TypeGaps.lean` |
 
 What the obligation theorems mean: they hold for every program, typed or
@@ -196,11 +234,10 @@ program never trips them, so with `obligations_exactly_once` every linear
 value it creates is consumed exactly once. `TypeExamples.lean` shows the
 hypotheses are satisfiable (a program with a linear enum, `ProgOk` and
 `PrimsOk` proved, a typed expression creating and consuming a linear value,
-which the evaluator completes). The theorem is about the core's judgement,
-not yet about `tenon check` itself (TODO 1); the differential test checks the
-link empirically on the corpus (below): no program `tenon check` accepts gets
-stuck in the core; its first run found the programs of an open finding that
-the checker accepted and the semantics refused.
+which the evaluator completes). `check_sound` connects the judgement to
+programs: a program the Lean checker accepts is well typed, so
+`checked_program_never_stuck` applies to it; the differential test compares
+the Lean checker's verdicts with `tenon check`'s on the corpus (below).
 
 The traits model (`Traits.lean`): a trait has type parameters, supertraits
 and methods (signatures with `Ty.var 0` as `Self`, optional default bodies);
@@ -224,6 +261,47 @@ order; with arbitrary impls the operations terminate, return permutations,
 and hold only inserted values; a bound `T: Ord` (or `Hash`) entails `T: Eq`
 (`ord_bound_gives_eq`, `Traits.super_entails`).
 
+## The checker (`TenonCore/Check.lean`)
+
+A decision procedure for the stage-3 judgement, executable
+(`tenon-core check`). It checks one function instance at a time, at concrete
+types: `chk` (expressions), with `chkList`, `chkArgs`, `chkOpnds`,
+`chkPath` and `chkArms` for the judgement's other relations, by recursion on
+fuel. Its result is a type and the context left, or "no value" (every path
+exits early: such an expression has every type, as `return` does).
+
+- **Inference is untrusted.** An expected type flows down (an annotation
+  `ann`, a parameter's type, the other operand of `==`) and may have holes;
+  type arguments of a generic call are found by matching the parameter types
+  with the arguments' types (`matchT`); a closure's result type, if not
+  expected, by checking its body once without it. The soundness proof uses
+  none of this: only the checks (`req`) of the inferred types against the
+  rules' side conditions. Inference is local: `let xs = []` with no
+  annotation and no expected type, a closure whose parameters' types come
+  from a later use, and `dyn` values are rejected (below).
+- **Instances.** A call at an instance the checker was not given fails with
+  `Err.need`; the driver (`Front/Checker.lean`) adds it and checks again, from
+  `main` and every monomorphic function of the program file, until no
+  instance is missing. Then `checkAll` checks everything again with that
+  list, and that is the verdict `check_sound` is about.
+- **Declarations**: `AdtsOk` (a field's kind bounded by its type's, decided
+  with type parameters counted as copyable), `StdOk`, the prelude's `Sys`.
+- **Builtins**: the relation `prim` is a table (`Front/Checker.lean`,
+  `primB`): the operators and the translator's builtins by hand, the
+  prelude's `extern fn`s with the signatures the prelude declares, only the
+  builtins the model implements. `PrimsOkX` (they respect the table) is an
+  assumption about Prims.lean, per run (the builtins see the run's standard
+  input): it is what `checked_program_never_stuck` assumes, and what the
+  differential run confirms. The table was audited for builtins that are
+  stuck or unsupported on well-typed arguments: a bad Float literal and
+  `Int.char` outside the code points now trap, a format spec is part of the
+  builtin's name (`%fmt:SPEC`, so its signature depends on it, as in `tenon
+  check`), `write_bytes` (invalid UTF-8 output is outside the model) is not
+  in the table.
+- **Coherence**: before the program is checked, its impls must be
+  coherent and obey the orphan rule (`coherence`, the decidable checks of
+  `TraitsCheck.lean`; the main file sees the prelude, the prelude itself).
+
 ## Mapping from Tenon
 
 How the translator (`Front/Translate.lean`) maps each construct; the
@@ -243,17 +321,21 @@ value (which agrees with static dispatch for well-typed programs).
 | `for x in xs`, `for (k, v) in m` | a snapshot (`%iter`), then `while` over its indices |
 | `if let`, `while let` | `mtch` with a fallback arm (as the parser does) |
 | `match` with `|`, guards, nested patterns | `mtch` with `Pat.alt`, guards, nested `Pat` (variants matched by name, following the value's type) |
-| struct literal `S { f: e, ..base }`, shorthand | each field once in source order (hidden `let`s), then `con S 0 [fields in declaration order]` |
+| struct literal `S { f: e, ..base }`, shorthand | `con S 0 [fields]` when the fields are given in declaration order; else each field once in source order (hidden `let`s), then `con`; an unknown field is unsupported |
 | enum variant `V(e)`, `T.V`, `V` as a function value | `con T tag [e]`; a closure building it |
-| closures `fn(x) => e` | `lam` (captures by value the variables without obligations) |
+| closures `fn(x) => e` | `clos caps [x] e`, `caps` the local variables `e` uses; with annotated parameters, inside `ann (fn(T) -> R)` (a missing part a hole, `?`) |
+| `let x: T = e`, `let (a, b): T = e` | `letE x (ann T e)`, `mtch (ann T e)` |
+| `var (a, b) = e` | the pattern binds hidden names, then `var` lets of the names |
+| `panic(m)` | `mtch (panic m) []`: no arm, so any type (even linear, as in `Option[Claim].unwrap()`); it traps first |
+| `while true { ... }` without `break` ending a block | followed by an unreachable `panic` (the block has the type the context needs) |
 | named function as a value, `Str.len` | `fnref` |
 | `f(args)`, `mut x` arguments | `call (fnref f) args` (modes come from the callee at run time) |
 | `x.m(args)`, `T.m(args)` | `mcall m x args` (receiver's type head), `call (fnref T.m)` |
 | operators, `and`/`or`, `not`, `-x` | builtins `%add`...; `ite` (short circuit) |
-| `"{e}"`, `"{e:SPEC}"` | `%show`, `%fmt`, `%concat` |
+| `"{e}"`, `"{e:SPEC}"` | `%show`, `%fmt:SPEC`, `%concat` |
 | `const` | a function of no argument, called at every use (reference §12) |
 | `linear struct`, `unique struct`, enums | `AdtDecl.kind`; tokens minted by `con` |
-| methods `fn T.m(self ...)` | `FnDecl` keyed `T.m`, `owner := T` (finishes its own `self`) |
+| methods `fn T.m(self ...)` | `FnDecl` keyed `T.m`, `owner := T` (finishes its own `self`); its parameter types start with `self`'s |
 | prelude functions | translated from `lib/prelude.tn` like the program; `extern fn`s are builtins |
 | `unwrap`/`expect` | core definitions (they consume their receiver) |
 | `main(sys: Sys)` | called with `Sys { console, fs, clock, net, proc, args }` of unattenuated capabilities |
@@ -291,70 +373,107 @@ every interleaving).
 the translator and the core, and, when the core completes it, through
 `tenon run`, and compares standard output and the exit status. A program the
 checker accepts but on which the core gets stuck is reported too: the
-checker accepted a program that breaks a rule. It runs in the evidence loop
+checker accepted a program that breaks a rule. Every program, accepted or
+not, also goes through the Lean checker (`tenon-core check`); its verdict is
+compared with `tenon check`'s and each disagreement classified (the patterns
+are in the script: `LEAN_CLASSES`, `TENON_CLASSES`); a program the Lean
+checker accepts is run on the core, which must not get stuck. It runs in the evidence loop
 (`../ops/evidence/evidence.sh`, nightly) and writes `.evidence/formal_diff.json`
 (STATUS.md).
 
-Coverage on 2026-10-28 at `2e44f37` with stage 2 (818 corpus programs): 421
-are rejected by `tenon check` (reject tests and their kin) and 29 do not
-parse; of the 368 accepted, **295 (80%) are in the core's subset** (stage 1:
-254 of 366, 69%): 149 study programs, 78 `tests/run`, 20 `tests/selfhost`,
-17 `tests/v2`, 13 red-team repros, 8 `tests/fmt`, the `calc`, `chat`, `csvq`,
-`mdhtml`, `mkplan` programs and others. Outside: 63 unsupported constructs
-(fs/net/proc/workers builtins 38, modules 20, Show impls the values do not
-decide 2, invalid UTF-8 on stdin 2, a type's own method shadowing a trait
-method 1), 10 too slow or too deep for the core.
+Coverage on 2026-10-28 with stage 3 (858 corpus programs): 286 are
+rejected by `tenon check` and not run, 29 do not parse; of the others,
+**325 are in the core's subset and all agree with `tenon run`** (stdout and
+exit status); none that `tenon check` accepts gets stuck in the core.
+Outside: 67 unsupported constructs (fs/net/proc/workers builtins, modules,
+Show impls the values do not decide, invalid UTF-8 on stdin), 13 too slow or
+too deep for the core, 2 whose `main` returns a value no exit status has (a
+program tenon rejects for that).
 
-**Result: all 295 agree with `tenon run` (stdout and exit status); none
-differs; none that `tenon check` accepts gets stuck in the core.** No new
-finding (tests/redteam/FINDINGS-2026-10-28-formal.md). Float printing was
-also checked beyond the corpus: a throwaway stress program of 823 lines
-(subnormals, overflow, rounding ties, `to_fixed`, `%`, `,` grouping,
-`Str.to_float` edge cases) printed the same through both.
+**The checker comparison.** `formal_diff.py` also runs `tenon-core check`
+on every program (accepted or rejected by `tenon check`, tests/reject and
+tests/v2/reject included: 162 reject tests are in the checker's subset).
+The Lean checker's subset is 598 of 858 programs (260 unsupported: the
+modeled builtins, Show impls, modules, no `fn main`). Of these:
 
-The first run, a few hours earlier at `2124131`, before the fix of the
-authority review's finding 1 (`06027af`; a linear value lost when a later
-argument exits early, tests/redteam/FINDINGS-2026-10-28-authority.md), had 4
-programs the checker accepted and the core refused: the four repros of that
-finding, which the core's obligation checks detected independently
-(`stuck (linear): an argument obligation lost at an early exit`). With the
-fix the checker rejects them.
+| | Programs |
+|---|---|
+| both accept | 240 |
+| both reject | 192 |
+| tenon accepts, Lean rejects | 25 |
+| tenon rejects, Lean accepts | 141 |
+
+*Tenon accepts, Lean rejects* (the model or the checker too strict; none
+gets stuck in the core, so none is the compiler being unsound): type
+inference 14 (`let xs = []` typed by a later use, closures whose parameter
+types come from a later use, `None`/`Ok(v)` with no expected type), `dyn`
+types 5 (not in the checker), `linear`/`unique` values passed by `ref`/`mut`
+4 (`ref_params`, `lin_ref_ok`, `trait_ref_param`,
+`unique_moved_then_reassigned`), or-patterns binding names in different
+orders 1 (`char_bounds`: `Left(n, s) | Right(s, n)`), polymorphic recursion 1
+(monomorphization does not end; `tenon build` rejects it too).
+
+*Tenon rejects, Lean accepts* (a rule the core's guarantees do not need):
+derived traits on functions, capabilities, `dyn` values and Float map keys
+41, naming, duplicates and shadowing 29, exhaustiveness and pattern rules 20
+(the core traps on a missing case), trait declarations and bounds 17 (the
+checker checks impls for coherence and the orphan rule, not their
+signatures against the trait, and generic code at its instances only),
+mutability and `mut` markers 14 (the core copies `ref`/`mut` arguments in
+and out, so aliasing cannot be observed), constants 8, `main`'s signature 3,
+modules 2, recursive types 2, type errors in generic code that is never
+instantiated 2, `dyn` holding linear or unique values 2, and one linearity
+rule the model shows unnecessary: `'|' patterns cannot bind linear values`
+(tests/selfhost/lin_or_pattern.tn; a finding of low severity,
+tests/redteam/FINDINGS-2026-10-28-formal.md). The list of files with their
+messages is in `.evidence/formal_diff.json` (`checker`).
+
+**Typed translation.** Of the 381 programs the Lean checker accepts, 367 ran
+on the core to the end or to a trap; 14 ran out of fuel or stack (no theorem
+excludes it); none got stuck: what `checked_program_never_stuck` says of each
+of them, confirmed by running.
+
+The stage-2 coverage (at `2e44f37`, 818 programs) was 295 in the subset, all
+agreeing; stage 1, 254.
 
 ## Gate and times
 
 `./check` runs `ops/gates/formal_check.sh` ("formal" in its table): under 1 s
-warm on the development machine (Apple M4 Max), about 9 s for a full rebuild
+warm on the development machine (Apple M4 Max), about 14 s for a full rebuild
 of `formal/` (the first build on a new machine also downloads the
-toolchain). It requires at least the 27 statements of `Theorems.lean` in the
+toolchain). It requires at least the 32 statements of `Theorems.lean` in the
 axiom audit. CI installs elan and caches the toolchain and the build
-(`.github/workflows/ci.yml`, `nightly.yml`). The differential test takes
-about 25 s on 8 cores.
+(`.github/workflows/ci.yml`, `nightly.yml`). The differential test, with the
+checker comparison, takes about 25 s on 8 cores.
 
 ## What remains (TODO)
 
-1. **The checker link**: a checker for `HasTy` written and proved sound in
-   Lean, its verdicts compared with `tenon check`'s on the corpus (tenon.md
-   §6); and the translator's output typed, so `type_soundness` applies to the
-   translated corpus programs (it needs the types `tenon ast` does not dump).
-2. **Widen the typing judgement** to what the evaluator allows and the
-   checker accepts: closures that use captured variables (the frame's
-   captured slots typed by name, not position), `ref`/`mut` arguments of
-   linear or unique types (moved in and written back) and `ref`/`mut`
-   receivers on parts, map literals, builtins that call closures, workers.
-   The current rules are sound but stricter than `tenon check` there.
-3. **Traits in the typing judgement**: bounded type parameters and `dyn` types
-   as `Ty`s, so `bounded_call_resolves` and `dyn_dispatch` feed
-   `type_soundness` directly; impls for several instantiations of one head
-   (monomorphized keys; `HeadCoherent` excludes them now); a unification-based
-   overlap check proved sound against `Coherent`; the orphan rule; object
-   safety.
-4. **Item 3**: the connection of `resolve` to a full `eval` of a user
+1. **Effects and contracts** (milestone items 4-5) as they are designed: the
+   next specifications.
+2. **The stage-3 judgement, further**: `linear`/`unique` values passed by
+   `ref`/`mut` (the core moves them out for the call and writes them back; a
+   sound rule must also keep a later argument from refilling the variable,
+   which needs the judgement to track the names being restored); `dyn` as a
+   type (a value packed with the trait's method table, `Traits.dyn_dispatch`);
+   impls of one trait for several instantiations of one type (the checker
+   knows the static type and could select the impl; the core's method keys
+   are per head); or-patterns binding names in different orders.
+3. **Inference**: a unification pass before the checker (its output would
+   be annotations, `ann`, which the checker verifies), for the 14 programs
+   above.
+4. **The checker's trait checks**: impls against their trait's signatures,
+   bounds at the definition of generic code (it is checked at its instances
+   now), object safety.
+5. **Item 3**: the connection of `resolve` to a full `eval` of a user
    comparator inside the builtin sort, and a proof that the backends' actual
    sort (the interpreter's bottom-up merge sort, `Prims.lean`) is a stable
    sorted permutation, so `stable_sort_unique` applies to it.
-5. **Effects and contracts** (milestone items 4-5) as they are designed.
-6. Link the worker machine to the sequential core (a worker's local steps as
+6. `PrimsOkX` for the builtins themselves (they are assumed to respect the
+   signature table; the differential run checks it), and the `keys` of
+   `check_sound` for the translator (they are its `HashMap`'s; Std's
+   `mem_toList_iff_getElem?_eq_some`).
+7. Link the worker machine to the sequential core (a worker's local steps as
    core evaluations), and model `Fs` paths (the jail's `..` and symlink rules)
    beyond the attenuation order.
-7. Widen the subset: modules, `decode`, the fs/net/proc builtins (as effects
-   on a modeled world), workers.
+8. Widen the subset: modules, `decode`, the fs/net/proc builtins (as effects
+   on a modeled world), workers, Show impls in the checker.

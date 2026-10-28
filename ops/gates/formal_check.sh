@@ -33,7 +33,7 @@ fi
 out=$("$lake" env lean Axioms.lean 2>&1)
 n=$(printf "%s\n" "$out" | grep -cE "depends on axioms|does not depend on any axioms" || true)
 bad=$(printf '%s\n' "$out" | grep "depends on axioms" | grep -vE "depends on axioms: \[(propext|Classical.choice|Quot.sound)(, (propext|Classical.choice|Quot.sound))*\]$" || true)
-if [ "$n" -lt 27 ] || [ -n "$bad" ] || printf '%s\n' "$out" | grep -q "error"; then
+if [ "$n" -lt 32 ] || [ -n "$bad" ] || printf '%s\n' "$out" | grep -q "error"; then
   printf '%s\n' "$out"
   echo "formal_check: a guarded theorem depends on a non-standard axiom (or did not check)"
   exit 1

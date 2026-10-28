@@ -80,6 +80,15 @@ theorem linSafe_succ {n : Nat} (ih : LinSafe P n) : LinSafe P (n + 1) := by
       refine ⟨fun t => ?_, hs⟩
       have := capture_toks ρ
       simp [Val.toks, this]
+    | clos caps ps body =>
+      simp only [eval]
+      split
+      · rename_i vs hc
+        refine ⟨fun t => ?_, hs⟩
+        have := (captureNames_toks ρ hc).1
+        simp [Val.toks, this]
+      · trivial
+    | ann t e => simp only [eval]; exact hE ρ st e hs
     | fnref f => simp only [eval]; exact ⟨fun t => by simp [Val.toks], hs⟩
     | call f args =>
       simp only [eval]

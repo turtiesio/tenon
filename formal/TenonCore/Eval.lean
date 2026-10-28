@@ -203,6 +203,14 @@ def capture (ρ : Env) : List (String × Val) :=
     | some v => if v.toks = [] then some (x, v) else none
     | none => none
 
+/-- The values of the variables a `clos` captures: each must hold a value
+without obligations (`none`: a variable is unbound, moved or holds one). -/
+def captureNames (ρ : Env) : List String → Option (List Val)
+  | [] => some []
+  | x :: xs => match lookup ρ x, captureNames ρ xs with
+    | some (some v), some vs => if v.toks = [] then some (v :: vs) else none
+    | _, _ => none
+
 def pushBinds (bs : List (String × Val)) (ρ : Env) : Env :=
   bs.map (fun (x, v) => (x, some v)) ++ ρ
 
@@ -271,6 +279,10 @@ def eval : Nat → Env → St → Expr → Out Val
     | .lam ps body =>
       let cs := capture ρ
       .ok (.clo (cs.map (·.1)) (cs.map (·.2)) ps body) ρ st
+    | .clos caps ps body => match captureNames ρ caps with
+      | some vs => .ok (.clo caps vs ps body) ρ st
+      | none => stuckL "a closure captures a moved variable or an obligation"
+    | .ann _ e => eval n ρ st e
     | .fnref f => .ok (.fn f) ρ st
     | .call f args => (eval n ρ st f).bind fun fv ρ1 st1 => match fv with
       | .fn name => match P.fns name with

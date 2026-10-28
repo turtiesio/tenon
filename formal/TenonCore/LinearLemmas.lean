@@ -428,3 +428,22 @@ theorem frameOf_toks (names : List String) (cvs : List Val) (hn : names.length =
   | [], _ :: _, h | _ :: _, [], h => by simp at h
 
 end Tenon
+
+namespace Tenon
+
+theorem captureNames_toks (ρ : Env) : ∀ {xs : List String} {vs : List Val}, captureNames ρ xs = some vs →
+    toksL vs = [] ∧ vs.length = xs.length
+  | [], vs, h => by simp [captureNames] at h; subst h; simp [toksL]
+  | x :: xs, vs, h => by
+    simp only [captureNames] at h
+    split at h
+    · rename_i v vs' hl hc
+      split at h
+      · rename_i hv
+        simp only [Option.some.injEq] at h; subst h
+        have := captureNames_toks ρ hc
+        simp [toksL, hv, this.1, this.2]
+      · cases h
+    · cases h
+
+end Tenon

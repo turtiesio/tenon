@@ -74,3 +74,8 @@ import TenonCore
 #print axioms Tenon.TypeGaps.user_impls_obligations_conserved
 #print axioms Tenon.TypeGaps.ord_bound_gives_eq
 #print axioms Tenon.TypeGaps.hash_bound_gives_eq
+#print axioms Tenon.Theorems.type_soundness_full
+#print axioms Tenon.Theorems.check_sound
+#print axioms Tenon.Theorems.checked_program_never_stuck
+#print axioms Tenon.Theorems.overlap_check_sound
+#print axioms Tenon.Theorems.orphan_rule_coherent

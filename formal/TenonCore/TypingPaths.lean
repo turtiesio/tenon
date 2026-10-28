@@ -9,19 +9,19 @@ namespace Tenon
 /-! ## Resolved paths -/
 
 /-- One resolved step at a type, and the type it reaches. -/
-inductive StepTy (P : Prog) (prim : PrimSig) : Ty → Step → Ty → Prop
+inductive StepTy (X : Ext) (P : Prog) (prim : PrimSig) : Ty → Step → Ty → Prop
   | fld {s args f d i ft} : P.adts s = some d → d.isStruct = true → idxOf f d.fields = some i →
-      (d.variants.head?.map (·.2)).bind (·[i]?) = some ft → StepTy P prim (.adt s args) (.fld f) (ft.subst args)
-  | tfld {ts i ti} : ts[i]? = some ti → StepTy P prim (.tup ts) (.tfld i) ti
-  | idxList {el k} : StepTy P prim (.list el) (.idx (.int k)) el
-  | idxMap {kt vt k} : ValTy P prim k kt → StepTy P prim (.map kt vt) (.idx k) vt
+      (d.variants.head?.map (·.2)).bind (·[i]?) = some ft → StepTy X P prim (.adt s args) (.fld f) (ft.subst args)
+  | tfld {ts i ti} : ts[i]? = some ti → StepTy X P prim (.tup ts) (.tfld i) ti
+  | idxList {el k} : StepTy X P prim (.list el) (.idx (.int k)) el
+  | idxMap {kt vt k} : ValTyX X P prim k kt → StepTy X P prim (.map kt vt) (.idx k) vt
 
-inductive StepsTy (P : Prog) (prim : PrimSig) : Ty → List Step → Ty → Prop
-  | nil {t} : StepsTy P prim t [] t
-  | cons {T s T' ss t} : StepTy P prim T s T' → StepsTy P prim T' ss t → StepsTy P prim T (s :: ss) t
+inductive StepsTy (X : Ext) (P : Prog) (prim : PrimSig) : Ty → List Step → Ty → Prop
+  | nil {t} : StepsTy X P prim t [] t
+  | cons {T s T' ss t} : StepTy X P prim T s T' → StepsTy X P prim T' ss t → StepsTy X P prim T (s :: ss) t
 
 section
-variable {P : Prog} {prim : PrimSig}
+variable {X : Ext} {P : Prog} {prim : PrimSig}
 
 theorem idxOf_lt : ∀ {x : String} {l : List String} {i : Nat}, idxOf x l = some i → i < l.length
   | _, [], _, h => by simp [idxOf] at h
@@ -64,13 +64,13 @@ theorem substL_getElem? (σ : List Ty) : ∀ {ts : List Ty} {i : Nat} {t : Ty}, 
   | t :: ts, 0, u, h => by simp at h; subst h; rfl
   | t :: ts, i + 1, u, h => by simp at h; simp only [substL, List.getElem?_cons_succ]; exact substL_getElem? σ h
 
-theorem ValTy.zip_get {vs : List Val} {ts : List Ty} (h : ∀ p ∈ vs.zip ts, ValTy P prim p.1 p.2)
-    {i : Nat} {v : Val} {t : Ty} (hv : vs[i]? = some v) (ht : ts[i]? = some t) : ValTy P prim v t :=
+theorem ValTyX.zip_get {vs : List Val} {ts : List Ty} (h : ∀ p ∈ vs.zip ts, ValTyX X P prim p.1 p.2)
+    {i : Nat} {v : Val} {t : Ty} (hv : vs[i]? = some v) (ht : ts[i]? = some t) : ValTyX X P prim v t :=
   h (v, t) (mem_zip_getElem hv ht)
 
-theorem ValTy.zip_set {vs : List Val} {ts : List Ty} (h : ∀ p ∈ vs.zip ts, ValTy P prim p.1 p.2)
-    {i : Nat} {w : Val} {t : Ty} (ht : ts[i]? = some t) (hw : ValTy P prim w t) :
-    ∀ p ∈ (vs.set i w).zip ts, ValTy P prim p.1 p.2 := by
+theorem ValTyX.zip_set {vs : List Val} {ts : List Ty} (h : ∀ p ∈ vs.zip ts, ValTyX X P prim p.1 p.2)
+    {i : Nat} {w : Val} {t : Ty} (ht : ts[i]? = some t) (hw : ValTyX X P prim w t) :
+    ∀ p ∈ (vs.set i w).zip ts, ValTyX X P prim p.1 p.2 := by
   intro p hp
   rcases mem_zip_set hp with hp | ⟨h1, h2⟩
   · exact h p hp
@@ -87,7 +87,7 @@ theorem struct_inv (hA : AdtsOk P) {s : String} {d : AdtDecl} (hd : P.adts s = s
   | succ k => simp at hv
 
 theorem mapGet_ty {vt : Ty} {k : Val} : ∀ {kvs : List Val},
-    (∀ e ∈ kvs, ∀ a b, entryKV e = some (a, b) → ValTy P prim b vt) → ∀ {w}, mapGet k kvs = some w → ValTy P prim w vt
+    (∀ e ∈ kvs, ∀ a b, entryKV e = some (a, b) → ValTyX X P prim b vt) → ∀ {w}, mapGet k kvs = some w → ValTyX X P prim w vt
   | [], _, _, h => by simp [mapGet] at h
   | e :: kvs, hb, w, h => by
     simp only [mapGet] at h
@@ -125,9 +125,9 @@ theorem mapSet_mem (k w : Val) : ∀ {kvs : List Val} {e : Val}, e ∈ mapSet k 
         · exact Or.inr (Or.inl h)
         · exact Or.inr (Or.inr ⟨e0, by simp [h0], h⟩)
 
-theorem ValTy.mapSet {kvs : List Val} {kt vt : Ty} (h : ValTy P prim (.seq .map kvs) (.map kt vt))
-    {k w : Val} (hk : ValTy P prim k kt) (hw : ValTy P prim w vt) :
-    ValTy P prim (.seq .map (Tenon.mapSet k w kvs)) (.map kt vt) := by
+theorem ValTyX.mapSet {kvs : List Val} {kt vt : Ty} (h : ValTyX X P prim (.seq .map kvs) (.map kt vt))
+    {k w : Val} (hk : ValTyX X P prim k kt) (hw : ValTyX X P prim w vt) :
+    ValTyX X P prim (.seq .map (Tenon.mapSet k w kvs)) (.map kt vt) := by
   cases h with
   | map hs ha hb =>
     refine .map ?_ ?_ ?_
@@ -159,8 +159,8 @@ theorem PathOk.map_some {α : Type} {Q : α → Prop} {r : Except PErr α} (h : 
   | ok a => intro w hw; simp at hw; subst hw; exact h
   | error e => cases e <;> simp_all [PathOk, Except.map]
 
-theorem getStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy P prim T s T') {v : Val}
-    (hv : ValTy P prim v T) : PathOk (ValTy P prim · T') (getStep P v s) := by
+theorem getStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy X P prim T s T') {v : Val}
+    (hv : ValTyX X P prim v T) : PathOk (ValTyX X P prim · T') (getStep P v s) := by
   cases hs with
   | @fld s0 args f d i ft hd hst hi hft =>
     cases hv with
@@ -171,7 +171,7 @@ theorem getStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy P prim T 
       have hil := idxOf_lt hi
       have hvi : vs[i]? = some vs[i] := List.getElem?_eq_getElem (by omega)
       simp only [getStep, fieldIdx, hd, hst, ite_true, hi, hvi, PathOk]
-      exact ValTy.zip_get hvs hvi (substL_getElem? args hft)
+      exact ValTyX.zip_get hvs hvi (substL_getElem? args hft)
   | @tfld ts i ti hti =>
     cases hv with
     | tup hl hvs =>
@@ -179,7 +179,7 @@ theorem getStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy P prim T 
       have hil : i < vs.length := by have := (List.getElem?_eq_some_iff.1 hti).1; omega
       have hvi : vs[i]? = some vs[i] := List.getElem?_eq_getElem hil
       simp only [getStep, hvi, PathOk]
-      exact ValTy.zip_get hvs hvi hti
+      exact ValTyX.zip_get hvs hvi hti
   | @idxList el k =>
     cases hv with
     | list hvs =>
@@ -195,8 +195,8 @@ theorem getStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy P prim T 
       · rename_i w hw; exact mapGet_ty hb hw
       · trivial
 
-theorem getPath_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy P prim T ss t) :
-    ∀ {v : Val}, ValTy P prim v T → PathOk (ValTy P prim · t) (getPath P v ss) := by
+theorem getPath_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy X P prim T ss t) :
+    ∀ {v : Val}, ValTyX X P prim v T → PathOk (ValTyX X P prim · t) (getPath P v ss) := by
   induction hs with
   | nil => intro v hv; exact hv
   | @cons T s T' ss t h1 _ ih =>
@@ -208,8 +208,8 @@ theorem getPath_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy P p
     | ok w => intro hw; exact ih hw
     | error e => cases e <;> simp [PathOk]
 
-theorem setStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy P prim T s T') {v w : Val}
-    (hv : ValTy P prim v T) (hw : ValTy P prim w T') : PathOk (ValTy P prim · T) (setStep P v s w) := by
+theorem setStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy X P prim T s T') {v w : Val}
+    (hv : ValTyX X P prim v T) (hw : ValTyX X P prim w T') : PathOk (ValTyX X P prim · T) (setStep P v s w) := by
   cases hs with
   | @fld s0 args f d i ft hd hst hi hft =>
     cases hv with
@@ -219,14 +219,14 @@ theorem setStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy P prim T 
       rw [hts] at hft; simp only [Option.bind_some] at hft
       have hil := idxOf_lt hi
       simp only [setStep, fieldIdx, hd, hst, ite_true, hi, show i < vs.length by omega, PathOk]
-      exact .adt hd hvar ha (by simp [hl]) (ValTy.zip_set hvs (substL_getElem? args hft) hw) htok
+      exact .adt hd hvar ha (by simp [hl]) (ValTyX.zip_set hvs (substL_getElem? args hft) hw) htok
   | @tfld ts i ti hti =>
     cases hv with
     | tup hl hvs =>
       rename_i vs
       have hil : i < vs.length := by have := (List.getElem?_eq_some_iff.1 hti).1; omega
       simp only [setStep, hil, ite_true, PathOk]
-      exact .tup (by simp [hl]) (ValTy.zip_set hvs hti hw)
+      exact .tup (by simp [hl]) (ValTyX.zip_set hvs hti hw)
   | @idxList el k =>
     cases hv with
     | list hvs =>
@@ -241,10 +241,10 @@ theorem setStep_ty (hA : AdtsOk P) {T T' : Ty} {s : Step} (hs : StepTy P prim T 
     cases hv with
     | map hs ha hb =>
       simp only [setStep, PathOk]
-      exact ValTy.mapSet (.map hs ha hb) hk hw
+      exact ValTyX.mapSet (.map hs ha hb) hk hw
 
-theorem setPath_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy P prim T ss t) :
-    ∀ {v w : Val}, ValTy P prim v T → ValTy P prim w t → PathOk (ValTy P prim · T) (setPath P v ss w) := by
+theorem setPath_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy X P prim T ss t) :
+    ∀ {v w : Val}, ValTyX X P prim v T → ValTyX X P prim w t → PathOk (ValTyX X P prim · T) (setPath P v ss w) := by
   induction hs with
   | nil => intro v w _ hw; exact hw
   | @cons T s T' ss t h1 h2 ih =>
@@ -263,8 +263,8 @@ theorem setPath_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy P p
         · rename_i e hc2; rw [hc2] at hc'; cases e <;> simp_all [PathOk]
       · rename_i e hc; rw [hc] at hg; cases e <;> simp_all [PathOk]
 
-theorem oldAt_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy P prim T ss t) :
-    ∀ {v : Val}, ValTy P prim v T → PathOk (fun o => ∀ w, o = some w → ValTy P prim w t) (oldAt P v ss) := by
+theorem oldAt_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy X P prim T ss t) :
+    ∀ {v : Val}, ValTyX X P prim v T → PathOk (fun o => ∀ w, o = some w → ValTyX X P prim w t) (oldAt P v ss) := by
   induction hs with
   | nil => intro v hv w hw; simp [oldAt] at hw; subst hw; exact hv
   | @cons T s T' ss t h1 h2 ih =>
@@ -291,32 +291,32 @@ theorem oldAt_ty (hA : AdtsOk P) {T t : Ty} {ss : List Step} (hs : StepsTy P pri
 /-! ## Patterns -/
 
 /-- The names and values a match binds, against the names and types the pattern's typing gives. -/
-inductive BindsTy (P : Prog) (prim : PrimSig) : List (String × Val) → List (String × Ty) → Prop
-  | nil : BindsTy P prim [] []
-  | cons {x v t bs ts} : ValTy P prim v t → BindsTy P prim bs ts → BindsTy P prim ((x, v) :: bs) ((x, t) :: ts)
+inductive BindsTy (X : Ext) (P : Prog) (prim : PrimSig) : List (String × Val) → List (String × Ty) → Prop
+  | nil : BindsTy X P prim [] []
+  | cons {x v t bs ts} : ValTyX X P prim v t → BindsTy X P prim bs ts → BindsTy X P prim ((x, v) :: bs) ((x, t) :: ts)
 
-theorem BindsTy.append {a b : List (String × Val)} {c d : List (String × Ty)} (h1 : BindsTy P prim a c)
-    (h2 : BindsTy P prim b d) : BindsTy P prim (a ++ b) (c ++ d) := by
+theorem BindsTy.append {a b : List (String × Val)} {c d : List (String × Ty)} (h1 : BindsTy X P prim a c)
+    (h2 : BindsTy X P prim b d) : BindsTy X P prim (a ++ b) (c ++ d) := by
   induction h1 with
   | nil => exact h2
   | cons hv _ ih => exact .cons hv ih
 
-theorem BindsTy.length {a : List (String × Val)} {c : List (String × Ty)} (h : BindsTy P prim a c) :
+theorem BindsTy.length {a : List (String × Val)} {c : List (String × Ty)} (h : BindsTy X P prim a c) :
     a.length = c.length := by
   induction h with
   | nil => rfl
   | cons _ _ ih => simp [ih]
 
 /-- The pushed bindings match the context of the bound names. -/
-theorem BindsTy.envOk {bs : List (String × Val)} {ts : List (String × Ty)} (h : BindsTy P prim bs ts)
-    {ρ : Env} {Γ : Ctx} (hρ : EnvOk P prim ρ Γ) : EnvOk P prim (pushBinds bs ρ) (bindCtx ts ++ Γ) := by
+theorem BindsTy.envOk {bs : List (String × Val)} {ts : List (String × Ty)} (h : BindsTy X P prim bs ts)
+    {ρ : Env} {Γ : Ctx} (hρ : EnvOkX X P prim ρ Γ) : EnvOkX X P prim (pushBinds bs ρ) (bindCtx ts ++ Γ) := by
   induction h with
   | nil => exact hρ
   | cons hv _ ih => exact ⟨rfl, ⟨fun _ => ⟨_, rfl, hv⟩, fun h => by simp at h⟩, ih⟩
 
 /-- A typed match fails or binds typed values, dropping only values without linear obligations. -/
-def MatchOk (P : Prog) (prim : PrimSig) (r : MR) (bs : List (String × Ty)) : Prop :=
-  r = .fail ∨ ∃ b u d, r = .ok b u d ∧ BindsTy P prim b bs ∧ ∀ w ∈ d, w.hasLin = false
+def MatchOk (X : Ext) (P : Prog) (prim : PrimSig) (r : MR) (bs : List (String × Ty)) : Prop :=
+  r = .fail ∨ ∃ b u d, r = .ok b u d ∧ BindsTy X P prim b bs ∧ ∀ w ∈ d, w.hasLin = false
 
 theorem nodup_fst_idx {α β} [DecidableEq α] : ∀ {l : List (α × β)} {i j : Nat} {c : α} {a b : β},
     (l.map Prod.fst).Nodup → l[i]? = some (c, a) → l[j]? = some (c, b) → i = j
@@ -337,7 +337,7 @@ theorem nodup_fst_idx {α β} [DecidableEq α] : ∀ {l : List (α × β)} {i j 
 
 mutual
 theorem matchPat_ty (hA : AdtsOk P) : ∀ {p : Pat} {t : Ty} {bs : List (String × Ty)}, PatTy P p t bs →
-    ∀ {v : Val}, ValTy P prim v t → MatchOk P prim (matchPat P p v) bs
+    ∀ {v : Val}, ValTyX X P prim v t → MatchOk X P prim (matchPat P p v) bs
   | _, _, _, .wild hl, v, hv => Or.inr ⟨[], [], [v], by simp [matchPat], .nil, by simpa using hv.noLin hA hl⟩
   | _, _, _, .bind, v, hv => Or.inr ⟨_, [], [], by simp [matchPat], .cons hv .nil, by simp⟩
   | _, _, _, @PatTy.lit _ l, v, hv => by
@@ -375,8 +375,8 @@ theorem matchPat_ty (hA : AdtsOk P) : ∀ {p : Pat} {t : Ty} {bs : List (String 
   | _, _, _, .alt halt, v, hv => by simp only [matchPat]; exact matchAlt_ty hA halt hv
 
 theorem matchList_ty (hA : AdtsOk P) : ∀ {ps : List Pat} {ts : List Ty} {bs : List (String × Ty)}, PatsTy P ps ts bs →
-    ∀ {vs : List Val}, vs.length = ts.length → (∀ q ∈ vs.zip ts, ValTy P prim q.1 q.2) →
-    MatchOk P prim (matchList P ps vs) bs
+    ∀ {vs : List Val}, vs.length = ts.length → (∀ q ∈ vs.zip ts, ValTyX X P prim q.1 q.2) →
+    MatchOk X P prim (matchList P ps vs) bs
   | _, _, _, .nil, [], _, _ => Or.inr ⟨[], [], [], by simp [matchList], .nil, by simp⟩
   | _, _, _, .nil, _ :: _, hl, _ => by simp at hl
   | _, _, _, .cons _ _, [], hl, _ => by simp at hl
@@ -395,7 +395,7 @@ theorem matchList_ty (hA : AdtsOk P) : ∀ {ps : List Pat} {ts : List Ty} {bs : 
         · exact hd2 w hw
 
 theorem matchAlt_ty (hA : AdtsOk P) : ∀ {ps : List Pat} {t : Ty} {bs : List (String × Ty)}, AltTy P ps t bs →
-    ∀ {v : Val}, ValTy P prim v t → MatchOk P prim (matchAlt P ps v) bs
+    ∀ {v : Val}, ValTyX X P prim v t → MatchOk X P prim (matchAlt P ps v) bs
   | _, _, _, .one hp, v, hv => by
     simp only [matchAlt]
     rcases matchPat_ty hA hp hv with h | ⟨b, u, d, h, hb, hd⟩
@@ -410,7 +410,7 @@ end
 
 /-! ## Heads, minting, `?` -/
 
-theorem ValTy.head {v : Val} {t : Ty} (h : ValTy P prim v t) : v.head = t.head := by
+theorem ValTyX.head {v : Val} {t : Ty} (h : ValTyX X P prim v t) : v.head = t.head := by
   cases h <;> rfl
 
 theorem mint_tok (st : St) (k : Kind) : TokOk k (mint st k).1 := by
@@ -419,8 +419,8 @@ theorem mint_tok (st : St) (k : Kind) : TokOk k (mint st k).1 := by
 theorem TokOk.copy {tok : Option Tok} (h : TokOk .copy tok) : tok = none := by
   cases tok <;> simp_all [TokOk]
 
-theorem tryVal_opt (hS : StdOk P) {v : Val} {t : Ty} (hv : ValTy P prim v (.adt "Option" [t])) :
-    (∃ x, tryVal v = some (.inl x) ∧ ValTy P prim x t) ∨ tryVal v = some (.inr (.adt "Option" 1 none [])) := by
+theorem tryVal_opt (hS : StdOk P) {v : Val} {t : Ty} (hv : ValTyX X P prim v (.adt "Option" [t])) :
+    (∃ x, tryVal v = some (.inl x) ∧ ValTyX X P prim x t) ∨ tryVal v = some (.inr (.adt "Option" 1 none [])) := by
   obtain ⟨⟨d, hd, hk, -, -, hvs⟩, -⟩ := hS
   cases hv with
   | @adt _ tag tok vs d' name ts _ hd' hvar ha hl hpay htok =>
@@ -438,9 +438,9 @@ theorem tryVal_opt (hS : StdOk P) {v : Val} {t : Ty} (hv : ValTy P prim v (.adt 
       match vs, hl with
       | [], _ => right; rfl
 
-theorem tryVal_res (hS : StdOk P) {v : Val} {t er : Ty} (hv : ValTy P prim v (.adt "Result" [t, er])) :
-    (∃ x, tryVal v = some (.inl x) ∧ ValTy P prim x t) ∨
-    ∃ e, tryVal v = some (.inr (.adt "Result" 1 none [e])) ∧ ValTy P prim e er := by
+theorem tryVal_res (hS : StdOk P) {v : Val} {t er : Ty} (hv : ValTyX X P prim v (.adt "Result" [t, er])) :
+    (∃ x, tryVal v = some (.inl x) ∧ ValTyX X P prim x t) ∨
+    ∃ e, tryVal v = some (.inr (.adt "Result" 1 none [e])) ∧ ValTyX X P prim e er := by
   obtain ⟨-, ⟨d, hd, hk, -, -, hvs⟩⟩ := hS
   cases hv with
   | @adt _ tag tok vs d' name ts _ hd' hvar ha hl hpay htok =>
@@ -457,12 +457,12 @@ theorem tryVal_res (hS : StdOk P) {v : Val} {t er : Ty} (hv : ValTy P prim v (.a
       match vs, hl with
       | [e], _ => right; exact ⟨e, rfl, hpay (e, er) (by simp [substL, Ty.subst])⟩
 
-theorem ValTy.none_opt (hS : StdOk P) (t : Ty) : ValTy P prim (.adt "Option" 1 none []) (.adt "Option" [t]) := by
+theorem ValTyX.none_opt (hS : StdOk P) (t : Ty) : ValTyX X P prim (.adt "Option" 1 none []) (.adt "Option" [t]) := by
   obtain ⟨⟨d, hd, hk, -, hp, hvs⟩, -⟩ := hS
   exact .adt hd (by rw [hvs]; rfl) (by simp [hp]) (by rfl) (by simp) (by rw [hk]; trivial)
 
-theorem ValTy.err_res (hS : StdOk P) (t : Ty) {e : Val} {er : Ty} (he : ValTy P prim e er) :
-    ValTy P prim (.adt "Result" 1 none [e]) (.adt "Result" [t, er]) := by
+theorem ValTyX.err_res (hS : StdOk P) (t : Ty) {e : Val} {er : Ty} (he : ValTyX X P prim e er) :
+    ValTyX X P prim (.adt "Result" 1 none [e]) (.adt "Result" [t, er]) := by
   obtain ⟨-, ⟨d, hd, hk, -, hp, hvs⟩⟩ := hS
   refine .adt hd (by rw [hvs]; rfl) (by simp [hp]) (by rfl) ?_ (by rw [hk]; trivial)
   intro q hq; simp [substL, Ty.subst] at hq; subst hq; exact he

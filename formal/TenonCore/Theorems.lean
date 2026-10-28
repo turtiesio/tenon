@@ -14,6 +14,8 @@ import TenonCore.TypeSafeRest
 import TenonCore.SubstTyping
 import TenonCore.TypeGaps
 import TenonCore.TypeGapsStable
+import TenonCore.CheckSound
+import TenonCore.TraitsCheck
 
 namespace Tenon.Theorems
 open Tenon
@@ -282,5 +284,96 @@ theorem user_impls_capability_safe (P : Prog) (E : Traits.TraitEnv) (A : List Ca
     | .err (.trap _ st') => ∀ ev ∈ st'.out, ∃ a ∈ A, ev.cap ≤ a
     | .err _ => True :=
   TypeGaps.user_impls_capability_safe P E A n ρ st e hρ hst
+
+/-! ## Stage 3: the loosened judgement and the checker (Typing.lean `Ext.stage3`, Check.lean) -/
+
+/-- **Type soundness, stage 3**: the guarantee of `type_soundness` for the
+loosened judgement (`HasTyX (Ext.stage3 I)`: closures capturing variables by
+value, annotations, direct calls of builtins, `x.to_str()`, functions used
+at the instances `I` the program is checked at). A well-typed expression of
+a program well typed at its instances, run in an environment matching its
+context, is never stuck and never leaves the core. -/
+theorem type_soundness_full (I : String → List Ty → Prop) (P : Prog) (prim : PrimSig)
+    (hP : ProgOkX (Ext.stage3 I) P prim) (hprim : PrimsOkX (Ext.stage3 I) P prim)
+    (Δ : Sig) (Γ Γ' : Ctx) (e : Expr) (t : Ty) (h : HasTyX (Ext.stage3 I) P prim Δ Γ e t Γ')
+    (ρ : Env) (hρ : EnvOkX (Ext.stage3 I) P prim ρ Γ)
+    (hΔ : Δ.fr ≤ Γ.length ∧ ∀ Γl, Δ.loop = some Γl → Γl.length ≤ Γ.length) (n : Nat) (st : St) :
+    match eval P n ρ st e with
+    | .ok v ρ' _ => ValTyX (Ext.stage3 I) P prim v t ∧ EnvOkX (Ext.stage3 I) P prim ρ' Γ'
+    | .ctl (.ret v) _ _ => Δ.exitOk = true ∧ ValTyX (Ext.stage3 I) P prim v Δ.ret
+    | .ctl _ _ _ => Δ.loop.isSome = true
+    | .err (.stuck _ _) => False
+    | .err (.unsup _) => False
+    | .err _ => True := by
+  have := (tySafe hP hprim n).eval Δ Γ Γ' e t ρ st h hρ hΔ
+  revert this
+  cases eval P n ρ st e with
+  | ok v ρ' st' => intro h; exact ⟨h.1, h.2.1⟩
+  | ctl c ρ' st' =>
+    cases c with
+    | ret v => intro h; exact ⟨h.1, h.2.1⟩
+    | brk => intro h; obtain ⟨Γl, hl, -⟩ := h; simp [hl]
+    | cont => intro h; obtain ⟨Γl, hl, -⟩ := h; simp [hl]
+  | err e => cases e <;> intro h <;> first | trivial | exact h
+
+theorem insts_decide (L : List (String × List Ty)) :
+    (fun f σ => decide ((f, σ) ∈ L) = true) = (fun f σ => (f, σ) ∈ L) := by
+  funext f σ; simp
+
+/-- **The checker is sound** (`check_sound`, tenon.md §6): a program the Lean
+checker accepts (`Check.checkAll`; `keys` list its declared types) is well
+typed in the stage-3 judgement at the instances `L` (`ProgOkX`), with the
+builtins' signatures `E.prim`, and so is the call of its `main` from the
+initial environment. -/
+theorem check_sound (E : Check.CEnv) (fuel : Nat) (keys : List (String × AdtDecl)) (L : List (String × List Ty))
+    (main : String) (arity : Nat) (h : Check.checkAll E fuel keys L main arity = .ok ())
+    (hk : ∀ s d, E.P.adts s = some d → (s, d) ∈ keys) :
+    ProgOkX (Ext.stage3 fun f σ => (f, σ) ∈ L) E.P (fun p ts t => E.prim p ts t = true) ∧
+    ∃ t Γ', HasTyX (Ext.stage3 fun f σ => (f, σ) ∈ L) E.P (fun p ts t => E.prim p ts t = true)
+      Check.topSig Check.sysCtx (Check.mainCall main arity) t Γ' := by
+  have := Check.checkAll_sound h hk
+  simp only [Check.XE, Check.CEnv.withInsts, insts_decide] at this
+  exact ⟨this.1, this.2.2⟩
+
+/-- **A checked program is never stuck** (the theorem instance for a corpus
+program): if the Lean checker accepts a translated program, and its builtins
+respect their signatures (`PrimsOkX`, the assumption about the builtins'
+implementations), then its run from `main` with any arguments, with any
+fuel, never gets stuck (no type error, no broken obligation rule) and never
+reaches a construct outside the core. ops/gates/formal_diff.py confirms it by
+running every program the checker accepts. -/
+theorem checked_program_never_stuck (E : Check.CEnv) (fuel : Nat) (keys : List (String × AdtDecl))
+    (L : List (String × List Ty)) (main : String) (arity : Nat) (h : Check.checkAll E fuel keys L main arity = .ok ())
+    (hk : ∀ s d, E.P.adts s = some d → (s, d) ∈ keys)
+    (hprim : PrimsOkX (Ext.stage3 fun f σ => (f, σ) ∈ L) E.P (fun p ts t => E.prim p ts t = true))
+    (args : List String) (n : Nat) :
+    (∀ k w, eval E.P n [("%sys", some (Check.sysVal args))] {} (Check.mainCall main arity) ≠ .err (.stuck k w)) ∧
+    (∀ w, eval E.P n [("%sys", some (Check.sysVal args))] {} (Check.mainCall main arity) ≠ .err (.unsup w)) := by
+  have hc := Check.checkAll_sound h hk
+  simp only [Check.XE, Check.CEnv.withInsts, insts_decide] at hc
+  obtain ⟨hP, hsys, t, Γ', hm⟩ := hc
+  have hρ := Check.sysOkB_envOk (X := Ext.stage3 fun f σ => (f, σ) ∈ L)
+    (prim := fun p ts t => E.prim p ts t = true) hsys args
+  have h' := type_soundness_full _ E.P _ hP hprim Check.topSig Check.sysCtx Γ' _ t hm _ hρ
+    ⟨Nat.zero_le _, fun _ h => by cases h⟩ n {}
+  refine ⟨fun k w heq => ?_, fun w heq => ?_⟩ <;> rw [heq] at h' <;> exact h'
+
+/-- **The overlap check is sound**: impls the decidable check accepts are coherent (no two overlap). -/
+theorem overlap_check_sound (E : Traits.TraitEnv) (h : Traits.coherentB E.impls = true) : Traits.Coherent E :=
+  Traits.coherentB_sound h
+
+/-- **The orphan rule makes coherence modular**: with every impl in the module
+of its trait or of its type's head, and each module's impls checked (decidably,
+`localB`) against the impls of the modules it sees, the whole program's impls
+are coherent. -/
+theorem orphan_rule_coherent (traits : List Traits.TraitDecl) (impls : List Traits.ModImpl)
+    (traitMod typeMod : String → Option String) (sees : String → String → Bool)
+    (hvar : ∀ mi ∈ impls, Traits.isVar mi.im.self = false)
+    (horph : impls.all (fun mi => traitMod mi.im.trait == some mi.mod || typeMod mi.im.self.head == some mi.mod) = true)
+    (hvis : ∀ mi ∈ impls, (∀ m, traitMod mi.im.trait = some m → sees mi.mod m = true) ∧
+      (∀ m, typeMod mi.im.self.head = some m → sees mi.mod m = true))
+    (hloc : Traits.localB sees impls = true) :
+    Traits.Coherent ⟨traits, impls.map (·.im)⟩ :=
+  Traits.orphan_coherent_decided traits impls traitMod typeMod sees hvar horph hvis hloc
 
 end Tenon.Theorems

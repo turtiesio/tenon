@@ -575,6 +575,13 @@ theorem capSafe_succ {n : Nat} (ih : CapSafe A P n) : CapSafe A P (n + 1) := by
     | lam ps body =>
       simp only [eval]
       exact ⟨by simp only [Val.caps]; exact Bnd.mono (capture_caps ρ) hρ, hρ, hs⟩
+    | clos caps ps body =>
+      simp only [eval]
+      split
+      · rename_i vs hc
+        exact ⟨by simp only [Val.caps]; exact Bnd.mono (captureNames_caps ρ hc) hρ, hρ, hs⟩
+      · exact trivial
+    | ann t e => simp only [eval]; exact hE ρ st e hρ hs
     | fnref f => simp only [eval]; exact ⟨by simp [Val.caps, Bnd.nil], hρ, hs⟩
     | call f args =>
       simp only [eval]

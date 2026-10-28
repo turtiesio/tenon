@@ -81,15 +81,16 @@ theorem mem_substL {σ : List Ty} : ∀ {ts : List Ty} {u : Ty}, u ∈ substL σ
       exact ⟨t', by simp [ht'], rfl⟩
 
 section
-variable {P : Prog} {prim : PrimSig}
+variable {X : Ext} {P : Prog} {prim : PrimSig}
 
 /-- **Kinds bound obligations**: every token a value holds is allowed by the
 kind of its type (none for a copyable type, only unique ones for a unique type). -/
-theorem ValTy.toks_allowed (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTy P prim v t) :
+theorem ValTyX.toks_allowed (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTyX X P prim v t) :
     ∀ τ ∈ v.toks, (t.kind P).allows τ := by
   induction h with
   | int | bool | str | unit | fn | cap => intro τ hτ; simp [Val.toks] at hτ
   | clo _ hc => intro τ hτ; simp only [Val.toks] at hτ; rw [hc] at hτ; cases hτ
+  | closC _ _ hc => intro τ hτ; simp only [Val.toks] at hτ; rw [hc] at hτ; cases hτ
   | @tup vs ts hl _ ih =>
     intro τ hτ
     simp only [Val.toks] at hτ
@@ -134,7 +135,7 @@ theorem ValTy.toks_allowed (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTy P prim 
       rw [hu'] at h1
       exact Kind.allows_mono hb h1
 
-theorem ValTy.toks_copy (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTy P prim v t) (hc : t.copyable P) :
+theorem ValTyX.toks_copy (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTyX X P prim v t) (hc : t.copyable P) :
     v.toks = [] := by
   have := h.toks_allowed hA
   rw [Ty.copyable] at hc; rw [hc] at this
@@ -142,7 +143,7 @@ theorem ValTy.toks_copy (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTy P prim v t
   | nil => rfl
   | cons τ _ => exact absurd (this τ (by simp [hv])) (by simp [Kind.allows])
 
-theorem ValTy.noLin (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTy P prim v t) (hl : ¬ t.linear P) :
+theorem ValTyX.noLin (hA : AdtsOk P) {v : Val} {t : Ty} (h : ValTyX X P prim v t) (hl : ¬ t.linear P) :
     v.hasLin = false := by
   have := h.toks_allowed hA
   simp only [Val.hasLin, List.any_eq_false]
@@ -288,12 +289,12 @@ theorem noLinear_nil {P : Prog} : Ctx.noLinear P [] := by simp [Ctx.noLinear]
 /-! ## Environments -/
 
 section
-variable {P : Prog} {prim : PrimSig}
+variable {X : Ext} {P : Prog} {prim : PrimSig}
 
-theorem EnvOk.lookup : ∀ {ρ : Env} {Γ : Ctx}, EnvOk P prim ρ Γ → ∀ {x : String} {e : Entry}, Γ.find x = some e →
-    ∃ s, Tenon.lookup ρ x = some s ∧ SlotOk P prim e s
+theorem EnvOkX.lookup : ∀ {ρ : Env} {Γ : Ctx}, EnvOkX X P prim ρ Γ → ∀ {x : String} {e : Entry}, Γ.find x = some e →
+    ∃ s, Tenon.lookup ρ x = some s ∧ SlotOkX X P prim e s
   | _, [], _, _, _, h => by simp [Ctx.find] at h
-  | [], _ :: _, h, _, _, _ => by simp [EnvOk] at h
+  | [], _ :: _, h, _, _, _ => by simp [EnvOkX] at h
   | (y, s) :: ρ, e' :: Γ, h, x, e, hf => by
     obtain ⟨hy, hs, hρ⟩ := h
     simp only [Ctx.find] at hf
@@ -301,18 +302,18 @@ theorem EnvOk.lookup : ∀ {ρ : Env} {Γ : Ctx}, EnvOk P prim ρ Γ → ∀ {x 
     split at hf
     · rename_i hx; simp only [Option.some.injEq] at hf; subst hf
       rw [hy, if_pos hx]; exact ⟨s, rfl, hs⟩
-    · rename_i hx; rw [hy, if_neg hx]; exact EnvOk.lookup hρ hf
+    · rename_i hx; rw [hy, if_neg hx]; exact EnvOkX.lookup hρ hf
 
-theorem EnvOk.lookup_avail {ρ : Env} {Γ : Ctx} (h : EnvOk P prim ρ Γ) {x : String} {e : Entry}
-    (hf : Γ.find x = some e) (ha : e.avail = true) : ∃ v, Tenon.lookup ρ x = some (some v) ∧ ValTy P prim v e.ty := by
+theorem EnvOkX.lookup_avail {ρ : Env} {Γ : Ctx} (h : EnvOkX X P prim ρ Γ) {x : String} {e : Entry}
+    (hf : Γ.find x = some e) (ha : e.avail = true) : ∃ v, Tenon.lookup ρ x = some (some v) ∧ ValTyX X P prim v e.ty := by
   obtain ⟨s, hl, hs⟩ := h.lookup hf
   obtain ⟨v, rfl, hv⟩ := hs.1 ha
   exact ⟨v, hl, hv⟩
 
-theorem EnvOk.update : ∀ {ρ : Env} {Γ : Ctx}, EnvOk P prim ρ Γ → ∀ {x : String} {e : Entry} (a : Bool) (s : Option Val),
-    Γ.find x = some e → SlotOk P prim { e with avail := a } s → EnvOk P prim (Tenon.update ρ x s) (Γ.setAvail x a)
+theorem EnvOkX.update : ∀ {ρ : Env} {Γ : Ctx}, EnvOkX X P prim ρ Γ → ∀ {x : String} {e : Entry} (a : Bool) (s : Option Val),
+    Γ.find x = some e → SlotOkX X P prim { e with avail := a } s → EnvOkX X P prim (Tenon.update ρ x s) (Γ.setAvail x a)
   | _, [], _, _, _, _, _, h, _ => by simp [Ctx.find] at h
-  | [], _ :: _, h, _, _, _, _, _, _ => by simp [EnvOk] at h
+  | [], _ :: _, h, _, _, _, _, _, _ => by simp [EnvOkX] at h
   | (y, s0) :: ρ, e' :: Γ, h, x, e, a, s, hf, hs => by
     obtain ⟨hy, hs0, hρ⟩ := h
     simp only [Ctx.find] at hf
@@ -321,46 +322,46 @@ theorem EnvOk.update : ∀ {ρ : Env} {Γ : Ctx}, EnvOk P prim ρ Γ → ∀ {x 
     · rename_i hx; simp only [Option.some.injEq] at hf; subst hf
       rw [hy, if_pos hx, if_pos hx]; exact ⟨rfl, hs, hρ⟩
     · rename_i hx; rw [hy, if_neg hx, if_neg hx]
-      exact ⟨rfl, hs0, EnvOk.update hρ a s hf hs⟩
+      exact ⟨rfl, hs0, EnvOkX.update hρ a s hf hs⟩
 
 /-- Writing a new value of its type to an available variable. -/
-theorem EnvOk.update_val {ρ : Env} {Γ : Ctx} (h : EnvOk P prim ρ Γ) {x : String} {e : Entry} (hf : Γ.find x = some e)
-    (ha : e.avail = true) {v : Val} (hv : ValTy P prim v e.ty) : EnvOk P prim (Tenon.update ρ x (some v)) Γ := by
+theorem EnvOkX.update_val {ρ : Env} {Γ : Ctx} (h : EnvOkX X P prim ρ Γ) {x : String} {e : Entry} (hf : Γ.find x = some e)
+    (ha : e.avail = true) {v : Val} (hv : ValTyX X P prim v e.ty) : EnvOkX X P prim (Tenon.update ρ x (some v)) Γ := by
   have := h.update e.avail (some v) hf ⟨fun _ => ⟨v, rfl, hv⟩, fun h' => by simp [ha] at h'⟩
   rwa [Ctx.setAvail_self hf] at this
 
-theorem EnvOk.length : ∀ {ρ : Env} {Γ : Ctx}, EnvOk P prim ρ Γ → Γ.length ≤ ρ.length
+theorem EnvOkX.length : ∀ {ρ : Env} {Γ : Ctx}, EnvOkX X P prim ρ Γ → Γ.length ≤ ρ.length
   | _, [], _ => Nat.zero_le _
-  | [], _ :: _, h => by simp [EnvOk] at h
-  | _ :: ρ, _ :: Γ, h => by simpa using EnvOk.length h.2.2
+  | [], _ :: _, h => by simp [EnvOkX] at h
+  | _ :: ρ, _ :: Γ, h => by simpa using EnvOkX.length h.2.2
 
 /-- The innermost `Γb.length` slots match `Γb`; below them the environment matches `Γ`. -/
-theorem EnvOk.split : ∀ {Γb Γ : Ctx} {ρ : Env}, EnvOk P prim ρ (Γb ++ Γ) →
-    EnvOk P prim (ρ.drop Γb.length) Γ ∧ Γb.length ≤ ρ.length ∧
-    ∀ (i : Nat) e, Γb[i]? = some e → ∃ (y : String) (s : Option Val), ρ[i]? = some (y, s) ∧ SlotOk P prim e s
+theorem EnvOkX.split : ∀ {Γb Γ : Ctx} {ρ : Env}, EnvOkX X P prim ρ (Γb ++ Γ) →
+    EnvOkX X P prim (ρ.drop Γb.length) Γ ∧ Γb.length ≤ ρ.length ∧
+    ∀ (i : Nat) e, Γb[i]? = some e → ∃ (y : String) (s : Option Val), ρ[i]? = some (y, s) ∧ SlotOkX X P prim e s
   | [], Γ, ρ, h => ⟨h, Nat.zero_le _, fun i e he => by simp at he⟩
-  | _ :: _, _, [], h => by simp [EnvOk] at h
+  | _ :: _, _, [], h => by simp [EnvOkX] at h
   | e :: Γb, Γ, (y, s) :: ρ, h => by
     obtain ⟨hy, hs, hρ⟩ := h
-    obtain ⟨h1, h2, h3⟩ := EnvOk.split hρ
+    obtain ⟨h1, h2, h3⟩ := EnvOkX.split hρ
     refine ⟨by simpa using h1, by simpa using h2, ?_⟩
     intro i e' he'
     cases i with
     | zero => simp only [List.getElem?_cons_zero, Option.some.injEq] at he'; subst he'; exact ⟨y, s, rfl, hs⟩
     | succ i => simpa using h3 i e' (by simpa using he')
 
-theorem EnvOk.join : ∀ {Γb Γ : Ctx} {ρb ρ : Env}, ρb.length = Γb.length →
-    (∀ (i : Nat) e (p : String × Option Val), Γb[i]? = some e → ρb[i]? = some p → p.1 = e.name ∧ SlotOk P prim e p.2) →
-    EnvOk P prim ρ Γ → EnvOk P prim (ρb ++ ρ) (Γb ++ Γ)
+theorem EnvOkX.join : ∀ {Γb Γ : Ctx} {ρb ρ : Env}, ρb.length = Γb.length →
+    (∀ (i : Nat) e (p : String × Option Val), Γb[i]? = some e → ρb[i]? = some p → p.1 = e.name ∧ SlotOkX X P prim e p.2) →
+    EnvOkX X P prim ρ Γ → EnvOkX X P prim (ρb ++ ρ) (Γb ++ Γ)
   | [], Γ, [], ρ, _, _, h => h
   | _ :: _, _, [], _, hl, _, _ => by simp at hl
   | [], _, _ :: _, _, hl, _, _ => by simp at hl
   | e :: Γb, Γ, (y, s) :: ρb, ρ, hl, hs, h => by
     obtain ⟨h1, h2⟩ := hs 0 e (y, s) rfl rfl
-    exact ⟨h1, h2, EnvOk.join (by simpa using hl) (fun i e' p he hp => hs (i + 1) e' p (by simpa using he)
+    exact ⟨h1, h2, EnvOkX.join (by simpa using hl) (fun i e' p he hp => hs (i + 1) e' p (by simpa using he)
       (by simpa using hp)) h⟩
 
-theorem SlotOk.noLin (hA : AdtsOk P) {e : Entry} {s : Option Val} (h : SlotOk P prim e s)
+theorem SlotOkX.noLin (hA : AdtsOk P) {e : Entry} {s : Option Val} (h : SlotOkX X P prim e s)
     (hl : e.avail = true → ¬ e.ty.linear P) : ∀ v, s = some v → v.hasLin = false := by
   intro v hv
   cases ha : e.avail
@@ -370,8 +371,8 @@ theorem SlotOk.noLin (hA : AdtsOk P) {e : Entry} {s : Option Val} (h : SlotOk P 
     exact hwt.noLin hA (hl ha)
 
 /-- Ending a scope whose variables hold no linear value. -/
-theorem popEnv_typed (hA : AdtsOk P) {Γb Γ : Ctx} {ρ : Env} (h : EnvOk P prim ρ (Γb ++ Γ)) (hn : Ctx.noLinear P Γb)
-    (st : St) : ∃ st', popEnv Γb.length ρ st = .ok () (ρ.drop Γb.length) st' ∧ EnvOk P prim (ρ.drop Γb.length) Γ := by
+theorem popEnv_typed (hA : AdtsOk P) {Γb Γ : Ctx} {ρ : Env} (h : EnvOkX X P prim ρ (Γb ++ Γ)) (hn : Ctx.noLinear P Γb)
+    (st : St) : ∃ st', popEnv Γb.length ρ st = .ok () (ρ.drop Γb.length) st' ∧ EnvOkX X P prim (ρ.drop Γb.length) Γ := by
   obtain ⟨h1, h2, h3⟩ := h.split
   have hall : ∀ v ∈ (ρ.take Γb.length).filterMap (·.2), v.hasLin = false := by
     intro v hv

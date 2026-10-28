@@ -136,6 +136,13 @@ inductive Expr where
   | cont
   /-- `e?` on an `Option` or `Result`. -/
   | try (e : Expr)
+  /-- A closure that captures the listed variables by value (the variables its
+  body uses, which the translator computes); each must hold a value without
+  obligations. Typed by `HasTyX.clos` (Typing.lean). -/
+  | clos (caps : List String) (ps : List String) (body : Expr)
+  /-- A type annotation (`let x: T = e`, a closure's parameter types): a hint
+  for the checker (TenonCore/Check.lean), with no run-time effect. -/
+  | ann (t : Ty) (e : Expr)
   /-- A construct of Tenon the core does not model (the translator's fallback). -/
   | unsup (why : String)
 end

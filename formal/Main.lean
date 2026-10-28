@@ -14,10 +14,6 @@ open Tenon Front
 
 def fuel : Nat := 100000000
 
-def sysVal (args : List String) : Val :=
-  .adt "Sys" 0 none [.cap ⟨.console, none, false⟩, .cap ⟨.fs, none, false⟩, .cap ⟨.clock, none, false⟩,
-    .cap ⟨.net, none, false⟩, .cap ⟨.proc, none, false⟩, .seq .list (args.map .str)]
-
 def outside (msg : String) : IO UInt32 := do
   IO.eprintln s!"tenon-core: {msg}"
   return 3
@@ -50,7 +46,7 @@ def run (preludes : List String) (progFile : String) (args : List String) : IO U
     return ← outside s!"unsupported: {tp.unsupported.head!}"
   let some m := tp.main | outside "unsupported: no main"
   let call : Expr := .call (.fnref m) (if tp.mainArity == 0 then [] else [.place "%sys" []])
-  let ρ : Env := [("%sys", some (sysVal args))]
+  let ρ : Env := [("%sys", some (Tenon.Check.sysVal args))]
   let showTop := Prims.showV tp.prog.adts true
   match eval tp.prog fuel ρ {} call with
   | .ok v _ st =>
@@ -80,8 +76,31 @@ def run (preludes : List String) (progFile : String) (args : List String) : IO U
   | .err .timeout => outside "out of fuel"
   | .err (.unsup why) => outside s!"unsupported: {why}"
 
+/-- `tenon-core check PRELUDE.ast... -- PROGRAM.ast`: the Lean checker's verdict
+(TenonCore/Check.lean, proved sound in CheckSound.lean). Prints `accepted: N
+instances` (exit 0), `rejected: WHY` (exit 1) or `unsupported: WHY` (exit 3). -/
+def check (preludes : List String) (progFile : String) : IO UInt32 := do
+  let mut pitems := []
+  for p in preludes do
+    pitems := pitems ++ parseDump (← IO.FS.readFile p)
+  let items := parseDump (← IO.FS.readFile progFile)
+  let tp := translate pitems items []
+  unless tp.unsupported.isEmpty do
+    IO.println s!"unsupported: {tp.unsupported.head!}"
+    return 3
+  match checkProgram tp with
+  | .ok L => IO.println s!"accepted: {L.length} instances"; return 0
+  | .error m =>
+    if (m.splitOn "unsupported:").length > 1 then IO.println s!"unsupported: {m}"; return 3
+    IO.println s!"rejected: {m}"; return 1
+
 def main (argv : List String) : IO UInt32 := do
   match argv with
+  | "check" :: rest =>
+    let (pre, post) := rest.span (· != "--")
+    match post with
+    | ["--", prog] => check pre prog
+    | _ => IO.eprintln "usage: tenon-core check PRELUDE.ast... -- PROGRAM.ast"; return 2
   | "run" :: rest =>
     let (pre, post) := rest.span (· != "--")
     match post with

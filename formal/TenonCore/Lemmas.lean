@@ -106,6 +106,20 @@ theorem capture_caps : ∀ (ρ : Env), capsL ((capture ρ).map (·.2)) ⊆ envCa
       · simp only [List.filterMap_cons, hv, if_true, List.map_cons, capsL, slotCaps]; grind
       · simp only [List.filterMap_cons, hv, if_false, slotCaps]; grind
 
+theorem captureNames_caps (ρ : Env) : ∀ {xs : List String} {vs : List Val}, captureNames ρ xs = some vs →
+    capsL vs ⊆ envCaps ρ
+  | [], vs, h => by simp [captureNames] at h; subst h; simp [capsL]
+  | x :: xs, vs, h => by
+    simp only [captureNames] at h
+    split at h
+    · rename_i v vs' hl hc
+      split at h
+      · simp only [Option.some.injEq] at h; subst h
+        simp only [capsL]
+        exact List.append_subset.2 ⟨lookup_caps hl, captureNames_caps ρ hc⟩
+      · cases h
+    · cases h
+
 /-! ## Paths -/
 
 theorem entryKV_caps {e k v : Val} (h : entryKV e = some (k, v)) : k.caps ++ v.caps ⊆ e.caps := by

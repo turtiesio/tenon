@@ -8,13 +8,13 @@ import TenonCore.TypeSafeEval
 namespace Tenon
 
 section
-variable {P : Prog} {prim : PrimSig}
+variable {X : Ext} {P : Prog} {prim : PrimSig}
 
 theorem mem_zip_cons {α β} {a : α} {b : β} {as : List α} {bs : List β} {q : α × β}
     (h : q ∈ (a :: as).zip (b :: bs)) : q = (a, b) ∨ q ∈ as.zip bs := by
   simpa using h
 
-theorem ArgsOk.not_moved {Γ : Ctx} {ms : List Mode} {as : List ArgV} {ts : List Ty} (h : ArgsOk P prim Γ ms as ts) :
+theorem ArgsOk.not_moved {Γ : Ctx} {ms : List Mode} {as : List ArgV} {ts : List Ty} (h : ArgsOk X P prim Γ ms as ts) :
     ∀ a ∈ as, ∀ x, a.wb ≠ .moved x := by
   induction h with
   | nil => simp
@@ -25,8 +25,8 @@ theorem ArgsOk.not_moved {Γ : Ctx} {ms : List Mode} {as : List ArgV} {ts : List
     · exact ih a hmem x
 
 theorem OpndsOk.vals {Γ : Ctx} {os : List (Val × Option (String × List Step))} {ts : List Ty}
-    (h : OpndsOk P prim Γ os ts) :
-    (os.map (·.1)).length = ts.length ∧ ∀ q ∈ (os.map (·.1)).zip ts, ValTy P prim q.1 q.2 := by
+    (h : OpndsOk X P prim Γ os ts) :
+    (os.map (·.1)).length = ts.length ∧ ∀ q ∈ (os.map (·.1)).zip ts, ValTyX X P prim q.1 q.2 := by
   induction h with
   | nil => simp
   | cons hv _ _ ih =>
@@ -40,8 +40,8 @@ theorem SigOk.tailOr {Δ Δ' : Sig} {Γ : Ctx} (h : SigOk Δ Γ) (hΔ : Δ' = Δ
   · exact h.noExit
   · exact h
 
-theorem tySafe_succ (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih : TySafe P prim n) :
-    TySafe P prim (n + 1) where
+theorem tySafe_succ (hP : ProgOkX X P prim) (hprim : PrimsOkX X P prim) {n : Nat} (ih : TySafe X P prim n) :
+    TySafe X P prim (n + 1) where
   eval := tySafe_eval hP hprim ih
   list := by
     have hA := hP.1
@@ -228,12 +228,13 @@ theorem tySafe_succ (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih 
           | ctl c ρ1 st1 =>
             intro hge
             rw [blen]
-            exact popScope_ty (Γbo := bindCtx bs) (Γ' := Γ') (Q := (ValTy P prim · t)) (r := .ctl c ρ1 st1)
+            exact popScope_ty (Γbo := bindCtx bs) (Γ' := Γ') (Q := (ValTyX X P prim · t)) (r := .ctl c ρ1 st1)
               hA hge rfl hnbc hsig
           | err e => intro hge; cases e <;> exact hge
   call := by
     have hA := hP.1
-    intro Δ Δ' Γ Γ' ρ st owner ps names cvs body pre args tys r Γb hn hcv htl hb hfin hpl hpre hargs hΔ hρ hsig
+    intro Δ Δ' Γ Γ' ρ st owner ps names cvs body pre args tys r Δb Γt Γb hn hcv htl hΔb hΓt hcvt hb hfin hpl hpre hargs
+      hΔ hρ hsig
     simp only [callWith]
     rw [if_pos ⟨hn, hcv⟩]
     have ha := ih.args _ _ _ _ _ _ ρ st hargs hρ
@@ -243,13 +244,13 @@ theorem tySafe_succ (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih 
     | ok as ρ1 st1 =>
       intro ha
       obtain ⟨has, hρ1, hs1⟩ := ha
-      have hall : ArgsOk P prim Γ' (ps.map (·.2)) (pre ++ as) tys := by
+      have hall : ArgsOk X P prim Γ' (ps.map (·.2)) (pre ++ as) tys := by
         have := hpre.append has
         rwa [← List.map_append, List.take_append_drop, List.take_append_drop] at this
       have hlen : (pre ++ as).length = ps.length := by have := hall.length; simpa using this.1
       simp only [hlen, ite_true]
-      exact afterCall_ty hA (ih.eval _ _ _ _ _ _ st1 hb (frameOf_ty hcv ps (pre ++ as) tys hall)
-        (SigOk.fn owner ps tys r htl)) hfin htl hall hρ1 hs1
+      exact afterCall_ty hA hΔb hΓt (ih.eval _ _ _ _ _ _ st1 hb (frameOf_ty hcvt ps (pre ++ as) tys hall)
+        (SigOk.frame hΔb htl)) hfin htl hall hρ1 hs1
     | ctl c ρ1 st1 =>
       intro ha
       rcases hΔ with rfl | ⟨rfl, hpl'⟩
@@ -297,7 +298,7 @@ theorem tySafe_succ (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih 
         · exact hv0
         · exact hz q hq
 
-theorem tySafe (hP : ProgOk P prim) (hprim : PrimsOk P prim) (n : Nat) : TySafe P prim n := by
+theorem tySafe (hP : ProgOkX X P prim) (hprim : PrimsOkX X P prim) (n : Nat) : TySafe X P prim n := by
   induction n with
   | zero => exact tySafe_zero
   | succ n ih => exact tySafe_succ hP hprim ih

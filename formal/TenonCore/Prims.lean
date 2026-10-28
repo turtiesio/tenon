@@ -619,6 +619,11 @@ def listOf : Val → Option (List Val)
 
 def pureTable (adts : Adts) (name : String) (shows : List ShowImpl := []) (hasDyn : Bool := false) :
     Option (List Val → PrimRes) :=
+  -- `"{e:SPEC}"`: the spec is part of the name (its signature depends on it, Front/Checker.lean)
+  if name.startsWith "%fmt:" then some fun
+    | [v] => fmtSpec adts v (name.drop 5).toString
+    | _ => .stuck "fmt"
+  else
   match name with
   | "%showq" => some fun
     | [v, .bool top] => ret (if needsWalk shows v then errV .unit else okV (.str (showV adts top v)))
@@ -663,7 +668,7 @@ def pureTable (adts : Adts) (name : String) (shows : List ShowImpl := []) (hasDy
   | "%float" => some fun
     | [.str t] => match Flt.parse t with
       | some b => ret (flt b)
-      | none => .stuck "float literal"
+      | none => .trap "invalid Float literal"
     | _ => .stuck "float literal"
   | "%show" => some fun | [v] => ret (.str (showV adts true v)) | _ => .stuck "show"
   | "encode" => some fun | [v] => ret (.str (showV adts false v)) | _ => .stuck "encode"
@@ -735,7 +740,7 @@ def pureTable (adts : Adts) (name : String) (shows : List ShowImpl := []) (hasDy
   | "Int.checked_div" => some (checked fun a b => if b = 0 then none else some (a.tdiv b))
   | "Int.char" => some fun
     | [.int i] => if 0 ≤ i ∧ i < 0x110000 ∧ ¬(0xD800 ≤ i ∧ i < 0xE000) then ret (.str (Char.ofNat i.toNat).toString)
-        else .unsup "Int.char outside the code points"
+        else .trap "Int.char outside the code points"
     | _ => .stuck "char"
   -- Float
   | "Int.to_float" => some fun | [.int i] => ret (flt (Flt.ofInt i)) | _ => .stuck "to_float"

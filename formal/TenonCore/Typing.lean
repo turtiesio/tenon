@@ -205,152 +205,197 @@ end
 
 /-! ## The judgement -/
 
+/-- What the judgement allows beyond the stage-2 rules (formal/README.md,
+"Static semantics"). `full` enables the stage-3 rules: closures that capture
+variables (`clos`), annotations (`ann`) and direct calls of builtins
+(`callPrim`). `inst` is the set of function instances the program is checked
+at: a call, a function value and a method call must use one of them (the
+instances a monomorphizing checker visits, as the compiler compiles generic
+code per type). The stage-2 judgement, which the guarded theorem statements
+use (`HasTy`, `ValTy`, `ProgOk`, ... below), is `Ext.strict`: no stage-3 rule,
+every instance. -/
+structure Ext where
+  full : Bool
+  inst : String → List Ty → Prop
+
+def Ext.strict : Ext := ⟨false, fun _ _ => True⟩
+
+/-- The context of a closure's captured variables (immutable copies). -/
+def capCtx (caps : List String) (cts : List Ty) : Ctx :=
+  (caps.zip cts).map fun c => ⟨c.1, c.2, false, true⟩
+
+/-- The captured variables are in scope, hold their values, at these types. -/
+inductive CapsTy (Γ : Ctx) : List String → List Ty → Prop
+  | nil : CapsTy Γ [] []
+  | cons {x xs t ts} : Γ.AvailAt x t → CapsTy Γ xs ts → CapsTy Γ (x :: xs) (t :: ts)
+
+/-- The body of a closure with `nc` captured variables below its parameters:
+at the end its parameters are finished (the captured copies are dropped). -/
+def closSig (P : Prog) (ps : List String) (nc : Nat) (r : Ty) : Sig :=
+  ⟨r, true, none, ps.length + nc, fun Γ => FinFn P none (ps.map (·, Mode.val)) (Γ.take ps.length)⟩
+
+/-- The builtin a method call on a value of head `h` selects (as `resolve` does): the
+builtin `h.m`, or (stage 3) the one for every head, `*.m` (`x.to_str()`). -/
+def PrimAt (X : Ext) (P : Prog) (prim : PrimSig) (h m : String) (ts : List Ty) (t : Ty) : Prop :=
+  prim (h ++ "." ++ m) ts t ∨ (X.full = true ∧ P.prim (h ++ "." ++ m) = none ∧ prim ("*." ++ m) ts t)
+
 /-- The tail of a sequence after a value of type `t` is held: early exits are
 allowed only if `t` is not linear. -/
 def TailSig (P : Prog) (Δ Δ' : Sig) (t : Ty) : Prop := (Δ' = Δ ∧ ¬ t.linear P) ∨ Δ' = Δ.noExit
 
 mutual
-/-- `HasTy P prim Δ Γ e t Γ'`: `e` has type `t` in `Γ`, leaving `Γ'` (what it moved). -/
-inductive HasTy (P : Prog) (prim : PrimSig) : Sig → Ctx → Expr → Ty → Ctx → Prop
-  | lit {Δ Γ l} : HasTy P prim Δ Γ (.lit l) l.ty Γ
+/-- `HasTyX X P prim Δ Γ e t Γ'`: `e` has type `t` in `Γ`, leaving `Γ'` (what it moved). -/
+inductive HasTyX (X : Ext) (P : Prog) (prim : PrimSig) : Sig → Ctx → Expr → Ty → Ctx → Prop
+  | lit {Δ Γ l} : HasTyX X P prim Δ Γ (.lit l) l.ty Γ
   /-- A whole variable, moved (always allowed; needed for an obligation). -/
   | move {Δ Γ x en} : Γ.find x = some en → en.avail = true →
-      HasTy P prim Δ Γ (.place x []) en.ty (Γ.setAvail x false)
+      HasTyX X P prim Δ Γ (.place x []) en.ty (Γ.setAvail x false)
   /-- A copy of a variable or of a part of it (the index expressions are evaluated first). -/
-  | copy {Δ Γ x ps en t Γ'} : Γ.find x = some en → en.avail = true → PathTy P prim Δ Γ en.ty ps t Γ' →
-      Γ'.Avail x → t.copyable P → HasTy P prim Δ Γ (.place x ps) t Γ'
-  | proj {Δ Γ e ps t0 t Γ1 Γ2} : HasTy P prim Δ Γ e t0 Γ1 → t0.copyable P → PathTy P prim Δ Γ1 t0 ps t Γ2 →
-      HasTy P prim Δ Γ (.proj e ps) t Γ2
-  | tup {Δ Γ es ts Γ'} : ListTy P prim Δ Γ es ts Γ' → HasTy P prim Δ Γ (.seq .tup es) (.tup ts) Γ'
-  | list {Δ Γ es t Γ'} : ListTy P prim Δ Γ es (es.map fun _ => t) Γ' → t.copyable P →
-      HasTy P prim Δ Γ (.seq .list es) (.list t) Γ'
+  | copy {Δ Γ x ps en t Γ'} : Γ.find x = some en → en.avail = true → PathTyX X P prim Δ Γ en.ty ps t Γ' →
+      Γ'.Avail x → t.copyable P → HasTyX X P prim Δ Γ (.place x ps) t Γ'
+  | proj {Δ Γ e ps t0 t Γ1 Γ2} : HasTyX X P prim Δ Γ e t0 Γ1 → t0.copyable P → PathTyX X P prim Δ Γ1 t0 ps t Γ2 →
+      HasTyX X P prim Δ Γ (.proj e ps) t Γ2
+  | tup {Δ Γ es ts Γ'} : ListTyX X P prim Δ Γ es ts Γ' → HasTyX X P prim Δ Γ (.seq .tup es) (.tup ts) Γ'
+  | list {Δ Γ es t Γ'} : ListTyX X P prim Δ Γ es (es.map fun _ => t) Γ' → t.copyable P →
+      HasTyX X P prim Δ Γ (.seq .list es) (.list t) Γ'
   | con {Δ Γ s} {tag : Nat} {es d name ts args Γ'} : P.adts s = some d → d.variants[tag]? = some (name, ts) →
-      args.length = d.tparams → ListTy P prim Δ Γ es (substL args ts) Γ' → HasTy P prim Δ Γ (.con s tag es) (.adt s args) Γ'
+      args.length = d.tparams → ListTyX X P prim Δ Γ es (substL args ts) Γ' → HasTyX X P prim Δ Γ (.con s tag es) (.adt s args) Γ'
   /-- A closure: its body sees its parameters (the values it captures at run time are not used). -/
   | lam {Δ Γ ps body ts r Γb} : ps.length = ts.length →
-      HasTy P prim (fnSig P none (ps.map (·, Mode.val)) r) (paramsCtx (ps.map (·, Mode.val)) ts) body r Γb →
-      FinFn P none (ps.map (·, Mode.val)) Γb → HasTy P prim Δ Γ (.lam ps body) (.fn ts r) Γ
-  | fnref {Δ Γ f d σ} : P.fns f = some d → (∀ p ∈ d.params, p.2 = .val) → σ.length = d.tparams →
-      HasTy P prim Δ Γ (.fnref f) (.fn (substL σ d.ptys) (d.ret.subst σ)) Γ
+      HasTyX X P prim (fnSig P none (ps.map (·, Mode.val)) r) (paramsCtx (ps.map (·, Mode.val)) ts) body r Γb →
+      FinFn P none (ps.map (·, Mode.val)) Γb → HasTyX X P prim Δ Γ (.lam ps body) (.fn ts r) Γ
+  | fnref {Δ Γ f d σ} : P.fns f = some d → (∀ p ∈ d.params, p.2 = .val) → σ.length = d.tparams → X.inst f σ →
+      HasTyX X P prim Δ Γ (.fnref f) (.fn (substL σ d.ptys) (d.ret.subst σ)) Γ
   /-- A call of a function value: every argument by value. -/
-  | callv {Δ Γ f args ts r Γ1 Γ2} : HasTy P prim Δ Γ f (.fn ts r) Γ1 →
-      ArgsTy P prim Δ Γ1 (args.map fun _ => .val) args ts Γ2 → HasTy P prim Δ Γ (.call f args) r Γ2
+  | callv {Δ Γ f args ts r Γ1 Γ2} : HasTyX X P prim Δ Γ f (.fn ts r) Γ1 →
+      ArgsTyX X P prim Δ Γ1 (args.map fun _ => .val) args ts Γ2 → HasTyX X P prim Δ Γ (.call f args) r Γ2
   /-- A direct call: arguments by the parameters' modes. -/
-  | call {Δ Γ f d σ args Γ'} : P.fns f = some d → σ.length = d.tparams →
-      ArgsTy P prim Δ Γ (d.params.map (·.2)) args (substL σ d.ptys) Γ' →
-      HasTy P prim Δ Γ (.call (.fnref f) args) (d.ret.subst σ) Γ'
+  | call {Δ Γ f d σ args Γ'} : P.fns f = some d → σ.length = d.tparams → X.inst f σ →
+      ArgsTyX X P prim Δ Γ (d.params.map (·.2)) args (substL σ d.ptys) Γ' →
+      HasTyX X P prim Δ Γ (.call (.fnref f) args) (d.ret.subst σ) Γ'
   /-- A method of the receiver's type, the receiver a place. -/
   | mcallP {Δ Δ' Γ m x ps en t0 d σ p0 m0 prest pt0 ptrest args Γ1 Γr Γ2} :
-      Γ.find x = some en → en.avail = true → PathTy P prim Δ Γ en.ty ps t0 Γ1 → Γ1.Avail x →
+      Γ.find x = some en → en.avail = true → PathTyX X P prim Δ Γ en.ty ps t0 Γ1 → Γ1.Avail x →
       t0.isVar = false → P.fns (t0.head ++ "." ++ m) = some d → σ.length = d.tparams →
-      d.params = (p0, m0) :: prest → d.ptys = pt0 :: ptrest → pt0.subst σ = t0 →
+      X.inst (t0.head ++ "." ++ m) σ → d.params = (p0, m0) :: prest → d.ptys = pt0 :: ptrest → pt0.subst σ = t0 →
       (m0 = .val → (ps = [] ∧ Γr = Γ1.setAvail x false) ∨ (Γr = Γ1 ∧ t0.copyable P)) →
       (m0 ≠ .val → Γr = Γ1 ∧ t0.copyable P ∧ Γ2.AvailAt x en.ty) →
       TailSig P Δ Δ' t0 →
-      ArgsTy P prim Δ' Γr (prest.map (·.2)) args (substL σ ptrest) Γ2 →
-      HasTy P prim Δ Γ (.mcall m (.place x ps) args) (d.ret.subst σ) Γ2
+      ArgsTyX X P prim Δ' Γr (prest.map (·.2)) args (substL σ ptrest) Γ2 →
+      HasTyX X P prim Δ Γ (.mcall m (.place x ps) args) (d.ret.subst σ) Γ2
   /-- A method of the receiver's type, the receiver a computed value (by value). -/
   | mcallV {Δ Δ' Γ m recv t0 d σ p0 prest pt0 ptrest args Γ1 Γ2} :
-      (∀ x ps, recv ≠ .place x ps) → HasTy P prim Δ Γ recv t0 Γ1 →
+      (∀ x ps, recv ≠ .place x ps) → HasTyX X P prim Δ Γ recv t0 Γ1 →
       t0.isVar = false → P.fns (t0.head ++ "." ++ m) = some d → σ.length = d.tparams →
-      d.params = (p0, .val) :: prest → d.ptys = pt0 :: ptrest → pt0.subst σ = t0 →
-      TailSig P Δ Δ' t0 → ArgsTy P prim Δ' Γ1 (prest.map (·.2)) args (substL σ ptrest) Γ2 →
-      HasTy P prim Δ Γ (.mcall m recv args) (d.ret.subst σ) Γ2
+      X.inst (t0.head ++ "." ++ m) σ → d.params = (p0, .val) :: prest → d.ptys = pt0 :: ptrest → pt0.subst σ = t0 →
+      TailSig P Δ Δ' t0 → ArgsTyX X P prim Δ' Γ1 (prest.map (·.2)) args (substL σ ptrest) Γ2 →
+      HasTyX X P prim Δ Γ (.mcall m recv args) (d.ret.subst σ) Γ2
   /-- A builtin method, the receiver a place (it may give the receiver a new value). -/
   | mprimP {Δ Γ m x ps en t0 ts t args Γ1 Γ2} :
-      Γ.find x = some en → en.avail = true → PathTy P prim Δ Γ en.ty ps t0 Γ1 → Γ1.Avail x →
-      t0.isVar = false → P.fns (t0.head ++ "." ++ m) = none → prim (t0.head ++ "." ++ m) (t0 :: ts) t →
-      OpndsTy P prim Δ Γ1 args ts Γ2 → Γ2.AvailAt x en.ty → t.copyable P →
-      HasTy P prim Δ Γ (.mcall m (.place x ps) args) t Γ2
+      Γ.find x = some en → en.avail = true → PathTyX X P prim Δ Γ en.ty ps t0 Γ1 → Γ1.Avail x →
+      t0.isVar = false → P.fns (t0.head ++ "." ++ m) = none → PrimAt X P prim t0.head m (t0 :: ts) t →
+      OpndsTyX X P prim Δ Γ1 args ts Γ2 → Γ2.AvailAt x en.ty → t.copyable P →
+      HasTyX X P prim Δ Γ (.mcall m (.place x ps) args) t Γ2
   /-- A builtin method, the receiver a computed value without obligations. -/
   | mprimV {Δ Γ m recv t0 ts t args Γ1 Γ2} :
-      (∀ x ps, recv ≠ .place x ps) → HasTy P prim Δ Γ recv t0 Γ1 → t0.copyable P →
-      t0.isVar = false → P.fns (t0.head ++ "." ++ m) = none → prim (t0.head ++ "." ++ m) (t0 :: ts) t →
-      OpndsTy P prim Δ Γ1 args ts Γ2 → t.copyable P →
-      HasTy P prim Δ Γ (.mcall m recv args) t Γ2
-  | prim {Δ Γ p args ts t Γ'} : prim p ts t → OpndsTy P prim Δ Γ args ts Γ' → t.copyable P →
-      HasTy P prim Δ Γ (.prim p args) t Γ'
+      (∀ x ps, recv ≠ .place x ps) → HasTyX X P prim Δ Γ recv t0 Γ1 → t0.copyable P →
+      t0.isVar = false → P.fns (t0.head ++ "." ++ m) = none → PrimAt X P prim t0.head m (t0 :: ts) t →
+      OpndsTyX X P prim Δ Γ1 args ts Γ2 → t.copyable P →
+      HasTyX X P prim Δ Γ (.mcall m recv args) t Γ2
+  | prim {Δ Γ p args ts t Γ'} : prim p ts t → OpndsTyX X P prim Δ Γ args ts Γ' → t.copyable P →
+      HasTyX X P prim Δ Γ (.prim p args) t Γ'
   /-- A linear variable must be consumed by the end of its scope. -/
-  | letE {Δ Γ x mu e body t t' Γ1 a Γ2} : HasTy P prim Δ Γ e t Γ1 →
-      HasTy P prim Δ (⟨x, t, mu, true⟩ :: Γ1) body t' (⟨x, t, mu, a⟩ :: Γ2) → (a = true → ¬ t.linear P) →
-      HasTy P prim Δ Γ (.letE x mu e body) t' Γ2
+  | letE {Δ Γ x mu e body t t' Γ1 a Γ2} : HasTyX X P prim Δ Γ e t Γ1 →
+      HasTyX X P prim Δ (⟨x, t, mu, true⟩ :: Γ1) body t' (⟨x, t, mu, a⟩ :: Γ2) → (a = true → ¬ t.linear P) →
+      HasTyX X P prim Δ Γ (.letE x mu e body) t' Γ2
   /-- Assignment of a whole variable: never over a live linear value. -/
-  | assign {Δ Γ x e en Γ1} : Γ.find x = some en → en.mutable = true → HasTy P prim Δ Γ e en.ty Γ1 →
+  | assign {Δ Γ x e en Γ1} : Γ.find x = some en → en.mutable = true → HasTyX X P prim Δ Γ e en.ty Γ1 →
       (∀ en1, Γ1.find x = some en1 → en1.avail = true → ¬ en.ty.linear P) →
-      HasTy P prim Δ Γ (.assign x [] e) .unit (Γ1.setAvail x true)
+      HasTyX X P prim Δ Γ (.assign x [] e) .unit (Γ1.setAvail x true)
   /-- Assignment to a part (or a whole variable) of a copyable type. -/
   | assignPart {Δ Γ x ps e t en Γ1 Γ2} : Γ.find x = some en → en.mutable = true → en.avail = true →
-      PathTy P prim Δ Γ en.ty ps t Γ1 → HasTy P prim Δ Γ1 e t Γ2 → Γ2.Avail x → t.copyable P →
-      HasTy P prim Δ Γ (.assign x ps e) .unit Γ2
-  | seqE {Δ Γ e1 e2 t1 t Γ1 Γ2} : HasTy P prim Δ Γ e1 t1 Γ1 → ¬ t1.linear P → HasTy P prim Δ Γ1 e2 t Γ2 →
-      HasTy P prim Δ Γ (.seqE e1 e2) t Γ2
+      PathTyX X P prim Δ Γ en.ty ps t Γ1 → HasTyX X P prim Δ Γ1 e t Γ2 → Γ2.Avail x → t.copyable P →
+      HasTyX X P prim Δ Γ (.assign x ps e) .unit Γ2
+  | seqE {Δ Γ e1 e2 t1 t Γ1 Γ2} : HasTyX X P prim Δ Γ e1 t1 Γ1 → ¬ t1.linear P → HasTyX X P prim Δ Γ1 e2 t Γ2 →
+      HasTyX X P prim Δ Γ (.seqE e1 e2) t Γ2
   /-- Both branches leave the same context (every path consumes the same obligations). -/
-  | ite {Δ Γ c a b t Γ1 Γ2} : HasTy P prim Δ Γ c .bool Γ1 → HasTy P prim Δ Γ1 a t Γ2 → HasTy P prim Δ Γ1 b t Γ2 →
-      HasTy P prim Δ Γ (.ite c a b) t Γ2
-  | mtch {Δ Γ e arms t0 t Γ1 Γ2} : HasTy P prim Δ Γ e t0 Γ1 → ArmsTy P prim Δ Γ1 t0 arms t Γ2 →
-      HasTy P prim Δ Γ (.mtch e arms) t Γ2
+  | ite {Δ Γ c a b t Γ1 Γ2} : HasTyX X P prim Δ Γ c .bool Γ1 → HasTyX X P prim Δ Γ1 a t Γ2 → HasTyX X P prim Δ Γ1 b t Γ2 →
+      HasTyX X P prim Δ Γ (.ite c a b) t Γ2
+  | mtch {Δ Γ e arms t0 t Γ1 Γ2} : HasTyX X P prim Δ Γ e t0 Γ1 → ArmsTyX X P prim Δ Γ1 t0 arms t Γ2 →
+      HasTyX X P prim Δ Γ (.mtch e arms) t Γ2
   /-- A loop cannot consume what it did not create. -/
-  | while {Δ Γ c body t} : HasTy P prim Δ Γ c .bool Γ → HasTy P prim (Δ.withLoop Γ) Γ body t Γ →
-      ¬ t.linear P → HasTy P prim Δ Γ (.while c body) .unit Γ
+  | while {Δ Γ c body t} : HasTyX X P prim Δ Γ c .bool Γ → HasTyX X P prim (Δ.withLoop Γ) Γ body t Γ →
+      ¬ t.linear P → HasTyX X P prim Δ Γ (.while c body) .unit Γ
   /-- An early exit: the locals are consumed and the frame is finished; it has any type. -/
-  | ret {Δ Γ e Γ1 t Γ'} : Δ.exitOk = true → HasTy P prim Δ Γ e Δ.ret Γ1 → RetOk P Δ Γ1 →
-      HasTy P prim Δ Γ (.ret e) t Γ'
-  | brk {Δ Γ Γl t Γ'} : Δ.loop = some Γl → LoopOk P Γl Γ → HasTy P prim Δ Γ .brk t Γ'
-  | cont {Δ Γ Γl t Γ'} : Δ.loop = some Γl → LoopOk P Γl Γ → HasTy P prim Δ Γ .cont t Γ'
-  | tryOpt {Δ Γ e t t' Γ1} : Δ.exitOk = true → HasTy P prim Δ Γ e (.adt "Option" [t]) Γ1 →
-      Δ.ret = .adt "Option" [t'] → RetOk P Δ Γ1 → HasTy P prim Δ Γ (.try e) t Γ1
-  | tryRes {Δ Γ e t t' er Γ1} : Δ.exitOk = true → HasTy P prim Δ Γ e (.adt "Result" [t, er]) Γ1 →
-      Δ.ret = .adt "Result" [t', er] → RetOk P Δ Γ1 → HasTy P prim Δ Γ (.try e) t Γ1
+  | ret {Δ Γ e Γ1 t Γ'} : Δ.exitOk = true → HasTyX X P prim Δ Γ e Δ.ret Γ1 → RetOk P Δ Γ1 →
+      HasTyX X P prim Δ Γ (.ret e) t Γ'
+  | brk {Δ Γ Γl t Γ'} : Δ.loop = some Γl → LoopOk P Γl Γ → HasTyX X P prim Δ Γ .brk t Γ'
+  | cont {Δ Γ Γl t Γ'} : Δ.loop = some Γl → LoopOk P Γl Γ → HasTyX X P prim Δ Γ .cont t Γ'
+  | tryOpt {Δ Γ e t t' Γ1} : Δ.exitOk = true → HasTyX X P prim Δ Γ e (.adt "Option" [t]) Γ1 →
+      Δ.ret = .adt "Option" [t'] → RetOk P Δ Γ1 → HasTyX X P prim Δ Γ (.try e) t Γ1
+  | tryRes {Δ Γ e t t' er Γ1} : Δ.exitOk = true → HasTyX X P prim Δ Γ e (.adt "Result" [t, er]) Γ1 →
+      Δ.ret = .adt "Result" [t', er] → RetOk P Δ Γ1 → HasTyX X P prim Δ Γ (.try e) t Γ1
+  /-- A closure capturing variables by value (copies of copyable values), stage 3. -/
+  | clos {Δ Γ caps ps body ts r cts Γb} : X.full = true → ps.length = ts.length → CapsTy Γ caps cts →
+      (∀ t ∈ cts, t.copyable P) →
+      HasTyX X P prim (closSig P ps cts.length r) (paramsCtx (ps.map (·, Mode.val)) ts ++ capCtx caps cts) body r Γb →
+      FinFn P none (ps.map (·, Mode.val)) (Γb.take ps.length) →
+      HasTyX X P prim Δ Γ (.clos caps ps body) (.fn ts r) Γ
+  /-- An annotation is a hint for the checker: it types as its expression. -/
+  | ann {Δ Γ t0 e t Γ'} : X.full = true → HasTyX X P prim Δ Γ e t Γ' → HasTyX X P prim Δ Γ (.ann t0 e) t Γ'
+  /-- A direct call of a builtin (`Str.from_utf8(b)`): its arguments are operands. -/
+  | callPrim {Δ Γ f args ts t Γ'} : X.full = true → P.fns f = none → prim f ts t →
+      OpndsTyX X P prim Δ Γ args ts Γ' → t.copyable P → HasTyX X P prim Δ Γ (.call (.fnref f) args) t Γ'
 
-inductive ListTy (P : Prog) (prim : PrimSig) : Sig → Ctx → List Expr → List Ty → Ctx → Prop
-  | nil {Δ Γ} : ListTy P prim Δ Γ [] [] Γ
-  | cons {Δ Δ' Γ e es t ts Γ1 Γ2} : HasTy P prim Δ Γ e t Γ1 → TailSig P Δ Δ' t →
-      ListTy P prim Δ' Γ1 es ts Γ2 → ListTy P prim Δ Γ (e :: es) (t :: ts) Γ2
+inductive ListTyX (X : Ext) (P : Prog) (prim : PrimSig) : Sig → Ctx → List Expr → List Ty → Ctx → Prop
+  | nil {Δ Γ} : ListTyX X P prim Δ Γ [] [] Γ
+  | cons {Δ Δ' Γ e es t ts Γ1 Γ2} : HasTyX X P prim Δ Γ e t Γ1 → TailSig P Δ Δ' t →
+      ListTyX X P prim Δ' Γ1 es ts Γ2 → ListTyX X P prim Δ Γ (e :: es) (t :: ts) Γ2
 
 /-- Arguments by mode: a `ref`/`mut` argument is a place of a copyable type,
 copied in and written back, so it must still be in scope after the arguments. -/
-inductive ArgsTy (P : Prog) (prim : PrimSig) : Sig → Ctx → List Mode → List Expr → List Ty → Ctx → Prop
-  | nil {Δ Γ} : ArgsTy P prim Δ Γ [] [] [] Γ
-  | val {Δ Δ' Γ e es ms t ts Γ1 Γ2} : HasTy P prim Δ Γ e t Γ1 → TailSig P Δ Δ' t →
-      ArgsTy P prim Δ' Γ1 ms es ts Γ2 → ArgsTy P prim Δ Γ (.val :: ms) (e :: es) (t :: ts) Γ2
+inductive ArgsTyX (X : Ext) (P : Prog) (prim : PrimSig) : Sig → Ctx → List Mode → List Expr → List Ty → Ctx → Prop
+  | nil {Δ Γ} : ArgsTyX X P prim Δ Γ [] [] [] Γ
+  | val {Δ Δ' Γ e es ms t ts Γ1 Γ2} : HasTyX X P prim Δ Γ e t Γ1 → TailSig P Δ Δ' t →
+      ArgsTyX X P prim Δ' Γ1 ms es ts Γ2 → ArgsTyX X P prim Δ Γ (.val :: ms) (e :: es) (t :: ts) Γ2
   | byRef {Δ Γ m x ps en t es ms ts Γ1 Γ2} : m ≠ .val → Γ.find x = some en → en.avail = true →
-      (m = .mut → en.mutable = true) → PathTy P prim Δ Γ en.ty ps t Γ1 → Γ1.Avail x → t.copyable P →
-      ArgsTy P prim Δ Γ1 ms es ts Γ2 → Γ2.AvailAt x en.ty →
-      ArgsTy P prim Δ Γ (m :: ms) (.place x ps :: es) (t :: ts) Γ2
+      (m = .mut → en.mutable = true) → PathTyX X P prim Δ Γ en.ty ps t Γ1 → Γ1.Avail x → t.copyable P →
+      ArgsTyX X P prim Δ Γ1 ms es ts Γ2 → Γ2.AvailAt x en.ty →
+      ArgsTyX X P prim Δ Γ (m :: ms) (.place x ps :: es) (t :: ts) Γ2
 
 /-- A builtin's operands: places are inspected (and still in scope when the builtin
 runs: it may give its first operand a new value); other values have no obligation. -/
-inductive OpndsTy (P : Prog) (prim : PrimSig) : Sig → Ctx → List Expr → List Ty → Ctx → Prop
-  | nil {Δ Γ} : OpndsTy P prim Δ Γ [] [] Γ
-  | place {Δ Γ x ps en t es ts Γ1 Γ2} : Γ.find x = some en → en.avail = true → PathTy P prim Δ Γ en.ty ps t Γ1 →
-      Γ1.Avail x → OpndsTy P prim Δ Γ1 es ts Γ2 → Γ2.AvailAt x en.ty → OpndsTy P prim Δ Γ (.place x ps :: es) (t :: ts) Γ2
-  | val {Δ Γ e t es ts Γ1 Γ2} : (∀ x ps, e ≠ .place x ps) → HasTy P prim Δ Γ e t Γ1 → t.copyable P →
-      OpndsTy P prim Δ Γ1 es ts Γ2 → OpndsTy P prim Δ Γ (e :: es) (t :: ts) Γ2
+inductive OpndsTyX (X : Ext) (P : Prog) (prim : PrimSig) : Sig → Ctx → List Expr → List Ty → Ctx → Prop
+  | nil {Δ Γ} : OpndsTyX X P prim Δ Γ [] [] Γ
+  | place {Δ Γ x ps en t es ts Γ1 Γ2} : Γ.find x = some en → en.avail = true → PathTyX X P prim Δ Γ en.ty ps t Γ1 →
+      Γ1.Avail x → OpndsTyX X P prim Δ Γ1 es ts Γ2 → Γ2.AvailAt x en.ty → OpndsTyX X P prim Δ Γ (.place x ps :: es) (t :: ts) Γ2
+  | val {Δ Γ e t es ts Γ1 Γ2} : (∀ x ps, e ≠ .place x ps) → HasTyX X P prim Δ Γ e t Γ1 → t.copyable P →
+      OpndsTyX X P prim Δ Γ1 es ts Γ2 → OpndsTyX X P prim Δ Γ (e :: es) (t :: ts) Γ2
 
 /-- The type at the end of a path (index expressions are typed and may not move obligations). -/
-inductive PathTy (P : Prog) (prim : PrimSig) : Sig → Ctx → Ty → List PStep → Ty → Ctx → Prop
-  | nil {Δ Γ t} : PathTy P prim Δ Γ t [] t Γ
+inductive PathTyX (X : Ext) (P : Prog) (prim : PrimSig) : Sig → Ctx → Ty → List PStep → Ty → Ctx → Prop
+  | nil {Δ Γ t} : PathTyX X P prim Δ Γ t [] t Γ
   | fld {Δ Γ s args f ps d i ft t Γ'} : P.adts s = some d → d.isStruct = true → idxOf f d.fields = some i →
       (d.variants.head?.map (·.2)).bind (·[i]?) = some ft → args.length = d.tparams →
-      PathTy P prim Δ Γ (ft.subst args) ps t Γ' →
-      PathTy P prim Δ Γ (.adt s args) (.fld f :: ps) t Γ'
-  | tfld {Δ Γ ts i ps ti t Γ'} : ts[i]? = some ti → PathTy P prim Δ Γ ti ps t Γ' →
-      PathTy P prim Δ Γ (.tup ts) (.tfld i :: ps) t Γ'
-  | idxList {Δ Γ e el ps t Γ1 Γ2} : HasTy P prim Δ Γ e .int Γ1 → PathTy P prim Δ Γ1 el ps t Γ2 →
-      PathTy P prim Δ Γ (.list el) (.idx e :: ps) t Γ2
-  | idxMap {Δ Γ e k v ps t Γ1 Γ2} : HasTy P prim Δ Γ e k Γ1 → k.copyable P → PathTy P prim Δ Γ1 v ps t Γ2 →
-      PathTy P prim Δ Γ (.map k v) (.idx e :: ps) t Γ2
+      PathTyX X P prim Δ Γ (ft.subst args) ps t Γ' →
+      PathTyX X P prim Δ Γ (.adt s args) (.fld f :: ps) t Γ'
+  | tfld {Δ Γ ts i ps ti t Γ'} : ts[i]? = some ti → PathTyX X P prim Δ Γ ti ps t Γ' →
+      PathTyX X P prim Δ Γ (.tup ts) (.tfld i :: ps) t Γ'
+  | idxList {Δ Γ e el ps t Γ1 Γ2} : HasTyX X P prim Δ Γ e .int Γ1 → PathTyX X P prim Δ Γ1 el ps t Γ2 →
+      PathTyX X P prim Δ Γ (.list el) (.idx e :: ps) t Γ2
+  | idxMap {Δ Γ e k v ps t Γ1 Γ2} : HasTyX X P prim Δ Γ e k Γ1 → k.copyable P → PathTyX X P prim Δ Γ1 v ps t Γ2 →
+      PathTyX X P prim Δ Γ (.map k v) (.idx e :: ps) t Γ2
 
 /-- Arms: the patterns fit the matched type, guards only on values without
 obligations (and leave the context as it is), the names a pattern binds are
 consumed (if linear) by the end of the arm, and every arm leaves the same context. -/
-inductive ArmsTy (P : Prog) (prim : PrimSig) : Sig → Ctx → Ty → List (Pat × Option Expr × Expr) → Ty → Ctx → Prop
-  | nil {Δ Γ t0 t Γ'} : ArmsTy P prim Δ Γ t0 [] t Γ'
+inductive ArmsTyX (X : Ext) (P : Prog) (prim : PrimSig) : Sig → Ctx → Ty → List (Pat × Option Expr × Expr) → Ty → Ctx → Prop
+  | nil {Δ Γ t0 t Γ'} : ArmsTyX X P prim Δ Γ t0 [] t Γ'
   | cons {Δ Γ t0 p g body arms t bs Γ' Γb} : PatTy P p t0 bs →
       (g.isSome → t0.copyable P) →
-      (∀ ge, g = some ge → HasTy P prim Δ (bindCtx bs ++ Γ) ge .bool (bindCtx bs ++ Γ)) →
-      HasTy P prim Δ (bindCtx bs ++ Γ) body t (Γb ++ Γ') → Γb.length = bs.length →
-      Ctx.noLinear P Γb → ArmsTy P prim Δ Γ t0 arms t Γ' → ArmsTy P prim Δ Γ t0 ((p, g, body) :: arms) t Γ'
+      (∀ ge, g = some ge → HasTyX X P prim Δ (bindCtx bs ++ Γ) ge .bool (bindCtx bs ++ Γ)) →
+      HasTyX X P prim Δ (bindCtx bs ++ Γ) body t (Γb ++ Γ') → Γb.length = bs.length →
+      Ctx.noLinear P Γb → ArmsTyX X P prim Δ Γ t0 arms t Γ' → ArmsTyX X P prim Δ Γ t0 ((p, g, body) :: arms) t Γ'
 end
 
 /-! ## Values and environments -/
@@ -365,40 +410,47 @@ def TokOk : Kind → Option Tok → Prop
 /-- A value of a type. Tokens match kinds: a value of a linear (unique)
 declared type carries a linear (unique) token, others carry none; a closure
 captured no obligation and its body has its type. -/
-inductive ValTy (P : Prog) (prim : PrimSig) : Val → Ty → Prop
-  | int {i} : ValTy P prim (.int i) .int
-  | bool {b} : ValTy P prim (.bool b) .bool
-  | str {s} : ValTy P prim (.str s) .str
-  | unit : ValTy P prim .unit .unit
-  | tup {vs ts} : vs.length = ts.length → (∀ p ∈ vs.zip ts, ValTy P prim p.1 p.2) →
-      ValTy P prim (.seq .tup vs) (.tup ts)
-  | list {vs t} : (∀ v ∈ vs, ValTy P prim v t) → ValTy P prim (.seq .list vs) (.list t)
+inductive ValTyX (X : Ext) (P : Prog) (prim : PrimSig) : Val → Ty → Prop
+  | int {i} : ValTyX X P prim (.int i) .int
+  | bool {b} : ValTyX X P prim (.bool b) .bool
+  | str {s} : ValTyX X P prim (.str s) .str
+  | unit : ValTyX X P prim .unit .unit
+  | tup {vs ts} : vs.length = ts.length → (∀ p ∈ vs.zip ts, ValTyX X P prim p.1 p.2) →
+      ValTyX X P prim (.seq .tup vs) (.tup ts)
+  | list {vs t} : (∀ v ∈ vs, ValTyX X P prim v t) → ValTyX X P prim (.seq .list vs) (.list t)
   | map {kvs k v} : (∀ e ∈ kvs, (entryKV e).isSome) →
-      (∀ e ∈ kvs, ∀ a b, entryKV e = some (a, b) → ValTy P prim a k) →
-      (∀ e ∈ kvs, ∀ a b, entryKV e = some (a, b) → ValTy P prim b v) →
-      ValTy P prim (.seq .map kvs) (.map k v)
+      (∀ e ∈ kvs, ∀ a b, entryKV e = some (a, b) → ValTyX X P prim a k) →
+      (∀ e ∈ kvs, ∀ a b, entryKV e = some (a, b) → ValTyX X P prim b v) →
+      ValTyX X P prim (.seq .map kvs) (.map k v)
   | adt {s} {tag : Nat} {tok vs d name ts args} : P.adts s = some d → d.variants[tag]? = some (name, ts) →
-      args.length = d.tparams → vs.length = ts.length → (∀ p ∈ vs.zip (substL args ts), ValTy P prim p.1 p.2) →
-      TokOk d.kind tok → ValTy P prim (.adt s tag tok vs) (.adt s args)
-  | fn {f d σ} : P.fns f = some d → (∀ p ∈ d.params, p.2 = .val) → σ.length = d.tparams →
-      ValTy P prim (.fn f) (.fn (substL σ d.ptys) (d.ret.subst σ))
+      args.length = d.tparams → vs.length = ts.length → (∀ p ∈ vs.zip (substL args ts), ValTyX X P prim p.1 p.2) →
+      TokOk d.kind tok → ValTyX X P prim (.adt s tag tok vs) (.adt s args)
+  | fn {f d σ} : P.fns f = some d → (∀ p ∈ d.params, p.2 = .val) → σ.length = d.tparams → X.inst f σ →
+      ValTyX X P prim (.fn f) (.fn (substL σ d.ptys) (d.ret.subst σ))
   | clo {names cvs ps body ts r Γb} : names.length = cvs.length → toksL cvs = [] → ps.length = ts.length →
-      HasTy P prim (fnSig P none (ps.map (·, Mode.val)) r) (paramsCtx (ps.map (·, Mode.val)) ts) body r Γb →
+      HasTyX X P prim (fnSig P none (ps.map (·, Mode.val)) r) (paramsCtx (ps.map (·, Mode.val)) ts) body r Γb →
       FinFn P none (ps.map (·, Mode.val)) Γb →
-      ValTy P prim (.clo names cvs ps body) (.fn ts r)
-  | cap {c} : ValTy P prim (.cap c) (.cap c.kind)
+      ValTyX X P prim (.clo names cvs ps body) (.fn ts r)
+  | cap {c} : ValTyX X P prim (.cap c) (.cap c.kind)
+  /-- A closure with captured values of copyable types (stage 3). -/
+  | closC {names cvs ps body ts r cts Γb} : X.full = true → names.length = cvs.length → toksL cvs = [] →
+      ps.length = ts.length → cvs.length = cts.length → (∀ q ∈ cvs.zip cts, ValTyX X P prim q.1 q.2) →
+      (∀ t ∈ cts, t.copyable P) →
+      HasTyX X P prim (closSig P ps cts.length r) (paramsCtx (ps.map (·, Mode.val)) ts ++ capCtx names cts) body r Γb →
+      FinFn P none (ps.map (·, Mode.val)) (Γb.take ps.length) →
+      ValTyX X P prim (.clo names cvs ps body) (.fn ts r)
 
 /-- A slot matches its entry: an available variable holds a value of its type;
 a moved one holds nothing or a value without obligations (never used again). -/
-def SlotOk (P : Prog) (prim : PrimSig) (e : Entry) (s : Option Val) : Prop :=
-  (e.avail = true → ∃ v, s = some v ∧ ValTy P prim v e.ty) ∧ (e.avail = false → ∀ v, s = some v → v.toks = [])
+def SlotOkX (X : Ext) (P : Prog) (prim : PrimSig) (e : Entry) (s : Option Val) : Prop :=
+  (e.avail = true → ∃ v, s = some v ∧ ValTyX X P prim v e.ty) ∧ (e.avail = false → ∀ v, s = some v → v.toks = [])
 
 /-- The runtime environment matches the context entry by entry; below the
 context it may hold more slots without obligations (what a closure captured). -/
-def EnvOk (P : Prog) (prim : PrimSig) : Env → Ctx → Prop
+def EnvOkX (X : Ext) (P : Prog) (prim : PrimSig) : Env → Ctx → Prop
   | ρ, [] => ∀ p ∈ ρ, ∀ v, p.2 = some v → v.toks = []
   | [], _ :: _ => False
-  | (x, s) :: ρ, e :: Γ => x = e.name ∧ SlotOk P prim e s ∧ EnvOk P prim ρ Γ
+  | (x, s) :: ρ, e :: Γ => x = e.name ∧ SlotOkX X P prim e s ∧ EnvOkX X P prim ρ Γ
 
 /-! ## Programs -/
 
@@ -423,27 +475,45 @@ def StdOk (P : Prog) : Prop :=
 (generic code is checked at the types it is used with: monomorphization,
 reference §17; Subst.lean shows that checking it once suffices), and its
 parameters are finished at its end. -/
-def ProgOk (P : Prog) (prim : PrimSig) : Prop :=
+def ProgOkX (X : Ext) (P : Prog) (prim : PrimSig) : Prop :=
   AdtsOk P ∧ StdOk P ∧
-  ∀ f d, P.fns f = some d → d.params.length = d.ptys.length ∧
-    ∀ σ : List Ty, σ.length = d.tparams →
-      ∃ Γ', HasTy P prim (fnSig P d.owner d.params (d.ret.subst σ)) (paramsCtx d.params (substL σ d.ptys))
+  ∀ f d, P.fns f = some d → ∀ σ : List Ty, σ.length = d.tparams → X.inst f σ →
+    d.params.length = d.ptys.length ∧
+      ∃ Γ', HasTyX X P prim (fnSig P d.owner d.params (d.ret.subst σ)) (paramsCtx d.params (substL σ d.ptys))
         d.body (d.ret.subst σ) Γ' ∧ FinFn P d.owner d.params Γ'
 
 /-- One builtin respects a signature: on arguments of its types it returns a
 value of the result type, authority only from its arguments, and a new
 receiver value only for a copyable receiver; or it traps. -/
-def PfOk (P : Prog) (prim : PrimSig) (pf : List Val → Nat → PrimRes) (ts : List Ty) (t : Ty) : Prop :=
-  ∀ vs w, vs.length = ts.length → (∀ q ∈ vs.zip ts, ValTy P prim q.1 q.2) →
+def PfOkX (X : Ext) (P : Prog) (prim : PrimSig) (pf : List Val → Nat → PrimRes) (ts : List Ty) (t : Ty) : Prop :=
+  ∀ vs w, vs.length = ts.length → (∀ q ∈ vs.zip ts, ValTyX X P prim q.1 q.2) →
     match pf vs w with
-    | .ok v self evs _ => ValTy P prim v t ∧
+    | .ok v self evs _ => ValTyX X P prim v t ∧
         granted (v.caps ++ (self.map Val.caps).getD [] ++ evs.map (·.cap)) (capsL vs) = true ∧
-        ∀ s, self = some s → ∃ t0, ts.head? = some t0 ∧ ValTy P prim s t0 ∧ t0.copyable P
+        ∀ s, self = some s → ∃ t0, ts.head? = some t0 ∧ ValTyX X P prim s t0 ∧ t0.copyable P
     | .trap _ => True
     | _ => False
 
 /-- The builtins respect their signatures. -/
-def PrimsOk (P : Prog) (prim : PrimSig) : Prop :=
-  ∀ p ts t, prim p ts t → ∃ pf, P.prim p = some pf ∧ PfOk P prim pf ts t
+def PrimsOkX (X : Ext) (P : Prog) (prim : PrimSig) : Prop :=
+  ∀ p ts t, prim p ts t → ∃ pf, P.prim p = some pf ∧ PfOkX X P prim pf ts t
+
+/-! ## The stage-2 judgement (the guarded statements, Theorems.lean) -/
+
+abbrev HasTy (P : Prog) (prim : PrimSig) := HasTyX Ext.strict P prim
+abbrev ListTy (P : Prog) (prim : PrimSig) := ListTyX Ext.strict P prim
+abbrev ArgsTy (P : Prog) (prim : PrimSig) := ArgsTyX Ext.strict P prim
+abbrev OpndsTy (P : Prog) (prim : PrimSig) := OpndsTyX Ext.strict P prim
+abbrev PathTy (P : Prog) (prim : PrimSig) := PathTyX Ext.strict P prim
+abbrev ArmsTy (P : Prog) (prim : PrimSig) := ArmsTyX Ext.strict P prim
+abbrev ValTy (P : Prog) (prim : PrimSig) := ValTyX Ext.strict P prim
+abbrev SlotOk (P : Prog) (prim : PrimSig) := SlotOkX Ext.strict P prim
+abbrev EnvOk (P : Prog) (prim : PrimSig) := EnvOkX Ext.strict P prim
+abbrev ProgOk (P : Prog) (prim : PrimSig) := ProgOkX Ext.strict P prim
+abbrev PfOk (P : Prog) (prim : PrimSig) := PfOkX Ext.strict P prim
+abbrev PrimsOk (P : Prog) (prim : PrimSig) := PrimsOkX Ext.strict P prim
+
+/-- The stage-3 judgement: the loosened rules, at the instances `I` (TenonCore/Check.lean computes them). -/
+def Ext.stage3 (I : String → List Ty → Prop) : Ext := ⟨true, I⟩
 
 end Tenon

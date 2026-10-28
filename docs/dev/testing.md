@@ -122,14 +122,17 @@ core calculus with a computable evaluator, and proofs about it of capability
 safety, obligation soundness (each linear value consumed exactly once,
 unique values never duplicated), worker isolation, type soundness (a
 well-typed program never gets stuck) and its substitution lemma, traits and
-coherence, and the specification of milestone-3 item 3 (user Eq/Ord/Hash). The toolchain is
+coherence (with a decidable overlap check and the orphan rule), the
+specification of milestone-3 item 3 (user Eq/Ord/Hash), and a checker for
+the typing rules, written and proved sound in Lean, that decides corpus
+programs (`check_sound`, `checked_program_never_stuck`). The toolchain is
 pinned in `formal/lean-toolchain`; elan installs it (CI caches it).
 
 - `ops/gates/formal_check.sh` (a `./check` step) builds formal/ and fails on
   a proof that no longer checks, on `sorry`, `admit` or a new `axiom` in a
   built file, and on a guarded theorem that depends on an axiom beyond
   `propext`, `Classical.choice` and `Quot.sound` (`formal/Axioms.lean`; at
-  least the 27 statements of `Theorems.lean` must be audited).
+  least the 32 statements of `Theorems.lean` must be audited).
   Statements that are not proved yet go to the `Todo` library (`formal/Todo.lean`), which the gate
   does not build.
 - The statements in `formal/TenonCore/Theorems.lean` are guarded like tests
@@ -138,8 +141,15 @@ pinned in `formal/lean-toolchain`; elan installs it (CI caches it).
 - `ops/gates/formal_diff.py` (the evidence loop) runs the corpus through
   `tenon ast`, the Lean translator and the core's evaluator, and compares the
   output and exit status with `tenon run`; programs that use what the core does
-  not model are counted as outside the subset. Every disagreement, and every
-  accepted program on which the core gets stuck, is a finding
+  not model are counted as outside the subset. It also asks the Lean checker
+  (`tenon-core check`) about every program, accepted or rejected by `tenon
+  check` (reject tests included), compares the verdicts and classifies each
+  disagreement: tenon accepts and Lean rejects (the model too strict, or the
+  compiler unsound if the core gets stuck), tenon rejects and Lean accepts (a
+  rule the core does not need, or the compiler too strict); every program
+  the Lean checker accepts must run on the core without getting stuck.
+  Every disagreement with `tenon run`, every accepted program on which the
+  core gets stuck, and every unexplained verdict disagreement is a finding
   (tests/redteam/, `FINDINGS-DATE-formal.md`).
 
 ## Doc checks
@@ -221,7 +231,7 @@ does, and runs, each writing `.evidence/NAME.json` (`corpus.record`):
 | `ops/gates/fmt_check.sh --all` | meaning preserved on every file, not only the ones formatting changes |
 | `tenon-seed test tests` | the seed's own run of the v1 suite (a reference for its interpreter) |
 | `ops/evidence/interp_diff.py` | the seed's interpreter and `tenon run` on every corpus file: the same output, errors and exit status |
-| `ops/gates/formal_diff.py` | the Lean core's evaluator and `tenon run` on every corpus program the core covers: the same output and exit status; and no program `tenon check` accepts gets stuck in the core (below) |
+| `ops/gates/formal_diff.py` | the Lean core's evaluator and `tenon run` on every corpus program the core covers: the same output and exit status; no program `tenon check` accepts gets stuck in the core; the Lean checker's verdicts against `tenon check`'s, classified, and no program it accepts gets stuck (below) |
 | `ops/evidence/checkfuzz.py N SEED` | token-level mutants of corpus programs: both checkers print the same first line, accepted mutants emit the same C (disagreements in `.evidence/checkfuzz/`); counted apart, by design: tenon rejects with a rule the seed lacks while the seed accepts (`STRICTER`, each entry naming its commit and reference section), the seed stops at syntax only tenon reads (`V2_SYNTAX`), or tenon's diagnostic is the seed's with a reason appended (`REASONS`) |
 | `ops/evidence/mutate.py N SEED` | mutants of the trusted compile path and the runtime; survivors (the tests did not notice) become tasks; a mutant judged equivalent is listed with its reason in `EQUIVALENT` and only counted |
 | `ops/evidence/bench.py` | the benchmarks against C, Rust, Python and TypeScript (`--parallel`: the worker speedups) |

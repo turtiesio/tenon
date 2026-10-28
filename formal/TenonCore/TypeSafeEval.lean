@@ -8,9 +8,9 @@ import TenonCore.TypeSafe
 namespace Tenon
 
 section
-variable {P : Prog} {prim : PrimSig}
+variable {X : Ext} {P : Prog} {prim : PrimSig}
 
-theorem tySafe_zero : TySafe P prim 0 := by
+theorem tySafe_zero : TySafe X P prim 0 := by
   constructor <;> intros <;>
     simp [eval, evalList, evalSteps, evalArg, evalArgs, evalOpnd, evalOpnds, evalArms, callWith, primCall, OutTy]
 
@@ -18,7 +18,7 @@ theorem loop_exact {Γx Γ : Ctx} (hs : Shape Γx Γ) (h : LoopOk P Γ Γx) : Γ
   have := h.2; rw [hs.length, Nat.sub_self, List.drop_zero] at this; exact this
 
 theorem mem_zip_const {vs : List Val} {es : List Expr} {t : Ty} (hl : vs.length = (es.map fun _ => t).length)
-    (h : ∀ q ∈ vs.zip (es.map fun _ => t), ValTy P prim q.1 q.2) : ∀ v ∈ vs, ValTy P prim v t := by
+    (h : ∀ q ∈ vs.zip (es.map fun _ => t), ValTyX X P prim q.1 q.2) : ∀ v ∈ vs, ValTyX X P prim v t := by
   intro v hv
   obtain ⟨b, hb⟩ := mem_zip_left hl hv
   have := h _ hb
@@ -26,31 +26,59 @@ theorem mem_zip_const {vs : List Val} {es : List Expr} {t : Ty} (hl : vs.length 
   exact this
 
 /-- Finishing a method call once the receiver is evaluated (TypeSafe's `callWith` part). -/
-theorem mcall_finish (hP : ProgOk P prim) {n : Nat} (ih : TySafe P prim n)
+theorem mcall_finish (hP : ProgOkX X P prim) {n : Nat} (ih : TySafe X P prim n)
     {Δ Δ' : Sig} {Γr Γ2 : Ctx} {d : FnDecl} {σ : List Ty} {p0 : String} {m0 : Mode}
     {prest : List (String × Mode)} {pt0 : Ty} {ptrest : List Ty} {t0 : Ty} {args : List Expr} {f : String}
-    (hd : P.fns f = some d) (hσ : σ.length = d.tparams) (hpar : d.params = (p0, m0) :: prest)
+    (hd : P.fns f = some d) (hσ : σ.length = d.tparams) (hi : X.inst f σ) (hpar : d.params = (p0, m0) :: prest)
     (hpty : d.ptys = pt0 :: ptrest) (hsub : pt0.subst σ = t0) (htail : TailSig P Δ Δ' t0)
-    (hargs : ArgsTy P prim Δ' Γr (prest.map (·.2)) args (substL σ ptrest) Γ2)
-    {a0 : ArgV} (ha0 : ArgOk P prim Γ2 m0 a0 t0)
-    {ρ2 : Env} {st2 : St} (hρ2 : EnvOk P prim ρ2 Γr) (hsig : SigOk Δ Γr) :
-    OutTy P prim Δ Γr Γ2 (ValTy P prim · (d.ret.subst σ))
+    (hargs : ArgsTyX X P prim Δ' Γr (prest.map (·.2)) args (substL σ ptrest) Γ2)
+    {a0 : ArgV} (ha0 : ArgOk X P prim Γ2 m0 a0 t0)
+    {ρ2 : Env} {st2 : St} (hρ2 : EnvOkX X P prim ρ2 Γr) (hsig : SigOk Δ Γr) :
+    OutTy X P prim Δ Γr Γ2 (ValTyX X P prim · (d.ret.subst σ))
       (callWith P n ρ2 st2 d.owner ((p0, m0) :: prest) [] [] d.body [a0] args) := by
   rw [← hpar]
-  obtain ⟨hlenp, hbody⟩ := hP.2.2 f d hd
-  obtain ⟨Γb, hb, hfin⟩ := hbody σ hσ
+  obtain ⟨hlenp, Γb, hb, hfin⟩ := hP.2.2 f d hd σ hσ hi
   have htys : substL σ d.ptys = t0 :: substL σ ptrest := by rw [hpty]; simp [substL, hsub]
-  refine ih.call Δ Δ' Γr Γ2 ρ2 st2 d.owner d.params [] [] d.body [a0] args (substL σ d.ptys) (d.ret.subst σ) Γb
-    rfl rfl (by rw [substL_length]; exact hlenp.symm) hb hfin (by simp [hpar]) ?_ ?_ ?_ hρ2 hsig
+  refine ih.call Δ Δ' Γr Γ2 ρ2 st2 d.owner d.params [] [] d.body [a0] args (substL σ d.ptys) (d.ret.subst σ)
+    _ [] Γb rfl rfl (by rw [substL_length]; exact hlenp.symm) (FrameSig.fn _ _ _ _) (by simp) (capEnv_nil rfl)
+    (by rw [List.append_nil]; exact hb) hfin.take (by simp [hpar]) ?_ ?_ ?_ hρ2 hsig
   · rw [htys, hpar]; exact .cons ha0 .nil
   · rw [htys, hpar]; exact hargs
   · rcases htail with ⟨rfl, hl⟩ | rfl
     · exact Or.inr ⟨rfl, fun a ha => by simp at ha; subst ha; exact ha0.noLin hP.1 (fun _ => hl)⟩
     · exact Or.inl rfl
 
-theorem tySafe_eval (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih : TySafe P prim n) :
-    ∀ Δ Γ Γ' e t ρ st, HasTy P prim Δ Γ e t Γ' → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (ValTy P prim · t) (eval P (n + 1) ρ st e) := by
+/-- The builtin a typed method call selects is the one `resolve` finds. -/
+theorem primAt_resolve (hprim : PrimsOkX X P prim) {h m : String} {ts : List Ty} {t : Ty}
+    (hd : P.fns (h ++ "." ++ m) = none) (hpr : PrimAt X P prim h m ts t) :
+    ∃ pf, resolve P h m = .prim pf ∧ PfOkX X P prim pf ts t := by
+  rcases hpr with hpr | ⟨-, hn, hpr⟩
+  · obtain ⟨pf, hpf, hok⟩ := hprim _ _ _ hpr
+    exact ⟨pf, resolve_prim hd hpf, hok⟩
+  · obtain ⟨pf, hpf, hok⟩ := hprim _ _ _ hpr
+    exact ⟨pf, by simp [resolve, hd, hn, hpf], hok⟩
+
+/-- The variables a closure captures hold typed values without obligations. -/
+theorem captureNames_ty (hA : AdtsOk P) {ρ : Env} {Γ : Ctx} (hρ : EnvOkX X P prim ρ Γ) :
+    ∀ {caps : List String} {cts : List Ty}, CapsTy Γ caps cts → (∀ t ∈ cts, t.copyable P) →
+    ∃ vs, captureNames ρ caps = some vs ∧ vs.length = cts.length ∧ ∀ q ∈ vs.zip cts, ValTyX X P prim q.1 q.2
+  | [], [], .nil, _ => ⟨[], rfl, rfl, by simp⟩
+  | x :: caps, t :: cts, .cons hx hr, hc => by
+    obtain ⟨en, hf, ha, hty⟩ := hx
+    obtain ⟨v, hl, hv⟩ := hρ.lookup_avail hf ha
+    rw [hty] at hv
+    have hvt := hv.toks_copy hA (hc t (by simp))
+    obtain ⟨vs, h1, h2, h3⟩ := captureNames_ty hA hρ hr (fun t' ht' => hc t' (by simp [ht']))
+    refine ⟨v :: vs, ?_, by simp [h2], fun q hq => ?_⟩
+    · simp [captureNames, hl, h1, hvt]
+    · simp only [List.zip_cons_cons, List.mem_cons] at hq
+      rcases hq with rfl | hq
+      · exact hv
+      · exact h3 q hq
+
+theorem tySafe_eval (hP : ProgOkX X P prim) (hprim : PrimsOkX X P prim) {n : Nat} (ih : TySafe X P prim n) :
+    ∀ Δ Γ Γ' e t ρ st, HasTyX X P prim Δ Γ e t Γ' → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (ValTyX X P prim · t) (eval P (n + 1) ρ st e) := by
   have hA := hP.1
   have hE := ih.eval; have hL := ih.list; have hS := ih.steps; have hM := ih.arms; have hC := ih.call
   have hPc := ih.prim
@@ -94,45 +122,71 @@ theorem tySafe_eval (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih 
   | lam hl hb hfin =>
     simp only [eval]
     exact ⟨.clo (by simp) (capture_toks ρ) hl hb hfin, hρ, rfl⟩
-  | fnref hf hall hσ => simp only [eval]; exact ⟨.fn hf hall hσ, hρ, rfl⟩
+  | @clos _ _ caps ps body ts r cts Γb hfull hl hcaps hcop hb hfin =>
+    simp only [eval]
+    obtain ⟨vs, hcn, hlen, hvs⟩ := captureNames_ty hA hρ hcaps hcop
+    rw [hcn]
+    have ht := captureNames_toks ρ hcn
+    exact ⟨.closC hfull ht.2.symm ht.1 hl hlen hvs hcop hb hfin, hρ, rfl⟩
+  | ann _ he => simp only [eval]; exact hE _ _ _ _ _ ρ st he hρ hsig
+  | @callPrim _ _ f args ts t _ _ hnf hp hops hc =>
+    cases n with
+    | zero => simp [eval, Out.bind, OutTy]
+    | succ k =>
+      simp only [eval, Out.bind, hnf]
+      obtain ⟨pf, hpf, hok⟩ := hprim _ _ _ hp
+      simp only [hpf]
+      exact hPc _ _ _ pf none args ts t ts ρ st hok hc hops rfl hρ hsig
+  | fnref hf hall hσ hi => simp only [eval]; exact ⟨.fn hf hall hσ hi, hρ, rfl⟩
   | @callv _ _ f args ts r Γ1 _ hf hargs =>
     simp only [eval]
     refine OutTy.bind (hE _ _ _ _ _ ρ st hf hρ hsig) fun fv ρ1 st1 hfv hρ1 hs1 => ?_
-    have hal := ArgsTy.length hargs
+    have hal := ArgsTyX.length hargs
     cases hfv with
-    | @fn g d σ hg hall hσ =>
+    | @fn g d σ hg hall hσ hi =>
       simp only [hg]
-      obtain ⟨hlenp, hbody⟩ := hP.2.2 g d hg
-      obtain ⟨Γb, hb, hfin⟩ := hbody σ hσ
-      refine hC Δ Δ Γ1 Γ' ρ1 st1 d.owner d.params [] [] d.body [] args (substL σ d.ptys) _ Γb rfl rfl
-        (by rw [substL_length]; exact hlenp.symm) hb hfin (by simp) (by simp; exact .nil) ?_
+      obtain ⟨hlenp, Γb, hb, hfin⟩ := hP.2.2 g d hg σ hσ hi
+      refine hC Δ Δ Γ1 Γ' ρ1 st1 d.owner d.params [] [] d.body [] args (substL σ d.ptys) _ _ [] Γb rfl rfl
+        (by rw [substL_length]; exact hlenp.symm) (FrameSig.fn _ _ _ _) (by simp) (capEnv_nil rfl)
+        (by rw [List.append_nil]; exact hb) hfin.take (by simp) (by simp; exact .nil) ?_
         (Or.inr ⟨rfl, by simp⟩) hρ1 (hsig.shape hs1)
       simp only [List.length_nil, List.drop_zero]
       rw [modes_all_val hall (by rw [hlenp, ← substL_length σ, hal.2])]
       exact hargs
     | @clo names cvs ps body ts' r' Γb hn hcv hl hb hfin =>
       simp only
-      refine hC Δ Δ Γ1 Γ' ρ1 st1 none (ps.map (·, Mode.val)) names cvs body [] args _ _ Γb hn hcv
-        (by simp [hl]) hb hfin (by simp) (by simp; exact .nil) ?_ (Or.inr ⟨rfl, by simp⟩) hρ1 (hsig.shape hs1)
+      refine hC Δ Δ Γ1 Γ' ρ1 st1 none (ps.map (·, Mode.val)) names cvs body [] args ts _ _ [] Γb hn hcv
+        (by simp [hl]) (FrameSig.fn _ _ _ _) (by simp) (capEnv_nil hcv) (by rw [List.append_nil]; exact hb) hfin.take
+        (by simp) (by simp; exact .nil) ?_ (Or.inr ⟨rfl, by simp⟩) hρ1 (hsig.shape hs1)
       simp only [List.length_nil, List.drop_zero]
       rw [modes_all_val (ps := ps.map (·, Mode.val)) (by simp) (by simp only [List.length_map]; exact hl.trans hal.2)]
       exact hargs
-  | @call _ _ f d σ args _ hf hσ hargs =>
+    | @closC names cvs ps body ts' r' cts Γb _ hn hcv hl hlen hvs hcop hb hfin =>
+      simp only
+      have hcl : (capCtx names cts).length = cts.length := capCtx_length (hn.trans hlen)
+      refine hC Δ Δ Γ1 Γ' ρ1 st1 none (ps.map (·, Mode.val)) names cvs body [] args _ _ _ (capCtx names cts) Γb hn hcv
+        (by simp [hl]) (by rw [hcl]; exact FrameSig.clos P ps cts.length t) (capCtx_nonlinear hcop)
+        (capEnv_ty hn hlen hvs) hb (by simpa using hfin)
+        (by simp) (by simp; exact .nil) ?_ (Or.inr ⟨rfl, by simp⟩) hρ1 (hsig.shape hs1)
+      simp only [List.length_nil, List.drop_zero]
+      rw [modes_all_val (ps := ps.map (·, Mode.val)) (by simp) (by simp only [List.length_map]; exact hl.trans hal.2)]
+      exact hargs
+  | @call _ _ f d σ args _ hf hσ hi hargs =>
     cases n with
     | zero => simp [eval, Out.bind, OutTy]
     | succ k =>
       simp only [eval, Out.bind, hf]
-      obtain ⟨hlenp, hbody⟩ := hP.2.2 f d hf
-      obtain ⟨Γb, hb, hfin⟩ := hbody σ hσ
-      exact hC Δ Δ Γ Γ' ρ st d.owner d.params [] [] d.body [] args (substL σ d.ptys) _ Γb rfl rfl
-        (by rw [substL_length]; exact hlenp.symm) hb hfin (by simp) (by simp; exact .nil)
+      obtain ⟨hlenp, Γb, hb, hfin⟩ := hP.2.2 f d hf σ hσ hi
+      exact hC Δ Δ Γ Γ' ρ st d.owner d.params [] [] d.body [] args (substL σ d.ptys) _ _ [] Γb rfl rfl
+        (by rw [substL_length]; exact hlenp.symm) (FrameSig.fn _ _ _ _) (by simp) (capEnv_nil rfl)
+        (by rw [List.append_nil]; exact hb) hfin.take (by simp) (by simp; exact .nil)
         (by simpa using hargs) (Or.inr ⟨rfl, by simp⟩) hρ hsig
-  | @mcallP _ Δ' _ m x ps en t0 d σ p0 m0 prest pt0 ptrest args Γ1 Γr _ hf ha hp hav1 hvar hd hσ hpar hpty
+  | @mcallP _ Δ' _ m x ps en t0 d σ p0 m0 prest pt0 ptrest args Γ1 Γr _ hf ha hp hav1 hvar hd hσ hi hpar hpty
       hsub hval hnval htail hargs =>
     simp only [eval]
     refine OutTy.bind (hS _ _ _ _ _ _ ρ st hp hρ hsig) fun ss ρ1 st1 hss hρ1 hs1 => ?_
     obtain ⟨en1, hf1, ha1, hty1⟩ := hav1.get hs1 hf
-    have hss1 : StepsTy P prim en1.ty ss t0 := by rw [hty1]; exact hss.1
+    have hss1 : StepsTy X P prim en1.ty ss t0 := by rw [hty1]; exact hss.1
     rcases peek_ty hA hρ1 hf1 ha1 hss1 st1 with ⟨v0, hpk, hv0⟩ | ⟨mm, hpk⟩
     · rw [hpk]; simp only [Out.bind]
       rw [hv0.head, resolve_tenon hd]; simp only [hpar]
@@ -146,36 +200,36 @@ theorem tySafe_eval (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih 
           refine OutTy.bind hpa fun a0 ρ2 st2 ha0 hρ2 hs2 => ?_
           obtain ⟨hv, hwb⟩ := ha0
           obtain ⟨v, wb⟩ := a0; simp only at hwb; subst hwb
-          exact mcall_finish hP ih hd hσ hpar hpty hsub htail hargs (.val (ht0 ▸ hv))
+          exact mcall_finish hP ih hd hσ hi hpar hpty hsub htail hargs (.val (ht0 ▸ hv))
             hρ2 ((hsig.shape hs1).shape hs2)
         · have hpa := placeArg_val (readPlace_copy hA (Δ := Δ) hρ1 hf1 ha1 hss1 hc st1)
           refine OutTy.bind hpa fun a0 ρ2 st2 ha0 hρ2 hs2 => ?_
           obtain ⟨hv, hwb⟩ := ha0
           obtain ⟨v, wb⟩ := a0; simp only at hwb; subst hwb
-          exact mcall_finish hP ih hd hσ hpar hpty hsub htail hargs (.val hv)
+          exact mcall_finish hP ih hd hσ hi hpar hpty hsub htail hargs (.val hv)
             hρ2 ((hsig.shape hs1).shape hs2)
       | ref | «mut» =>
         obtain ⟨rfl, hc, en2, hf2, ha2, hty2⟩ := hnval (by simp)
         refine OutTy.bind (placeArg_ref hA (by simp) hρ1 hf1 ha1 hss1 hc st1) fun a0 ρ2 st2 ha0 hρ2 hs2 => ?_
         obtain ⟨hv, hwb⟩ := ha0
         obtain ⟨v, wb⟩ := a0; simp only at hwb; subst hwb
-        exact mcall_finish hP ih hd hσ hpar hpty hsub htail hargs
+        exact mcall_finish hP ih hd hσ hi hpar hpty hsub htail hargs
           (.place (by simp) hv hc hf2 ha2 (by rw [hty2]; exact hss.1)) hρ2 ((hsig.shape hs1).shape hs2)
     · rw [hpk]; trivial
-  | @mcallV _ Δ' _ m recv t0 d σ p0 prest pt0 ptrest args Γ1 _ hnp hr hvar hd hσ hpar hpty hsub htail hargs =>
+  | @mcallV _ Δ' _ m recv t0 d σ p0 prest pt0 ptrest args Γ1 _ hnp hr hvar hd hσ hi hpar hpty hsub htail hargs =>
     rw [eval_mcall_val hnp]
     refine OutTy.bind (hE _ _ _ _ _ ρ st hr hρ hsig) fun v0 ρ1 st1 hv0 hρ1 hs1 => ?_
     rw [hv0.head, resolve_tenon hd]; simp only [hpar]
-    exact mcall_finish hP ih hd hσ hpar hpty hsub htail hargs (.val hv0) hρ1 (hsig.shape hs1)
+    exact mcall_finish hP ih hd hσ hi hpar hpty hsub htail hargs (.val hv0) hρ1 (hsig.shape hs1)
   | @mprimP _ _ m x ps en t0 ts t args Γ1 _ hf ha hp hav1 hvar hd hpr hops hav hc =>
     simp only [eval]
     refine OutTy.bind (hS _ _ _ _ _ _ ρ st hp hρ hsig) fun ss ρ1 st1 hss hρ1 hs1 => ?_
     obtain ⟨en1, hf1, ha1, hty1⟩ := hav1.get hs1 hf
-    have hss1 : StepsTy P prim en1.ty ss t0 := by rw [hty1]; exact hss.1
+    have hss1 : StepsTy X P prim en1.ty ss t0 := by rw [hty1]; exact hss.1
     rcases peek_ty hA hρ1 hf1 ha1 hss1 st1 with ⟨v0, hpk, hv0⟩ | ⟨mm, hpk⟩
     · rw [hpk]; simp only [Out.bind]
-      obtain ⟨pf, hpf, hok⟩ := hprim _ _ _ hpr
-      rw [hv0.head, resolve_prim hd hpf]; simp only
+      obtain ⟨pf, hpf, hok⟩ := primAt_resolve hprim hd hpr
+      rw [hv0.head, hpf]; simp only
       obtain ⟨en2, hf2, ha2, hty2⟩ := hav
       exact (hPc _ _ _ pf _ args ts t _ ρ1 st1 hok hc hops ⟨en2, t0, rfl, hf2, ha2, by rw [hty2]; exact hss.1⟩ hρ1
         (hsig.shape hs1))
@@ -183,8 +237,8 @@ theorem tySafe_eval (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih 
   | @mprimV _ _ m recv t0 ts t args Γ1 _ hnp hr hc0 hvar hd hpr hops hc =>
     rw [eval_mcall_val hnp]
     refine OutTy.bind (hE _ _ _ _ _ ρ st hr hρ hsig) fun v0 ρ1 st1 hv0 hρ1 hs1 => ?_
-    obtain ⟨pf, hpf, hok⟩ := hprim _ _ _ hpr
-    rw [hv0.head, resolve_prim hd hpf]; simp only [hv0.toks_copy hA hc0, ite_true]
+    obtain ⟨pf, hpf, hok⟩ := primAt_resolve hprim hd hpr
+    rw [hv0.head, hpf]; simp only [hv0.toks_copy hA hc0, ite_true]
     exact hPc _ _ _ pf _ args ts t _ ρ1 st1 hok hc hops ⟨t0, rfl, hv0, hc0⟩ hρ1 (hsig.shape hs1)
   | @prim _ _ p args ts t _ hp hops hc =>
     simp only [eval]
@@ -277,13 +331,13 @@ theorem tySafe_eval (hP : ProgOk P prim) (hprim : PrimsOk P prim) {n : Nat} (ih 
     refine OutTy.bind (hE _ _ _ _ _ ρ st he hρ hsig) fun v ρ1 st1 hv hρ1 hs1 => ?_
     rcases tryVal_opt hP.2.1 hv with ⟨x, hx, hxv⟩ | hx
     · rw [hx]; exact ⟨hxv, hρ1, rfl⟩
-    · rw [hx]; exact ⟨hex, hret ▸ ValTy.none_opt hP.2.1 _, _, rfl, hρ1, hr⟩
+    · rw [hx]; exact ⟨hex, hret ▸ ValTyX.none_opt hP.2.1 _, _, rfl, hρ1, hr⟩
   | tryRes hex he hret hr =>
     simp only [eval]
     refine OutTy.bind (hE _ _ _ _ _ ρ st he hρ hsig) fun v ρ1 st1 hv hρ1 hs1 => ?_
     rcases tryVal_res hP.2.1 hv with ⟨x, hx, hxv⟩ | ⟨er, hx, hev⟩
     · rw [hx]; exact ⟨hxv, hρ1, rfl⟩
-    · rw [hx]; exact ⟨hex, hret ▸ ValTy.err_res hP.2.1 _ hev, _, rfl, hρ1, hr⟩
+    · rw [hx]; exact ⟨hex, hret ▸ ValTyX.err_res hP.2.1 _ hev, _, rfl, hρ1, hr⟩
 
 end
 

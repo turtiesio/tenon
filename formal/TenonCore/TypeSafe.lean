@@ -15,68 +15,69 @@ import TenonCore.TypeSafeHelpers
 namespace Tenon
 
 section
-variable (P : Prog) (prim : PrimSig)
+variable (X : Ext) (P : Prog) (prim : PrimSig)
 
 /-- Evaluated builtin operands: typed values; a place operand's resolved path,
 its variable still in scope. -/
 inductive OpndsOk (Γ : Ctx) : List (Val × Option (String × List Step)) → List Ty → Prop
   | nil : OpndsOk Γ [] []
-  | cons {o os t ts} : ValTy P prim o.1 t →
-      (∀ x ss, o.2 = some (x, ss) → ∃ en, Γ.find x = some en ∧ en.avail = true ∧ StepsTy P prim en.ty ss t) →
+  | cons {o os t ts} : ValTyX X P prim o.1 t →
+      (∀ x ss, o.2 = some (x, ss) → ∃ en, Γ.find x = some en ∧ en.avail = true ∧ StepsTy X P prim en.ty ss t) →
       OpndsOk Γ os ts → OpndsOk Γ (o :: os) (t :: ts)
 
 /-- A builtin's receiver: none (the operands are its arguments), a place still
 in scope, or a value without obligations. -/
 def RecvOk (Γ : Ctx) (ts tsA : List Ty) : Option (Sum (String × List Step) Val) → Prop
   | none => tsA = ts
-  | some (.inl (x, ss)) => ∃ en t0, tsA = t0 :: ts ∧ Γ.find x = some en ∧ en.avail = true ∧ StepsTy P prim en.ty ss t0
-  | some (.inr v0) => ∃ t0, tsA = t0 :: ts ∧ ValTy P prim v0 t0 ∧ t0.copyable P
+  | some (.inl (x, ss)) => ∃ en t0, tsA = t0 :: ts ∧ Γ.find x = some en ∧ en.avail = true ∧ StepsTy X P prim en.ty ss t0
+  | some (.inr v0) => ∃ t0, tsA = t0 :: ts ∧ ValTyX X P prim v0 t0 ∧ t0.copyable P
 
 /-- The statement for every function of the evaluator at fuel `n`. -/
 structure TySafe (n : Nat) : Prop where
-  eval : ∀ Δ Γ Γ' e t ρ st, HasTy P prim Δ Γ e t Γ' → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (ValTy P prim · t) (eval P n ρ st e)
-  list : ∀ Δ Γ Γ' es ts ρ st, ListTy P prim Δ Γ es ts Γ' → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun vs => vs.length = ts.length ∧ ∀ q ∈ vs.zip ts, ValTy P prim q.1 q.2)
+  eval : ∀ Δ Γ Γ' e t ρ st, HasTyX X P prim Δ Γ e t Γ' → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (ValTyX X P prim · t) (eval P n ρ st e)
+  list : ∀ Δ Γ Γ' es ts ρ st, ListTyX X P prim Δ Γ es ts Γ' → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun vs => vs.length = ts.length ∧ ∀ q ∈ vs.zip ts, ValTyX X P prim q.1 q.2)
       (evalList P n ρ st es)
-  steps : ∀ Δ Γ Γ' T ps t ρ st, PathTy P prim Δ Γ T ps t Γ' → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun ss => StepsTy P prim T ss t ∧ ss.length = ps.length) (evalSteps P n ρ st ps)
-  argv : ∀ Δ Γ Γ' e t ρ st, HasTy P prim Δ Γ e t Γ' → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun a : ArgV => ValTy P prim a.v t ∧ a.wb = .none) (evalArg P n ρ st .val e)
-  argr : ∀ Δ Γ Γ' m x ps en t ρ st, m ≠ .val → Γ.find x = some en → en.avail = true → PathTy P prim Δ Γ en.ty ps t Γ' →
-    Γ'.Avail x → t.copyable P → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun a : ArgV => ValTy P prim a.v t ∧ ∃ ss, a.wb = .place x ss ∧ StepsTy P prim en.ty ss t)
+  steps : ∀ Δ Γ Γ' T ps t ρ st, PathTyX X P prim Δ Γ T ps t Γ' → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun ss => StepsTy X P prim T ss t ∧ ss.length = ps.length) (evalSteps P n ρ st ps)
+  argv : ∀ Δ Γ Γ' e t ρ st, HasTyX X P prim Δ Γ e t Γ' → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun a : ArgV => ValTyX X P prim a.v t ∧ a.wb = .none) (evalArg P n ρ st .val e)
+  argr : ∀ Δ Γ Γ' m x ps en t ρ st, m ≠ .val → Γ.find x = some en → en.avail = true → PathTyX X P prim Δ Γ en.ty ps t Γ' →
+    Γ'.Avail x → t.copyable P → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun a : ArgV => ValTyX X P prim a.v t ∧ ∃ ss, a.wb = .place x ss ∧ StepsTy X P prim en.ty ss t)
       (evalArg P n ρ st m (.place x ps))
-  args : ∀ Δ Γ Γ' ms es ts ρ st, ArgsTy P prim Δ Γ ms es ts Γ' → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun as => ArgsOk P prim Γ' ms as ts) (evalArgs P n ρ st ms es)
-  opp : ∀ Δ Γ Γ' x ps en t ρ st, Γ.find x = some en → en.avail = true → PathTy P prim Δ Γ en.ty ps t Γ' →
-    Γ'.Avail x → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun o => ValTy P prim o.1 t ∧ ∃ ss, o.2 = some (x, ss) ∧ StepsTy P prim en.ty ss t)
+  args : ∀ Δ Γ Γ' ms es ts ρ st, ArgsTyX X P prim Δ Γ ms es ts Γ' → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun as => ArgsOk X P prim Γ' ms as ts) (evalArgs P n ρ st ms es)
+  opp : ∀ Δ Γ Γ' x ps en t ρ st, Γ.find x = some en → en.avail = true → PathTyX X P prim Δ Γ en.ty ps t Γ' →
+    Γ'.Avail x → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun o => ValTyX X P prim o.1 t ∧ ∃ ss, o.2 = some (x, ss) ∧ StepsTy X P prim en.ty ss t)
       (evalOpnd P n ρ st (.place x ps))
-  opv : ∀ Δ Γ Γ' e t ρ st, (∀ x ps, e ≠ .place x ps) → HasTy P prim Δ Γ e t Γ' → t.copyable P →
-    EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun o => ValTy P prim o.1 t ∧ o.2 = none) (evalOpnd P n ρ st e)
-  opnds : ∀ Δ Γ Γ' es ts ρ st, OpndsTy P prim Δ Γ es ts Γ' → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (fun os => OpndsOk P prim Γ' os ts) (evalOpnds P n ρ st es)
-  arms : ∀ Δ Γ Γ' t0 arms t v ρ st, ArmsTy P prim Δ Γ t0 arms t Γ' → ValTy P prim v t0 → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (ValTy P prim · t) (evalArms P n ρ st v arms)
-  call : ∀ Δ Δ' Γ Γ' ρ st owner ps names cvs body pre args tys r Γb,
+  opv : ∀ Δ Γ Γ' e t ρ st, (∀ x ps, e ≠ .place x ps) → HasTyX X P prim Δ Γ e t Γ' → t.copyable P →
+    EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun o => ValTyX X P prim o.1 t ∧ o.2 = none) (evalOpnd P n ρ st e)
+  opnds : ∀ Δ Γ Γ' es ts ρ st, OpndsTyX X P prim Δ Γ es ts Γ' → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (fun os => OpndsOk X P prim Γ' os ts) (evalOpnds P n ρ st es)
+  arms : ∀ Δ Γ Γ' t0 arms t v ρ st, ArmsTyX X P prim Δ Γ t0 arms t Γ' → ValTyX X P prim v t0 → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (ValTyX X P prim · t) (evalArms P n ρ st v arms)
+  call : ∀ Δ Δ' Γ Γ' ρ st owner ps names cvs body pre args tys r Δb Γt Γb,
     names.length = cvs.length → toksL cvs = [] → tys.length = ps.length →
-    HasTy P prim (fnSig P owner ps r) (paramsCtx ps tys) body r Γb → FinFn P owner ps Γb →
+    FrameSig P owner ps r Δb Γt.length → (∀ e ∈ Γt, ¬ e.ty.linear P) → EnvOkX X P prim (capEnv names cvs) Γt →
+    HasTyX X P prim Δb (paramsCtx ps tys ++ Γt) body r Γb → FinFn P owner ps (Γb.take ps.length) →
     pre.length ≤ ps.length →
-    ArgsOk P prim Γ' ((ps.take pre.length).map (·.2)) pre (tys.take pre.length) →
-    ArgsTy P prim Δ' Γ ((ps.drop pre.length).map (·.2)) args (tys.drop pre.length) Γ' →
+    ArgsOk X P prim Γ' ((ps.take pre.length).map (·.2)) pre (tys.take pre.length) →
+    ArgsTyX X P prim Δ' Γ ((ps.drop pre.length).map (·.2)) args (tys.drop pre.length) Γ' →
     (Δ' = Δ.noExit ∨ (Δ' = Δ ∧ ∀ a ∈ pre, a.v.hasLin = false)) →
-    EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (ValTy P prim · r) (callWith P n ρ st owner ps names cvs body pre args)
-  prim : ∀ Δ Γ Γ' pf recv args ts t tsA ρ st, PfOk P prim pf tsA t → t.copyable P →
-    OpndsTy P prim Δ Γ args ts Γ' → RecvOk P prim Γ' ts tsA recv → EnvOk P prim ρ Γ → SigOk Δ Γ →
-    OutTy P prim Δ Γ Γ' (ValTy P prim · t) (primCall P n ρ st pf recv args)
+    EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (ValTyX X P prim · r) (callWith P n ρ st owner ps names cvs body pre args)
+  prim : ∀ Δ Γ Γ' pf recv args ts t tsA ρ st, PfOkX X P prim pf tsA t → t.copyable P →
+    OpndsTyX X P prim Δ Γ args ts Γ' → RecvOk X P prim Γ' ts tsA recv → EnvOkX X P prim ρ Γ → SigOk Δ Γ →
+    OutTy X P prim Δ Γ Γ' (ValTyX X P prim · t) (primCall P n ρ st pf recv args)
 
 end
 
 section
-variable {P : Prog} {prim : PrimSig}
+variable {X : Ext} {P : Prog} {prim : PrimSig}
 
 /-! ## Small facts -/
 
@@ -100,11 +101,26 @@ theorem SigOk.tail {Δ Δ' : Sig} {t : Ty} {Γ : Ctx} (h : SigOk Δ Γ) (hΔ : T
 theorem SigOk.withLoop {Δ : Sig} {Γ : Ctx} (h : SigOk Δ Γ) : SigOk (Δ.withLoop Γ) Γ :=
   ⟨h.1, fun Γl hl => by simp [Sig.withLoop] at hl; subst hl; exact Nat.le_refl _⟩
 
+theorem SigOk.frame {Δb : Sig} {owner : Option String} {ps : List (String × Mode)} {tys : List Ty} {r : Ty}
+    {Γt : Ctx} (h : FrameSig P owner ps r Δb Γt.length) (hl : tys.length = ps.length) :
+    SigOk Δb (paramsCtx ps tys ++ Γt) :=
+  ⟨by rw [h.2.2.1]; simp [paramsCtx_length ps tys hl], fun Γl hl' => by rw [h.2.1] at hl'; cases hl'⟩
+
+theorem FinFn.length {P : Prog} {owner : Option String} :
+    ∀ {ps : List (String × Mode)} {Γ : Ctx}, FinFn P owner ps Γ → Γ.length = ps.length
+  | [], [], _ => rfl
+  | _ :: _, _ :: _, h => by simp [FinFn.length h.2]
+  | [], _ :: _, h | _ :: _, [], h => h.elim
+
+theorem FinFn.take {P : Prog} {owner : Option String} {ps : List (String × Mode)} {Γ : Ctx}
+    (h : FinFn P owner ps Γ) : FinFn P owner ps (Γ.take ps.length) := by
+  rw [List.take_of_length_le (by rw [h.length]; exact Nat.le_refl _)]; exact h
+
 theorem SigOk.fn (owner : Option String) (ps : List (String × Mode)) (tys : List Ty) (r : Ty)
     (hl : tys.length = ps.length) : SigOk (fnSig P owner ps r) (paramsCtx ps tys) :=
   ⟨by simp [Tenon.fnSig, paramsCtx_length ps tys hl], fun Γl hl => by simp [Tenon.fnSig] at hl⟩
 
-theorem Lit.valTy (l : Lit) : ValTy P prim l.val l.ty := by
+theorem Lit.valTy (l : Lit) : ValTyX X P prim l.val l.ty := by
   cases l <;> constructor
 
 theorem Ctx.Avail.get {Γ' Γ : Ctx} {x : String} {en : Entry} (h : Γ'.Avail x) (hs : Shape Γ' Γ)
@@ -114,11 +130,11 @@ theorem Ctx.Avail.get {Γ' Γ : Ctx} {x : String} {en : Entry} (h : Γ'.Avail x)
   rw [hf] at h2; cases h2
   exact ⟨e1, h1, ha, (Entry.key_ty hk).symm⟩
 
-theorem ArgsTy.length : ∀ {Δ : Sig} {Γ Γ' : Ctx} {ms : List Mode} {es : List Expr} {ts : List Ty},
-    ArgsTy P prim Δ Γ ms es ts Γ' → ms.length = es.length ∧ ts.length = es.length
+theorem ArgsTyX.length : ∀ {Δ : Sig} {Γ Γ' : Ctx} {ms : List Mode} {es : List Expr} {ts : List Ty},
+    ArgsTyX X P prim Δ Γ ms es ts Γ' → ms.length = es.length ∧ ts.length = es.length
   | _, _, _, _, _, _, .nil => ⟨rfl, rfl⟩
-  | _, _, _, _, _, _, .val _ _ h => by have := ArgsTy.length h; simp [this.1, this.2]
-  | _, _, _, _, _, _, .byRef _ _ _ _ _ _ _ h _ => by have := ArgsTy.length h; simp [this.1, this.2]
+  | _, _, _, _, _, _, .val _ _ h => by have := ArgsTyX.length h; simp [this.1, this.2]
+  | _, _, _, _, _, _, .byRef _ _ _ _ _ _ _ h _ => by have := ArgsTyX.length h; simp [this.1, this.2]
 
 theorem modes_all_val {ps : List (String × Mode)} (h : ∀ p ∈ ps, p.2 = .val) {args : List Expr}
     (hl : ps.length = args.length) : ps.map (·.2) = args.map fun _ => Mode.val := by
