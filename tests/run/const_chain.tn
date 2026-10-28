@@ -1,0 +1,11 @@
+// Constants may use other constants, in any order (mutation survivor #15, compiler/checker.tn
+// const_cycles: only a path back to the starting constant is a cycle).
+const AREA: Int = WIDTH * HEIGHT
+const WIDTH: Int = BASE + 1
+const HEIGHT: Int = BASE * 2
+const BASE: Int = 3
+const LABEL: Str = "area {AREA}"
+
+fn main(sys: Sys) {
+    sys.console.println("{WIDTH} {HEIGHT} {AREA} {LABEL}")
+}

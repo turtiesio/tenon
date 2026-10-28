@@ -1,0 +1,4 @@
+// error: constant 'LIMIT' depends on itself (LIMIT -> LIMIT)
+// A constant defined in terms of itself (mutation survivor #15, compiler/checker.tn const_cycles).
+const LIMIT: Int = LIMIT + 1
+fn main(sys: Sys) { sys.console.println("{LIMIT}") }

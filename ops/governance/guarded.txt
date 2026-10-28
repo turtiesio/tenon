@@ -60,6 +60,9 @@ tests/v2/run/self_finish_ok.tn
 tests/v2/run/self_finish_ok.out
 # Mutation survivor #10: manifests tenon fetch must reject (ops/gates/pkg_test.sh)
 tests/pkg/*.toml
+# Mutation survivor #15: constants using constants (tests/reject/const_self_cycle.tn is under tests/reject/*.tn)
+tests/run/const_chain.tn
+tests/run/const_chain.out
 # The guarantees as Lean theorems (tenon.md §6, formal/README.md): changing or
 # removing a theorem statement needs an approval line, like weakening a test.
 theorems formal/TenonCore/Theorems.lean
