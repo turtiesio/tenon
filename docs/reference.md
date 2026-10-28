@@ -644,7 +644,7 @@ parameters; every impl must declare the same ones (a call through a bound or
 
 ## 13. Modules
 
-<!-- test: tests/run/modules.tn tests/run/hide_prelude_fn.tn tests/run/hide_prelude_types.tn tests/run/hide_prelude_variants.tn tests/run/hide_prelude_modules.tn tests/reject/hide_builtin_type.tn tests/reject/private_field.tn tests/reject/private_construct.tn tests/reject/duplicate_hiding_fn.tn tests/reject/self_import.tn tests/v2/reject/enum_private_match.tn -->
+<!-- test: tests/run/modules.tn tests/run/hide_prelude_fn.tn tests/run/hide_prelude_types.tn tests/run/hide_prelude_variants.tn tests/run/hide_prelude_modules.tn tests/v2/reject/hide_builtin_type.tn tests/v2/reject/hide_builtin_type_reason.tn tests/v2/reject/hide_prelude_trait.tn tests/reject/private_field.tn tests/reject/private_construct.tn tests/reject/duplicate_hiding_fn.tn tests/reject/self_import.tn tests/v2/reject/enum_private_match.tn -->
 
 ```tenon
 import journal                       // journal.tn next to this file, else the standard library
@@ -683,9 +683,11 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
   `Map`, the capabilities `Console`, `Fs`, `Clock`, `Net`, `Proc`, the handles
   `Listener`, `Conn`, `Poller`, and `Workers`, `Worker`, `Sender`, `Receiver`
   (§18); a struct or enum with one of these names is an error
-  (`type 'Fs' is already defined`): pick another name (`Tree`, `Vfs`). Nor can a
+  (`type 'Fs' is already defined: 'Fs' is a builtin type and cannot be hidden
+  (rename yours)`): pick another name (`Tree`, `Vfs`). Nor can a
   struct or enum take the name of a prelude trait (`Eq`, `Ord`, `Hash`,
-  `Show`, `Send`). The prelude's declared types (`Option`, `Result`,
+  `Show`, `Send`): `struct Ord` gives `type 'Ord' is already defined: 'Ord'
+  is a prelude trait and cannot be hidden (rename yours)`, at the struct. The prelude's declared types (`Option`, `Result`,
   `IoError`, `Sys`, `Set`, `Heap`, `NetEvent`, `ProcOut`), functions and
   constants can be hidden. Other files still see the prelude's item
   (or the module's as `mod.name`), and the prelude's own code, `?` and the

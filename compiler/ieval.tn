@@ -368,6 +368,7 @@ fn loop_body(it: mut Interp, fr: mut List[ival.Val], body: List[icode.Stm]) -> R
     }
 }
 
+// Over 80 lines: a dispatch on the statement kind, one arm per kind.
 fn stmt(it: mut Interp, fr: mut List[ival.Val], s: icode.Stm) -> Result[ival.Val, Ctl] {
     match s {
         IExpr(e) => ev(mut it, mut fr, e),
@@ -689,6 +690,7 @@ fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival
 }
 
 // Calls with `mut` arguments or receivers, builtins with `mut self`, decode.
+// Over 80 lines: a dispatch on the call form (mut arguments, mut receivers, builtins, decode), one arm per form.
 fn ev_calls(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.Val, Ctl] {
     match e {
         NDecode(t, args, sp, site) => {

@@ -1,0 +1,6 @@
+// error: 'Ord' is a prelude trait
+// A struct or enum cannot take the name of a prelude trait (Eq, Ord, Hash,
+// Show, Send); the error is at the user's declaration (issue #20).
+struct Ord { a: Int }
+
+fn main() {}

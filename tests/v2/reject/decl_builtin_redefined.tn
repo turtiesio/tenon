@@ -1,0 +1,3 @@
+// error: type 'List' is already defined: 'List' is a builtin type and cannot be hidden (rename yours)
+struct List { x: Int }
+fn main() {}

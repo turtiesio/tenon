@@ -1,2 +1,0 @@
-struct List { x: Int }
-fn main() {}

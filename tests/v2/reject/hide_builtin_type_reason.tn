@@ -1,0 +1,6 @@
+// error: type 'Fs' is already defined: 'Fs' is a builtin type and cannot be hidden (rename yours)
+// The builtin types are not prelude items, so a user type cannot hide one;
+// the diagnostic says so (issue #20).
+enum Fs { Mem, Disk }
+
+fn main() {}

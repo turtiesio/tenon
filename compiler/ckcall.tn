@@ -9,6 +9,7 @@ import ckenv
 import ckinfer
 import parser
 
+// Over 80 lines: a dispatch on the pattern kind, one arm per kind.
 pub fn pattern(ck: mut ckinfer.Ck, p: ckast.Pat, t: cktypes.Ty, mutable: Bool) -> Result[Unit, ckast.Diag] {
     ck.record(p.id, t)
     match p.k {

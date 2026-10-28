@@ -14,8 +14,3 @@ file docs/reference.md the language's single reference document, given whole to 
 
 # Owner-guarded file (ops/governance/guarded.txt): its comment needs the owner.
 fn ops/repo/approvals.py main one pass over the change, rule by rule; each rule is a few lines and they share the parsed diff
-# Functions in compiler/ that state their reason here until a change to the
-# file adds the comment above them.
-fn compiler/ckcall.tn pattern a dispatch on the pattern kind, one arm per kind
-fn compiler/ieval.tn stmt a dispatch on the statement kind, one arm per kind
-fn compiler/ieval.tn ev_calls a dispatch on the call form (mut arguments, mut receivers, builtins, decode), one arm per form

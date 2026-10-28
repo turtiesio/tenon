@@ -6,10 +6,11 @@ identifiers and types, flipped let/var, mut/ref, literals ...) and both
 first line; when both accept a mutant, `tenon-seed emit` and `tenon emit` must
 print the same C (and exit with the same status).
 
-Two kinds of difference are by design and reported separately, not as
+Three kinds of difference are by design and reported separately, not as
 disagreements: tenon rejects with a rule added after the seed froze while the
-seed accepts (STRICTER), and the seed stops at syntax that only tenon reads
-(V2_SYNTAX). Every other difference is a disagreement: tenon accepts what the
+seed accepts (STRICTER), the seed stops at syntax that only tenon reads
+(V2_SYNTAX), and tenon's diagnostic is the seed's with a reason appended
+(REASONS). Every other difference is a disagreement: tenon accepts what the
 seed rejects, other diagnostics, a crash or timeout, different C.
 
 Usage: ops/evidence/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
@@ -52,10 +53,21 @@ V2_SYNTAX = [
      "a bound in a type-parameter list, [T: Show]: reference §17 (Bounds)"),
 ]
 
+# Reasons tenon appends to a diagnostic the seed gives (the same location and
+# text, then ": REASON"); each with the change that added it.
+REASONS = [
+    (r": '[^']+' is a builtin type and cannot be hidden \(rename yours\)$",
+     "why a builtin type cannot be hidden: issue #20, reference §13"),
+]
+
 
 def by_design(mut, want, got):
-    """The STRICTER or V2_SYNTAX entry that explains this difference, or None."""
+    """The STRICTER, V2_SYNTAX or REASONS entry that explains this difference, or None."""
     msg = lambda line: line.split(": error: ", 1)[1] if ": error: " in line else None
+    if want != "ok" and got.startswith(want):
+        for pat, why in REASONS:
+            if re.match(pat, got[len(want):]):
+                return "a reason added to the seed's diagnostic (" + why + ")"
     if want == "ok" and msg(got):
         for pat, why in STRICTER:
             if re.match(pat, msg(got)):
@@ -207,7 +219,7 @@ def main():
     if "-v" in sys.argv:
         for k, v in sorted(kinds.items(), key=lambda kv: -kv[1]):
             print("%6d  %s" % (v, k))
-    print("checkfuzz: %d mutants, %d disagreements, %d by design (STRICTER, V2_SYNTAX), %d distinct outcomes" % (count, bad, designed, len(kinds)))
+    print("checkfuzz: %d mutants, %d disagreements, %d by design (STRICTER, V2_SYNTAX, REASONS), %d distinct outcomes" % (count, bad, designed, len(kinds)))
     corpus_.record("checkfuzz", {"mutants": count, "seed": seed, "disagreements": bad, "by_design": designed, "outcomes": len(kinds)})
     sys.exit(1 if bad else 0)
 

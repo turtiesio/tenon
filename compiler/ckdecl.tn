@@ -41,7 +41,12 @@ fn declare_types(env: mut ckenv.Env, prog: ckast.Program) -> Result[Unit, ckast.
         if ckenv.is_tparam_name(n0) {
             return ckast.fail(sp, "'{n0}' is reserved for type parameters (one capital letter, optional digits); use a longer type name")
         }
-        if seen.contains(full) or cktypes.is_builtin(full) { return ckast.fail(sp, "type '{full}' is already defined") }
+        if cktypes.is_builtin(full) { return ckast.fail(sp, "type '{full}' is already defined: '{n0}' is a builtin type and cannot be hidden (rename yours)") }
+        if seen.contains(full) { return ckast.fail(sp, "type '{full}' is already defined") }
+        match env.trait_ix.get(n0) {
+            Some(ti) if sp.file != 0 and env.traits[ti].file == 0 => return ckast.fail(sp, "type '{n0}' is already defined: '{n0}' is a prelude trait and cannot be hidden (rename yours)"),
+            _ => {}
+        }
         seen[full] = true
     }
     for x in names {
