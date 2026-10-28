@@ -23,14 +23,12 @@ pub fn keywords() -> List[Str] {
 }
 
 // Longest first so that greedy matching works.
-fn symbols() -> List[Str] {
+pub fn symbols() -> List[Str] {
     ["..", "==", "!=", "<=", ">=", "->", "=>", "+=", "-=", "*=", "/=", "%=", "+", "-", "*", "/",
         "%", "<", ">", "=", "(", ")", "[", "]", "\{", "}", ",", ":", ";", ".", "?", "|", "_"]
 }
 
-fn is_digit(c: Int) -> Bool { c >= 48 and c <= 57 }
-fn is_alpha(c: Int) -> Bool { (c >= 65 and c <= 90) or (c >= 97 and c <= 122) }
-fn is_ident_char(c: Int) -> Bool { is_alpha(c) or is_digit(c) or c == 95 }
+pub fn is_ident_char(c: Int) -> Bool { c.is_alnum() or c == '_' }
 
 fn Lx.peek(self, off: Int) -> Int {
     if self.pos + off < self.src.len() { self.src.byte(self.pos + off) } else { 0 }
@@ -86,14 +84,14 @@ fn Lx.tokens(mut self, in_interp: Bool) -> Result[List[Token], LexError] {
             let _ = self.bump()
             return Ok(out)
         }
-        let tok = if is_digit(c) {
+        let tok = if c.is_digit() {
             // after `.`, digits are a tuple index: `t.0.1` is t . 0 . 1
             let after_dot = match out.last() {
                 Some(t) => t.tok == Sym("."),
                 None => false,
             }
             self.number(after_dot)?
-        } else if is_alpha(c) or (c == 95 and is_ident_char(self.peek(1))) {
+        } else if c.is_alpha() or (c == 95 and is_ident_char(self.peek(1))) {
             let start = self.pos
             while is_ident_char(self.peek(0)) { let _ = self.bump() }
             let s = self.src.slice(start, self.pos)
@@ -136,7 +134,7 @@ fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
         return self.radix_number()
     }
     let start = self.pos
-    while is_digit(self.peek(0)) or self.peek(0) == 95 { let _ = self.bump() }
+    while self.peek(0).is_digit() or self.peek(0) == 95 { let _ = self.bump() }
     if int_only {
         return match self.src.slice(start, self.pos).replace("_", "").to_int() {
             Some(i) => Ok(IntTok(i)),
@@ -144,18 +142,18 @@ fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
         }
     }
     var is_float = false
-    if self.peek(0) == 46 and is_digit(self.peek(1)) {
+    if self.peek(0) == 46 and self.peek(1).is_digit() {
         is_float = true
         let _ = self.bump()
-        while is_digit(self.peek(0)) or self.peek(0) == 95 { let _ = self.bump() }
+        while self.peek(0).is_digit() or self.peek(0) == 95 { let _ = self.bump() }
     }
     if self.peek(0) == 101 or self.peek(0) == 69 {
         let save = (self.pos, self.line, self.col)
         let _ = self.bump()
         if self.peek(0) == 45 or self.peek(0) == 43 { let _ = self.bump() }
-        if is_digit(self.peek(0)) {
+        if self.peek(0).is_digit() {
             is_float = true
-            while is_digit(self.peek(0)) { let _ = self.bump() }
+            while self.peek(0).is_digit() { let _ = self.bump() }
         } else {
             self.pos = save.0
             self.line = save.1
@@ -178,7 +176,7 @@ fn Lx.number(mut self, int_only: Bool) -> Result[Tok, LexError] {
 
 // The value of an ASCII digit or letter as a digit (`a`/`A` is 10), or 99.
 fn digit_value(c: Int) -> Int {
-    if is_digit(c) { c - '0' } else if c >= 'a' and c <= 'z' { c - 'a' + 10 } else if c >= 'A' and c <= 'Z' { c - 'A' + 10 } else { 99 }
+    if c.is_digit() { c - '0' } else if c >= 'a' and c <= 'z' { c - 'a' + 10 } else if c >= 'A' and c <= 'Z' { c - 'A' + 10 } else { 99 }
 }
 
 // `0xFF`, `0b1010`, `0o17`, with `_` separators anywhere after the prefix.

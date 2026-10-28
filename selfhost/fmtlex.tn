@@ -5,32 +5,14 @@
 // newlines. Only spaces, tabs and carriage returns are dropped. Token
 // boundaries follow lexer.tn; fmt.tn checks the result against lexer.tn.
 
+import lexer
+
 pub enum FK { FWord, FKey, FAtom, FStr, FSym, FComment, FNl }
 
 // `text` is the token's source text (a comment without trailing spaces).
 pub struct FTok { pub kind: FK, pub text: Str }
 
 struct Sc { src: Str, kws: List[Str], syms: List[Str] }
-
-// As lexer.tn `keywords` and `symbols` (longest symbols first).
-fn keywords() -> List[Str] {
-    [
-        "fn", "let", "var", "if", "else", "while", "for", "in", "match", "return", "break",
-        "continue", "struct", "enum", "true", "false", "and", "or", "not", "mut", "self", "linear",
-        "unique", "import", "extern", "pub", "ref", "const", "trait", "impl", "dyn",
-    ]
-}
-
-fn symbols() -> List[Str] {
-    [
-        "..", "==", "!=", "<=", ">=", "->", "=>", "+=", "-=", "*=", "/=", "%=", "+", "-", "*", "/",
-        "%", "<", ">", "=", "(", ")", "[", "]", "\{", "}", ",", ":", ";", ".", "?", "|", "_",
-    ]
-}
-
-fn is_digit(c: Int) -> Bool { c >= '0' and c <= '9' }
-fn is_alpha(c: Int) -> Bool { (c >= 'A' and c <= 'Z') or (c >= 'a' and c <= 'z') }
-fn is_ident_char(c: Int) -> Bool { is_alpha(c) or is_digit(c) or c == '_' }
 
 // The byte at `i`, or 0 past the end.
 fn Sc.at(self, i: Int) -> Int { if i < self.src.len() { self.src.byte(i) } else { 0 } }
@@ -52,10 +34,10 @@ fn Sc.fail(self, i: Int, msg: Str) -> Str {
 // digits right after `.` are a tuple index (`t.0.1`), never a float.
 fn Sc.token(self, i: Int, after_dot: Bool) -> Result[(FK, Int), Str] {
     let c = self.at(i)
-    if is_digit(c) { return Ok((FAtom, self.number_end(i, after_dot))) }
-    if is_alpha(c) or (c == '_' and is_ident_char(self.at(i + 1))) {
+    if c.is_digit() { return Ok((FAtom, self.number_end(i, after_dot))) }
+    if c.is_alpha() or (c == '_' and lexer.is_ident_char(self.at(i + 1))) {
         var j = i
-        while is_ident_char(self.at(j)) { j += 1 }
+        while lexer.is_ident_char(self.at(j)) { j += 1 }
         let w = self.src.slice(i, j)
         if w == "r" and self.at(j) == '"' { return Ok((FStr, self.raw_end(i, j)?)) }
         return Ok((if self.kws.contains(w) { FKey } else { FWord }, j))
@@ -73,20 +55,20 @@ fn Sc.number_end(self, i0: Int, int_only: Bool) -> Int {
     let p = self.at(i + 1)
     if not int_only and self.at(i) == '0' and (p == 'x' or p == 'b' or p == 'o' or p == 'X' or p == 'B' or p == 'O') {
         i += 2
-        while is_ident_char(self.at(i)) { i += 1 }
+        while lexer.is_ident_char(self.at(i)) { i += 1 }
         return i
     }
-    while is_digit(self.at(i)) or self.at(i) == '_' { i += 1 }
+    while self.at(i).is_digit() or self.at(i) == '_' { i += 1 }
     if int_only { return i }
-    if self.at(i) == '.' and is_digit(self.at(i + 1)) {
+    if self.at(i) == '.' and self.at(i + 1).is_digit() {
         i += 1
-        while is_digit(self.at(i)) or self.at(i) == '_' { i += 1 }
+        while self.at(i).is_digit() or self.at(i) == '_' { i += 1 }
     }
     if self.at(i) == 'e' or self.at(i) == 'E' {
         var j = i + 1
         if self.at(j) == '-' or self.at(j) == '+' { j += 1 }
-        if is_digit(self.at(j)) {
-            while is_digit(self.at(j)) { j += 1 }
+        if self.at(j).is_digit() {
+            while self.at(j).is_digit() { j += 1 }
             i = j
         }
     }
@@ -166,7 +148,7 @@ fn Sc.interp_end(self, k0: Int) -> Result[Int, Str] {
 }
 
 pub fn scan(src: Str) -> Result[List[FTok], Str] {
-    let sc = Sc { src, kws: keywords(), syms: symbols() }
+    let sc = Sc { src, kws: lexer.keywords(), syms: lexer.symbols() }
     var out: List[FTok] = []
     var i = 0
     var after_dot = false
