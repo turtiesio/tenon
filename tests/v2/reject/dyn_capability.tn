@@ -1,0 +1,4 @@
+// error: type Console does not implement Show (needed by dyn Show)
+fn main(sys: Sys) {
+    let shown = [dyn Show(1), dyn Show(sys.console)]
+}

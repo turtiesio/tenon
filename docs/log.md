@@ -395,5 +395,5 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
   the grammar check reads selfhost/lexer.tn's keywords; doctest uses tenonc.
 - **Tests:** tests/v2/run (10 programs: impls and defaults, bounds,
   generic impls, dyn in lists/maps/structs/enums, Show overrides, modules,
-  linear and `mut`, corners), 38 reject tests (one per diagnostic), lex and
+  linear and `mut`, corners), 41 reject tests (one per diagnostic), lex and
   parse goldens, a formatter golden, LSP hover/definition/completion.

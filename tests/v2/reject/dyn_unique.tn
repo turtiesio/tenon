@@ -1,0 +1,15 @@
+// error: a 'dyn' value cannot hold the unique type Handle
+trait Named {
+    fn name(self) -> Str
+}
+
+unique struct Handle { fd: Int }
+
+impl Named for Handle {
+    fn name(self) -> Str { "handle" }
+}
+
+fn main() {
+    let d = dyn Named(Handle { fd: 3 })
+    let _ = d.name()
+}

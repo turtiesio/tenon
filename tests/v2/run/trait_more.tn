@@ -1,0 +1,56 @@
+// More corners: a marker trait (no methods) as a bound and a dyn type, a
+// generic struct holding dyn values, dyn of a generic type's instance, a
+// type's own method winning over a trait's, a trait method with a `mut`
+// parameter through dyn, bounds on a method of a generic type, a default
+// method generic in its own type parameter.
+trait Marker {}
+
+trait Shape {
+    fn area(self) -> Int
+    fn grow(self, total: mut Int) { total += self.area() }
+}
+
+trait Tagged {
+    fn tag(self) -> Str
+    fn tagged[U](self, u: U) -> (Str, U) { (self.tag(), u) }
+}
+
+struct Wrap[T] { inner: T }
+
+struct Pair[A] { a: A, b: A }
+
+struct Sq { s: Int }
+
+impl Marker for Sq {}
+
+impl Shape for Sq {
+    fn area(self) -> Int { self.s * self.s }
+}
+
+impl[T] Shape for Wrap[T] {
+    fn area(self) -> Int { 100 }
+}
+
+impl Tagged for Sq {
+    fn tag(self) -> Str { "sq" }
+}
+
+// Sq's own `tag` wins over Tagged's when called directly
+fn Sq.tag(self) -> Str { "own" }
+
+fn Pair[A].both_areas[B: Shape](self, extra: B) -> Int { extra.area() * 2 }
+
+fn marked[T: Marker + Shape](x: T) -> Int { x.area() }
+
+fn main(sys: Sys) {
+    let con = sys.console
+    let marks: List[dyn Marker] = [dyn Marker(Sq { s: 1 })]
+    con.println("{marks.len()} {marks[0]} {marked(Sq { s: 3 })}")
+    let held = Wrap { inner: [dyn Shape(Sq { s: 2 }), dyn Shape(Wrap { inner: "x" })] }
+    var total = 0
+    for s in held.inner { s.grow(mut total) }
+    con.println("{total}")
+    let sq = Sq { s: 4 }
+    con.println("{sq.tag()} {sq.tagged(5)}")
+    con.println("{Pair { a: 1, b: 2 }.both_areas(sq)}")
+}

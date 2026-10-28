@@ -17,16 +17,19 @@ target/tenonc build prog.tn -o prog  # native executable via C
 target/tenonc`). It has every subcommand of the bootstrap's `tenon` (run,
 build, emit, check, test, tokens, ast; selfhost/SELFHOST.md). The Rust
 bootstrap is a frozen seed: changing it needs an approvals entry and its line
-count may only shrink (governance/README.md).
+count may only shrink (governance/README.md). New language features exist
+only in tenonc (traits: docs/reference.md §17); code that uses them lives
+under a `v2/` directory (lib/v2, tests/v2), which the tools comparing tenonc
+with the bootstrap skip.
 
 ## Layout
 
 ```
 bootstrap/    the Rust bootstrap compiler and reference interpreter (Cargo package): a frozen seed
-lib/          prelude.tn (the builtin API, in Tenon) and std/ (standard modules)
+lib/          prelude.tn (the builtin API, in Tenon), std/ (standard modules), v2/prelude.tn (tenonc-only: the traits)
 runtime/      tenon.h, the C runtime every native build includes
 selfhost/     the compiler written in Tenon (tenonc: checker, C backend, interpreter, test runner), cross-checked against bootstrap/
-tests/        run/ reject/ lex/ parse/ selfhost/ corpus; redteam/ findings and repros
+tests/        run/ reject/ lex/ parse/ selfhost/ corpus; redteam/ findings and repros; v2/ (tenonc-only)
 programs/     real programs with scenario tests (tools/programs.sh)
 bench/        benchmarks against C, Rust, Python, TypeScript (tools/bench.py)
 docs/         reference, quickstart, packages, decision log
