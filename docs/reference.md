@@ -763,6 +763,21 @@ fn main(sys: Sys) -> Result[Unit, IoError] {
 - `import name` looks for `name.tn` next to the importing file first, then in the
   standard library (`journal`, `regex`). A local file therefore hides a std
   module of the same name, except that a file never imports itself.
+- Packages ([docs/packages.md](packages.md); self-hosted `tenonc` only). Inside a
+  package, meaning a `tenon.toml` in the file's directory or above it, `import name`
+  looks in three places in turn. First `name.tn` next to the importing file. Then
+  the entry module `src/name.tn` of a dependency `name` declared in the manifest of
+  the importing file's package. Last, the standard library. A dependency is
+  declared as `name = { path = "../dir" }` or as
+  `name = { git = "URL", tag = "v1.2.0" }`, and its name may not be a std
+  module's.
+  `tenonc fetch` resolves the dependencies, transitively, into `tenon.lock`
+  (sources, commits, content hashes). `run`, `build`, `check` and `test` then
+  build offline from the lock and the cache (`$TENON_HOME`, default
+  `~/.tenon`). They fail with a request to run `tenonc fetch` if the lock is
+  missing or out of date, and fail if a cached package's hash differs from
+  the lock. Path dependencies are live and git dependencies are pinned.
+  Module names are global: two different files may not both be module `name`.
 - A module is a file; `import name` makes its public items available as
   `name.item` (functions, types, `name.Type.function`) and the variants of its
   public enums by their plain names.

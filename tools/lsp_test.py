@@ -8,7 +8,8 @@ the lifecycle (initialize, shutdown, exit status), protocol errors,
 diagnostics (equal to `tenon check` on the same text, parse errors too, from
 unsaved buffers), hover, go to definition (locals, functions, types, fields,
 variants, an imported module, the prelude) and completion (after `.` and at
-the start of a statement). Also runs the JSON tests (selfhost/jsontest.tn)
+the start of a statement), and a file in a package (docs/packages.md):
+imports resolved through tenon.lock, a missing lock as the diagnostic. Also runs the JSON tests (selfhost/jsontest.tn)
 and the VS Code client (editors/vscode/extension.js: `node --check`, then
 tools/lsp_client_test.js against the server; skipped without node), and
 reports how long the server takes to check selfhost/tenonc.tn.
@@ -367,6 +368,34 @@ def completions(srv, main):
     edit(22, main.text)
 
 
+def packages(srv, tmp):
+    """A file in a package imports a path dependency (after `tenonc fetch`)."""
+    ws = os.path.realpath(tmp)
+    app, util = os.path.join(ws, "app"), os.path.join(ws, "util")
+    for d in (app, util):
+        os.makedirs(os.path.join(d, "src"))
+    with open(os.path.join(app, "tenon.toml"), "w") as f:
+        f.write('[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nutil = { path = "../util" }\n')
+    with open(os.path.join(util, "tenon.toml"), "w") as f:
+        f.write('[package]\nname = "util"\nversion = "1.0.0"\n')
+    with open(os.path.join(util, "src", "util.tn"), "w") as f:
+        f.write("pub fn double(n: Int) -> Int { n * 2 }\n")
+    doc = Doc(os.path.join(app, "src", "main.tn"), "import util\n\nfn main(sys: Sys) { sys.console.println(\"{util.double(2)}\") }\n")
+    srv.notify("textDocument/didOpen", {"textDocument": {"uri": doc.uri, "languageId": "tenon", "version": 1, "text": doc.text}})
+    expect("package file without tenon.lock", [x["message"] for x in srv.diagnostics(doc.uri)],
+           ["no %s/tenon.lock for %s/tenon.toml; run `tenonc fetch`" % (app, app)])
+    tenonc = os.environ.get("TENONC") or os.path.join(ROOT, "target", "tenonc")
+    r = subprocess.run([tenonc, "fetch", app], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode != 0:
+        fail("tenonc fetch: " + r.stdout + r.stderr)
+    srv.notify("textDocument/didSave", {"textDocument": {"uri": doc.uri}})
+    expect("package file after tenonc fetch", srv.diagnostics(doc.uri), [])
+    expect("definition in a dependency", definition(srv, doc, "util.double", "double"),
+           location(os.path.join(util, "src", "util.tn"), "pub fn double", "double"))
+    srv.notify("textDocument/didClose", {"textDocument": {"uri": doc.uri}})
+    srv.diagnostics(doc.uri)
+
+
 def latency(srv):
     path = os.path.join(ROOT, "selfhost", "tenonc.tn")
     doc = Doc(path)
@@ -375,7 +404,7 @@ def latency(srv):
     expect("diagnostics of selfhost/tenonc.tn", srv.diagnostics(doc.uri), [])
     open_ms = (time.time() - t) * 1000
     t = time.time()
-    r = srv.request("textDocument/hover", {"textDocument": {"uri": doc.uri}, "position": doc.pos("front.load(sys.fs", "load")})
+    r = srv.request("textDocument/hover", {"textDocument": {"uri": doc.uri}, "position": doc.pos("front.load_in(sys.fs", "load_in")})
     hover_ms = (time.time() - t) * 1000
     if "front.load" not in r["result"]["contents"]["value"]:
         fail("hover in tenonc.tn: %s" % r)
@@ -405,6 +434,7 @@ def main():
     degraded(srv, main_doc)
     definitions(srv, main_doc)
     completions(srv, main_doc)
+    packages(srv, tmp)
     open_ms, hover_ms = latency(srv)
     expect("shutdown", srv.request("shutdown").get("result", "missing"), None)
     srv.notify("exit", {})
@@ -416,8 +446,7 @@ def main():
             if r.returncode != 0:
                 fail(" ".join(cmd[:2]) + ":\n" + r.stdout + r.stderr)
         client = r.stdout.strip()
-    os.remove(exe)
-    os.rmdir(tmp)
+    shutil.rmtree(tmp)
     print("lsp: ok (%s; %s; check of selfhost/tenonc.tn through the server %.0f ms, hover %.0f ms, -O0 build; %.1fs)"
           % (json_result, client, open_ms, hover_ms, time.time() - t0))
 
