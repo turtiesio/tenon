@@ -309,7 +309,7 @@ A port of bootstrap/src/interp.rs, builtins.rs, value.rs and codec.rs:
 |---|---|---|
 | `interp.tn` | interp.rs `run` | names for formatting, the `Sys` value, `main`'s result and exit status |
 | `ival.tn` | value.rs | values, map keys, equality, ordering, formatting, format specs |
-| `icode.tn` | (resolution done once) | the checked tree lowered to frame slots, resolved calls, numbered builtins |
+| `icode.tn` | (resolution done once) | the checked tree lowered to frame slots, resolved calls, builtins numbered by `ibuiltin.table` |
 | `ieval.tn` | interp.rs | statements, expressions, calls, places, patterns, traps |
 | `ibuiltin.tn` | builtins.rs | numbers, strings, lists, maps, Option/Result, console |
 | `icap.tn` | builtins.rs | Fs, Net (blocking and the event loop), Clock, Proc |
@@ -326,7 +326,9 @@ Design:
   allows no floats, functions or capabilities in keys); maps keep insertion
   order as the bootstrap's do.
 - Names are resolved once to frame slots (no shadowing, so a name has one
-  slot per function); calls know their target and builtins are numbered.
+  slot per function); calls know their target, and each builtin is resolved by name to its
+  variant (`ibuiltin.Bi`; the one table is `ibuiltin.table`, with
+  `icap.table` and `iwork.table`), so adding one shifts no other.
 - Evaluation order, `mut` arguments (taken out of their places, written back
   after the call), the prelude call site used for trap locations, the depth
   limit (20000 calls: `trap: stack overflow`, status 72), the exit status of
@@ -370,8 +372,8 @@ be accepted by the seed (which builds stage 0), so it cannot use workers: worker
 cooperative scheduler. A spawned worker runs when `main` waits (recv, join,
 try_recv), round robin, until it finishes or would wait; a waiting worker is
 unwound (`ieval.CBlock`) and later run again from the start, with the result
-of every builtin with an effect it already called (`ibuiltin.FIRST_EFFECT`
-on: console, capabilities, channels, workers) replayed from its log. The
+of every builtin with an effect it already called (`Bi.effect`:
+console, capabilities, channels, workers) replayed from its log. The
 observable results are the C backend's for every program whose output does
 not depend on scheduling (tests/v2/run/workers_*.tn, programs/v2/scan on
 both backends). Differences: resuming a worker repeats its computation (a
@@ -399,8 +401,9 @@ rendering, golden files and `--bless`, and the same 20 s timeout per command
 ## The build cache
 
 As the bootstrap's: an entry is the executable plus its C source, named by a
-hash of the C text, the C compiler and the flags (tenon.tn `hash_hex`, two
-polynomial hashes: the prelude has no hash function); a hit requires the
+hash of the C text, the C compiler and the flags (`pkg.hash`, two
+polynomial hashes, the one hash of the tool, also behind tenon.lock content
+hashes: the prelude has no hash function); a hit requires the
 cached source to equal the new one exactly. `$TENON_CACHE` (default
 `$TMPDIR/tenon-cache`), `off`, and `$TENON_KEEP_C` behave as in the
 bootstrap; tenon's entries are named `t...` and never collide with the

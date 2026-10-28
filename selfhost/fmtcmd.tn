@@ -1,4 +1,4 @@
-// `tenon fmt`: the formatter's command (the layout rules: docs/reference.md,
+// `tenon fmt`: the formatter's command (the layout rules: docs/tools.md,
 // "Formatting"; the formatter itself: selfhost/fmt.tn).
 //   tenon fmt FILE...           rewrite each file in its canonical layout (atomically)
 //   tenon fmt --check FILE...   list the files that are not in canonical layout; exit 1 if any
