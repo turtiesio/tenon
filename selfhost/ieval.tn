@@ -41,6 +41,9 @@ pub unique struct Interp {
 }
 
 pub fn trap[T](msg: Str, sp: ckast.Span) -> Result[T, Ctl] { Err(CTrap(msg, sp)) }
+// The traps of a bad index and a bad slice, as the C runtime words them.
+pub fn trap_oob[T](i: Int, n: Int, sp: ckast.Span) -> Result[T, Ctl] { trap("index {i} out of bounds for length {n}", sp) }
+pub fn trap_slice[T](x: Int, y: Int, n: Int, sp: ckast.Span) -> Result[T, Ctl] { trap("slice [{x}, {y}) out of bounds for length {n}", sp) }
 
 pub fn some(ix: Ix, v: ival.Val) -> ival.Val { ival.venum(ix.opt, 0, [v]) }
 pub fn none(ix: Ix) -> ival.Val { ival.venum(ix.opt, 1, []) }
@@ -217,7 +220,7 @@ pub fn nav(v: mut ival.Val, steps: List[RStep], i: Int, create: Bool, op: MOp, s
         RsIdx(k) => {
             if v.k == ival.K_LIST {
                 let n = v.xs.len()
-                if k.i < 0 or k.i >= n { return trap("index {k.i} out of bounds for length {n}", sp) }
+                if k.i < 0 or k.i >= n { return trap_oob(k.i, n, sp) }
                 return nav(mut v.xs[k.i], steps, i + 1, create, op, sp, names, ix)
             }
             let key = ival.to_key(k)
@@ -469,6 +472,7 @@ pub fn ev(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.
 }
 
 // The less frequent expressions (kept apart so that `ev`, the hot path, has a small frame).
+// Over 80 lines: an expression-dispatch match, one arm per node kind.
 fn ev_more(it: mut Interp, fr: mut List[ival.Val], e: icode.Node) -> Result[ival.Val, Ctl] {
     match e {
         NNeg(x, sp) => {
@@ -654,7 +658,7 @@ fn ev_match(it: mut Interp, fr: mut List[ival.Val], s: icode.Node, arms: List[ic
 
 fn index(b: ival.Val, i: ival.Val, sp: ckast.Span, names: ival.Names) -> Result[ival.Val, Ctl] {
     if b.k == ival.K_LIST {
-        if i.i < 0 or i.i >= b.xs.len() { return trap("index {i.i} out of bounds for length {b.xs.len()}", sp) }
+        if i.i < 0 or i.i >= b.xs.len() { return trap_oob(i.i, b.xs.len(), sp) }
         return Ok(b.xs[i.i])
     }
     match b.m.get(ival.to_key(i)) {

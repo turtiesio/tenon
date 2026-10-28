@@ -166,63 +166,80 @@ pub struct Opts { pub dirs: List[Str], pub root: Str, pub exe: Str, pub bless: B
 
 pub fn main(sys: Sys, o: Opts) -> Int {
     let p = sys.proc
-    let con = sys.console
     let start = sys.clock.mono_ns()
-    let bless = o.bless
-    let dirs = o.dirs
-    let worker = o.worker
-    let tmp = o.tmp
     let root = absolute(p, o.root)
     let exe = absolute(p, o.exe)
-    // 0 run, 1 reject, 2 lex, 3 parse
-    var jobs: List[(Int, Str)] = []
-    for d in dirs {
-        for f in files(sys.fs, path_join(d, "run")) { jobs.push((0, f)) }
-        for f in files(sys.fs, path_join(d, "reject")) { jobs.push((1, f)) }
-        if d.split("/").contains("v2") {
-            for f in files(sys.fs, path_join(d, "lex")) { jobs.push((2, f)) }
-            for f in files(sys.fs, path_join(d, "parse")) { jobs.push((3, f)) }
-        }
-    }
+    let jobs = collect_jobs(sys.fs, o.dirs)
+    if o.worker != "" { return run_worker(sys, jobs, o.worker, Ctx { exe, root, tmp: o.tmp, bless: o.bless }) }
     let runs = jobs.count(fn(j) => j.0 == 0)
     let rejects = jobs.count(fn(j) => j.0 == 1)
     let goldens = jobs.len() - runs - rejects
-    if worker != "" {
-        // one worker: the jobs i with i % n == k
-        let (ks, ns) = worker.split_once("/").unwrap_or(("0", "1"))
-        let k = ks.to_int().unwrap_or(0)
-        let n = ns.to_int().unwrap_or(1)
-        let cx = Ctx { exe, root, tmp, bless }
-        var failed = 0
-        for j in 0..jobs.len() {
-            if j % n == k {
-                let (kind, path) = jobs[j]
-                let r = match kind {
-                    0 => check_run(sys, cx, path),
-                    1 => check_reject(sys, cx, path),
-                    2 => check_golden(sys, cx, path, "tokens", "tokens"),
-                    _ => check_golden(sys, cx, path, "ast", "ast"),
-                }
-                match r {
-                    Ok(_) => {}
-                    Err(e) => {
-                        con.println("FAIL {path}\n{e}\n")
-                        failed += 1
-                    }
+    let failed = match run_workers(sys, o, root, exe) {
+        Ok(n) => n,
+        Err(code) => return code,
+    }
+    let secs = (sys.clock.mono_ns() - start).to_float() / 1000000000.0
+    let more = if goldens > 0 { ", {goldens} lex/parse" } else { "" }
+    sys.console.println("tests: {runs} run (x2 backends), {rejects} reject" + more + ", {failed} failed, {secs:.1}s")
+    if failed == 0 { 0 } else { 1 }
+}
+
+// The tests in DIRS: (0 run, 1 reject, 2 lex, 3 parse; the file).
+fn collect_jobs(fs: Fs, dirs: List[Str]) -> List[(Int, Str)] {
+    var jobs: List[(Int, Str)] = []
+    for d in dirs {
+        for f in files(fs, path_join(d, "run")) { jobs.push((0, f)) }
+        for f in files(fs, path_join(d, "reject")) { jobs.push((1, f)) }
+        if d.split("/").contains("v2") {
+            for f in files(fs, path_join(d, "lex")) { jobs.push((2, f)) }
+            for f in files(fs, path_join(d, "parse")) { jobs.push((3, f)) }
+        }
+    }
+    jobs
+}
+
+// One worker (`--worker K/N`): the jobs i with i % N == K; prints each
+// failure, then `RESULT FAILED`.
+fn run_worker(sys: Sys, jobs: List[(Int, Str)], worker: Str, cx: Ctx) -> Int {
+    let (ks, ns) = worker.split_once("/").unwrap_or(("0", "1"))
+    let k = ks.to_int().unwrap_or(0)
+    let n = ns.to_int().unwrap_or(1)
+    var failed = 0
+    for j in 0..jobs.len() {
+        if j % n == k {
+            let (kind, path) = jobs[j]
+            let r = match kind {
+                0 => check_run(sys, cx, path),
+                1 => check_reject(sys, cx, path),
+                2 => check_golden(sys, cx, path, "tokens", "tokens"),
+                _ => check_golden(sys, cx, path, "ast", "ast"),
+            }
+            match r {
+                Ok(_) => {}
+                Err(e) => {
+                    sys.console.println("FAIL {path}\n{e}\n")
+                    failed += 1
                 }
             }
         }
-        con.println("RESULT {failed}")
-        return 0
     }
+    sys.console.println("RESULT {failed}")
+    0
+}
+
+// Runs WORKERS copies of this executable from one `sh`, prints their
+// output and returns the number of failures (Err: the exit status).
+fn run_workers(sys: Sys, o: Opts, root: Str, exe: Str) -> Result[Int, Int] {
+    let p = sys.proc
+    let con = sys.console
     let mk = run_cmd(p, "mktemp", ["-d"], "", [])
     let dir = mk.out.trim()
     if mk.code != 0 or dir == "" {
         con.eprintln("tenon: cannot make a temporary directory: " + mk.err)
-        return 2
+        return Err(2)
     }
     var script = ""
-    let common = (if bless { " --bless" } else { "" }) + " --root " + quote(root) + " --exe " + quote(exe) + " --tmp " + quote(dir) + dirs.map(fn(d) => " " + quote(d)).join("")
+    let common = (if o.bless { " --bless" } else { "" }) + " --root " + quote(root) + " --exe " + quote(exe) + " --tmp " + quote(dir) + o.dirs.map(fn(d) => " " + quote(d)).join("")
     for w in 0..WORKERS {
         script += quote(exe) + " test --worker {w}/{WORKERS}" + common + " > " + quote(path_join(dir, "w{w}.txt")) + " 2>&1 &\n"
     }
@@ -254,8 +271,5 @@ pub fn main(sys: Sys, o: Opts) -> Int {
         con.println("FAIL a test worker did not finish")
         failed += 1
     }
-    let secs = (sys.clock.mono_ns() - start).to_float() / 1000000000.0
-    let more = if goldens > 0 { ", {goldens} lex/parse" } else { "" }
-    con.println("tests: {runs} run (x2 backends), {rejects} reject" + more + ", {failed} failed, {secs:.1}s")
-    if failed == 0 { 0 } else { 1 }
+    Ok(failed)
 }

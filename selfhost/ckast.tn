@@ -233,6 +233,7 @@ fn Conv.stmt(mut self, s: parser.Stmt) -> Stmt {
     Stmt { sp: self.sp(s.at), k }
 }
 
+// Over 80 lines: an expression-dispatch match, one arm per parser expression.
 fn Conv.expr(mut self, e: parser.Expr) -> Expr {
     let k = match e.kind {
         EInt(i) => XInt(i),

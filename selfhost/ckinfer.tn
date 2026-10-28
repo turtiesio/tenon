@@ -447,8 +447,8 @@ pub fn Ck.fresh_list(mut self, n: Int) -> List[cktypes.Ty] {
     out
 }
 
-// An expression-dispatch match (one arm per expression kind; the long ones
-// are methods below).
+// Over 80 lines: an expression-dispatch match (one arm per expression kind;
+// the long ones are methods below).
 fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty, ckast.Diag] {
     match e.k {
         XInt(_) => Ok(cktypes.t_int()),

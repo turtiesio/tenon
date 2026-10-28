@@ -242,6 +242,7 @@ fn seq(out: mut Str, xs: List[Val], n: Names, full: Bool) {
 }
 
 // `top`: a string is shown as itself, not quoted (interpolation, to_str).
+// Over 80 lines: a dispatch on the value kind, one branch per kind.
 pub fn show(out: mut Str, v: Val, top: Bool, n: Names, full: Bool) {
     let k = v.k
     if k == K_INT {
