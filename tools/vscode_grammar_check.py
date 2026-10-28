@@ -30,7 +30,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXT = os.path.join(ROOT, "editors", "vscode")
 GRAMMAR = os.path.join(EXT, "syntaxes", "tenon.tmLanguage.json")
-TENON = os.path.join(ROOT, "target", "release", "tenon")
+TENON = os.environ.get("TENON") or os.path.join(ROOT, "target", "release", "tenon")  # ./check: tenonc
 LEXERS = ["bootstrap/src/lexer.rs", "src/lexer.rs"]
 
 # Oniguruma spelling -> Python spelling.

@@ -2,36 +2,37 @@
 # Cross-check the self-hosted compiler against the bootstrap compiler on the
 # whole corpus: every .tn file, plus deliberately malformed inputs
 # (tests/lex, tests/parse) and checker cases (tests/reject, tests/selfhost).
-#   lexer:   `tenon tokens FILE`  vs selfhost/tokens.tn
-#   parser:  `tenon ast FILE`     vs selfhost/astdump.tn
+#   lexer:   `tenon tokens FILE`  vs `tenonc tokens FILE`
+#   parser:  `tenon ast FILE`     vs `tenonc ast FILE`
 #   checker: `tenon check FILE`   vs `tenonc check FILE` (selfhost/tenonc.tn):
-#            `ok` when the bootstrap accepts the program, else the first line
-#            of its diagnostic
+#            the same exit status and the same first line of the diagnostic
 #   emitter: `tenon emit FILE`    vs `tenonc emit FILE`, for every file the
 #            bootstrap accepts: byte-identical C and the same exit status
-# The tools are built with -O0: building is most of the cost, running is cheap.
+# tenonc is $TENONC when set (./check builds it once), else built here with
+# -O0 (building is most of the cost, running is cheap).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 T=target/release/tenon
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-"$T" build selfhost/tokens.tn -o "$tmp/tokens" -O0 & p1=$!
-"$T" build selfhost/astdump.tn -o "$tmp/astdump" -O0 & p2=$!
-"$T" build selfhost/tenonc.tn -o "$tmp/tenonc" -O0 & p3=$!
-wait $p1; wait $p2; wait $p3
+if [ -n "${TENONC:-}" ]; then cp "$TENONC" "$tmp/tenonc"; else "$T" build selfhost/tenonc.tn -o "$tmp/tenonc" -O0; fi
 
 # One job per file, run in parallel; each prints FAIL lines and one result word.
 one() {
   f=$1; T=$2; tmp=$3; out=""
-  for pair in "tokens:tokens" "ast:astdump"; do
-    cmd=${pair%%:*}; exe=${pair##*:}
-    if ! cmp -s <("$T" "$cmd" "$f") <("$tmp/$exe" "$f"); then
-      echo "FAIL self-hosted $exe disagrees on $f"; diff <("$T" "$cmd" "$f") <("$tmp/$exe" "$f") | head -5; out=fail
+  for cmd in tokens ast; do
+    if ! cmp -s <("$T" "$cmd" "$f") <("$tmp/tenonc" "$cmd" "$f"); then
+      echo "FAIL self-hosted $cmd disagrees on $f"; diff <("$T" "$cmd" "$f") <("$tmp/tenonc" "$cmd" "$f") | head -5; out=fail
     fi
   done
   e=$(mktemp)
-  if "$T" check "$f" > /dev/null 2> "$e"; then want=ok; kind=accepted; else want=$(head -n 1 "$e"); kind=rejected; fi
+  set +e
+  "$T" check "$f" > /dev/null 2> "$e"; sa=$?
+  want="exit $sa: $(head -n 1 "$e")"
+  "$tmp/tenonc" check "$f" > /dev/null 2> "$e"; sb=$?
+  got="exit $sb: $(head -n 1 "$e")"
+  set -e
   rm -f "$e"
-  got=$("$tmp/tenonc" check "$f" 2>&1 | head -n 1 || true)
+  if [ $sa = 0 ]; then kind=accepted; else kind=rejected; fi
   if [ "$want" != "$got" ]; then
     echo "FAIL self-hosted check disagrees on $f"; echo "  bootstrap: $want"; echo "  selfhost:  $got"; out=fail
   fi

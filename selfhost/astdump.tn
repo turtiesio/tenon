@@ -1,4 +1,5 @@
-// astdump FILE: the self-hosted parser's AST dump (compare: tenon ast FILE).
+// module (imported by tenonc.tn)
+// The self-hosted parser's AST dump: `tenonc ast FILE` (compare: tenon ast FILE).
 import parser
 
 fn tps(ps: List[Str]) -> Str { if ps.is_empty() { "" } else { "[" + ps.join(", ") + "]" } }
@@ -150,12 +151,10 @@ fn dump(p: parser.Program) -> Str {
     out.map(fn(l) => l + "\n").join("")
 }
 
-fn main(sys: Sys) -> Result[Unit, Str] {
-    if sys.args.len() != 1 { return Err("usage: astdump FILE") }
-    let src = sys.fs.read(sys.args[0]).map_err(fn(e) => "cannot read: {e}")?
+// The dump of a source text, or the parser's first error, as `tenon ast` prints it.
+pub fn dump_src(src: Str) -> Str {
     match parser.parse(src) {
-        Ok(p) => sys.console.print(dump(p)),
-        Err(e) => sys.console.print("error {e.line}:{e.col} {e.msg}\n"),
+        Ok(p) => dump(p),
+        Err(e) => "error {e.line}:{e.col} {e.msg}\n",
     }
-    Ok(())
 }

@@ -1,8 +1,8 @@
 # Self-hosted C backend: notes
 
-`selfhost/tenonc.tn` is the self-hosted compiler driver:
+`selfhost/tenonc.tn` is the self-hosted compiler driver; every `tenon`
+subcommand has a tenonc equivalent (selfhost/SELFHOST.md). The C backend's:
 
-    tenonc check FILE [ROOT]                 = selfhost/check.tn (`ok` or the first diagnostic)
     tenonc emit FILE [--root DIR]            = `tenon emit FILE`, byte for byte
     tenonc build FILE [-o OUT] [-O0] [--root DIR]
 
@@ -39,8 +39,8 @@ depend on where it was read from.
 
 `build` uses the `Proc` capability (lib/prelude.tn, docs/reference.md §11) to
 read `$CC` and `$TENON_KEEP_C` and to run `$CC OPT -w -std=gnu11 -pthread -o OUT
-OUT.c -lm`, as the bootstrap does. Differences from `tenon build`: no build
-cache, and messages start with `tenonc:`.
+OUT.c -lm`, as the bootstrap does, with the same kind of build cache
+(selfhost/SELFHOST.md); its own messages start with `tenonc:`.
 
 ## Fidelity rules that matter for identical C
 
@@ -84,10 +84,8 @@ cache, and messages start with `tenonc:`.
 - `selfhost/checkfuzz.py`: mutants that both compilers accept are also
   compared by their emitted C.
 
-## Remaining for a fully self-hosted compiler (tenon.md §5)
+## Stage B
 
-Stage A (this port) is complete. Not done yet: the interpreter and `run`
-(`tenon run`), `test` (the test runner), `tokens`/`ast` as tenonc subcommands
-(they exist as selfhost/tokens.tn and astdump.tn), a build cache, running the
-test suite and programs with tenonc as the compiler, and freezing the
-bootstrap.
+Stage A (this port) is complete. Stage B (the interpreter, the test runner,
+`tokens`/`ast`, the build cache, the gates switched to tenonc, the frozen
+bootstrap) is described in selfhost/SELFHOST.md.

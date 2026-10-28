@@ -4,7 +4,7 @@
 # transcripts must equal programs/NAME/expected.txt. `--bless` rewrites it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-T=$PWD/target/release/tenon
+T=${TENON:-$PWD/target/release/tenon} # ./check: tenonc
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 fail=0; n=0
 for dir in programs/*/; do
