@@ -25,7 +25,7 @@ sixth mechanism.
 |---|---|---|---|---|
 | `ci.yml` | every push to main, every pull request, and on request | none | none | the gate on Linux and macOS; for pull requests the job `approvals` |
 | `nightly.yml` | 02:17 daily | none | none | `ops/evidence/evidence.sh` on Linux, one issue per open regression, STATUS.md as a pull request |
-| `redteam.yml` | Sunday 18:00 (Monday 03:00 in Seoul) | Codex `gpt-6.1-sol`, then Claude | `OPENAI_API_KEY`; `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` | the weekly correctness review, two parts: conformance (Codex: docs versus behaviour; `ops/agents/conformance.md`) and authority (Claude: capabilities, isolation, obligations, memory safety; `ops/agents/authority.md`); findings in `tests/redteam/` through a pull request, one issue each |
+| `redteam.yml` | Sunday 18:00 (Monday 03:00 in Seoul) | Codex for both parts: conformance on `gpt-6.1-sol`, then authority on `gpt-daybreak-blue-latest` with `--cyber-access-program daybreak_blue`; Claude only as the fallback the owner starts (Refusals, below) | `OPENAI_API_KEY` (the fallback: `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`) | the weekly correctness review, two parts: conformance (docs versus behaviour; `ops/agents/conformance.md`) and authority (capabilities, isolation, obligations, memory safety; `ops/agents/authority.md`); findings in `tests/redteam/` through a pull request, one issue each |
 | `hygiene.yml` | Wednesday 18:00 (Thursday 03:00 in Seoul) | Claude | `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` | the weekly hygiene review (`ops/agents/hygiene.md`): small fixes as a pull request, larger items as issues |
 | `fixer.yml` | 7 times a day (01:23, 04:23, 08:23, 11:23, 14:23, 18:23, 21:23) | Claude and Codex alternately (by run number) when both secrets exist, else the one that exists | either | the oldest open `agent-ok` issue fixed in a pull request, or handed to the owner (`ops/agents/fixer.md`) |
 
@@ -40,6 +40,25 @@ runner: `FUZZ_N=200`, `CHECKFUZZ_N=300`, `MUTATE_N=5`, `BENCH_RUNS=3`
 `.evidence/` is kept between nights in the Actions cache, so running totals
 and `.evidence/history.jsonl` (STATUS.md, "Correctness over time") continue,
 and uploaded as the run's artifact `evidence` for 14 days.
+
+**Model settings per part** (owner decision 2026-10-28, docs/log.md): each
+part of the correctness review passes its own Codex model and cyber access
+program to `agent.yml` (inputs `codex-model`, default `gpt-6.1-sol`, and
+`cyber-program`, given to `codex exec` as `--cyber-access-program`).
+`gpt-6.1-sol` declines the authority brief ("flagged for possible
+cybersecurity risk") and Daybreak programs are not available for it, so
+authority runs on `gpt-daybreak-blue-latest` with `daybreak_blue`. The
+pull request and the brief's "This run" line name the model and program.
+
+**Refusals.** A declined brief is reported, never replaced by another model
+in the same run. When Codex's final message declines the work (and the run
+wrote no `.agent/pr.md` or `.agent/issues.json`), the step "finish" fails the
+run, writes the message to the run summary and opens or updates the issue
+`[agent:refused-ROLE]` labeled `needs-owner`; a refusal the API raises as an
+error fails the Codex step and the log says so. The documented fallback for
+the authority part is Claude, started by the owner:
+`gh workflow run redteam.yml -f authority_engine=claude` (or Actions,
+redteam, "Run workflow"); the scheduled run always uses Codex.
 
 ## The queue: GitHub issues
 
@@ -161,8 +180,9 @@ median of the last 7 runs is a regression.
 
 The owner's machine (T3) runs the same work as scheduled tasks: the daily
 evidence run (`ops/evidence/evidence.sh`, which lands STATUS.md with
-`ops/repo/land.sh`), and the weekly correctness review (Codex conformance and
-Claude authority). The weekly hygiene task is disabled. **GitHub is
+`ops/repo/land.sh`), and the weekly correctness review (Codex conformance on
+`gpt-6.1-sol`, Codex authority on `gpt-daybreak-blue-latest` with
+`daybreak_blue`). The weekly hygiene task is disabled. **GitHub is
 primary;** the local tasks stay as they are until the owner has seen the
 cloud runs work, and are then disabled. Until then both write STATUS.md:
 whichever lands later wins, and a nightly pull request made stale by a

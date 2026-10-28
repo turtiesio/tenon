@@ -173,6 +173,15 @@ Each entry: decision, rationale, measured effect. Reversals and mistakes include
 
 ## 2026-10-28 — product decisions (by the user)
 
+- **Correctness review models per part:** conformance runs on Codex gpt-6.1-sol;
+  authority on Codex gpt-daybreak-blue-latest with `--cyber-access-program
+  daybreak_blue`, since gpt-6.1-sol refuses the authority brief ("flagged for
+  possible cybersecurity risk") and Daybreak programs are not available for it.
+  The local schedule and redteam.yml both do this (agent.yml inputs
+  `codex-model`, `cyber-program`); a refusal is reported (issue
+  `[agent:refused-ROLE]`), and Claude runs the authority part only as the
+  fallback the owner starts. Supersedes "authority on Claude" in entry 25.
+
 - **Benchmark references compute Tenon's defined result:** Tenon's integer
   arithmetic traps on overflow, so the C references use overflow-checked
   arithmetic (`bench/checked.h`, exit 70 like Tenon) instead of relying on

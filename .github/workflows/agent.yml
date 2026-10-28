@@ -16,6 +16,14 @@ on:
         description: "codex, claude, or either (alternates by run number when both secrets exist)"
         type: string
         required: true
+      codex-model:
+        description: "the Codex model (redteam.yml: gpt-6.1-sol for conformance, gpt-daybreak-blue-latest for authority)"
+        type: string
+        default: gpt-6.1-sol
+      cyber-program:
+        description: "Codex --cyber-access-program for this run (authority: daybreak_blue); empty for none"
+        type: string
+        default: ""
     secrets:
       OPENAI_API_KEY:
         required: false
@@ -39,7 +47,8 @@ jobs:
       cancel-in-progress: false
     env:
       ROLE: ${{ inputs.role }}
-      CODEX_MODEL: gpt-6.1-sol
+      CODEX_MODEL: ${{ inputs.codex-model }}
+      CYBER_PROGRAM: ${{ inputs.cyber-program }}
     steps:
       - name: choose the model
         id: gate
@@ -97,7 +106,8 @@ jobs:
           mkdir -p .agent
           { cat ops/agents/common.md; echo; cat "ops/agents/$ROLE.md"; echo
             echo "## This run"; echo
-            echo "Date: $(date +%F). Commit: $(git rev-parse --short HEAD). Model: $ENGINE."
+            model=$ENGINE; [ "$ENGINE" = codex ] && model="codex ($CODEX_MODEL${CYBER_PROGRAM:+, $CYBER_PROGRAM})"
+            echo "Date: $(date +%F). Commit: $(git rev-parse --short HEAD). Model: $model."
             echo "./check on this commit before you started: $(tail -1 "$RUNNER_TEMP/check-main.log")"
             echo; echo "Open issues already recorded (labeled regression, redteam or hygiene):"; echo
             for l in regression redteam hygiene; do
@@ -124,6 +134,8 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           prompt-file: .agent/prompt.md
           model: ${{ env.CODEX_MODEL }}
+          codex-args: ${{ inputs.cyber-program != '' && format('["--cyber-access-program", "{0}"]', inputs.cyber-program) || '' }}
+          output-file: ${{ runner.temp }}/codex-final.md
           effort: high
           sandbox: workspace-write
       - name: finish (check, issues, pull request)
@@ -139,15 +151,37 @@ jobs:
           git show "$GITHUB_SHA:ops/repo/gh.py" > .git/gh_main.py
           gh auth setup-git
           git reset -q --soft "$GITHUB_SHA"  # commits the agent made anyway become working-tree changes
-          model=$ENGINE; [ "$ENGINE" = codex ] && model="codex ($CODEX_MODEL)"
+          model=$ENGINE; [ "$ENGINE" = codex ] && model="codex ($CODEX_MODEL${CYBER_PROGRAM:+, $CYBER_PROGRAM})"
           give_back() { # give_back REASON: the fixer's issue goes to the owner
             [ "$ISSUE" = none ] && return 0
             printf '%s\n\nModel: %s. Run: %s\n' "$1" "$model" "$RUN_URL" > "$RUNNER_TEMP/reason.md"
             [ -f .agent/blocked.md ] && { echo; cat .agent/blocked.md; } >> "$RUNNER_TEMP/reason.md"
             python3 .git/gh_main.py release "$ISSUE" "$RUNNER_TEMP/reason.md"
           }
+          # A declined brief is reported, never replaced by another model (docs/dev/automation.md,
+          # "Refusals"): the run fails and the issue [agent:refused-ROLE] goes to the owner.
+          final="$RUNNER_TEMP/codex-final.md"
+          if [ "$ENGINE" = codex ] && [ -s "$final" ] && [ ! -f .agent/pr.md ] && [ ! -f .agent/issues.json ] \
+             && grep -Eqi 'cybersecurity risk|flagged for possible|can.t (help|assist) with|cannot (help|assist) with' "$final"; then
+            { echo "The $ROLE run on $model declined the brief instead of carrying it out; no other model was substituted."
+              echo; echo "Run: $RUN_URL"; echo; echo "Codex's final message:"; echo; sed 's/^/> /' "$final" | head -40
+              echo; echo "Options: rerun once the model's access is restored, or run the part on the documented"
+              echo "fallback (authority: gh workflow run redteam.yml -f authority_engine=claude)."
+            } > "$RUNNER_TEMP/refused.md"
+            cat "$RUNNER_TEMP/refused.md" >> "$GITHUB_STEP_SUMMARY"
+            jq -n --arg key "agent:refused-$ROLE" --arg title "$ROLE: $model declined the brief" \
+              --rawfile body "$RUNNER_TEMP/refused.md" '[{key: $key, title: $title, body: $body, labels: ["needs-owner"]}]' \
+              > "$RUNNER_TEMP/refused.json"
+            python3 .git/gh_main.py issues "$RUNNER_TEMP/refused.json"
+            [ "$ISSUE" != none ] && gh issue edit "$ISSUE" --remove-label in-progress
+            echo "::error::$ROLE: $model declined the brief (reported as [agent:refused-$ROLE]; nothing substituted)"; exit 1
+          fi
           if [ "$OUTCOME" != success ]; then
-            # the run itself failed (rate limit, outage): the issue goes back to the queue
+            # the run itself failed (rate limit, outage, or a refusal raised as an error):
+            # the issue goes back to the queue
+            if [ "$ENGINE" = codex ] && [ -n "$CYBER_PROGRAM" ]; then
+              echo "::warning::$ROLE: if Codex refused ($CODEX_MODEL, $CYBER_PROGRAM), the log above says so; the fallback is a manual rerun (docs/dev/automation.md, Refusals)"
+            fi
             [ "$ISSUE" != none ] && gh issue edit "$ISSUE" --remove-label in-progress
             echo "::error::$ROLE: the agent step did not succeed ($OUTCOME)"; exit 1
           fi

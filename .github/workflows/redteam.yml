@@ -1,12 +1,24 @@
 name: redteam
 # The weekly correctness review (docs/dev/automation.md), in two parts run one
-# after the other: conformance (Codex, docs versus behaviour) and authority
-# (Claude, capabilities, isolation, obligations, memory safety). Findings go
-# to tests/redteam/ through a pull request and to issues labeled `redteam`.
+# after the other, both on Codex with settings of their own (owner decision
+# 2026-10-28, docs/log.md): conformance (docs versus behaviour) on gpt-6.1-sol;
+# authority (capabilities, isolation, obligations, memory safety) on
+# gpt-daybreak-blue-latest with --cyber-access-program daybreak_blue
+# (gpt-6.1-sol declines that brief, and Daybreak programs are not available
+# for it). A declined brief is reported (agent.yml), never silently replaced:
+# Claude runs the authority part only when the owner starts it as the fallback
+# (authority_engine=claude). Findings go to tests/redteam/ through a pull
+# request and to issues labeled `redteam`.
 on:
   schedule:
     - cron: "0 18 * * 0" # Monday 03:00 in Seoul
   workflow_dispatch:
+    inputs:
+      authority_engine:
+        description: "authority part: codex, or claude (the fallback after a reported refusal)"
+        type: choice
+        options: [codex, claude]
+        default: codex
 permissions:
   contents: write
   pull-requests: write
@@ -18,6 +30,7 @@ jobs:
     with:
       role: conformance
       engine: codex
+      codex-model: gpt-6.1-sol
     secrets: inherit
   authority:
     needs: conformance
@@ -25,5 +38,7 @@ jobs:
     uses: ./.github/workflows/agent.yml
     with:
       role: authority
-      engine: claude
+      engine: ${{ inputs.authority_engine || 'codex' }}
+      codex-model: gpt-daybreak-blue-latest
+      cyber-program: daybreak_blue
     secrets: inherit
