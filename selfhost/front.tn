@@ -31,7 +31,8 @@ pub fn Failure.line_text(self) -> Str { "{self.file}:{self.line}:{self.col}: err
 // source line and a caret under the column.
 pub fn Failure.render(self) -> Str {
     let lines = self.text.lines()
-    let src = if self.line >= 1 and self.line <= lines.len() { lines[self.line - 1] } else { "" }
+    let i = (self.line - 1).max(0) // line 0 (a declaration without a position) shows the first line
+    let src = if i < lines.len() { lines[i] } else { "" }
     let caret = " ".repeat((self.col - 1).max(0))
     self.line_text() + "\n  " + src + "\n  " + caret + "^"
 }

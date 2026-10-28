@@ -1,0 +1,247 @@
+// module (imported by the self-hosted interpreter)
+// The strict decoder of the derived codec: a port of bootstrap/src/codec.rs.
+// A value is accepted only in its canonical form (what `encode` prints), and
+// a failure reports the same byte offset as the bootstrap and the C backend.
+import ckenv
+import cktypes
+import ival
+import ieval
+
+struct Dec { s: Str, pos: Int, err: Int, env: ckenv.Env, names: ival.Names }
+
+pub fn decode(it: mut ieval.Interp, t: cktypes.Ty, text: Str) -> ival.Val {
+    var d = Dec { s: text, pos: 0, err: -1, env: it.checked.env, names: it.names }
+    let r = d.value(t)
+    let ix = it.ix
+    match r {
+        Some(v) if d.pos == text.len() => ieval.ok(ix, v),
+        Some(_) => ieval.err(ix, ival.vstr("cannot decode {t.show()} at byte {d.pos}")),
+        None => {
+            let at = if d.err >= 0 { d.err } else { d.pos }
+            ieval.err(ix, ival.vstr("cannot decode {t.show()} at byte {at}"))
+        }
+    }
+}
+
+fn Dec.fail(mut self, at: Int) -> Option[ival.Val] {
+    if self.err < 0 { self.err = at }
+    None
+}
+
+fn Dec.lit(mut self, l: Str) -> Bool {
+    if self.pos + l.len() <= self.s.len() and self.s.slice_bytes_eq(self.pos, l) {
+        self.pos += l.len()
+        true
+    } else {
+        false
+    }
+}
+
+fn Str.slice_bytes_eq(self, at: Int, l: Str) -> Bool {
+    for i in 0..l.len() {
+        if self.byte(at + i) != l.byte(i) { return false }
+    }
+    true
+}
+
+fn Dec.expect(mut self, l: Str) -> Bool {
+    if self.lit(l) { return true }
+    let _ = self.fail(self.pos)
+    false
+}
+
+// The longest run of bytes from pos satisfying ok, as text ("" if not UTF-8).
+fn Dec.run(mut self, ok: fn(Int) -> Bool) -> Str {
+    let st = self.pos
+    while self.pos < self.s.len() and ok(self.s.byte(self.pos)) { self.pos += 1 }
+    text_of(self.s, st, self.pos)
+}
+
+fn boundary(s: Str, i: Int) -> Bool { i == 0 or i == s.len() or s.byte(i) < 128 or s.byte(i) >= 192 }
+
+// s[a..b] as text, "" if that is not on character boundaries.
+fn text_of(s: Str, a: Int, b: Int) -> Str { if boundary(s, a) and boundary(s, b) { s.slice(a, b) } else { "" } }
+
+fn Dec.canonical(mut self, v: ival.Val, text: Str, start: Int) -> Option[ival.Val] {
+    var out = ""
+    ival.show(mut out, v, false, self.names, true)
+    if out == text { Some(v) } else { self.fail(start) }
+}
+
+fn is_alnum(c: Int) -> Bool { c.is_alnum() }
+
+fn Dec.value(mut self, t: cktypes.Ty) -> Option[ival.Val] {
+    let start = self.pos
+    match t {
+        Con(n, a) => {
+            if n == "Int" {
+                let text = self.run(fn(c) => c == 45 or c.is_digit())
+                return match text.to_int() {
+                    Some(i) => self.canonical(ival.vint(i), text, start),
+                    None => self.fail(start),
+                }
+            }
+            if n == "Float" {
+                let text = self.run(fn(c) => c == 45 or c == 43 or c == 46 or c.is_alnum())
+                return match text.to_float() {
+                    Some(f) => self.canonical(ival.vfloat(f), text, start),
+                    None => self.fail(start),
+                }
+            }
+            if n == "Bool" {
+                if self.lit("true") { return Some(ival.vbool(true)) }
+                if self.lit("false") { return Some(ival.vbool(false)) }
+                return self.fail(start)
+            }
+            if n == "Unit" { return if self.expect("()") { Some(ival.unit()) } else { None } }
+            if n == "Str" { return self.string() }
+            if n == "List" {
+                if not self.expect("[") { return None }
+                var xs: List[ival.Val] = []
+                if not self.lit("]") {
+                    while true {
+                        xs.push(self.value(a[0])?)
+                        if self.lit(", ") { continue }
+                        if not self.expect("]") { return None }
+                        break
+                    }
+                }
+                return Some(ival.vlist(xs))
+            }
+            if n == "Map" {
+                var m: Map[ival.Key, ival.Val] = [:]
+                if self.lit("[:]") { return Some(ival.vmap(m)) }
+                if not self.expect("[") { return None }
+                while true {
+                    let ks = self.pos
+                    let k = self.value(a[0])?
+                    let key = ival.to_key(k)
+                    if m.contains(key) { return self.fail(ks) }
+                    if not self.expect(": ") { return None }
+                    let v = self.value(a[1])?
+                    m[key] = v
+                    if self.lit(", ") { continue }
+                    if not self.expect("]") { return None }
+                    break
+                }
+                return Some(ival.vmap(m))
+            }
+            self.user(t, n)
+        }
+        Tup(ts) => {
+            if not self.expect("(") { return None }
+            var xs: List[ival.Val] = []
+            for i in 0..ts.len() {
+                if i > 0 and not self.expect(", ") { return None }
+                xs.push(self.value(ts[i])?)
+            }
+            if not self.expect(")") { return None }
+            Some(ival.vtuple(xs))
+        }
+        _ => self.fail(start),
+    }
+}
+
+fn display(n: Str) -> Str {
+    var i = n.len() - 1
+    while i >= 0 and n.byte(i) != 46 { i -= 1 }
+    n.slice(i + 1, n.len())
+}
+
+fn Dec.user(mut self, t: cktypes.Ty, n: Str) -> Option[ival.Val] {
+    let disp = display(n)
+    match self.env.struct_fields(t) {
+        Some(fs) => {
+            let si = self.env.struct_idx(n).unwrap()
+            if not self.expect(disp) { return None }
+            if fs.is_empty() {
+                if not self.expect(" \{}") { return None }
+                return Some(ival.vstruct(si, []))
+            }
+            if not self.expect(" \{ ") { return None }
+            var vals: List[ival.Val] = []
+            for i in 0..fs.len() {
+                if i > 0 and not self.expect(", ") { return None }
+                if not self.expect(fs[i].0) { return None }
+                if not self.expect(": ") { return None }
+                vals.push(self.value(fs[i].1)?)
+            }
+            if not self.expect(" }") { return None }
+            return Some(ival.vstruct(si, vals))
+        }
+        None => {}
+    }
+    let vs = match self.env.enum_variants(t) {
+        Some(v) => v,
+        None => return None,
+    }
+    let ei = self.env.enum_idx(n).unwrap()
+    let start = self.pos
+    let name = self.run(fn(c) => c == 95 or c.is_alnum())
+    var vi = -1
+    for i in 0..vs.len() {
+        if vi < 0 and vs[i].0 == name { vi = i }
+    }
+    if vi < 0 { return self.fail(start) }
+    var payload: List[ival.Val] = []
+    let fts = vs[vi].1
+    if not fts.is_empty() {
+        if not self.expect("(") { return None }
+        for i in 0..fts.len() {
+            if i > 0 and not self.expect(", ") { return None }
+            payload.push(self.value(fts[i])?)
+        }
+        if not self.expect(")") { return None }
+    }
+    Some(ival.venum(ei, vi, payload))
+}
+
+fn hex(c: Int) -> Int {
+    if c.is_digit() { c - 48 } else if c >= 97 and c <= 102 { c - 87 } else if c >= 65 and c <= 70 { c - 55 } else { -1 }
+}
+
+fn Dec.string(mut self) -> Option[ival.Val] {
+    let start = self.pos
+    if not self.expect("\"") { return None }
+    var out: List[Int] = []
+    while true {
+        if self.pos >= self.s.len() { return self.fail(self.pos) }
+        let c = self.s.byte(self.pos)
+        self.pos += 1
+        if c == 34 { break }
+        if c == 92 {
+            if self.pos >= self.s.len() { return self.fail(self.pos) }
+            let e = self.s.byte(self.pos)
+            self.pos += 1
+            if e == 34 { out.push(34) }
+            else if e == 92 { out.push(92) }
+            else if e == 110 { out.push(10) }
+            else if e == 116 { out.push(9) }
+            else if e == 114 { out.push(13) }
+            else if e == 117 {
+                if not self.expect("\{") { return None }
+                let h = self.run(fn(x) => hex(x) >= 0)
+                // u8::from_str_radix: at least one digit, and the value fits a byte
+                var v = 0
+                var okv = h.len() > 0
+                for i in 0..h.len() {
+                    v = v * 16 + hex(h.byte(i))
+                    if v > 255 { okv = false }
+                    if v > 1000000 { v = 1000000 }
+                }
+                if not okv { return self.fail(start) }
+                if not self.expect("}") { return None }
+                out.push(v)
+            } else {
+                return self.fail(start)
+            }
+        } else {
+            out.push(c)
+        }
+    }
+    let text = text_of(self.s, start, self.pos)
+    match Str.from_utf8(out) {
+        Some(st) => self.canonical(ival.vstr(st), text, start),
+        None => self.fail(start),
+    }
+}

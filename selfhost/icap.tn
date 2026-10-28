@@ -1,0 +1,291 @@
+// module (imported by the self-hosted interpreter)
+// Capability builtins (bootstrap/src/builtins.rs `fs_op`, `net_op`,
+// `poller_op`, `proc_run`, ...), done with the interpreter's own capabilities:
+//
+// - An interpreted `Fs` is one of the host's `Fs` values (Interp.fss, indexed
+//   by the value's `j`); `within` and `read_only` make new ones, so the path,
+//   jail and read-only rules are the host runtime's, which agree with the
+//   bootstrap's.
+// - Interpreted pollers each get a host `Poller` of their own (at most four;
+//   ids and events are then exactly the host's).
+// - `Listener` and `Conn` (blocking) are sockets of one more host poller: a
+//   blocking call waits on it, keeping new connections and data per socket.
+//   Unlike the bootstrap, a dropped Listener or Conn is not closed until the
+//   program ends (an interpreted value has no destructor).
+// - `Proc` and `Clock` are the host's.
+import ckast
+import ival
+import ieval
+import ibuiltin
+
+pub fn cap_names() -> List[Str] {
+    [
+        "Fs.read", "Fs.write", "Fs.append", "Fs.read_bytes", "Fs.write_bytes", "Fs.append_bytes", "Fs.truncate",
+        "Fs.exists", "Fs.remove", "Fs.list", "Fs.mkdir", "Fs.mkdir_one", "Fs.rename", "Fs.is_dir", "Fs.within",
+        "Fs.read_only", "Net.listen", "Net.connect", "Listener.port", "Listener.accept", "Conn.read_line", "Conn.read",
+        "Conn.write", "Net.poller", "Poller.listen", "Poller.connect", "Poller.port", "Poller.wait", "Poller.send",
+        "Poller.close", "Clock.now_ms", "Clock.mono_ns", "Clock.sleep_ms", "Proc.run", "Proc.env", "Proc.run_capture",
+        "Proc.exit",
+    ]
+}
+
+// Blocking sockets: accepted connections not yet taken, per listener; bytes
+// received and not yet read, and end of stream, per connection.
+pub struct NetState { pub accq: Map[Int, List[Int]], pub buf: Map[Int, List[Int]], pub eof: Map[Int, Bool], pub npollers: Int }
+
+pub fn new_net_state() -> NetState { NetState { accq: [:], buf: [:], eof: [:], npollers: 0 } }
+
+fn ioerr(ix: ieval.Ix, e: IoError) -> ival.Val {
+    match e {
+        NotFound(s) => ival.venum(ix.io, 0, [ival.vstr(s)]),
+        Denied(s) => ival.venum(ix.io, 1, [ival.vstr(s)]),
+        Failed(s) => ival.venum(ix.io, 2, [ival.vstr(s)]),
+    }
+}
+
+fn res_unit(ix: ieval.Ix, r: Result[Unit, IoError]) -> ival.Val {
+    match r {
+        Ok(_) => ieval.ok(ix, ival.unit()),
+        Err(e) => ieval.err(ix, ioerr(ix, e)),
+    }
+}
+
+fn res_int(ix: ieval.Ix, r: Result[Int, IoError]) -> ival.Val {
+    match r {
+        Ok(x) => ieval.ok(ix, ival.vint(x)),
+        Err(e) => ieval.err(ix, ioerr(ix, e)),
+    }
+}
+
+fn res_bytes(ix: ieval.Ix, r: Result[List[Int], IoError]) -> ival.Val {
+    match r {
+        Ok(b) => ieval.ok(ix, ival.bytes_val(b)),
+        Err(e) => ieval.err(ix, ioerr(ix, e)),
+    }
+}
+
+fn new_fs(it: mut ieval.Interp, f: Fs) -> ival.Val {
+    it.fss.push(f)
+    ival.vcap(ival.CAP_FS, it.fss.len() - 1)
+}
+
+pub fn call(it: mut ieval.Interp, id: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    if id < 16 { return fs_op(mut it, id, a, sp) }
+    if id < 30 {
+        // a program about to block has shown all of its output
+        it.con.flush()
+        if id < 23 { return Ok(net_op(mut it, id, a)) }
+        return poller_op(mut it, id, a, sp)
+    }
+    let ix = it.ix
+    match id {
+        30 => Ok(ival.vint(it.clock.now_ms())),
+        31 => Ok(ival.vint(it.clock.mono_ns())),
+        32 => {
+            it.clock.sleep_ms(a[1].i)
+            Ok(ival.unit())
+        }
+        33 => Ok(res_int(ix, it.proc.run(a[1].s, ibuiltin.str_list(a[2])))),
+        34 => match it.proc.env(a[1].s) {
+            Some(v) => Ok(ieval.some(ix, ival.vstr(v))),
+            None => Ok(ieval.none(ix)),
+        },
+        35 => {
+            let input = ibuiltin.list_bytes(a[4], sp)?
+            Ok(res_bytes(ix, it.proc.run_capture(a[1].s, ibuiltin.str_list(a[2]), a[3].s, input, a[5].i)))
+        }
+        _ => {
+            let code = a[1].i
+            if code < 0 or code > 255 { return ieval.trap("exit status {code} is out of range", sp) }
+            it.con.flush()
+            Err(CExit(code))
+        }
+    }
+}
+
+fn fs_op(it: mut ieval.Interp, id: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    let f = it.fss[a[0].j]
+    let ix = it.ix
+    if id == 15 { return Ok(new_fs(mut it, f.read_only())) }
+    let p = a[1].s
+    match id {
+        0 => match f.read(p) {
+            Ok(s) => Ok(ieval.ok(ix, ival.vstr(s))),
+            Err(e) => Ok(ieval.err(ix, ioerr(ix, e))),
+        },
+        1 => Ok(res_unit(ix, f.write(p, a[2].s))),
+        2 => Ok(res_unit(ix, f.append(p, a[2].s))),
+        3 => Ok(res_bytes(ix, f.read_bytes(p))),
+        4 => {
+            let b = ibuiltin.list_bytes(a[2], sp)?
+            Ok(res_unit(ix, f.write_bytes(p, b)))
+        }
+        5 => {
+            let b = ibuiltin.list_bytes(a[2], sp)?
+            Ok(res_unit(ix, f.append_bytes(p, b)))
+        }
+        6 => Ok(res_unit(ix, f.truncate(p, a[2].i))),
+        7 => Ok(ival.vbool(f.exists(p))),
+        8 => Ok(res_unit(ix, f.remove(p))),
+        9 => match f.list(p) {
+            Ok(ns) => {
+                var out: List[ival.Val] = []
+                for n in ns { out.push(ival.vstr(n)) }
+                Ok(ieval.ok(ix, ival.vlist(out)))
+            }
+            Err(e) => Ok(ieval.err(ix, ioerr(ix, e))),
+        },
+        10 => Ok(res_unit(ix, f.mkdir(p))),
+        11 => Ok(res_unit(ix, f.mkdir_one(p))),
+        12 => Ok(res_unit(ix, f.rename(p, a[2].s))),
+        13 => Ok(ival.vbool(f.is_dir(p))),
+        _ => Ok(new_fs(mut it, f.within(p))),
+    }
+}
+
+// ---- blocking sockets on the interpreter's own poller ----
+
+fn pump(it: mut ieval.Interp) {
+    let evs = it.bp.wait(-1)
+    for e in evs {
+        match e {
+            Accepted(l, c) => {
+                var q = it.net_state.accq.get(l).unwrap_or([])
+                q.push(c)
+                it.net_state.accq[l] = q
+            }
+            Data(c, s) => {
+                var b = it.net_state.buf.get(c).unwrap_or([])
+                b.extend(s.bytes())
+                it.net_state.buf[c] = b
+            }
+            Closed(c) => it.net_state.eof[c] = true,
+            Timeout => {}
+        }
+    }
+}
+
+fn buffered(it: mut ieval.Interp, c: Int) -> List[Int] { it.net_state.buf.get(c).unwrap_or([]) }
+fn at_eof(it: mut ieval.Interp, c: Int) -> Bool { it.net_state.eof.get(c).unwrap_or(false) }
+
+fn conn_val(ix: ieval.Ix, r: Result[Int, IoError]) -> ival.Val {
+    match r {
+        Ok(c) => ieval.ok(ix, ival.vcap(ival.CAP_CONN, c)),
+        Err(e) => ieval.err(ix, ioerr(ix, e)),
+    }
+}
+
+fn net_op(it: mut ieval.Interp, id: Int, a: List[ival.Val]) -> ival.Val {
+    let ix = it.ix
+    match id {
+        16 => match it.bp.listen(a[1].i) {
+            Ok(l) => ieval.ok(ix, ival.vcap(ival.CAP_LISTENER, l)),
+            Err(e) => ieval.err(ix, ioerr(ix, e)),
+        },
+        17 => conn_val(ix, it.bp.connect(a[1].s, a[2].i)),
+        18 => ival.vint(it.bp.port(a[0].j)),
+        19 => {
+            let l = a[0].j
+            while it.net_state.accq.get(l).unwrap_or([]).is_empty() { pump(mut it) }
+            var q = it.net_state.accq[l]
+            let c = q.remove(0)
+            it.net_state.accq[l] = q
+            conn_val(ix, Ok(c))
+        }
+        20 => {
+            let c = a[0].j
+            while true {
+                let b = buffered(mut it, c)
+                match b.index_of(10) {
+                    Some(i) => {
+                        it.net_state.buf[c] = b.slice(i + 1, b.len())
+                        return ieval.ok(ix, ieval.some(ix, ival.vstr(line_text(b.slice(0, i)))))
+                    }
+                    None => {}
+                }
+                if at_eof(mut it, c) {
+                    if b.is_empty() { return ieval.ok(ix, ieval.none(ix)) }
+                    it.net_state.buf[c] = []
+                    return ieval.ok(ix, ieval.some(ix, ival.vstr(line_text(b))))
+                }
+                pump(mut it)
+            }
+            ival.unit()
+        }
+        21 => {
+            let c = a[0].j
+            let n = a[1].i.max(0)
+            while buffered(mut it, c).len() < n and not at_eof(mut it, c) { pump(mut it) }
+            let b = buffered(mut it, c)
+            let k = n.min(b.len())
+            it.net_state.buf[c] = b.slice(k, b.len())
+            ieval.ok(ix, ival.vstr(Str.from_utf8_lossy(b.slice(0, k))))
+        }
+        _ => match it.bp.send(a[0].j, a[1].s) {
+            Ok(_) => ieval.ok(ix, ival.unit()),
+            Err(Failed(m)) => {
+                let msg = if m.starts_with("send: ") { "write: " + m.slice(6, m.len()) } else { m }
+                ieval.err(ix, ioerr(ix, Failed(msg)))
+            }
+            Err(e) => ieval.err(ix, ioerr(ix, e)),
+        },
+    }
+}
+
+// A line as Conn.read_line returns it: one trailing "\r" removed, invalid UTF-8 replaced.
+fn line_text(b: List[Int]) -> Str {
+    let n = b.len()
+    if n > 0 and b[n - 1] == 13 { Str.from_utf8_lossy(b.slice(0, n - 1)) } else { Str.from_utf8_lossy(b) }
+}
+
+// ---- pollers ----
+
+fn event(ix: ieval.Ix, e: NetEvent) -> ival.Val {
+    match e {
+        Accepted(l, c) => ival.venum(ix.ev, 0, [ival.vint(l), ival.vint(c)]),
+        Data(c, s) => ival.venum(ix.ev, 1, [ival.vint(c), ival.vstr(s)]),
+        Closed(c) => ival.venum(ix.ev, 2, [ival.vint(c)]),
+        Timeout => ival.venum(ix.ev, 3, []),
+    }
+}
+
+fn poller_op(it: mut ieval.Interp, id: Int, a: List[ival.Val], sp: ckast.Span) -> Result[ival.Val, ieval.Ctl] {
+    let ix = it.ix
+    if id == 23 {
+        let k = it.net_state.npollers
+        if k == 0 { it.pp0 = it.net.poller() }
+        else if k == 1 { it.pp1 = it.net.poller() }
+        else if k == 2 { it.pp2 = it.net.poller() }
+        else if k == 3 { it.pp3 = it.net.poller() }
+        else { return ieval.trap("interp: a program may create at most 4 pollers", sp) }
+        it.net_state.npollers += 1
+        return Ok(ival.vcap(ival.CAP_POLLER, k))
+    }
+    let w = a[0].j
+    match id {
+        24 => Ok(res_int(ix, if w == 0 { it.pp0.listen(a[1].i) } else if w == 1 { it.pp1.listen(a[1].i) } else if w == 2 { it.pp2.listen(a[1].i) } else { it.pp3.listen(a[1].i) })),
+        25 => {
+            let h = a[1].s
+            let port = a[2].i
+            Ok(res_int(ix, if w == 0 { it.pp0.connect(h, port) } else if w == 1 { it.pp1.connect(h, port) } else if w == 2 { it.pp2.connect(h, port) } else { it.pp3.connect(h, port) }))
+        }
+        26 => Ok(ival.vint(if w == 0 { it.pp0.port(a[1].i) } else if w == 1 { it.pp1.port(a[1].i) } else if w == 2 { it.pp2.port(a[1].i) } else { it.pp3.port(a[1].i) })),
+        27 => {
+            let t = a[1].i
+            let evs = if w == 0 { it.pp0.wait(t) } else if w == 1 { it.pp1.wait(t) } else if w == 2 { it.pp2.wait(t) } else { it.pp3.wait(t) }
+            var out: List[ival.Val] = []
+            for e in evs { out.push(event(ix, e)) }
+            Ok(ival.vlist(out))
+        }
+        28 => {
+            let c = a[1].i
+            let d = a[2].s
+            Ok(res_unit(ix, if w == 0 { it.pp0.send(c, d) } else if w == 1 { it.pp1.send(c, d) } else if w == 2 { it.pp2.send(c, d) } else { it.pp3.send(c, d) }))
+        }
+        _ => {
+            let c = a[1].i
+            if w == 0 { it.pp0.close(c) } else if w == 1 { it.pp1.close(c) } else if w == 2 { it.pp2.close(c) } else { it.pp3.close(c) }
+            Ok(ival.unit())
+        }
+    }
+}

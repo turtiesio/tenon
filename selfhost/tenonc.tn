@@ -13,6 +13,7 @@
 // only when $TENON_KEEP_C is set; unlike the bootstrap it keeps no build cache.
 import front
 import emit
+import interp
 
 fn usage(con: Console) -> Int {
     con.eprintln("usage:\n  tenonc check FILE [ROOT]\n  tenonc emit FILE [--root DIR]\n  tenonc build FILE [-o OUT] [-O0] [--root DIR]")
@@ -120,6 +121,26 @@ fn build(sys: Sys, file: Str, args: List[Str]) -> Int {
     0
 }
 
+// run [--root DIR] FILE [ARGS...]: interpret FILE with ARGS as its arguments,
+// ending with the program's own exit status (also a trap's 70 or 72).
+fn run(sys: Sys, args: List[Str]) -> Int {
+    var i = 0
+    var root = sys.proc.env("TENON_ROOT").unwrap_or(".")
+    if args.len() >= 2 and args[0] == "--root" {
+        root = args[1]
+        i = 2
+    }
+    if i >= args.len() { return usage(sys.console) }
+    match front.load(sys.fs, root, args[i]) {
+        Ok(fr) => {
+            let status = interp.run(sys, fr, args.slice(i + 1, args.len()))
+            sys.proc.exit(status)
+            status
+        }
+        Err(f) => fail(sys.console, f),
+    }
+}
+
 fn main(sys: Sys) -> Int {
     let con = sys.console
     let args = sys.args
@@ -135,6 +156,7 @@ fn main(sys: Sys) -> Int {
             Err(status) => status,
         },
         "build" => build(sys, args[1], rest),
+        "run" => run(sys, rest),
         _ => usage(con),
     }
 }
