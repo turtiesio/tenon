@@ -1,0 +1,2 @@
+// an impl has no visibility
+pub impl Shape for Circle {}

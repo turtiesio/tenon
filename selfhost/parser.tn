@@ -473,7 +473,7 @@ fn Parser.fn_decl_in(mut self, is_extern: Bool, mode: Int) -> Result[FnDecl, Par
     var owner: Option[Ty] = None
     var name = first
     if mode != 0 and (self.is_sym(".") or (self.is_sym("[") and self.owner_follows())) {
-        return Err(err_at(first_at, "a method of a trait or impl is named without its type: 'fn {first}(self, ...)'"))
+        return Err(err_at(first_at, "a method of a trait or impl is named without a type: remove '{first}.'"))
     }
     if self.is_sym("[") and self.owner_follows() {
         self.advance()

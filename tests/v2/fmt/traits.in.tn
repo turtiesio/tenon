@@ -1,0 +1,13 @@
+pub   trait Shape{
+fn area(self)->Int
+  fn name(self)->Str{"shape"}
+    fn pair[U](self,u:U)->(Self,U);
+}
+impl [T:Show+Eq,U] Shape for Pair[T,U]{
+fn area(self)->Int{0}
+fn pair[V](self,v:V)->(Pair[T,U],V){(self,v)}
+}
+fn total[T:Shape+Eq](xs:List[T],d:dyn Shape)->List[dyn Shape]{
+    let ds:List[dyn Shape]=[dyn Shape(xs[0]),dyn  Shape(d)]
+      ds
+}

@@ -1,0 +1,2 @@
+// trait, impl and dyn are keywords
+trait impl dyn Self traits impls dyns

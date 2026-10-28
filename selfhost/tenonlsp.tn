@@ -277,10 +277,9 @@ fn Server.definition(self, d: Doc, line: Int, ch: Int) -> json.Json {
     let Some(q) = self.query(d, line) else { return JNull }
     let (l, c) = lsppos.from_lsp(q.text, q.starts, line, ch)
     let Some(f) = lspquery.find(q, lsppos.offset(q.text, q.starts, l, c)) else { return JNull }
-    let Some((fi, dl, dc)) = lspquery.definition(q, f) else { return JNull }
-    let path = q.file_path(fi)
+    let Some((fi, dl0, dc)) = lspquery.definition(q, f) else { return JNull }
+    let (path, text, dl) = q.locate(fi, dl0)
     let uri = if fi == 1 { d.uri } else { self.uri_of(path) }
-    let text = q.files[fi].1
     let starts = lsppos.line_starts(text)
     let a = lsppos.offset(text, starts, dl, dc)
     JObj([("uri", JStr(uri)), ("range", range(text, starts, a, lsppos.token_end(text, a)))])

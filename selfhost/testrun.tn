@@ -7,6 +7,12 @@
 //   DIR/reject/NAME.tn   must fail to compile; first line `// error: TEXT`
 //                        names a substring of the expected diagnostic
 //
+//   DIR/lex/NAME.tn      under a v2/ directory (tenonc-only syntax, which the
+//   DIR/parse/NAME.tn    bootstrap cannot cross-check: tools/selfhost.sh skips
+//                        v2/): `tenonc tokens` / `tenonc ast` must print
+//                        NAME.tokens / NAME.ast (--bless writes them). The
+//                        other lex/parse directories are tools/selfhost.sh's.
+//
 // Optional first-line directives in run tests: `// stdin: TEXT` (\n escapes,
 // and \xHH for any byte, so stdin can be invalid UTF-8) and `// args: A B C`.
 // Files whose first line is `// module` are imported by tests, not run.
@@ -131,6 +137,20 @@ fn check_run(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
     }
 }
 
+// A lexer or parser golden test: what `tenonc CMD NAME.tn` prints is NAME.EXT.
+fn check_golden(sys: Sys, cx: Ctx, tn: Str, cmd: Str, ext: Str) -> Result[Unit, Str] {
+    let (dir, name) = split_path(tn)
+    let o = run_cmd(sys.proc, cx.exe, [cmd, name], dir, [])
+    let got = o.out + o.err
+    let golden = tn.slice(0, tn.len() - 3) + "." + ext
+    match sys.fs.read(golden) {
+        Ok(g) if g == got => Ok(()),
+        _ if cx.bless => sys.fs.write(golden, got).map_err(fn(e) => "{e}"),
+        Ok(g) => Err("output of `tenonc " + cmd + "` differs from " + golden + "\n--- expected\n" + g + "--- got\n" + got),
+        Err(_) => Err("missing " + golden + " (run `tenonc test --bless`)\n--- got\n" + got),
+    }
+}
+
 fn check_reject(sys: Sys, cx: Ctx, tn: Str) -> Result[Unit, Str] {
     let src = sys.fs.read(tn).map_err(fn(e) => "{e}")?
     let want = directive(src, "error").ok_or("reject test needs a first line `// error: TEXT`")?
@@ -175,12 +195,19 @@ pub fn main(sys: Sys, args: List[Str], root0: Str) -> Int {
     let root = absolute(p, root0)
     let exe0 = p.env("TENONC").unwrap_or("tenonc")
     let exe = if exe0.contains("/") { absolute(p, exe0) } else { exe0 }
-    var jobs: List[(Bool, Str)] = []
+    // 0 run, 1 reject, 2 lex, 3 parse
+    var jobs: List[(Int, Str)] = []
     for d in dirs {
-        for f in files(sys.fs, front.join(d, "run")) { jobs.push((true, f)) }
-        for f in files(sys.fs, front.join(d, "reject")) { jobs.push((false, f)) }
+        for f in files(sys.fs, front.join(d, "run")) { jobs.push((0, f)) }
+        for f in files(sys.fs, front.join(d, "reject")) { jobs.push((1, f)) }
+        if d.split("/").contains("v2") {
+            for f in files(sys.fs, front.join(d, "lex")) { jobs.push((2, f)) }
+            for f in files(sys.fs, front.join(d, "parse")) { jobs.push((3, f)) }
+        }
     }
-    let runs = jobs.count(fn(j) => j.0)
+    let runs = jobs.count(fn(j) => j.0 == 0)
+    let rejects = jobs.count(fn(j) => j.0 == 1)
+    let goldens = jobs.len() - runs - rejects
     if worker != "" {
         // one worker: the jobs i with i % n == k
         let (ks, ns) = worker.split_once("/").unwrap_or(("0", "1"))
@@ -190,8 +217,13 @@ pub fn main(sys: Sys, args: List[Str], root0: Str) -> Int {
         var failed = 0
         for j in 0..jobs.len() {
             if j % n == k {
-                let (is_run, path) = jobs[j]
-                let r = if is_run { check_run(sys, cx, path) } else { check_reject(sys, cx, path) }
+                let (kind, path) = jobs[j]
+                let r = match kind {
+                    0 => check_run(sys, cx, path),
+                    1 => check_reject(sys, cx, path),
+                    2 => check_golden(sys, cx, path, "tokens", "tokens"),
+                    _ => check_golden(sys, cx, path, "ast", "ast"),
+                }
                 match r {
                     Ok(_) => {}
                     Err(e) => {
@@ -244,6 +276,7 @@ pub fn main(sys: Sys, args: List[Str], root0: Str) -> Int {
         failed += 1
     }
     let secs = (sys.clock.mono_ns() - start).to_float() / 1000000000.0
-    con.println("tests: {runs} run (x2 backends), {jobs.len() - runs} reject, {failed} failed, {secs:.1}s")
+    let more = if goldens > 0 { ", {goldens} lex/parse" } else { "" }
+    con.println("tests: {runs} run (x2 backends), {rejects} reject" + more + ", {failed} failed, {secs:.1}s")
     if failed == 0 { 0 } else { 1 }
 }

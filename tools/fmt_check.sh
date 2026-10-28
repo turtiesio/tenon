@@ -12,7 +12,7 @@
 #   3. formatting is idempotent: the formatted text is in canonical layout;
 #   4. a file is refused (left unchanged) exactly when `tenonc ast` cannot
 #      parse it; files that do not parse are exempt from 1;
-#   5. tests/fmt/NAME.in.tn formats to tests/fmt/NAME.out.tn.
+#   5. tests/fmt/NAME.in.tn formats to tests/fmt/NAME.out.tn (and tests/v2/fmt).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 T=target/release/tenon
@@ -94,13 +94,13 @@ with ThreadPoolExecutor(8) as ex:
         problems += p
 
 # 5. golden tests
-pairs = sorted(f[:-6] for f in os.listdir("tests/fmt") if f.endswith(".in.tn"))
+pairs = sorted(os.path.join(d, f[:-6]) for d in ["tests/fmt", "tests/v2/fmt"] for f in os.listdir(d) if f.endswith(".in.tn"))
 for name in pairs:
-    src = open(f"tests/fmt/{name}.in.tn").read()
-    want = open(f"tests/fmt/{name}.out.tn").read()
+    src = open(f"{name}.in.tn").read()
+    want = open(f"{name}.out.tn").read()
     r = run(F, "-", stdin=src)
     if r.returncode != 0 or r.stdout != want:
-        problems.append(f"tests/fmt/{name}.in.tn: does not format to {name}.out.tn{': ' + r.stderr.strip() if r.stderr else ''}")
+        problems.append(f"{name}.in.tn: does not format to {os.path.basename(name)}.out.tn{': ' + r.stderr.strip() if r.stderr else ''}")
 
 for p in problems:
     print("FAIL", p)

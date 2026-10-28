@@ -9,7 +9,10 @@ diagnostics (equal to `tenon check` on the same text, parse errors too, from
 unsaved buffers), hover, go to definition (locals, functions, types, fields,
 variants, an imported module, the prelude) and completion (after `.` and at
 the start of a statement), and a file in a package (docs/packages.md):
-imports resolved through tenon.lock, a missing lock as the diagnostic. Also runs the JSON tests (selfhost/jsontest.tn)
+imports resolved through tenon.lock, a missing lock as the diagnostic; traits
+(tests/v2/lsp/traits.tn: hover and definition of traits and of trait methods
+called on a type parameter, a dyn value and a concrete type, which goes to
+the impl; lib/v2/prelude.tn; completion). Also runs the JSON tests (selfhost/jsontest.tn)
 and the VS Code client (editors/vscode/extension.js: `node --check`, then
 tools/lsp_client_test.js against the server; skipped without node), and
 reports how long the server takes to check selfhost/tenonc.tn.
@@ -368,6 +371,51 @@ def completions(srv, main):
     edit(22, main.text)
 
 
+def traits(srv):
+    doc = Doc(os.path.join(ROOT, "tests", "v2", "lsp", "traits.tn"))
+    srv.notify("textDocument/didOpen", {"textDocument": {"uri": doc.uri, "languageId": "tenon", "version": 1, "text": doc.text}})
+    expect("diagnostics of traits.tn", srv.diagnostics(doc.uri), [])
+    v2 = os.path.join(ROOT, "lib", "v2", "prelude.tn")
+    for (ctx, word), want in [
+        (("c.area()", "area"), "fn Circle.area(self) -> Int\n```\n\nin impl Shape for Circle"),
+        (("x.area()", "area"), "fn Shape.area(self) -> Int\n```\n\nhere: `Int`\n\nThe area, rounded down."),
+        (("d.area()", "area"), "fn Shape.area(self) -> Int"),
+        (("c.label()", "label"), "fn Shape.label(self) -> Str\n```\n\ndefault method of trait Shape"),
+        (("T: Shape", "Shape"), "trait Shape {\n    fn area(self) -> Int\n    fn label(self) -> Str { ... }\n}\n```\n\nThings with an area."),
+        (("dyn Shape(c)", "Shape"), "trait Shape {"),
+        (("List[dyn Shape]", "Shape"), "trait Shape {"),
+        (("impl Shape", "Shape"), "trait Shape {"),
+        (("trait Shape", "Shape"), "trait Shape {"),
+        (("+ Show", "Show"), "trait Show {\n    fn to_str(self) -> Str\n}"),
+    ]:
+        got = hover(srv, doc, ctx, word)
+        if got is None or not got.startswith(want):
+            fail("hover of %r in %r:\n  got  %r\n  want %r..." % (word, ctx, got, want))
+    for (ctx, word), want in [
+        (("c.area()", "area"), location(doc.path, "fn area(self) -> Int {", "area")),
+        (("x.area()", "area"), location(doc.path, "fn area(self) -> Int\n", "area")),
+        (("d.area()", "area"), location(doc.path, "fn area(self) -> Int\n", "area")),
+        (("c.label()", "label"), location(doc.path, "fn label", "label")),
+        (("T: Shape", "Shape"), location(doc.path, "trait Shape", "Shape")),
+        (("dyn Shape(c)", "Shape"), location(doc.path, "trait Shape", "Shape")),
+        (("impl Shape", "Shape"), location(doc.path, "trait Shape", "Shape")),
+        (("+ Show", "Show"), location(v2, "pub trait Show", "Show")),
+    ]:
+        expect("definition of %r in %r" % (word, ctx), definition(srv, doc, ctx, word), want)
+    anchor = "    let all: List[dyn Shape] = [d]\n"
+    line = doc.text[:doc.text.index(anchor)].count("\n")
+    for v, (recv, want) in enumerate([("d", ["area", "label", "to_str"]), ("c", ["r", "area", "label"])]):
+        text = doc.text.replace(anchor, anchor + "    " + recv + ".\n")
+        srv.notify("textDocument/didChange", {"textDocument": {"uri": doc.uri, "version": v + 2}, "contentChanges": [{"text": text}]})
+        srv.diagnostics(doc.uri)
+        items = completion(srv, Doc(doc.path, text), line + 1, 4 + len(recv) + 1)
+        missing = [l for l in want if l not in items]
+        if missing:
+            fail("completion after %r.: missing %s (got %s)" % (recv, missing, sorted(items)))
+    srv.notify("textDocument/didClose", {"textDocument": {"uri": doc.uri}})
+    srv.diagnostics(doc.uri)
+
+
 def packages(srv, tmp):
     """A file in a package imports a path dependency (after `tenonc fetch`)."""
     ws = os.path.realpath(tmp)
@@ -434,6 +482,7 @@ def main():
     degraded(srv, main_doc)
     definitions(srv, main_doc)
     completions(srv, main_doc)
+    traits(srv)
     packages(srv, tmp)
     open_ms, hover_ms = latency(srv)
     expect("shutdown", srv.request("shutdown").get("result", "missing"), None)

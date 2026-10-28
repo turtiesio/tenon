@@ -1,0 +1,2 @@
+// traits have no type parameters (their methods may)
+trait Box[T] {}

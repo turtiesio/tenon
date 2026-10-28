@@ -1,0 +1,4 @@
+// `dyn Trait(value)` converts; the value is in parentheses
+fn main() {
+    let d = dyn Shape
+}

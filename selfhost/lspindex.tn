@@ -36,7 +36,8 @@ pub fn braces(text: Str) -> Map[Int, (Int, Int)] {
 
 // ---- every node of a file ----
 
-pub enum Node { NExpr(ckast.Expr), NPat(ckast.Pat), NType(ckast.TExpr) }
+// NTrait: a trait named in a bound or an impl header (the name as written).
+pub enum Node { NExpr(ckast.Expr), NPat(ckast.Pat), NType(ckast.TExpr), NTrait(Str, ckast.Span) }
 
 struct Walk { out: List[(Int, Node)], fi: Int }
 
@@ -52,10 +53,24 @@ pub fn nodes(prog: ckast.Program, file: Int) -> List[(Int, Node)] {
             for v in e.variants { for t in v.fields { w.ty(t) } }
         }
     }
+    for t in prog.traits {
+        if t.sp.file == file {
+            for m in t.methods {
+                for p in m.params { w.ty(p.ty) }
+                w.opt_ty(m.ret)
+            }
+        }
+    }
+    for im in prog.impls {
+        if im.sp.file == file { w.out.push((-1, NTrait(im.trait_name, im.trait_sp))) }
+    }
     for i in 0..prog.fns.len() {
         let f = prog.fns[i]
         if f.sp.file != file { continue }
         w.fi = i
+        for b in f.bounds {
+            for t in b.traits { w.out.push((i, NTrait(t.0, t.1))) }
+        }
         match f.owner {
             Some(o) => w.ty(o),
             None => {}

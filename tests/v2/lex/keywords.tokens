@@ -1,0 +1,9 @@
+2:1 kw trait
+2:7 kw impl
+2:12 kw dyn
+2:16 ident Self
+2:21 ident traits
+2:28 ident impls
+2:34 ident dyns
+2:38 sym ;
+3:1 eof 

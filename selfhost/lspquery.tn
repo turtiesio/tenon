@@ -35,6 +35,8 @@ pub enum Target {
     TEnum(Int),
     TModule(Str),
     TBuiltin(Str),
+    TTrait(Int),
+    TTraitMethod(Int, Int), // trait, method: a call on a bounded type parameter or a dyn value
 }
 
 // `start`, `end`: the identifier's byte offsets in the buffer; `ty`: the type of the expression there, if known.
@@ -57,6 +59,16 @@ fn show(t: cktypes.Ty) -> Str {
         Fun(a, r) => "fn(" + a.map(show).join(", ") + ") -> " + show(r),
         Par(p) => p,
         TVar(_) => "_",
+    }
+}
+
+// A trait name as written in the buffer.
+fn Query.trait_target(self, n: Str) -> Option[Target] {
+    var env = self.c.env
+    env.cur = 1
+    match env.resolve_trait(n, ckast.Span { file: 1, line: 0, col: 0 }) {
+        Ok(i) => Some(TTrait(i)),
+        Err(_) => None,
     }
 }
 
@@ -86,6 +98,7 @@ fn Query.res_target(self, id: Int, name: Str, fi: Int, use: (Int, Int)) -> Optio
         Some(RVariant(e, v, _)) => Some(TVariant(e, v)),
         Some(RStruct(i)) => Some(TStruct(i)),
         Some(RToStr) => Some(TBuiltin("to_str")),
+        Some(RTrait(tr, mi, _, _)) => Some(TTraitMethod(tr, mi)),
         _ => if self.c.env.imports[1].contains(name) { Some(TModule(name)) } else { None },
     }
 }
@@ -112,10 +125,12 @@ pub fn find(q: Query, at: Int) -> Option[Found] {
             NExpr(e) => q.expr_hit(e, fi, name, b, start, dot),
             NPat(p) => q.pat_hit(p, fi, name, b, start),
             NType(t) => match t.k {
+                TNamed(tn, _) if tn.starts_with("dyn ") => q.trait_hit(tn.slice(4, tn.len()), q.after_dyn(t.sp), name, b, start),
                 TNamed(tn, _) if q.spells(t.sp, b, tn) => q.type_target(tn).map(fn(x) => (x, None)),
                 TNamed(tn, _) if lspindex.at(t.sp) == start and tn.starts_with(name + ".") => Some((TModule(name), None)),
                 _ => None,
             },
+            NTrait(tn, sp) => q.trait_hit(tn, sp, name, b, start),
         }
         match hit {
             Some((t, ty)) => return Some(Found { target: t, ty, start: a, end: b }),
@@ -128,10 +143,28 @@ pub fn find(q: Query, at: Int) -> Option[Found] {
     }
 }
 
+// The position after `dyn ` at sp (the trait's name).
+fn Query.after_dyn(self, sp: ckast.Span) -> ckast.Span {
+    let t = self.file_text(sp.file)
+    let st = lsppos.line_starts(t)
+    var o = lsppos.offset(t, st, sp.line, sp.col) + 3
+    while o < t.len() and t.byte(o) == ' ' { o += 1 }
+    let lc = lsppos.line_col(st, o)
+    ckast.Span { file: sp.file, line: lc.0, col: lc.1 }
+}
+
+// A trait named `tn` at sp (`module.Trait` included): the trait, or the module.
+fn Query.trait_hit(self, tn: Str, sp: ckast.Span, name: Str, b: Int, start: (Int, Int)) -> Option[(Target, Option[cktypes.Ty])] {
+    if self.spells(sp, b, tn) { return self.trait_target(tn).map(fn(x) => (x, None)) }
+    if lspindex.at(sp) == start and tn.starts_with(name + ".") { return Some((TModule(name), None)) }
+    None
+}
+
 fn Query.expr_hit(self, e: ckast.Expr, fi: Int, name: Str, b: Int, start: (Int, Int), dot: (Int, Int)) -> Option[(Target, Option[cktypes.Ty])] {
     let here = lspindex.at(e.sp)
     let ty = self.c.types.get(e.id)
     match e.k {
+        XDyn(tn, _) => self.trait_hit(tn, self.after_dyn(e.sp), name, b, start),
         XName(n) if n == name and here == start => Some((self.res_target(e.id, n, fi, start)?, ty)),
         XField(r, f) if f == name and here == dot => Some((self.field_target(r, e.id)?, ty)),
         XMethod(_, m, _) if m == name and here == dot => Some((self.res_target(e.id, m, fi, start)?, ty)),
@@ -207,12 +240,44 @@ fn Query.decl_hit(self, name: Str, a: Int, start: (Int, Int)) -> Option[(Target,
             return Some((TModule(name), None))
         }
     }
+    for i in 0..prog.traits.len() {
+        let t = prog.traits[i]
+        if t.sp.file != 1 { continue }
+        if t.name == name and lsppos.find_word(self.text, name, self.off(t.sp)) == Some(a) { return Some((TTrait(i), None)) }
+        for mi in 0..t.methods.len() {
+            let m = t.methods[mi]
+            if m.name == name and lsppos.find_word(self.text, name, self.off(m.sp) + 2) == Some(a) { return Some((TTraitMethod(i, mi), None)) }
+        }
+    }
     None
 }
 
 // ---- where things are declared ----
 
 fn Query.file_text(self, fi: Int) -> Str { self.files[fi].1 }
+
+// The first line of lib/v2/prelude.tn inside the prelude's text (front.gather
+// appends it after lib/prelude.tn; that file starts with this marker), or -1.
+fn Query.v2_line(self) -> Int {
+    let lines = self.files[0].1.lines()
+    for i in 0..lines.len() {
+        if lines[i].starts_with("// The v2 prelude:") { return i + 1 }
+    }
+    -1
+}
+
+// A position in source file `fi` as a file on disk: its path, its text and
+// the line there (the prelude's text is two files).
+pub fn Query.locate(self, fi: Int, line: Int) -> (Str, Str, Int) {
+    if fi == 0 {
+        let v = self.v2_line()
+        if v > 0 and line >= v {
+            let rest = self.files[0].1.lines().slice(v - 1, self.files[0].1.lines().len()).join("\n") + "\n"
+            return (join(self.root, "lib/v2/prelude.tn"), rest, line - v + 1)
+        }
+    }
+    (self.file_path(fi), self.files[fi].1, line)
+}
 
 // The path of source file `fi` on disk.
 pub fn Query.file_path(self, fi: Int) -> Str {
@@ -282,6 +347,16 @@ pub fn definition(q: Query, f: Found) -> Option[(Int, Int, Int)] {
             Some((i, 1, 1))
         }
         TBuiltin(_) => None,
+        TTrait(i) => {
+            let t = prog.traits[i]
+            let p = q.word_after(t.sp, t.name)
+            Some((t.sp.file, p.0, p.1))
+        }
+        TTraitMethod(i, mi) => {
+            let m = prog.traits[i].methods[mi]
+            let p = q.word_after(ckast.Span { file: m.sp.file, line: m.sp.line, col: m.sp.col + 2 }, m.name)
+            Some((m.sp.file, p.0, p.1))
+        }
     }
 }
 
@@ -292,11 +367,20 @@ pub fn sig(q: Query, i: Int) -> Str {
     let f = q.c.env.fns[i]
     let d = q.c.prog.fns[i]
     if f.is_const { return "const " + d.name + ": " + show(f.ret) }
-    let name = match f.owner {
-        Some(o) => show(o) + "." + d.name,
-        None => plain(f.name),
+    let name = match f.origin {
+        ODefault(ti, _) => plain(q.c.env.traits[ti].name) + "." + d.name,
+        _ => match f.owner {
+            Some(o) => show(o) + "." + d.name,
+            None => plain(f.name),
+        },
     }
-    let tp = if d.tparams.is_empty() { "" } else { "[" + d.tparams.join(", ") + "]" }
+    // an impl's or a default's own type parameters only (not the impl's, not Self)
+    let own = match f.origin {
+        OImpl(ii) => d.tparams.slice(q.c.env.impls[ii].tparams.len(), d.tparams.len()),
+        ODefault(_, _) => d.tparams.slice(1, d.tparams.len()),
+        OFn => d.tparams,
+    }
+    let tp = if own.is_empty() { "" } else { "[" + own.join(", ") + "]" }
     var ps: List[Str] = []
     var j = 0
     for k in 0..f.params.len() {
@@ -354,6 +438,28 @@ fn Query.enum_text(self, i: Int) -> Str {
     "enum " + plain(e.name) + tp + " \{ " + vs.join(", ") + " }"
 }
 
+// `area(self) -> Int`, of method mi of trait ti
+fn trait_method_text(q: Query, ti: Int, mi: Int) -> Str {
+    let m = q.c.env.traits[ti].methods[mi]
+    var ps = [if m.self_kind == MutSelf { "mut self" } else { "self" }]
+    for k in 0..m.params.len() { ps.push(m.params[k].0 + ": " + (if m.muts[k] { "mut " } else { "" }) + show(m.params[k].1)) }
+    let tp = if m.tparams.is_empty() { "" } else { "[" + m.tparams.join(", ") + "]" }
+    let ret = if m.ret.is("Unit") { "" } else { " -> " + show(m.ret) }
+    m.name + tp + "(" + ps.join(", ") + ")" + ret
+}
+
+// `fn Shape.area(self) -> Int`
+pub fn trait_sig(q: Query, ti: Int, mi: Int) -> Str { "fn " + plain(q.c.env.traits[ti].name) + "." + trait_method_text(q, ti, mi) }
+
+fn Query.trait_text(self, ti: Int) -> Str {
+    let t = self.c.env.traits[ti]
+    var ms: List[Str] = []
+    for mi in 0..t.methods.len() {
+        ms.push("    fn " + trait_method_text(self, ti, mi) + (if t.methods[mi].default >= 0 { " \{ ... }" } else { "" }))
+    }
+    if ms.is_empty() { "trait " + plain(t.name) + " \{}" } else { "trait " + plain(t.name) + " \{\n" + ms.join("\n") + "\n}" }
+}
+
 fn code(s: Str) -> Str { "```tenon\n" + s + "\n```" }
 
 fn with_doc(s: Str, d: Str) -> Str { if d == "" { s } else { s + "\n\n" + d } }
@@ -367,7 +473,19 @@ pub fn hover_text(q: Query, f: Found) -> Str {
     }
     match f.target {
         TLocal(n, _, _) => code(n + ": " + if ty == "" { "_" } else { ty }),
-        TFunc(i) => with_doc(code(sig(q, i)), q.doc_comment(prog.fns[i].sp)),
+        TFunc(i) => {
+            let via = match q.c.env.fns[i].origin {
+                OImpl(ii) => "\n\nin impl " + plain(q.c.env.traits[q.c.env.impls[ii].tr].name) + " for " + show(q.c.env.impls[ii].target),
+                ODefault(ti, _) => "\n\ndefault method of trait " + plain(q.c.env.traits[ti].name),
+                OFn => "",
+            }
+            with_doc(code(sig(q, i)) + via, q.doc_comment(prog.fns[i].sp))
+        }
+        TTrait(i) => with_doc(code(q.trait_text(i)), q.doc_comment(prog.traits[i].sp)),
+        TTraitMethod(i, mi) => {
+            let here = if ty == "" { "" } else { "\n\nhere: `" + ty + "`" }
+            with_doc(code(trait_sig(q, i, mi)) + here, q.doc_comment(prog.traits[i].methods[mi].sp))
+        }
         TVariant(e, v) => {
             let here = if ty == "" or ty.starts_with("fn(") { "" } else { "\n\nhere: `" + ty + "`" }
             with_doc(code(q.variant_text(e, v) + "  // " + q.enum_text(e)) + here, q.doc_comment(prog.enums[e].sp))
@@ -417,6 +535,37 @@ fn add(out: mut List[json.Json], seen: mut Map[Str, Bool], label: Str, kind: Int
 
 fn Query.fn_kind(self, i: Int) -> Int { if self.c.env.fns[i].is_const { K_CONSTANT } else { K_FUNCTION } }
 
+// Fields and methods of a value of type t inside function fi (whose type
+// parameters' bounds give their methods).
+pub fn members_in(q: Query, t: cktypes.Ty, fi: Int) -> List[json.Json] {
+    var out: List[json.Json] = []
+    var seen: Map[Str, Bool] = [:]
+    let env = q.c.env
+    let trs = match t {
+        Par(p) => env.bound_map(fi).get(p).unwrap_or([]),
+        _ => match env.dyn_trait(t) {
+            Some(tr) => [tr],
+            None => [],
+        },
+    }
+    for tr in trs {
+        for mi in 0..env.traits[tr].methods.len() { add(mut out, mut seen, env.traits[tr].methods[mi].name, K_METHOD, trait_sig(q, tr, mi)) }
+    }
+    for x in members_of(q, t) {
+        match x {
+            JObj(kv) => match kv[0].1 {
+                JStr(l) if not seen.contains(l) => {
+                    seen[l] = true
+                    out.push(x)
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    out
+}
+
 // Fields and methods of a value of type t.
 pub fn members_of(q: Query, t: cktypes.Ty) -> List[json.Json] {
     var out: List[json.Json] = []
@@ -443,6 +592,14 @@ pub fn members_of(q: Query, t: cktypes.Ty) -> List[json.Json] {
                 }
                 if mine and f.self_kind != NoSelf and q.can_see(i) {
                     add(mut out, mut seen, q.c.prog.fns[i].name, K_METHOD, sig(q, i))
+                }
+            }
+            // the methods of the traits it implements (defaults included)
+            for im in env.impls {
+                if ckenv.match_ty(im.target, im.tparams, t).is_some() {
+                    for mi in 0..env.traits[im.tr].methods.len() {
+                        add(mut out, mut seen, env.traits[im.tr].methods[mi].name, K_METHOD, trait_sig(q, im.tr, mi))
+                    }
                 }
             }
         }
@@ -555,11 +712,11 @@ pub fn complete_member(q: Query, dot: Int) -> List[json.Json] {
     }
     // the receiver of `recv.member` written at this `.`
     let at = lsppos.line_col(q.starts, dot)
-    for (_, n) in q.nodes {
+    for (fi, n) in q.nodes {
         match n {
             NExpr(e) if lspindex.at(e.sp) == at => match e.k {
                 XField(x, _) | XMethod(x, _, _) => match q.c.types.get(x.id) {
-                    Some(t) => return members_of(q, t),
+                    Some(t) => return members_in(q, t, fi),
                     None => {}
                 },
                 _ => {}
