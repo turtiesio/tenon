@@ -1,0 +1,2 @@
+// error: 'let' needs a pattern that always matches
+fn main(sys: Sys) { let Sys = 1 }

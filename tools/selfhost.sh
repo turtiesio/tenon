@@ -33,7 +33,7 @@ one() {
   echo "RESULT $kind ${out:-ok}"
 }
 export -f one
-find src std tests programs selfhost bench study -name '*.tn' 2>/dev/null | sort \
+find bootstrap lib tests programs selfhost bench study -name '*.tn' 2>/dev/null | sort \
   | xargs -P 8 -I{} bash -c 'one "$@"' _ {} "$T" "$tmp" > "$tmp/results"
 grep -v '^RESULT ' "$tmp/results" || true
 n=$(grep -c '^RESULT ' "$tmp/results")

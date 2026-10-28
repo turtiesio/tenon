@@ -1,0 +1,2 @@
+// error: 'main' returns Unit, Int (the exit status) or Result[Unit, E]
+fn main(sys: Sys) -> Console { sys.console }

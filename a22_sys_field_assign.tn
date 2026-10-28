@@ -1,1 +1,0 @@
-fn main(sys: Sys) { sys.console = sys.console }

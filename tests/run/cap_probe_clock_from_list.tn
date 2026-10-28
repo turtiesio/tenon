@@ -1,0 +1,2 @@
+// Capability probe: an empty List[Clock] yields no Clock; indexing it traps.
+fn main(sys: Sys) { let xs: List[Clock] = []; let c = xs[0]; let n = c.now_ms() }

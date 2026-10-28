@@ -43,9 +43,9 @@ def main():
     # the runtime and the Tenon sources compiled into every program. The
     # interpreter, test runner and dump tools are checks, not trusted code.
     not_trusted = {"interp.rs", "builtins.rs", "codec.rs", "testrun.rs", "astdump.rs"}
-    rust = sorted("src/" + f for f in os.listdir(os.path.join(ROOT, "src")) if f.endswith(".rs") and f not in not_trusted)
-    std = sorted("std/" + f for f in os.listdir(os.path.join(ROOT, "std")) if f.endswith(".tn"))
-    trusted, rows = loc(rust + ["runtime/tenon.h", "src/prelude.tn"] + std)
+    rust = sorted("bootstrap/src/" + f for f in os.listdir(os.path.join(ROOT, "bootstrap", "src")) if f.endswith(".rs") and f not in not_trusted)
+    std = sorted("lib/std/" + f for f in os.listdir(os.path.join(ROOT, "lib", "std")) if f.endswith(".tn"))
+    trusted, rows = loc(rust + ["runtime/tenon.h", "lib/prelude.tn"] + std)
     bench = load("bench.json")
     fuzz = load("fuzz.json")
     study = load("study.json")

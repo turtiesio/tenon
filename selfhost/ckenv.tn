@@ -1,7 +1,7 @@
 // module (imported by the self-hosted checker)
 // Declarations: the tables of structs, enums and functions, type resolution
-// across modules, and the declaration checks of src/check.rs `declare`,
-// `check_recursion`, `check_main` and src/linear.rs `check_decls`.
+// across modules, and the declaration checks of bootstrap/src/check.rs `declare`,
+// `check_recursion`, `check_main` and bootstrap/src/linear.rs `check_decls`.
 
 import ckast
 import cktypes
@@ -21,7 +21,7 @@ pub struct FnInfo {
     pub sp: ckast.Span,
 }
 
-// What a name, call or pattern resolved to (src/check.rs `Res`).
+// What a name, call or pattern resolved to (bootstrap/src/check.rs `Res`).
 pub enum Res {
     RLocal(Str),
     RFn(Int, List[cktypes.Ty]),          // function index, type args (all tparams)
@@ -219,7 +219,7 @@ pub fn Env.enum_variants(self, t: cktypes.Ty) -> Option[List[(Str, List[cktypes.
 
 // The first part of t that derived equality cannot handle exactly: functions
 // and capabilities (and, for map keys, Float, since NaN != NaN). Looks through
-// struct fields and enum payloads (src/check_expr.rs `incomparable_part`).
+// struct fields and enum payloads (bootstrap/src/check_expr.rs `incomparable_part`).
 pub fn Env.incomparable_part(self, t: cktypes.Ty, key: Bool) -> Option[Str] {
     self.incomparable_walk(t, key, []).0
 }

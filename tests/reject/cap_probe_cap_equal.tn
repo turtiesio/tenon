@@ -1,0 +1,2 @@
+// error: values of type Fs cannot be compared
+fn main(sys: Sys) { let b = sys.fs == sys.fs }

@@ -1,0 +1,2 @@
+// error: cannot decode Fs: Fs is a capability
+fn main(sys: Sys) { let f: Result[Fs, Str] = decode("<Fs>") }

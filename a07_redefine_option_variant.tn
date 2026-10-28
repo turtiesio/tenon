@@ -1,2 +1,0 @@
-enum Mine { Some(Int) }
-fn main(sys: Sys) { }

@@ -1,0 +1,2 @@
+// Capability probe: panic() as a Console-typed value forges nothing; it traps before the capability is used.
+fn main(sys: Sys) { let c: Console = panic("x"); c.println("hi") }

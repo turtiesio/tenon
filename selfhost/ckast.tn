@@ -1,7 +1,7 @@
 // module (imported by the self-hosted checker)
 // The checker's syntax tree: the parser's tree plus file numbers and node ids
 // (the checker keeps types and resolutions in side tables keyed by id), and
-// the path rewriting of src/check.rs `fix_paths`.
+// the path rewriting of bootstrap/src/check.rs `fix_paths`.
 
 import parser
 
@@ -55,7 +55,7 @@ pub enum EK {
     XTry(Expr),
     XLambda(List[(Str, Option[TExpr])], Option[TExpr], Expr),
     XMutArg(Expr), // `mut place` as an argument to a `mut` parameter
-    XFmt(Expr, parser.Spec), // `{e:SPEC}` inside an XStr (src/ast.rs StrSeg::Expr with a spec)
+    XFmt(Expr, parser.Spec), // `{e:SPEC}` inside an XStr (bootstrap/src/ast.rs StrSeg::Expr with a spec)
 }
 pub struct Expr { pub id: Int, pub sp: Span, pub k: EK }
 // `fallback`: the `_` arm added for `if let` / `while let` (parser.tn `if_let`).
@@ -311,7 +311,7 @@ fn Conv.fn_decl(mut self, f: parser.FnDecl) -> FnDecl {
 }
 
 // Merge the parsed files (file 0 is the prelude, 1 the main file) into one
-// program, as src/main.rs `front` does, then rewrite paths.
+// program, as bootstrap/src/main.rs `front` does, then rewrite paths.
 pub fn convert(files: List[parser.Program], modules: List[Str]) -> Program {
     var prog = Program { structs: [], enums: [], fns: [], imports: [], modules }
     var c = Conv { file: 0, next: 0 }
@@ -490,7 +490,7 @@ pub fn leaves(b: Block, panic_is_prelude: Bool) -> Bool {
 }
 
 // Does this loop body contain a `break` for its own loop? A port of
-// src/check.rs `breaks`, including how it looks into nested statements.
+// bootstrap/src/check.rs `breaks`, including how it looks into nested statements.
 pub fn breaks(stmts: List[Stmt]) -> Bool {
     for s in stmts {
         let found = match s.k {
@@ -521,7 +521,7 @@ fn in_expr(e: Expr) -> Bool {
     children(e).any(in_expr)
 }
 
-// The expressions directly inside a statement, in src/interp.rs `visit_stmt` order.
+// The expressions directly inside a statement, in bootstrap/src/interp.rs `visit_stmt` order.
 pub fn stmt_exprs(s: Stmt) -> List[Expr] {
     match s.k {
         KLet(_, _, _, v, els) => match els {
@@ -552,7 +552,7 @@ fn block_exprs(b: Block) -> List[Expr] {
     out
 }
 
-// Direct sub-expressions, in src/interp.rs `visit_children` order.
+// Direct sub-expressions, in bootstrap/src/interp.rs `visit_children` order.
 pub fn children(e: Expr) -> List[Expr] {
     match e.k {
         XStr(xs) | XList(xs) | XTuple(xs) => xs,

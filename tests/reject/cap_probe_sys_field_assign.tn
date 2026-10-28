@@ -1,0 +1,2 @@
+// error: cannot mutate 'sys'; declare it with 'var'
+fn main(sys: Sys) { sys.console = sys.console }

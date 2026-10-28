@@ -1,0 +1,2 @@
+// error: cannot encode Console: Console is a capability
+fn main(sys: Sys) { let s = encode(sys.console) }

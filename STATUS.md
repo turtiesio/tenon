@@ -48,25 +48,25 @@ Non-blank, non-comment lines that must be correct for compiled programs to be co
 
 | File | Lines |
 |---|---|
-| `src/ast.rs` | 357 |
-| `src/check.rs` | 1013 |
-| `src/check_expr.rs` | 594 |
-| `src/diag.rs` | 36 |
-| `src/emit_body.rs` | 1037 |
-| `src/emit_builtins.rs` | 411 |
-| `src/emit_c.rs` | 678 |
-| `src/emit_ctl.rs` | 274 |
-| `src/exhaust.rs` | 158 |
-| `src/lexer.rs` | 443 |
-| `src/linear.rs` | 558 |
-| `src/main.rs` | 137 |
-| `src/parser.rs` | 928 |
-| `src/types.rs` | 186 |
-| `src/value.rs` | 322 |
+| `bootstrap/src/ast.rs` | 357 |
+| `bootstrap/src/check.rs` | 1013 |
+| `bootstrap/src/check_expr.rs` | 594 |
+| `bootstrap/src/diag.rs` | 36 |
+| `bootstrap/src/emit_body.rs` | 1037 |
+| `bootstrap/src/emit_builtins.rs` | 411 |
+| `bootstrap/src/emit_c.rs` | 678 |
+| `bootstrap/src/emit_ctl.rs` | 274 |
+| `bootstrap/src/exhaust.rs` | 158 |
+| `bootstrap/src/lexer.rs` | 443 |
+| `bootstrap/src/linear.rs` | 558 |
+| `bootstrap/src/main.rs` | 137 |
+| `bootstrap/src/parser.rs` | 928 |
+| `bootstrap/src/types.rs` | 186 |
+| `bootstrap/src/value.rs` | 322 |
 | `runtime/tenon.h` | 2248 |
-| `src/prelude.tn` | 547 |
-| `std/journal.tn` | 43 |
-| `std/regex.tn` | 686 |
+| `lib/prelude.tn` | 547 |
+| `lib/std/journal.tn` | 43 |
+| `lib/std/regex.tn` | 686 |
 
 ## Open regressions
 

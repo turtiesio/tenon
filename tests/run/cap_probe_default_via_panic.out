@@ -1,0 +1,3 @@
+exit: 70
+stderr: trap: x
+stderr:   at cap_probe_default_via_panic.tn:2:43

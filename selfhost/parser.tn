@@ -1,5 +1,5 @@
 // module (imported by astdump.tn)
-// Self-hosted parser: a second, independent implementation of src/parser.rs.
+// Self-hosted parser: a second, independent implementation of bootstrap/src/parser.rs.
 // `astdump FILE` must print exactly what `tenon ast FILE` prints.
 
 import lexer
@@ -27,7 +27,7 @@ pub struct Pattern { pub at: Pos, pub kind: Pat }
 
 pub enum Seg { SLit(Str), SExpr(Expr), SFmt(Expr, Spec) }
 
-// A format spec `{e:SPEC}`, as src/ast.rs FmtSpec:
+// A format spec `{e:SPEC}`, as bootstrap/src/ast.rs FmtSpec:
 //   [[fill]align]['0']width[',']['.'precision][x|X|b|o]   (every part optional)
 // align and radix are "" when absent, prec is -1.
 pub struct Spec {
@@ -42,7 +42,7 @@ fn spec_digits(cs: List[Str], i0: Int) -> Int {
     i
 }
 
-// The grammar check (messages as src/ast.rs FmtSpec::parse); type rules are
+// The grammar check (messages as bootstrap/src/ast.rs FmtSpec::parse); type rules are
 // in the checker (ckinfer.tn `fmt_spec`).
 pub fn parse_spec(text: Str) -> Result[Spec, Str] {
     let bad = "malformed format spec '" + text + "': "
@@ -972,7 +972,7 @@ fn Parser.if_expr(mut self) -> Result[Expr, ParseError] {
     Ok(Expr { at, kind: If(cond, then, els) })
 }
 
-// `if let` and `while let` are desugared by the parser, as src/parser.rs does
+// `if let` and `while let` are desugared by the parser, as bootstrap/src/parser.rs does
 // (see its `if_let` for the reasons):
 //   if let P = E { A } else B    =>  match E { P => { A }, _ => B }
 //   if let P = E { A }           =>  match E { P => { A }, _ => () }

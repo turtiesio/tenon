@@ -1,12 +1,12 @@
 // check FILE [ROOT]: the self-hosted checker (compare: tenon check FILE).
 // Prints `ok`, or the first diagnostic as `PATH:LINE:COL: error: MESSAGE`.
-// ROOT (default `.`) is the repository, where src/prelude.tn and the
-// standard library (std/) are read from.
+// ROOT (default `.`) is the repository, where lib/prelude.tn and the
+// standard library (lib/std/) are read from.
 import parser
 import ckast
 import checker
 
-// Standard library modules (src/main.rs `STD`).
+// Standard library modules (bootstrap/src/main.rs `STD`).
 fn std_modules() -> List[Str] { ["journal", "regex"] }
 
 // Path::parent, as the bootstrap uses it to find a module next to its importer.
@@ -33,7 +33,7 @@ fn main(sys: Sys) -> Int {
     }
     let path = sys.args[0]
     let root = if sys.args.len() == 2 { sys.args[1] } else { "." }
-    let prelude = match sys.fs.read(join(root, "src/prelude.tn")) {
+    let prelude = match sys.fs.read(join(root, "lib/prelude.tn")) {
         Ok(s) => s,
         Err(e) => {
             con.eprintln("check: cannot read the prelude: {e}")
@@ -74,7 +74,7 @@ fn main(sys: Sys) -> Int {
                             return report(con, files[i].0, im.1.line, im.1.col,
                                 "cannot find module '{name}' ({local} or the standard library)")
                         }
-                        match sys.fs.read(join(root, "std/" + name + ".tn")) {
+                        match sys.fs.read(join(root, "lib/std/" + name + ".tn")) {
                             Ok(text) => files.push(("<std>/" + name + ".tn", text)),
                             Err(e) => {
                                 con.eprintln("check: cannot read the standard library: {e}")

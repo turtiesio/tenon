@@ -1,0 +1,2 @@
+// error: 'push' mutates its receiver: cannot mutate 'sys'
+fn main(sys: Sys) { sys.args.push("x") }

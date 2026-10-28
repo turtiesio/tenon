@@ -1,1 +1,0 @@
-fn main(sys: Sys) { sys.console.println("{sys.fs} {sys.console} {sys.net} {sys.clock}") }

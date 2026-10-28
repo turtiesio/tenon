@@ -24,7 +24,7 @@ struct Queue { jobs: Map[Int, Job], next_id: Int, torn: Int, requeued: Int }
 
 fn max_attempts() -> Int { 3 }
 
-// Journal records are Rec values in the derived codec format (std/journal lines).
+// Journal records are Rec values in the derived codec format (lib/std/journal.tn lines).
 
 fn Queue.apply(mut self, r: Rec) {
     match r {

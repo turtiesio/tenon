@@ -1,0 +1,3 @@
+// Capability probe: a user enum may reuse a prelude variant name (Some); it hides the prelude's in this file only.
+enum Mine { Some(Int) }
+fn main(sys: Sys) { }

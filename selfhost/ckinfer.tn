@@ -1,7 +1,7 @@
 // module (imported by the self-hosted checker)
 // Function bodies: name resolution, type inference, methods, places and
-// patterns. A port of src/check.rs (functions, statements, places, patterns)
-// and src/check_expr.rs, decision for decision and message for message.
+// patterns. A port of bootstrap/src/check.rs (functions, statements, places, patterns)
+// and bootstrap/src/check_expr.rs, decision for decision and message for message.
 
 import ckast
 import cktypes
@@ -809,7 +809,7 @@ fn Ck.expr_inner(mut self, e: ckast.Expr, exp: cktypes.Ty) -> Result[cktypes.Ty,
     }
 }
 
-// `{x:SPEC}`: which types a spec applies to (src/check.rs `fmt_spec`).
+// `{x:SPEC}`: which types a spec applies to (bootstrap/src/check.rs `fmt_spec`).
 fn Ck.fmt_spec(self, x: ckast.Expr, t0: cktypes.Ty, f: parser.Spec) -> Result[Unit, ckast.Diag] {
     let t = self.known(t0, x.sp, "a formatted value")?
     let n = match t {

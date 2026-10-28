@@ -10,7 +10,7 @@ import os, random, re, shutil, subprocess, sys, tempfile, concurrent.futures as 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TENON = os.path.join(ROOT, "target", "release", "tenon")
-DIRS = ["src", "std", "tests", "programs", "selfhost", "bench", "study"]
+DIRS = ["bootstrap", "lib", "tests", "programs", "selfhost", "bench", "study"]
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|->|=>|==|!=|<=|>=|\+=|-=|\.\.|\S')
 TYPES = ["Int", "Str", "Bool", "Float", "Unit", "List[Int]", "Map[Str, Int]", "Option[Int]", "Result[Int, Str]",
          "(Int, Str)", "fn(Int) -> Int", "Fs", "Console", "List[T]", "T", "Option[T]", "Sys", "Conn"]
