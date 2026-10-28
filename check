@@ -1,19 +1,10 @@
 #!/usr/bin/env bash
-# The fast inner loop (budget: 60 s, tenon.md §2.1): build, then run and
-# reject tests with every run test executed by BOTH backends (differential
-# smoke), the program scenarios, the doc programs, the tools' own tests and
-# the cross-check against the seed. `--fast` is accepted and means the same
-# (tools/land.sh passes it); slower evidence is tools/evidence.sh.
-# The program under test is `tenon`, the self-hosted command line
-# (selfhost/tenon.tn, docs/tools.md): the frozen seed (bootstrap/,
-# target/release/tenon-seed, governance/README.md) builds stage0
-# (target/tenon0, -O0), stage0 builds stage1 (target/tenon, -O2, in parallel
-# translation units), and stage1 runs everything. tools/selfhost.sh compares
-# stage1 with the seed on the corpus and stage0 with stage1 (the fixpoint).
-# tests/v2 (and lib/v2) hold what only `tenon` understands (traits, workers):
-# `tenon test` checks both of its backends on them. The tools take the
-# binaries from $TENON, $TENON0 and $SEED (tools/corpus.py). Ends with the
-# time of each step.
+# The gate (budget: 60 s, tenon.md §2.1): builds the seed, stage0 and stage1
+# (target/tenon), then runs every step below with stage1 and ends with the
+# time of each. What each step checks: docs/dev/testing.md. `--fast` is
+# accepted and means the same (tools/land.sh passes it); slower evidence is
+# tools/evidence.sh. The tools take the binaries from $TENON, $TENON0 and
+# $SEED (tools/corpus.py).
 set -euo pipefail
 cd "$(dirname "$0")"
 export SEED=$PWD/target/release/tenon-seed TENON0=$PWD/target/tenon0 TENON=$PWD/target/tenon TENON_ROOT=$PWD
@@ -35,6 +26,7 @@ step "stage1 (stage0 builds tenon)" "$TENON0" build selfhost/tenon.tn -o "$TENON
 step "tenon test tests tests/v2" "$TENON" test tests tests/v2
 step "cli_test" tools/cli_test.sh
 step "doctest" python3 tools/doctest.py
+step "doclinks" "$TENON" run tools/doclinks.tn
 step "vscode grammar" python3 tools/vscode_grammar_check.py
 step "programs" tools/programs.sh
 step "cache_test" tools/cache_test.sh
