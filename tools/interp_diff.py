@@ -3,8 +3,9 @@
 
     tools/interp_diff.py [TENONC]
 
-Runs every .tn file of the corpus (bootstrap lib tests programs selfhost bench
-study) with `tenon run` and `tenonc run`, from the file's directory, with its
+Runs every .tn file of the corpus (tools/corpus.py, without v2/: the seed
+cannot read those) with `tenon run` (the seed's interpreter) and `tenonc run`
+(tools/evidence.sh), from the file's directory, with its
 `// stdin:` and `// args:` directives (as the test runner gives them), and
 compares standard output, standard error and the exit status byte for byte.
 Files the bootstrap rejects are compared too (the diagnostic must be the
@@ -18,6 +19,8 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+import corpus
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 T = os.path.join(ROOT, "target", "release", "tenon")
@@ -75,11 +78,9 @@ def one(path):
 
 
 def main():
-    files = sorted(os.path.join(d, f) for top in ["bootstrap", "lib", "tests", "programs", "selfhost", "bench", "study"]
-                   for d, _, fs in os.walk(os.path.join(ROOT, top)) for f in fs if f.endswith(".tn"))
-    # a repro that needs a prepared directory and changes it when run; v2/ files are tenonc-only
-    files = [f for f in files if not f.endswith("02-fs-symlink-escape.tn") and "/v2/" not in f]
-    with ThreadPoolExecutor(8) as ex:
+    # a repro that needs a prepared directory and changes it when run
+    files = [os.path.join(ROOT, f) for f in corpus.files(no_v2=True) if not f.endswith("02-fs-symlink-escape.tn")]
+    with ThreadPoolExecutor(corpus.JOBS) as ex:
         rs = list(ex.map(one, files))
     for path, kind, why in rs:
         if kind == "diff":
@@ -87,6 +88,7 @@ def main():
     count = lambda k: len([r for r in rs if r[1] == k])
     print(f"interp_diff: {count('same')} of {len(rs)} corpus files give the same stdout, stderr and exit status"
           f" under tenon run and tenonc run; {count('diff')} differ; {count('skip')} skipped (tenon run > {TIMEOUT}s)")
+    corpus.record("interp_diff", {"files": len(rs), "same": count("same"), "diff": count("diff"), "skipped": count("skip")})
     return 1 if count("diff") else 0
 
 

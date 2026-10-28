@@ -6,29 +6,21 @@ identifiers and types, flipped let/var, mut/ref, literals ...) and both
 first line; when both accept a mutant, `tenon emit` and `tenonc emit` must
 print the same C (and exit with the same status).
 
-Usage: selfhost/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
-Disagreements are kept in .evidence/checkfuzz/ (mutant + both outputs)."""
+Usage: tools/checkfuzz.py [COUNT] [SEED] [-v]   (-v: histogram of outcomes)
+tenonc is $TENONC (tools/evidence.sh builds it), else built here.
+Disagreements are kept in .evidence/checkfuzz/ (mutant + both outputs);
+the totals go to .evidence/checkfuzz.json."""
 import os, random, re, shutil, subprocess, sys, tempfile, concurrent.futures as cf
+import corpus as corpus_
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TENON = os.path.join(ROOT, "target", "release", "tenon")
-DIRS = ["bootstrap", "lib", "tests", "programs", "selfhost", "bench", "study"]
 TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|->|=>|==|!=|<=|>=|\+=|-=|\.\.|\S')
 TYPES = ["Int", "Str", "Bool", "Float", "Unit", "List[Int]", "Map[Str, Int]", "Option[Int]", "Result[Int, Str]",
          "(Int, Str)", "fn(Int) -> Int", "Fs", "Console", "List[T]", "T", "Option[T]", "Sys", "Conn"]
 SNIPPETS = ["mut ", "ref ", "?", ".0", ".len()", ".unwrap()", "not ", "-", "_", "None", "Some(1)", "Ok(())", "Err(\"e\")",
             "[]", "[:]", "()", "1.5", "\"s\"", "true", "return", "break", "self", "panic(\"x\")", "x", "encode(", "decode(",
             ".to_str()", "+ 1", "== 1", "{ }", "let _ = ", "var ", "let ", "const ", "pub ", "linear ", "unique "]
-
-
-def corpus():
-    files = []
-    for d in DIRS:
-        for dp, _, fs in os.walk(os.path.join(ROOT, d)):
-            for f in fs:
-                if f.endswith(".tn") and "/v2/" not in os.path.join(dp, f):  # v2/: tenonc-only syntax
-                    files.append(os.path.relpath(os.path.join(dp, f), ROOT))
-    return sorted(files)
 
 
 def mutate(src, r):
@@ -130,9 +122,11 @@ def main():
     pos = [a for a in sys.argv[1:] if not a.startswith("-")]
     count = int(pos[0]) if len(pos) > 0 else 500
     seed = int(pos[1]) if len(pos) > 1 else 1
-    ck = os.path.join(tempfile.mkdtemp(), "tenonc")
-    subprocess.run([TENON, "build", os.path.join(ROOT, "selfhost", "tenonc.tn"), "-o", ck], check=True)
-    files = corpus()
+    ck = os.environ.get("TENONC")
+    if not ck:
+        ck = os.path.join(tempfile.mkdtemp(), "tenonc")
+        subprocess.run([TENON, "build", os.path.join(ROOT, "selfhost", "tenonc.tn"), "-o", ck, "-O0"], check=True)
+    files = corpus_.files(no_v2=True)  # v2/: syntax the seed cannot read
     # Mostly mutate programs the bootstrap accepts: their mutants reach the checker.
     good = [f for f in files if subprocess.run([TENON, "check", f], cwd=ROOT, capture_output=True).returncode == 0]
     r = random.Random(seed)
@@ -141,7 +135,7 @@ def main():
     os.makedirs(out, exist_ok=True)
     bad = 0
     kinds = {}
-    with cf.ThreadPoolExecutor(max_workers=os.cpu_count() or 4) as ex:
+    with cf.ThreadPoolExecutor(max_workers=corpus_.JOBS) as ex:
         for res in ex.map(run_one, jobs):
             if res is None:
                 continue
@@ -159,6 +153,7 @@ def main():
         for k, v in sorted(kinds.items(), key=lambda kv: -kv[1]):
             print("%6d  %s" % (v, k))
     print("checkfuzz: %d mutants, %d disagreements, %d distinct outcomes" % (count, bad, len(kinds)))
+    corpus_.record("checkfuzz", {"mutants": count, "seed": seed, "disagreements": bad, "outcomes": len(kinds)})
     sys.exit(1 if bad else 0)
 
 

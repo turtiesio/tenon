@@ -2,13 +2,12 @@
 # Evidence (not part of check --fast): compile every run test and program with
 # AddressSanitizer + UndefinedBehaviorSanitizer and require the same output as
 # the golden file. Catches memory errors in generated C and the runtime.
-# tests/v2/run (traits: dyn boxes, vtables, Show impls; workers and channels)
-# is compiled by tenonc ($TENONC, default target/tenonc), the rest by the
-# bootstrap; so are the programs under programs/v2 that have a
-# sanitizer.args (the arguments to run them with, in their directory).
+# Everything (tests/run, tests/v2/run, and the programs under programs/v2
+# that have a sanitizer.args: the arguments to run them with, in their
+# directory) is compiled by tenonc ($TENONC, default target/tenonc), the
+# compiler in use.
 set -u
 cd "$(dirname "$0")/.."
-B=$PWD/target/release/tenon
 C=${TENONC:-$PWD/target/tenonc}
 export TENON_ROOT=$PWD
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
@@ -26,10 +25,9 @@ run() { # run NAME DIR FILE.tn COMPILER STDIN ARGS
 for tn in tests/run/*.tn tests/v2/run/*.tn; do
   head -1 "$tn" | grep -q '^// module' && continue
   name=$(basename "$tn" .tn); dir=$(dirname "$tn")
-  case "$tn" in */v2/*) T=$C ;; *) T=$B ;; esac
   stdin=$(sed -n 's#^// stdin: ##p' "$tn" | head -1 | sed 's/\\n/\n/g')
   args=$(sed -n 's#^// args: ##p' "$tn" | head -1)
-  run "$name" "$dir" "$name.tn" "$T" "$stdin" "$args"
+  run "$name" "$dir" "$name.tn" "$C" "$stdin" "$args"
 done
 for d in programs/v2/*/; do
   p=$(basename "$d")
